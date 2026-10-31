@@ -1,0 +1,22 @@
+{
+    "name": "Ryona.Game",
+    "rootNamespace": "Ryona.Game",
+    "references": [
+        "Ryona.Core",
+        "Unity.InputSystem",
+        "VRM10",
+        "UniGLTF",
+        "UniGLTF.Utils",
+        "SpringBoneJobs",
+        "Unity.Mathematics"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

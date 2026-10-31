@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>神楽 澪 — キャラクターシート</title>
+<style>
+  :root{
+    --bg:#0d0d10; --panel:#16161a; --line:#2a2a30; --text:#e8e6e3;
+    --muted:#8b8b95; --accent:#A63A3A;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:"Yu Gothic UI","Hiragino Kaku Gothic ProN",system-ui,sans-serif;
+    line-height:1.6; padding:40px 24px 80px;
+  }
+  .wrap{max-width:1080px;margin:0 auto}
+  header{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:32px}
+  h1{font-size:28px;letter-spacing:.08em;font-weight:600}
+  h1 small{display:block;font-size:12px;letter-spacing:.3em;color:var(--muted);margin-top:6px;font-weight:400}
+  h2{font-size:14px;letter-spacing:.2em;color:var(--accent);margin:40px 0 14px;font-weight:600}
+  .grid{display:grid;gap:16px}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:18px}
+  .spec{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px}
+  .spec:last-child{border-bottom:0}
+  .spec span:first-child{color:var(--muted)}
+  .spec span:last-child{font-weight:600;letter-spacing:.02em}
+  .sw{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:12.5px}
+  .sw:last-child{border-bottom:0}
+  .chip{width:38px;height:38px;border-radius:4px;border:1px solid rgba(255,255,255,.14);flex:none}
+  .sw code{color:var(--muted);font-size:11.5px;letter-spacing:.05em}
+  .sw b{display:block;font-weight:600}
+  ul{list-style:none}
+  li{padding:8px 0 8px 26px;font-size:13px;border-bottom:1px solid rgba(255,255,255,.05);position:relative}
+  li:last-child{border-bottom:0}
+  li::before{content:"□";position:absolute;left:0;color:var(--accent);font-size:15px}
+  li.done::before{content:"■"}
+  .danger{border-left:3px solid var(--accent);padding-left:14px;font-size:13px;color:#d6d2cf}
+  .danger b{color:var(--accent)}
+  svg{display:block;margin:0 auto}
+  .lbl{font-size:10px;fill:var(--muted);letter-spacing:.06em}
+  .mono{font-family:"Cascadia Mono",Consolas,monospace;font-size:11.5px;color:var(--muted)}
+  footer{margin-top:56px;padding-top:18px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>神楽 澪 <small>KAGURA MIO — CHARACTER SHEET</small></h1>
+</header>
+
+<div class="grid g2">
+  <div class="card">
+    <div class="spec"><span>年齢</span><span>25</span></div>
+    <div class="spec"><span>身長</span><span>168 cm</span></div>
+    <div class="spec"><span>頭身</span><span>7.0 頭身</span></div>
+    <div class="spec"><span>頭長</span><span>24 cm</span></div>
+    <div class="spec"><span>経歴</span><span>元・要人警護官</span></div>
+    <div class="spec"><span>台詞量</span><span>極小(息遣いのみ)</span></div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">シルエット</h2>
+    <svg viewBox="0 0 200 300" width="170" height="255">
+      <!-- guides -->
+      <line x1="15" y1="20"  x2="185" y2="20"  stroke="#2a2a30" stroke-width="1"/>
+      <line x1="15" y1="55"  x2="185" y2="55"  stroke="#2a2a30" stroke-width="1"/>
+      <line x1="15" y1="90"  x2="185" y2="90"  stroke="#2a2a30" stroke-width="1"/>
+      <line x1="15" y1="125" x2="185" y2="125" stroke="#2a2a30" stroke-width="1"/>
+      <line x1="15" y1="160" x2="185" y2="160" stroke="#2a2a30" stroke-width="1"/>
+      <line x1="15" y1="195" x2="185" y2="195" stroke="#2a2a30" stroke-width="1"/>
+      <line x1="15" y1="230" x2="185" y2="230" stroke="#2a2a30" stroke-width="1"/>
+      <line x1="15" y1="265" x2="185" y2="265" stroke="#2a2a30" stroke-width="1"/>
+
+      <!-- body silhouette -->
+      <ellipse cx="100" cy="37" rx="17" ry="17" fill="#2b2b33" stroke="#8b8b95" stroke-width="1.2"/>
+      <!-- ponytail -->
+      <path d="M117 30 q16 12 12 40 q-8 -14 -14 -22" fill="#1A1A1F" stroke="#3F3F52" stroke-width="1"/>
+      <!-- torso / shoulders wide -->
+      <path d="M100 54 L76 66 L70 120 L86 124 L100 118 L114 124 L130 120 L124 66 Z"
+            fill="#1C1C1E" stroke="#4a4a52" stroke-width="1.2"/>
+      <!-- inner shirt accent -->
+      <path d="M94 58 L100 118 L106 58" fill="none" stroke="#E8E4DC" stroke-width="2.5" opacity=".8"/>
+      <!-- arms -->
+      <path d="M76 68 L64 118 L72 120 L82 74 Z" fill="#1C1C1E" stroke="#4a4a52" stroke-width="1"/>
+      <path d="M124 68 L136 118 L128 120 L118 74 Z" fill="#1C1C1E" stroke="#4a4a52" stroke-width="1"/>
+      <!-- gloves -->
+      <rect x="62" y="118" width="11" height="14" rx="2" fill="#A63A3A"/>
+      <rect x="127" y="118" width="11" height="14" rx="2" fill="#A63A3A"/>
+      <!-- legs -->
+      <path d="M86 124 L82 195 L94 196 L98 128 Z" fill="#2E2E33" stroke="#4a4a52" stroke-width="1"/>
+      <path d="M114 124 L118 195 L106 196 L102 128 Z" fill="#2E2E33" stroke="#4a4a52" stroke-width="1"/>
+      <path d="M82 195 L80 262 L94 262 L94 196 Z" fill="#2E2E33" stroke="#4a4a52" stroke-width="1"/>
+      <path d="M118 195 L120 262 L106 262 L106 196 Z" fill="#2E2E33" stroke="#4a4a52" stroke-width="1"/>
+      <!-- shoes -->
+      <rect x="76" y="262" width="22" height="9" rx="2" fill="#151517"/>
+      <rect x="102" y="262" width="22" height="9" rx="2" fill="#151517"/>
+
+      <!-- labels -->
+      <text class="lbl" x="180" y="18"  text-anchor="end">0 頭</text>
+      <text class="lbl" x="180" y="53"  text-anchor="end">1 頭</text>
+      <text class="lbl" x="180" y="88"  text-anchor="end">2 頭</text>
+      <text class="lbl" x="180" y="123" text-anchor="end">3 頭</text>
+      <text class="lbl" x="180" y="158" text-anchor="end">4 頭</text>
+      <text class="lbl" x="180" y="193" text-anchor="end">5 頭</text>
+      <text class="lbl" x="180" y="228" text-anchor="end">6 頭</text>
+      <text class="lbl" x="180" y="268" text-anchor="end">7 頭</text>
+    </svg>
+    <p class="mono" style="text-align:center;margin-top:8px">肩幅 +5% / 太もも太め / くびれ明確</p>
+  </div>
+</div>
+
+<h2>COLOR PALETTE</h2>
+<div class="grid g2">
+  <div class="card">
+    <div class="sw"><div class="chip" style="background:#1A1A1F"></div><div><b>髪 ベース</b><code>#1A1A1F</code></div></div>
+    <div class="sw"><div class="chip" style="background:#3F3F52"></div><div><b>髪 ハイライト</b><code>#3F3F52</code></div></div>
+    <div class="sw"><div class="chip" style="background:#F5DFD3"></div><div><b>肌</b><code>#F5DFD3</code></div></div>
+    <div class="sw"><div class="chip" style="background:#E0BFB2"></div><div><b>肌 影</b><code>#E0BFB2</code></div></div>
+    <div class="sw"><div class="chip" style="background:#7A3B2E"></div><div><b>瞳</b><code>#7A3B2E</code></div></div>
+  </div>
+  <div class="card">
+    <div class="sw"><div class="chip" style="background:#A63A3A"></div><div><b>差し色(グローブ)</b><code>#A63A3A</code></div></div>
+    <div class="sw"><div class="chip" style="background:#1C1C1E"></div><div><b>ジャケット</b><code>#1C1C1E</code></div></div>
+    <div class="sw"><div class="chip" style="background:#E8E4DC"></div><div><b>インナー</b><code>#E8E4DC</code></div></div>
+    <div class="sw"><div class="chip" style="background:#2E2E33"></div><div><b>パンツ</b><code>#2E2E33</code></div></div>
+    <div class="sw"><div class="chip" style="background:#151517"></div><div><b>シューズ</b><code>#151517</code></div></div>
+  </div>
+</div>
+
+<h2>判定チェックリスト</h2>
+<div class="card">
+  <ul>
+    <li>正面バストアップで目が魅力的に見える</li>
+    <li>引きのシルエットで「強そう」に見える</li>
+    <li>灰色背景(#4A4A4E)で埋もれない</li>
+    <li>痛み表情が「痛そう」に見える(気持ち悪くならない)</li>
+    <li>3秒見ても違和感が残らない</li>
+  </ul>
+</div>
+
+<h2>表情セット</h2>
+<div class="grid g3">
+  <div class="card">
+    <div class="spec"><span>1 通常</span><span>VRoid</span></div>
+    <div class="spec"><span>2 軽い痛み</span><span>VRoid</span></div>
+    <div class="spec"><span>3 強い痛み</span><span style="color:#A63A3A">Blender</span></div>
+  </div>
+  <div class="card">
+    <div class="spec"><span>4 息を呑む</span><span style="color:#A63A3A">Blender</span></div>
+    <div class="spec"><span>5 膝をつく</span><span style="color:#A63A3A">Blender</span></div>
+    <div class="spec"><span>6 悔しさ</span><span>VRoid</span></div>
+  </div>
+  <div class="card">
+    <div class="spec"><span>7 気迫</span><span>VRoid</span></div>
+    <div class="spec"><span>—</span><span>—</span></div>
+    <div class="spec"><span>—</span><span>—</span></div>
+  </div>
+</div>
+
+<h2>鉄則</h2>
+<div class="card danger">
+  <b>露出は増やさない。</b>破損は「生地が裂ける」であって「肌が見える」ではない。<br>
+  <b>目を大きくしすぎない。</b>幼児化すると暴力描写とのバランスが崩れる。<br>
+  <b>肩幅と太ももは削らない。</b>削ると「守られる存在」になり主題と矛盾する。
+</div>
+
+<footer>
+  神楽 澪 キャラクター設計書 v1.0 — ryona-action/CHARACTER.md と対
+</footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,215 @@
+using UnityEngine;
+
+namespace Ryona.Game
+{
+    /// <summary>
+    /// 掴み・もがきの通し確認（<c>-grappletest</c>）。
+    ///
+    /// 数秒ごとに一番近い敵をプレイヤーの正面 1m に立たせ、掴みを指示する。
+    /// <c>-holdmash</c> を付ければ振りほどき、付けなければ時間切れ（投げ）を確認できる。
+    /// </summary>
+    [AddComponentMenu("Ryona/Grapple Test Driver")]
+    public sealed class GrappleTestDriver : MonoBehaviour
+    {
+        /// <summary>次の掴みまでの秒数。</summary>
+        public float Interval = 3.0f;
+
+        /// <summary>掴ませる位置を正面ではなく右真横にする（姿勢を横から見る確認用）。</summary>
+        public bool SideView;
+        public bool BackView;
+
+        float _timer = 1.5f;
+        PlayerGrapple _grapple;
+        PlayerStats _player;
+        int _orders;
+
+        // 掴んでいる間の接触を測る（敵の手首が彼女のどこに乗っているか）
+        VrmCharacterSlot _slot;
+        float _contactTimer;
+        string _hitShotPath;
+        bool _once;
+        bool _grabbedOnce;
+        bool _hitAfterThrowOnly;
+        bool _throwFinished;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        static void Boot()
+        {
+            bool wanted = false;
+            bool side = false;
+            bool back = false;
+            bool once = false;
+            bool hitAfterThrow = false;
+            string hitShotPath = null;
+
+            foreach (string a in System.Environment.GetCommandLineArgs())
+            {
+                if (string.Equals(a, "-grappleonce", System.StringComparison.OrdinalIgnoreCase))
+                    once = true;
+                else if (string.Equals(a, "-enemyhitafterthrow", System.StringComparison.OrdinalIgnoreCase))
+                    hitAfterThrow = true;
+                else if (a.StartsWith("-enemyhitshot=", System.StringComparison.OrdinalIgnoreCase))
+                    hitShotPath = a.Substring("-enemyhitshot=".Length);
+                else if (string.Equals(a, "-grappletest", System.StringComparison.OrdinalIgnoreCase))
+                    wanted = true;
+                else if (string.Equals(a, "-grappleside", System.StringComparison.OrdinalIgnoreCase))
+                    side = true;
+                else if (string.Equals(a, "-grappleback", System.StringComparison.OrdinalIgnoreCase))
+                    back = true;
+            }
+
+            if (!wanted)
+                return;
+
+            var go = new GameObject("Grapple Test Driver");
+            var driver = go.AddComponent<GrappleTestDriver>();
+            driver.SideView = side;
+            driver.BackView = back;
+            driver._hitShotPath = hitShotPath;
+            driver._once = once;
+            driver._hitAfterThrowOnly = hitAfterThrow;
+        }
+
+        void Update()
+        {
+            if (_grapple == null)
+            {
+                _grapple = FindFirstObjectByType<PlayerGrapple>();
+                _player = FindFirstObjectByType<PlayerStats>();
+
+                if (_grapple != null)
+                {
+                    if (_player != null && _hitShotPath != null)
+                        _player.HitReceived += CaptureHit;
+                    _grapple.Started += kind => { _grabbedOnce = true; Debug.Log($"[GrappleTest] 掴まれた kind={kind}"); };
+                    _grapple.Escaped += () => Debug.Log("[GrappleTest] 振りほどけた");
+                    _grapple.Failed += () => { _throwFinished = true; Debug.Log("[GrappleTest] 振りほどけなかった"); };
+                }
+
+                return;
+            }
+
+            if (_player == null || _player.IsDead)
+                return;
+
+            // 掴まれている間は「敵の手が彼女のどこに乗っているか」を測る
+            if (_grapple.IsGrappled)
+            {
+                _contactTimer -= Time.deltaTime;
+                if (_contactTimer <= 0f)
+                {
+                    _contactTimer = 0.25f;
+                    LogContact();
+                }
+                return;
+            }
+
+            if (_once && _grabbedOnce)
+                return;
+
+            _timer -= Time.deltaTime;
+            if (_timer > 0f)
+                return;
+
+            // もがいている最中は次を指示しない
+            if (_grapple.IsGrappled)
+                return;
+
+            _timer = Mathf.Max(0.5f, Interval);
+
+            EnemyBrain target = null;
+            float best = float.MaxValue;
+
+            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            {
+                if (enemy == null || !enemy.IsAlive || enemy.IsRising)
+                    continue;
+
+                float distance = Vector3.Distance(enemy.transform.position, _player.transform.position);
+                if (distance >= best)
+                    continue;
+
+                best = distance;
+                target = enemy;
+            }
+
+            if (target == null)
+                return;
+
+            // 正面 1m（-grappleside なら右真横 1m）に立たせて、掴みを指示する
+            Vector3 forward = _player.transform.forward;
+            forward.y = 0f;
+            forward = forward.sqrMagnitude > 1e-4f ? forward.normalized : Vector3.forward;
+
+            Vector3 place = SideView ? _player.transform.right : (BackView ? -forward : forward);
+            place.y = 0f;
+            place = place.sqrMagnitude > 1e-4f ? place.normalized : forward;
+
+            Vector3 spot = _player.transform.position + place * 1.0f;
+            spot.y = target.transform.position.y;   // 高さは元のまま（床に埋めない）
+
+            target.transform.position = spot;
+            target.transform.rotation = Quaternion.LookRotation(-place, Vector3.up);
+            target.QueueGrab();
+
+            _orders++;
+            Debug.Log($"[GrappleTest] #{_orders} {target.name} に掴みを指示 dist={best:F2}");
+        }
+
+        void CaptureHit(HitResult result)
+        {
+            if (_hitShotPath == null || (_hitAfterThrowOnly && !_throwFinished)) return;
+            ScreenCapture.CaptureScreenshot(_hitShotPath);
+            Debug.Log($"[EnemyHitShot] {_hitShotPath}");
+            _hitShotPath = null;
+        }
+
+        /// <summary>
+        /// 掴んでいる間の接触。敵の手首と彼女の肩・胸の距離を、敵のローカル座標で出す。
+        /// ローカルなので z = 前方の距離、x = 左右、y = 高さ。実行ごとに比べられる。
+        /// </summary>
+        void LogContact()
+        {
+            var captor = _grapple.Captor;
+            if (captor == null)
+                return;
+
+            var figure = captor.GetComponent<EnemyFigure>();
+            if (figure == null)
+                return;
+
+            if (_slot == null)
+                _slot = FindFirstObjectByType<VrmCharacterSlot>();
+            if (_slot == null || !_slot.Loaded || _slot.Instance == null)
+                return;
+
+            var rig = _slot.Instance.GetComponent<ProceduralRig>();
+            if (rig == null || !rig.Ready)
+                return;
+
+            var t = captor.transform;
+
+            Vector3 wr = t.InverseTransformPoint(figure.WristBone(false).position);
+            Vector3 wl = t.InverseTransformPoint(figure.WristBone(true).position);
+            Vector3 chest = t.InverseTransformPoint(rig.Chest.position);
+            Vector3 shR = t.InverseTransformPoint(rig.RUpperArm.position);
+            Vector3 shL = t.InverseTransformPoint(rig.LUpperArm.position);
+            Vector3 root = t.InverseTransformPoint(_player.transform.position);
+
+            Vector3 handR = t.InverseTransformPoint(rig.RHand.position);
+            Vector3 handL = t.InverseTransformPoint(rig.LHand.position);
+
+            float dR = Mathf.Min(Vector3.Distance(wr, shR), Vector3.Distance(wr, chest));
+            float dL = Mathf.Min(Vector3.Distance(wl, shL), Vector3.Distance(wl, chest));
+            float aR = Mathf.Min(Vector3.Distance(wr, handR), Vector3.Distance(wr, chest));
+            float aL = Mathf.Min(Vector3.Distance(wl, handL), Vector3.Distance(wl, chest));
+
+            Debug.Log($"[GrappleContact] rootZ={root.z:F2} " +
+                      $"wristR=({wr.x:F2},{wr.y:F2},{wr.z:F2}) wristL=({wl.x:F2},{wl.y:F2},{wl.z:F2}) " +
+                      $"chest=({chest.x:F2},{chest.y:F2},{chest.z:F2}) " +
+                      $"shR=({shR.x:F2},{shR.y:F2},{shR.z:F2}) shL=({shL.x:F2},{shL.y:F2},{shL.z:F2}) " +
+                      $"herHandR=({handR.x:F2},{handR.y:F2},{handR.z:F2}) herHandL=({handL.x:F2},{handL.y:F2},{handL.z:F2}) " +
+                      $"dR={dR:F2} dL={dL:F2} gripR={aR:F2} gripL={aL:F2}");
+        }
+    }
+}

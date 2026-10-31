@@ -1,0 +1,22 @@
+{
+    "name": "Ryona.Editor",
+    "rootNamespace": "Ryona.EditorTools",
+    "references": [
+        "Ryona.Core",
+        "Ryona.Game",
+        "VRM10",
+        "UniGLTF",
+        "UniGLTF.Utils"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

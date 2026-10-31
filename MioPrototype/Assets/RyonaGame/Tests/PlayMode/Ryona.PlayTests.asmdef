@@ -1,0 +1,26 @@
+{
+    "name": "Ryona.PlayTests",
+    "rootNamespace": "Ryona.Tests",
+    "references": [
+        "Ryona.Core",
+        "Ryona.Game",
+        "VRM10",
+        "UniGLTF",
+        "UniGLTF.Utils",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

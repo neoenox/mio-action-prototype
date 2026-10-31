@@ -1,0 +1,116 @@
+using System;
+
+namespace Ryona
+{
+    public enum AttackKind
+    {
+        Light = 0,
+        Heavy = 1,
+        Break = 2,
+        Grapple = 3
+    }
+
+    /// <summary>
+    /// 1つの攻撃の定義。フレームデータは 60fps 基準で秒に換算して持つ。
+    /// </summary>
+    [Serializable]
+    public sealed class AttackData
+    {
+        public string id = "light";
+        public AttackKind kind = AttackKind.Light;
+        public float damage = 8f;
+        public float postureDamage = 12f;
+        public float partDamage = 6f;
+        public float staminaCost = 8f;
+        public float guardStaminaDamage = 10f;
+        public BodyPart targetPart = BodyPart.Torso;
+        public float startupSeconds = 0.05f;
+        public float activeSeconds = 0.08f;
+        public float recoverySeconds = 0.18f;
+
+        /// <summary>
+        /// 踏み込み。発生の瞬間までに root が前へ出る距離（メートル）。
+        /// 当たり判定は root 基準なので、この分だけ間合いが伸びる。
+        /// </summary>
+        public float lungeDistance = 0.05f;
+
+        /// <summary>崩し攻撃はガードを無視する（仕様書 §4.5）。</summary>
+        public bool IsUnblockable => kind == AttackKind.Break;
+
+        public float TotalSeconds => startupSeconds + activeSeconds + recoverySeconds;
+    }
+
+    /// <summary>
+    /// SPEC §4.5 の攻撃テーブル。3F / 9F / 15F の発生を秒に直してある。
+    /// </summary>
+    public static class AttackLibrary
+    {
+        public static AttackData Light() => new AttackData
+        {
+            id = "light",
+            kind = AttackKind.Light,
+            damage = 8f,
+            postureDamage = 12f,
+            partDamage = 6f,
+            staminaCost = 8f,
+            guardStaminaDamage = 10f,
+            targetPart = BodyPart.Torso,
+            startupSeconds = 6f / 60f,
+            activeSeconds = 4f / 60f,
+            recoverySeconds = 10f / 60f,
+            lungeDistance = 0.38f
+        };
+
+        public static AttackData Heavy() => new AttackData
+        {
+            id = "heavy",
+            kind = AttackKind.Heavy,
+            damage = 18f,
+            postureDamage = 30f,
+            partDamage = 14f,
+            staminaCost = 18f,
+            guardStaminaDamage = 22f,
+            targetPart = BodyPart.Torso,
+            startupSeconds = 12f / 60f,
+            activeSeconds = 5f / 60f,
+            recoverySeconds = 18f / 60f,
+            lungeDistance = 0.42f
+        };
+
+        public static AttackData BreakAttack() => new AttackData
+        {
+            id = "break",
+            kind = AttackKind.Break,
+            damage = 14f,
+            postureDamage = 40f,
+            partDamage = 10f,
+            staminaCost = 24f,
+            guardStaminaDamage = 0f,
+            targetPart = BodyPart.Legs,
+            startupSeconds = 18f / 60f,
+            activeSeconds = 5f / 60f,
+            recoverySeconds = 24f / 60f,
+            lungeDistance = 0.34f
+        };
+
+        /// <summary>
+        /// 掴み。ダメージはほぼ無く、当たった後はレバガチャ（GrappleResistance）に移る。
+        /// ガードは不可能ではないが、ガード越しでも掴まれる（仕様書 §4.3）。
+        /// </summary>
+        public static AttackData GrappleAttack() => new AttackData
+        {
+            id = "grapple",
+            kind = AttackKind.Grapple,
+            damage = 3f,
+            postureDamage = 10f,
+            partDamage = 0f,
+            staminaCost = 6f,
+            guardStaminaDamage = 6f,
+            targetPart = BodyPart.Arms,
+            startupSeconds = 33f / 60f,
+            activeSeconds = 5f / 60f,
+            recoverySeconds = 30f / 60f,
+            lungeDistance = 0.10f
+        };
+    }
+}

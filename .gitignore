@@ -1,0 +1,25 @@
+# Unity が自動生成するもの
+MioPrototype/Library/
+MioPrototype/Temp/
+MioPrototype/Obj/
+MioPrototype/Logs/
+MioPrototype/UserSettings/
+MioPrototype/TestResults/
+MioPrototype/.vs/
+MioPrototype/*.csproj
+MioPrototype/*.sln
+MioPrototype/*.slnx
+
+# 実行版（Unity でビルドして作る）
+MioPrototype/Build/
+
+# 検証用の出力
+*.log
+*.xml
+/shots-*/
+
+# 被弾ボイスの素材（配布元のライセンスが未確認のため含めない）
+MioPrototype/Assets/RyonaGame/Resources/Voice/
+
+# 重複している VRM
+/test.vrm
