@@ -41,6 +41,13 @@ namespace Ryona.Game
     /// を守る。移動はキャラクターコントローラを使わず素の transform 移動で行い、
     /// 床は y=0 平面、当たり判定はシーン側のカプセルコライダーが持つ。
     /// </summary>
+    /// <summary>敵のパンチが狙う場所。顔を殴るか、腹（ボディーブロー）を殴るか。</summary>
+    public enum PunchZone
+    {
+        Face = 0,
+        Body = 1
+    }
+
     [AddComponentMenu("Ryona/Enemy Brain")]
     public sealed class EnemyBrain : MonoBehaviour, IDamageable
     {
@@ -279,6 +286,46 @@ namespace Ryona.Game
 
         EnemyAttackRunner _run;
 
+        /// <summary>
+        /// 今回のパンチの狙い（顔 / 腹）。予備動作に入るとき決める。
+        /// 拳はこの場所の座標へ向けて振られ、届いた距離で当たり判定を取る。
+        /// </summary>
+        public PunchZone Zone { get; private set; } = PunchZone.Face;
+
+        [Header("Punch Zone")]
+        [Tooltip("素早い一撃（Jab）が顔を狙う確率。残りは腹")]
+        [Range(0f, 1f)] public float JabFaceChance = 0.65f;
+
+        [Tooltip("重い一撃（Heavy）が顔を狙う確率。残りは腹")]
+        [Range(0f, 1f)] public float HeavyFaceChance = 0.35f;
+
+        [Tooltip("ボディーブロー（腹）が当たったときに追加で削るスタミナ")]
+        public float BodyBlowStaminaDamage = 12f;
+
+        /// <summary>検証用。設定すると、狙いを抽選せずこの場所に固定する。</summary>
+        [System.NonSerialized] public PunchZone? ForceZone;
+
+        [Tooltip("拳が狙いの座標にこの距離まで届いたら当たり（m）")]
+        public float PunchHitRadius = 0.30f;
+
+        /// <summary>プレイヤーの顔・腹の中心（ワールド座標）。拳の狙いと当たり判定が共有する。</summary>
+        public static Vector3 PunchTarget(PlayerStats player, PunchZone zone)
+        {
+            if (player == null)
+                return Vector3.zero;
+
+            var rig = player.GetComponentInChildren<ProceduralRig>();
+            if (rig != null && rig.Ready && rig.Head != null && rig.Hips != null && rig.Chest != null)
+            {
+                // 顔は頭の中心、腹は腰と胸のあいだ（へその少し上）
+                return zone == PunchZone.Face
+                    ? rig.Head.position
+                    : Vector3.Lerp(rig.Hips.position, rig.Chest.position, 0.40f);
+            }
+
+            return player.transform.position + Vector3.up * (zone == PunchZone.Face ? 1.35f : 0.95f);
+        }
+
         /// <summary>現在フェーズの残り秒数（予備動作・硬直・怯みで共用）。</summary>
         float _timer;
         float _punchVisualTimer;
@@ -466,6 +513,13 @@ namespace Ryona.Game
             // 個体ごとの最大 HP。3 体 × 100 では彼女の火力（軽 8）で倒しきれず、
             // 殴られ続けて終わってしまうため、雑魚は低めにする。
             State.SetMaxHp(MaxHp);
+
+            // 検証用: -punchzone=face / body で、パンチの狙いを固定する
+            foreach (string arg in System.Environment.GetCommandLineArgs())
+            {
+                if (arg.Equals("-punchzone=face", System.StringComparison.OrdinalIgnoreCase)) ForceZone = PunchZone.Face;
+                else if (arg.Equals("-punchzone=body", System.StringComparison.OrdinalIgnoreCase)) ForceZone = PunchZone.Body;
+            }
 
             // 順番待ちの輪を少しずつずらす。全員が同じ半径に並ぶと機械的に見える。
             _ringJitter = UnityEngine.Random.Range(0.92f, 1.12f);
@@ -828,7 +882,14 @@ namespace Ryona.Game
                     if (_run.Id == AttackId.Grab)
                         grabbed = TryGrab();
                     else if (PunchTouchesPlayer())
-                        Player.ReceiveHit(State, _run.Data, transform);
+                    {
+                        Player.LastHitZone = Zone;
+                        var hit = Player.ReceiveHit(State, _run.Data, transform);
+
+                        // 腹を殴られると息が詰まる。ガードされなかったときだけスタミナを削る。
+                        if (Zone == PunchZone.Body && !hit.Blocked)
+                            Player.State.ConsumeStamina(BodyBlowStaminaDamage);
+                    }
                 }
             }
 
@@ -850,19 +911,18 @@ namespace Ryona.Game
         }
 
         // Attack の前フレームで描いた拳の位置を使い、見えていない距離での命中を防ぐ。
+        // 拳は狙いの座標（顔 / 腹）へ向けて振られているので、その座標への近さで当たりを取る。
         bool PunchTouchesPlayer()
         {
             var figure = GetComponent<EnemyFigure>();
             var fist = figure != null ? figure.Fist(false) : null;
             if (fist == null || Player == null) return false;
-            var rig = Player.GetComponentInChildren<ProceduralRig>();
-            Vector3 center = rig != null && rig.Ready && rig.Chest != null
-                ? rig.Chest.position : Player.transform.position + Vector3.up * 1.05f;
+            Vector3 target = PunchTarget(Player, Zone);
             Vector3 toPlayer = Player.transform.position - transform.position;
             toPlayer.y = 0f;
             if (Vector3.Dot(transform.forward, toPlayer) <= 0f) return false;
-            float gap = Vector3.Distance(fist.position, center);
-            return gap <= 0.38f;
+            float gap = Vector3.Distance(fist.position, target);
+            return gap <= Mathf.Max(0.05f, PunchHitRadius);
         }
 
         /// <summary>
@@ -1095,6 +1155,15 @@ namespace Ryona.Game
             };
 
             _timer = _run.Windup;
+
+            // 狙いを決める。崩しは腹、素早い一撃は顔寄り、重い一撃は腹寄り。
+            Zone = ForceZone ?? id switch
+            {
+                AttackId.Jab => UnityEngine.Random.value < JabFaceChance ? PunchZone.Face : PunchZone.Body,
+                AttackId.Heavy => UnityEngine.Random.value < HeavyFaceChance ? PunchZone.Face : PunchZone.Body,
+                AttackId.Break => PunchZone.Body,
+                _ => PunchZone.Face
+            };
 
             if (_hasLast && _lastAttack == id)
             {

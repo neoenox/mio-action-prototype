@@ -823,6 +823,17 @@ namespace Ryona.Game
                     }
                 }
             }
+            // ボディーブロー: 腹へ届くよう、腰を落として上体を前へ倒す。
+            // 顔を殴るときは立ったまま、腹を殴るときは沈む。構えを見れば狙いが読める。
+            if (Brain != null && Brain.Zone == PunchZone.Body && AttackNow != AttackId.Grab
+                && (phase == EnemyPhase.Windup || phase == EnemyPhase.Attack || phase == EnemyPhase.Recover))
+            {
+                float bw = Brain.PunchPoseWeight;
+                torsoPitch -= 16f * bw;
+                hipsY -= 0.10f * bw;
+                kneeR += 14f * bw;
+                kneeL += 14f * bw;
+            }
             // --- 立ち上がり（倒れた姿勢から起こす） ---------------------
             // 4 つの形を順に通す: 仰向け → 上体を起こす → しゃがみ（膝を深く折る）
             // → 立ち上がる。途中で必ず膝を折って足を体の下へ入れる。
@@ -1504,16 +1515,31 @@ namespace Ryona.Game
             Solve(true, _targetRig.LUpperArm);
         }
 
+        /// <summary>
+        /// 拳を狙いの座標（顔 / 腹）へ向ける。狙いは毎フレーム、プレイヤーの今の体から取り直すので、
+        /// 相手が動いても拳はその場所へ届く（ホーミング）。届かない距離なら腕が伸びきって止まり、
+        /// 当たり判定（拳と狙いの距離）も外れる。
+        /// </summary>
         void AimPunch(float weight)
         {
             var upper = _figure.ShoulderBone(false);
             var elbow = _figure.ElbowBone(false);
             var wrist = _figure.WristBone(false);
-            if (upper == null || elbow == null || wrist == null) return;
-            Vector3 chest = _targetRig != null && _targetRig.Ready && _targetRig.Chest != null
-                ? _targetRig.Chest.position : _brain.Player.transform.position + Vector3.up * 1.05f;
-            Vector3 goal = chest - transform.forward * 0.10f;
-            Vector3 pole = upper.position - transform.up * 0.45f + transform.right * 0.18f;
+            if (upper == null || elbow == null || wrist == null || _brain.Player == null) return;
+
+            PunchZone zone = _brain.Zone;
+            Vector3 target = EnemyBrain.PunchTarget(_brain.Player, zone);
+
+            // 拳は狙いの手前（こちら側）の表面で止める。狙いの中心まで突き抜けない。
+            Vector3 toMe = upper.position - target;
+            toMe.y = 0f;
+            toMe = toMe.sqrMagnitude > 1e-4f ? toMe.normalized : -transform.forward;
+            Vector3 goal = target + toMe * (zone == PunchZone.Face ? 0.09f : 0.11f);
+
+            // 肘は顔なら外へ、腹なら下・外へ向ける（腹を狙うときは肘が体の前に回らない）。
+            float down = zone == PunchZone.Face ? 0.30f : 0.50f;
+            Vector3 pole = upper.position - transform.up * down + transform.right * 0.20f;
+
             Quaternion oldUpper = upper.rotation;
             Quaternion oldElbow = elbow.rotation;
             ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);

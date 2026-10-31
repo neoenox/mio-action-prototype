@@ -1024,7 +1024,14 @@ namespace Ryona.Game
                     bool fromBehind = _hurtSide == 2;
                     float side = _hurtSide == 0 ? 1f : (_hurtSide == 2 ? 0f : -_hurtSide);
 
-                    torsoPitch = StanceTorsoPitch + (fromBehind ? bend * 0.80f : -bend * 0.38f) * kv;
+                    // 殴られた場所で崩れ方を変える。
+                    //   顔: 頭が弾かれて後ろへ振れる（上体は少し反る）
+                    //   腹: 上体が前へ折れて腹を抱える（息が詰まる）
+                    bool bodyBlow = !fromBehind && Stats != null && Stats.LastHitZone == PunchZone.Body;
+                    bool faceBlow = !fromBehind && Stats != null && Stats.LastHitZone == PunchZone.Face;
+
+                    torsoPitch = StanceTorsoPitch + (fromBehind ? bend * 0.80f
+                        : (bodyBlow ? bend * 0.95f : -bend * 0.38f)) * kv;
                     // 上体は真後ろへ反るだけでなく、殴られた方向へ少しねじれる。
                     // ねじれが無いと「自分で反った」ようにしか見えない。
                     torsoYaw = StanceTorsoYaw + 20f * kv * side;
@@ -1037,6 +1044,10 @@ namespace Ryona.Game
                     // 上体の反りは抑え、その分を頭に持たせると「殴られた」に見える。
                     float headFollow = Mathf.Clamp01(_stateTime / 0.02f);
                     headPitch = StanceHeadPitch - bend * 0.62f * kv * headFollow * (fromBehind ? -0.7f : 1f);
+                    if (bodyBlow)
+                        headPitch = StanceHeadPitch + bend * 0.45f * kv * headFollow;   // 腹を抱えて頭が落ちる
+                    else if (faceBlow)
+                        headPitch -= bend * 0.25f * kv * headFollow;                    // 顔を打たれて頭が跳ねる
                     headYaw = StanceHeadYaw + 14f * kv * headFollow * side;
                     headRoll = 15f * kv * headFollow * side;   // 横から来た一撃で首が傾く
 

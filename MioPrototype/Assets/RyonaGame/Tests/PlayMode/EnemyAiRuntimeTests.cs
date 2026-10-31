@@ -110,6 +110,8 @@ namespace Ryona.Tests
         [UnityTest]
         public IEnumerator パンチ命中時に拳が体の表面まで届く()
         {
+            // 顔と腹のどちらを狙っても、拳はその座標へ届く（ホーミング）
+            foreach (var zone in new[] { PunchZone.Face, PunchZone.Body })
             foreach (var attack in new[] { EnemyBrain.AttackId.Jab, EnemyBrain.AttackId.Heavy, EnemyBrain.AttackId.Break })
             {
                 yield return LoadPrototype();
@@ -117,6 +119,7 @@ namespace Ryona.Tests
                 var enemies = Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None);
                 foreach (var e in enemies) e.enabled = false;
                 var enemy = enemies[0];
+                enemy.ForceZone = zone;
                 var slot = player.GetComponentInChildren<VrmCharacterSlot>();
                 if (slot == null) slot = Object.FindFirstObjectByType<VrmCharacterSlot>();
                 float loadDeadline = Time.realtimeSinceStartup + 8f;
@@ -132,13 +135,15 @@ namespace Ryona.Tests
                 enemy.transform.rotation = Quaternion.LookRotation(Vector3.left);
                 var figure = enemy.GetComponent<EnemyFigure>();
                 float distanceAtHit = -1f;
-                player.HitReceived += result => distanceAtHit = Vector3.Distance(figure.Fist(false).position, rig.Chest.position);
+                player.HitReceived += result =>
+                    distanceAtHit = Vector3.Distance(figure.Fist(false).position, EnemyBrain.PunchTarget(player, zone));
                 typeof(EnemyBrain).GetMethod("BeginWindup", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
                     .Invoke(enemy, new object[] { attack });
                 float deadline = Time.realtimeSinceStartup + 3f;
                 while (Time.realtimeSinceStartup < deadline && distanceAtHit < 0f) yield return null;
-                Assert.GreaterOrEqual(distanceAtHit, 0f, $"{attack} did not hit");
-                Assert.Less(distanceAtHit, 0.20f, $"{attack} fist is visibly short of the torso");
+                Assert.GreaterOrEqual(distanceAtHit, 0f, $"{attack} to the {zone} did not hit");
+                Assert.Less(distanceAtHit, 0.20f, $"{attack} fist is visibly short of the {zone}");
+                Assert.AreEqual(zone, player.LastHitZone, "the hit must record where it landed");
             }
         }
 

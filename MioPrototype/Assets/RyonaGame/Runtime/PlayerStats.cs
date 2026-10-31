@@ -74,6 +74,9 @@ namespace Ryona.Game
         /// <summary>最後に殴ってきた相手。被弾したときにその方向へ向き直るために使う。</summary>
         public Transform LastAttacker { get; private set; }
 
+        /// <summary>最後に殴られた場所（顔 / 腹）。被弾の見た目が使う。</summary>
+        public PunchZone LastHitZone { get; set; } = PunchZone.Face;
+
         /// <summary>ダウン（倒れている）残り時間。コア状態の IsDown をここで立てる。</summary>
         float _downRemaining;
 
