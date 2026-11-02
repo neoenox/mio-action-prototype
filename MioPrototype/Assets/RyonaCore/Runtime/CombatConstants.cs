@@ -46,9 +46,10 @@ namespace Ryona
         public const float GetUpVulnerable = 0.60f;
 
         // --- 掴み・抵抗 -----------------------------------------------
-        /// <summary>正面からの掴みを振りほどくのに必要な入力回数。</summary>
-        public const int MashBaseFront = 8;
+        /// <summary>背後からの掴み（羽交い締め）を振りほどくのに必要な入力回数。</summary>
         public const int MashBaseBack = 10;
+
+        /// <summary>押さえつけ（仕様書 §4.3 の 3 種目。まだ実装していない）の入力回数。</summary>
         public const int MashBasePin = 12;
 
         /// <summary>掴まれてから投げられるまでの猶予（秒）。この間に必要回数もがく。</summary>

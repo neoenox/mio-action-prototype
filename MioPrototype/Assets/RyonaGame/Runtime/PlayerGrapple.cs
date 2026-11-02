@@ -28,7 +28,7 @@ namespace Ryona.Game
         GrappleResistance _resistance;
         float _remaining;
 
-        /// <summary>掴まれている間の、相手との距離（m）。</summary>
+        /// <summary>押さえつけ（未実装）で掴まれている間の、相手との距離（m）。</summary>
         /// <remarks>
         /// 敵カプセル 0.40 + 彼女 0.30 = 0.70 が体の重ならない下限。
         /// 0.72 にすると敵が <see cref="EnemyBrain"/> 側の下限（0.95）まで押し戻され、
@@ -57,7 +57,7 @@ namespace Ryona.Game
         /// <summary>必要な入力回数（腕の損傷で増える）。</summary>
         public float RequiredInputs { get; private set; }
 
-        public GrappleKind Kind => _resistance != null ? _resistance.Kind : GrappleKind.Front;
+        public GrappleKind Kind => _resistance != null ? _resistance.Kind : GrappleKind.Back;
 
         /// <summary>もがいた瞬間の 0..1。見た目の震えに使う。</summary>
         public float StrugglePulse { get; private set; }
@@ -121,8 +121,8 @@ namespace Ryona.Game
                 Fail();
         }
 
-        /// <summary>掴まれる。外部（敵の掴み攻撃）から呼ぶ。</summary>
-        public void Begin(EnemyBrain captor, GrappleKind kind = GrappleKind.Front)
+        /// <summary>掴まれる。外部（敵の掴み攻撃）から呼ぶ。掴みは背後からだけ。</summary>
+        public void Begin(EnemyBrain captor, GrappleKind kind = GrappleKind.Back)
         {
             if (IsGrappled || Stats == null || Stats.IsDead)
                 return;
@@ -131,7 +131,7 @@ namespace Ryona.Game
 
             // 掴まれた瞬間に相手の正面へ引き寄せられる。
             // 間合い（パイプ用に 1.4m 前後）のままだと手が届いて見えないので、
-            // 掴みの間だけ 0.72m まで詰めて「掴まれている」形にする。
+            // 掴みの間だけ詰めて「掴まれている」形にする。
             SnapToCaptor(captor, kind);
 
             // 腕が壊れているほど逃げにくい（仕様書 §4.3）
@@ -164,7 +164,7 @@ namespace Ryona.Game
         }
 
         /// <summary>
-        /// 掴まれた瞬間の引き寄せ。相手の正面 GrabDistance まで詰め、向かい合う。
+        /// 掴まれた瞬間の引き寄せ。相手の体の前に、掴み方に応じた距離まで詰める。
         /// これをしないと、殴り合い用の間合い（1.4m）のまま腕だけ伸びて手が届かない。
         /// </summary>
         void SnapToCaptor(EnemyBrain captor, GrappleKind kind)
@@ -186,14 +186,13 @@ namespace Ryona.Game
 
             dir.Normalize();
 
+            // 羽交い締めは密着させる。押さえつけ（未実装）は腕を伸ばす余地を残す。
             Vector3 spot = captor.transform.position + dir * (kind == GrappleKind.Back ? BackGrabDistance : GrabDistance);
             spot.y = transform.position.y;
             transform.position = spot;
 
-            // 背中を向けたまま掴まれていると、何に掴まれているのか分からない。
-            // 向かい合って抵抗している形にする（カメラは遅れて追いつく）。
-            if (kind == GrappleKind.Front)
-                transform.rotation = Quaternion.LookRotation(-dir, Vector3.up);
+            // 背中を向けたまま掴まれている（羽交い締め）ので、向きは変えない。
+            // 以前は正面掴みのときだけ相手の方を向かせていたが、正面掴みは廃止した。
         }
 
         void Escape()

@@ -942,6 +942,7 @@ namespace Ryona.Game
         /// <summary>
         /// 掴みが当たったとき。プレイヤーを掴んだまま硬直を伸ばし、
         /// 振りほどかれる（=こちらがよろける）か投げる（=相手が怯む）まで待つ。
+        /// 掴めるのは背後に回れているときだけ（正面掴みは廃止した）。
         /// </summary>
         bool TryGrab()
         {
@@ -949,27 +950,12 @@ namespace Ryona.Game
             if (grapple == null || grapple.IsGrappled)
                 return false;
 
-            // 正面から掴めば振りほどきやすいが、背中側から掴まれると力が入らず逃げにくい。
-            // 見た目は同じ掴みなので、向きだけで難易度が変わる（HUD に「後ろから」と出す）。
-            GrappleKind kind = GrappleKind.Front;
-
-            if (Player != null)
-            {
-                Vector3 toCaptor = transform.position - Player.transform.position;
-                toCaptor.y = 0f;
-
-                if (toCaptor.sqrMagnitude > 0.0001f
-                    && Vector3.Dot(Player.transform.forward, toCaptor.normalized) < -0.35f)
-                {
-                    kind = GrappleKind.Back;
-                }
-            }
-
-            // 正面からの掴みは無い。背後に回れていなければ、掴みは空振りする。
-            if (kind != GrappleKind.Back)
+            // 判定は候補の抽選（<see cref="CollectCandidates"/>）と同じ IsBehindPlayer を使う。
+            // ここだけ別の閾値にすると「選ばれたのに空振りする」角度ができる。
+            if (!IsBehindPlayer())
                 return false;
 
-            grapple.Begin(this, kind);
+            grapple.Begin(this, GrappleKind.Back);
             return true;
         }
 

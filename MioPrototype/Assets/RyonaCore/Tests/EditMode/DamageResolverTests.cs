@@ -240,14 +240,14 @@ namespace Ryona.Tests
     public class GrappleResistanceTests
     {
         [Test]
-        public void 正面の掴みは八回でもがけば振りほどける()
+        public void 背面の掴みは十回でもがけば振りほどける()
         {
             var r = new GrappleResistance(
-                GrappleKind.Front,
-                ResistanceMath.RequiredInputs(GrappleKind.Front));
+                GrappleKind.Back,
+                ResistanceMath.RequiredInputs(GrappleKind.Back));
 
             bool escaped = false;
-            for (int i = 0; i < 7; i++)
+            for (int i = 0; i < 9; i++)
                 escaped = r.RegisterInput();
 
             Assert.IsFalse(escaped);
@@ -261,11 +261,11 @@ namespace Ryona.Tests
         [Test]
         public void 腕が傷むと振りほどくのに多く入力が要る()
         {
-            float healthy = ResistanceMath.RequiredInputs(GrappleKind.Front, 1f, 0f);
-            float injured = ResistanceMath.RequiredInputs(GrappleKind.Front, 1f, 100f);
+            float healthy = ResistanceMath.RequiredInputs(GrappleKind.Back, 1f, 0f);
+            float injured = ResistanceMath.RequiredInputs(GrappleKind.Back, 1f, 100f);
 
-            Assert.AreEqual(8f, healthy, 0.001f);
-            Assert.AreEqual(10f, injured, 0.001f);
+            Assert.AreEqual(10f, healthy, 0.001f);
+            Assert.AreEqual(12.5f, injured, 0.001f);
             Assert.Greater(injured, healthy);
         }
 
@@ -285,9 +285,6 @@ namespace Ryona.Tests
             Assert.Greater(
                 ResistanceMath.RequiredInputs(GrappleKind.Pin),
                 ResistanceMath.RequiredInputs(GrappleKind.Back));
-            Assert.Greater(
-                ResistanceMath.RequiredInputs(GrappleKind.Back),
-                ResistanceMath.RequiredInputs(GrappleKind.Front));
         }
     }
 }
