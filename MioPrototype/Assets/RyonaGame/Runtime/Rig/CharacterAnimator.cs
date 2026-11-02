@@ -279,14 +279,18 @@ namespace Ryona.Game
         [System.NonSerialized] public float DebugHeadYaw;
 
         /// <summary>
-        /// プレビュー専用: 被弾の場所（顔 / 腹）。null なら <see cref="Stats"/> の値を使う。
-        /// Editor の診断（Capture Hurt Tiers など）は PlayerStats を持たないので、
-        /// これが無いと顔 / 腹の分岐を一切確認できない。
+        /// プレビュー専用: 被弾の場所（顔 / 腹）。設定すると <see cref="Stats"/> より優先する。
+        /// Editor の診断や PlayMode テストはこの経路で顔 / 腹の分岐を確かめる
+        /// （実機では常に null なので、ふだんは <see cref="PlayerStats.LastHitZone"/> を見る）。
         /// </summary>
         [System.NonSerialized] public PunchZone? PreviewHitZone;
 
-        /// <summary>いま使っている被弾の場所。実機は Stats、プレビューは PreviewHitZone。</summary>
-        public PunchZone? CurrentHitZone => Stats != null ? Stats.LastHitZone : PreviewHitZone;
+        /// <summary>
+        /// いま使っている被弾の場所。プレビュー / テストで指定があればそれを優先し、
+        /// 無ければ実機の <see cref="PlayerStats.LastHitZone"/>（投げなどでは null）。
+        /// </summary>
+        public PunchZone? CurrentHitZone =>
+            PreviewHitZone ?? (Stats != null ? Stats.LastHitZone : null);
 
         void Awake()
         {
