@@ -5,7 +5,9 @@ namespace Ryona.Game
     /// <summary>
     /// 掴み・もがきの通し確認（<c>-grappletest</c>）。
     ///
-    /// 数秒ごとに一番近い敵をプレイヤーの正面 1m に立たせ、掴みを指示する。
+    /// 数秒ごとに一番近い敵をプレイヤーの<b>背後</b> 1m に立たせ、掴みを指示する。
+    /// 掴みは背後からしか成立しないので、既定は背後。正面に立たせたいときは
+    /// <c>-grapplefront</c>、真横は <c>-grappleside</c>。
     /// <c>-holdmash</c> を付ければ振りほどき、付けなければ時間切れ（投げ）を確認できる。
     /// </summary>
     [AddComponentMenu("Ryona/Grapple Test Driver")]
@@ -14,9 +16,11 @@ namespace Ryona.Game
         /// <summary>次の掴みまでの秒数。</summary>
         public float Interval = 3.0f;
 
-        /// <summary>掴ませる位置を正面ではなく右真横にする（姿勢を横から見る確認用）。</summary>
+        /// <summary>掴ませる位置を真横にする（姿勢を横から見る確認用）。</summary>
         public bool SideView;
-        public bool BackView;
+
+        /// <summary>掴ませる位置を背後にする。<c>-grapplefront</c> を付けたときだけ false。</summary>
+        public bool BackView = true;
 
         float _timer = 1.5f;
         PlayerGrapple _grapple;
@@ -37,6 +41,7 @@ namespace Ryona.Game
         {
             bool wanted = false;
             bool side = false;
+            bool front = false;
             bool back = false;
             bool once = false;
             bool hitAfterThrow = false;
@@ -54,8 +59,10 @@ namespace Ryona.Game
                     wanted = true;
                 else if (string.Equals(a, "-grappleside", System.StringComparison.OrdinalIgnoreCase))
                     side = true;
+                else if (string.Equals(a, "-grapplefront", System.StringComparison.OrdinalIgnoreCase))
+                    front = true;   // 掴めないことを確かめる用（背後に回れていない状態）
                 else if (string.Equals(a, "-grappleback", System.StringComparison.OrdinalIgnoreCase))
-                    back = true;
+                    back = true;    // 既定と同じ。明示して読みやすくするため残す
             }
 
             if (!wanted)
@@ -64,7 +71,9 @@ namespace Ryona.Game
             var go = new GameObject("Grapple Test Driver");
             var driver = go.AddComponent<GrappleTestDriver>();
             driver.SideView = side;
-            driver.BackView = back;
+            // 掴みは背後からしか成立しないので、既定は背後に立たせる。
+            // 正面に立たせると「指示した敵が必ず空振りする」実行になってしまう。
+            driver.BackView = back || !front;
             driver._hitShotPath = hitShotPath;
             driver._once = once;
             driver._hitAfterThrowOnly = hitAfterThrow;

@@ -264,6 +264,9 @@ namespace Ryona.Game
         static readonly int ColorId = Shader.PropertyToID("_Color");
         static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
 
+        /// <summary><c>-nofeint</c> の通知を 1 回だけ出すためのフラグ（敵 3 体が同じ引数を読む）。</summary>
+        static bool _feintDisabledLogged;
+
         // --- 攻撃テーブル（AttackLibrary を元にダメージだけ差し替えた実体） ---------
         AttackData _jab;
         AttackData _heavy;
@@ -519,6 +522,17 @@ namespace Ryona.Game
             {
                 if (arg.Equals("-punchzone=face", System.StringComparison.OrdinalIgnoreCase)) ForceZone = PunchZone.Face;
                 else if (arg.Equals("-punchzone=body", System.StringComparison.OrdinalIgnoreCase)) ForceZone = PunchZone.Body;
+                else if (arg.Equals("-nofeint", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    // 掴みもフェイント対象なので、22% で「掴みの予備動作だけ見せて引く」。
+                    // 数秒の検証では掴めたのかフェイントしたのか区別できないため、切れるようにする。
+                    FeintChance = 0f;
+                    if (!_feintDisabledLogged)
+                    {
+                        _feintDisabledLogged = true;
+                        Debug.Log("[Enemy] フェイント無効（-nofeint）");
+                    }
+                }
             }
 
             // 順番待ちの輪を少しずつずらす。全員が同じ半径に並ぶと機械的に見える。
