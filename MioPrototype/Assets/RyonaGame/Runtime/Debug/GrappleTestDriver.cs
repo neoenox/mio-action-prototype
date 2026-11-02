@@ -31,10 +31,12 @@ namespace Ryona.Game
         VrmCharacterSlot _slot;
         float _contactTimer;
         string _hitShotPath;
+        string _heldPunchShotPath;
+        float _heldPunchShotDelay = -1f;
         bool _once;
         bool _grabbedOnce;
         bool _hitAfterThrowOnly;
-        bool _throwFinished;
+        bool _holdFinished;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
@@ -46,15 +48,19 @@ namespace Ryona.Game
             bool once = false;
             bool hitAfterThrow = false;
             string hitShotPath = null;
+            string heldPunchShotPath = null;
 
             foreach (string a in System.Environment.GetCommandLineArgs())
             {
                 if (string.Equals(a, "-grappleonce", System.StringComparison.OrdinalIgnoreCase))
                     once = true;
-                else if (string.Equals(a, "-enemyhitafterthrow", System.StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(a, "-enemyhitafterthrow", System.StringComparison.OrdinalIgnoreCase) ||
+                         string.Equals(a, "-enemyhitafterhold", System.StringComparison.OrdinalIgnoreCase))
                     hitAfterThrow = true;
                 else if (a.StartsWith("-enemyhitshot=", System.StringComparison.OrdinalIgnoreCase))
                     hitShotPath = a.Substring("-enemyhitshot=".Length);
+                else if (a.StartsWith("-heldpunchshot=", System.StringComparison.OrdinalIgnoreCase))
+                    heldPunchShotPath = a.Substring("-heldpunchshot=".Length);
                 else if (string.Equals(a, "-grappletest", System.StringComparison.OrdinalIgnoreCase))
                     wanted = true;
                 else if (string.Equals(a, "-grappleside", System.StringComparison.OrdinalIgnoreCase))
@@ -75,12 +81,25 @@ namespace Ryona.Game
             // 正面に立たせると「指示した敵が必ず空振りする」実行になってしまう。
             driver.BackView = back || !front;
             driver._hitShotPath = hitShotPath;
+            driver._heldPunchShotPath = heldPunchShotPath;
             driver._once = once;
             driver._hitAfterThrowOnly = hitAfterThrow;
         }
 
         void Update()
         {
+            // 腹パン演出の撮影（演出開始から 0.12 秒後）
+            if (_heldPunchShotDelay >= 0f)
+            {
+                _heldPunchShotDelay -= Time.unscaledDeltaTime;
+                if (_heldPunchShotDelay <= 0f && _heldPunchShotPath != null)
+                {
+                    ScreenCapture.CaptureScreenshot(_heldPunchShotPath);
+                    Debug.Log($"[HeldPunchShot] {_heldPunchShotPath}");
+                    _heldPunchShotPath = null;
+                }
+            }
+
             if (_grapple == null)
             {
                 _grapple = FindFirstObjectByType<PlayerGrapple>();
@@ -91,9 +110,13 @@ namespace Ryona.Game
                     if (_player != null && _hitShotPath != null)
                         _player.HitReceived += CaptureHit;
                     _grapple.Started += kind => { _grabbedOnce = true; Debug.Log($"[GrappleTest] 掴まれた kind={kind}"); };
-                    _grapple.Escaped += () => Debug.Log("[GrappleTest] 振りほどけた");
-                    _grapple.Failed += () => { _throwFinished = true; Debug.Log("[GrappleTest] 振りほどけなかった"); };
+                    _grapple.Escaped += () => { _holdFinished = true; Debug.Log("[GrappleTest] 振りほどけた"); };
+                    _grapple.Failed += () => { _holdFinished = true; Debug.Log("[GrappleTest] 振りほどけなかった"); };
                 }
+
+                var belly = FindFirstObjectByType<HeldBellyPunchDirector>();
+                if (belly != null)
+                    belly.Performed += OnBellyPunchPerformed;
 
                 return;
             }
@@ -165,9 +188,17 @@ namespace Ryona.Game
             Debug.Log($"[GrappleTest] #{_orders} {target.name} に掴みを指示 dist={best:F2}");
         }
 
+        void OnBellyPunchPerformed()
+        {
+            Debug.Log("[GrappleTest] 腹パン演出 開始");
+
+            if (_heldPunchShotPath != null && _heldPunchShotDelay < 0f)
+                _heldPunchShotDelay = 0.12f;
+        }
+
         void CaptureHit(HitResult result)
         {
-            if (_hitShotPath == null || (_hitAfterThrowOnly && !_throwFinished)) return;
+            if (_hitShotPath == null || (_hitAfterThrowOnly && !_holdFinished)) return;
             ScreenCapture.CaptureScreenshot(_hitShotPath);
             Debug.Log($"[EnemyHitShot] {_hitShotPath}");
             _hitShotPath = null;

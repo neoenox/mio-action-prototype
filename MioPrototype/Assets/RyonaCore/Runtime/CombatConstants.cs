@@ -52,7 +52,10 @@ namespace Ryona
         /// <summary>押さえつけ（仕様書 §4.3 の 3 種目。まだ実装していない）の入力回数。</summary>
         public const int MashBasePin = 12;
 
-        /// <summary>掴まれてから投げられるまでの猶予（秒）。この間に必要回数もがく。</summary>
+        /// <summary>
+        /// 押さえつけ（<see cref="GrappleKind.Pin"/>、未実装）で掴まれてから投げられるまでの猶予（秒）。
+        /// 後ろ拘束（<see cref="GrappleKind.Back"/>）は時間切れで解けないので、この値は使わない。
+        /// </summary>
         public const float GrappleLimitSeconds = 3.0f;
 
         /// <summary>振りほどいた直後、掴んでいた側がよろける時間（反撃の隙）。</summary>
@@ -65,14 +68,14 @@ namespace Ryona
         public const float GrabbedDamageFromOthers = 0.5f;
 
         /// <summary>
-        /// 掴みに失敗したとき、突き飛ばされて下がる距離（m）と時間（秒）。
+        /// 押さえつけの時間切れで投げられたとき、突き飛ばされて下がる距離（m）と時間（秒）。
         /// その場に残すと、怯んでいる 0.7 秒のあいだに包囲側から袋叩きにされる。
         /// </summary>
         public const float GrappleThrowKnockback = 1.5f;
         public const float GrappleThrowKnockbackSeconds = 0.30f;
 
         /// <summary>
-        /// 掴みに失敗した直後、他の敵が攻撃を控える時間（秒）。
+        /// 押さえつけの時間切れで投げた直後、他の敵が攻撃を控える時間（秒）。
         /// 怯み（<see cref="StunLarge"/>）と同じ長さにして、起き上がるまでに間合いを離す。
         /// </summary>
         public const float GrappleThrowGraceSeconds = 0.70f;

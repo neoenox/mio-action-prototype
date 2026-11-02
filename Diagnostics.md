@@ -46,7 +46,8 @@
 | `-holdattack [-attackinterval=秒]` | 強も混ぜて自動で殴る |
 | `-holdright` / `-holdmove` | 右へ歩き続ける（波の進行確認） |
 | `-holdmash` | もがき入力を自動で入れる |
-| `-grappletest [-holdmash] [-grappleback\|-grapplefront\|-grappleside]` | 数秒ごとに最寄りの敵を彼女の**背後 1m**（既定）に立たせて掴みを指示する。掴まれ→もがき→振りほどきを自動で繰り返す。`-grapplefront` は「正面からでは掴めない」ことの確認用（掴みは背後からのみ成立する）。掴まれている間は `[GrappleContact]` を 0.25 秒ごとに出力（敵ローカル座標で手首・胸・肩・彼女の両手） |
+| `-grappletest [-holdmash] [-grappleback\|-grapplefront\|-grappleside]` | 数秒ごとに最寄りの敵を彼女の**背後 1m**（既定）に立たせて掴みを指示する。後ろ拘束は時間切れで解けないので、`-holdmash` なら振りほどき、付けなければ **1.6 秒後に別の敵が腹パン → くの字 → 解放**を繰り返す。`-grapplefront` は「正面からでは掴めない」ことの確認用（掴みは背後からのみ成立する）。掴まれている間は `[GrappleContact]` を 0.25 秒ごとに出力（敵ローカル座標で手首・胸・肩・彼女の両手） |
+| `-heldpunchshot=<png>` | 腹パン演出の開始 0.12 秒後を撮影（`-grappletest` と併用） |
 | `-nofeint` | 敵のフェイントを切る。掴みもフェイント対象（22%）なので、数秒の検証では「掴めなかった」のか「引かれた」のか区別できない。切ってから回す |
 | `-encountertest [-encounterkills=N]` | 2秒ごとに敵を1体倒して決着と波の進行を回す |
 | `-screenspan=N` | 波の「1画面ぶんの距離」を起動時だけ差し替える（既定 8）。7/9/11 を再ビルドなしで撮り比べられる |

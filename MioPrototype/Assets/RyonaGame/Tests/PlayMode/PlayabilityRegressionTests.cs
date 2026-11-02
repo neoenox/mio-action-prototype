@@ -189,6 +189,9 @@ namespace Ryona.Tests
             holder.transform.rotation = Quaternion.LookRotation(Vector3.right);
             attacker.transform.position = player.transform.position + Vector3.right * 1.3f;
             holder.FeintChance = attacker.FeintChance = 0f;
+            // 腹パンだと新仕様（演出後に拘束解放）でこのテストの前提が崩れるため、
+            // ここは顔ヒットで「拘束中に別の敵がダメージを与えられる」ことだけを見る。
+            attacker.ForceZone = PunchZone.Face;
             attacker.HoldFire(0.8f);
             Assert.IsTrue(group.TryAcquireAttackToken(holder));
             typeof(EnemyBrain).GetMethod("BeginWindup", BindingFlags.Instance | BindingFlags.NonPublic)

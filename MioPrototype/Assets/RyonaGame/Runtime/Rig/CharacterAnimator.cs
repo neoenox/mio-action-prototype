@@ -91,6 +91,44 @@ namespace Ryona.Game
         public float StateTime => _stateTime;
         public float StateDuration => _stateDuration;
 
+        // 腹パン演出（後ろ拘束中に別の敵の腹パンチを受けたとき）の残り時間。
+        float _heldBellyPunchRemaining;
+        float _heldBellyPunchTotal;
+
+        /// <summary>いま腹パンの「く」の字オーバーレイ中か。</summary>
+        public bool IsHeldBellyPunch => _heldBellyPunchRemaining > 0f;
+
+        /// <summary>
+        /// 腹パンの「く」の字を再生する。拘束（Grabbed）の上に重ねるので、
+        /// 呼んでも状態は Grabbed のまま。
+        /// </summary>
+        public void PlayHeldBellyPunch(float seconds)
+        {
+            if (seconds <= 0f)
+                return;
+
+            _heldBellyPunchTotal = seconds;
+            _heldBellyPunchRemaining = seconds;
+        }
+
+        /// <summary>
+        /// 腹パンの折れ具合（0..1）。入り 0.07 秒、保持、戻り 0.18 秒。
+        /// テストと Editor 診断が姿勢を数値で確認するために公開している。
+        /// </summary>
+        public float HeldBellyPunchFold
+        {
+            get
+            {
+                if (_heldBellyPunchTotal <= 0f || _heldBellyPunchRemaining <= 0f)
+                    return 0f;
+
+                float t = _heldBellyPunchTotal - _heldBellyPunchRemaining;
+                float inT = Mathf.SmoothStep(0f, 1f, t / 0.07f);
+                float outT = 1f - Mathf.SmoothStep(0f, 1f, (t - 0.37f) / 0.18f);
+                return Mathf.Clamp01(inT * outT);
+            }
+        }
+
         /// <summary>倒れている（立ち上がり中を含む）。移動できない区間。</summary>
         public bool IsDowned => _state == State.Down || _state == State.GetUp;
 
@@ -584,6 +622,9 @@ namespace Ryona.Game
 
             if (_shoveTime > 0f)
                 _shoveTime = Mathf.Max(0f, _shoveTime - dt);
+
+            // 腹パンの「く」の字。ヒットストップ中は dt=0 なので、当たった瞬間の姿勢で止まる。
+            _heldBellyPunchRemaining = Mathf.Max(0f, _heldBellyPunchRemaining - dt);
 
             // 実際の移動速度。足を地面に固定する（滑らせない）ために使う。
             Vector3 move = transform.position - _lastPosition;
@@ -1304,6 +1345,41 @@ namespace Ryona.Game
                         footR += StanceFootR;
                         footL += new Vector3(0f, 0f, 0.05f);
                         footPitchL = 30f * pull;
+
+                        // 腹パン: 羽交い締めのまま上体を折り、腰を引いて膝を曲げる（くの字）。
+                        // もがきの脈（strain / claw）は止めて、抵抗していないことを見せる。
+                        float fold = HeldBellyPunchFold;
+                        if (fold > 0f)
+                        {
+                            strain = 0f;
+                            claw = 0f;
+
+                            torsoPitch = Mathf.Lerp(torsoPitch, 40f, fold);
+                            torsoYaw = Mathf.Lerp(torsoYaw, 0f, fold);
+
+                            // 顔は下を向かせない。上体は折れても、顔だけ上げてカメラ側へ向ける。
+                            // 下を向くとポニーテールが前に落ちて顔が完全に隠れる。
+                            float toCamera = 0f;
+                            var cam = Camera.main;
+                            if (cam != null)
+                            {
+                                Vector3 to = cam.transform.position - transform.position;
+                                to.y = 0f;
+                                if (to.sqrMagnitude > 1e-4f)
+                                {
+                                    Vector3 local = transform.InverseTransformDirection(to.normalized);
+                                    toCamera = Mathf.Clamp(
+                                        Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg, -60f, 60f);
+                                }
+                            }
+
+                            headPitch = Mathf.Lerp(headPitch, -8f, fold);
+                            headYaw = Mathf.Lerp(headYaw, toCamera * 0.90f, fold);
+
+                            hipsOffset.y = Mathf.Lerp(hipsOffset.y, StanceHipsY - 0.10f, fold);
+                            hipsOffset.z = Mathf.Lerp(hipsOffset.z, StanceHipsZ - 0.09f, fold);
+                        }
+
                         break;
                     }
 

@@ -959,6 +959,49 @@ namespace Ryona.Game
             return true;
         }
 
+        /// <summary>
+        /// 拘束中のプレイヤーへ、Body 狙いのジャブを開始する（タッグ技用）。
+        /// 正面・間合い内・攻撃トークンありのときだけ開始する。
+        /// 演出側（<see cref="HeldBellyPunchDirector"/>）が位置と向きを合わせてから呼ぶ。
+        /// </summary>
+        public bool TryStartBellyPunch()
+        {
+            if (Phase == EnemyPhase.Dead || Phase == EnemyPhase.Windup ||
+                Phase == EnemyPhase.Attack || Phase == EnemyPhase.Recover ||
+                Phase == EnemyPhase.Stagger || IsRising)
+                return false;
+
+            if (Player == null || Player.IsDead)
+                return false;
+
+            var grapple = Player.GetComponent<PlayerGrapple>();
+            if (grapple == null || !grapple.IsGrappled || grapple.Captor == this)
+                return false;
+
+            Vector3 to = Player.transform.position - transform.position;
+            to.y = 0f;
+            float distance = to.magnitude;
+            if (distance > RangeOf(AttackId.Jab) + 0.25f)
+                return false;
+
+            Vector3 facing = transform.forward;
+            facing.y = 0f;
+            if (to.sqrMagnitude < 0.0001f || facing.sqrMagnitude < 0.0001f ||
+                Vector3.Dot(facing.normalized, to.normalized) < 0.85f)
+                return false;
+
+            // 同時攻撃の上限は守る。取れなければ演出側が少し待って選び直す。
+            if (Group != null && !Group.TryAcquireAttackToken(this))
+                return false;
+
+            ForceZone = PunchZone.Body;
+            BeginWindup(AttackId.Jab);
+            ForceZone = null;
+
+            Debug.Log($"[HeldPunch] order {name} zone=Body dist={distance:F2}");
+            return true;
+        }
+
         /// <summary>外部から怯ませる（振りほどかれた時など）。</summary>
         public void ForceStagger(float seconds)
         {

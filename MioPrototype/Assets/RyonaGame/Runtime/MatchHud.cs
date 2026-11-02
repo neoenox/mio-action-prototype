@@ -46,6 +46,7 @@ namespace Ryona.Game
         Text _grappleText;
         Image _grappleFill;
         PlayerGrapple _grapple;
+        HeldBellyPunchDirector _bellyPunch;
 
         bool _built;
 
@@ -116,6 +117,9 @@ namespace Ryona.Game
             if (_grapple == null)
                 _grapple = FindFirstObjectByType<PlayerGrapple>();
 
+            if (_bellyPunch == null)
+                _bellyPunch = FindFirstObjectByType<HeldBellyPunchDirector>();
+
             bool show = _grapple != null && _grapple.IsGrappled && !Player.IsDead;
 
             if (_grappleRoot.gameObject.activeSelf != show)
@@ -131,12 +135,47 @@ namespace Ryona.Game
             // 見た目は同じ掴みなので、せめて文字で分かるようにする。
             string where = _grapple.Kind == GrappleKind.Back ? "（後ろから）" : string.Empty;
 
+            // 後ろ拘束は時間切れが無い。代わりに「次の腹パンまで」を出す。
+            string tail;
+            bool danger = false;
+
+            if (_grapple.HasTimeLimit)
+            {
+                tail = $"あと {_grapple.Remaining:F1}s";
+            }
+            else if (_bellyPunch == null)
+            {
+                tail = "連打で逃げる";
+            }
+            else if (_bellyPunch.IsPerforming)
+            {
+                tail = "腹パン！";
+                danger = true;
+            }
+            else if (_bellyPunch.IsPunchIncoming)
+            {
+                tail = "腹パンが来る！";
+                danger = true;
+            }
+            else if (_bellyPunch.HasAttacker)
+            {
+                tail = $"腹パンまで {_bellyPunch.NextPunchRemaining:F1}s";
+                danger = _bellyPunch.NextPunchRemaining <= 0.5f;
+            }
+            else
+            {
+                tail = "別の敵なし";
+            }
+
             _grappleText.text =
-                $"掴まれている{where} ─ 連打！  {_grapple.InputCount}/{need}　あと {_grapple.Remaining:F1}s";
-            _grappleText.color = Color.Lerp(
-                new Color(1f, 0.62f, 0.48f, 0.98f),
-                new Color(0.72f, 1f, 0.70f, 0.98f),
-                progress);
+                $"掴まれている{where} ─ 連打！  {_grapple.InputCount}/{need}　{tail}";
+
+            _grappleText.color = danger
+                ? new Color(1f, 0.40f, 0.32f, 0.98f)
+                : Color.Lerp(
+                    new Color(1f, 0.62f, 0.48f, 0.98f),
+                    new Color(0.72f, 1f, 0.70f, 0.98f),
+                    progress);
 
             _grappleFill.fillAmount = progress;
             _grappleFill.color = Color.Lerp(
