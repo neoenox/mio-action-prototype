@@ -4264,6 +4264,9 @@ namespace Ryona.EditorTools
             float h = Mathf.Max(1f, bounds.size.y);
 
             var camGo = new GameObject("Tier Camera");
+            // 顔ヒットの分岐は Camera.main を「弾かれる先」として使う。タグを付けないと
+            // Camera.main が null になり、首が横を向かない（実機と別物になる）。
+            camGo.tag = "MainCamera";
             var cam = camGo.AddComponent<Camera>();
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.26f, 0.27f, 0.30f);
@@ -4272,37 +4275,51 @@ namespace Ryona.EditorTools
             cam.transform.position = new Vector3(h * 2.10f, h * 0.52f, 0f);
             cam.transform.LookAt(new Vector3(0f, h * 0.48f, 0f));
 
-            var tiers = new[] { StaggerTier.Small, StaggerTier.Medium, StaggerTier.Large };
-            var names = new[] { "弱", "中", "強" };
-            // 状態の長さも段で変わるので、時間は段ごとに用意する
-            var durations = new[] { 0.22f, 0.45f, 0.80f };
+            // 段（弱・中・強）× 殴られた場所（顔・腹）。最後の 2 行は横から殴られた場合で、
+            // 「殴られた方向への 20° のねじれ」が顔ヒットでも残ることを見る。
+            var rows = new (string Label, StaggerTier Tier, PunchZone Zone, int Side, float Duration)[]
+            {
+                ("弱・顔", StaggerTier.Small, PunchZone.Face, 0, 0.22f),
+                ("弱・腹", StaggerTier.Small, PunchZone.Body, 0, 0.22f),
+                ("中・顔", StaggerTier.Medium, PunchZone.Face, 0, 0.45f),
+                ("中・腹", StaggerTier.Medium, PunchZone.Body, 0, 0.45f),
+                ("強・顔", StaggerTier.Large, PunchZone.Face, 0, 0.80f),
+                ("強・腹", StaggerTier.Large, PunchZone.Body, 0, 0.80f),
+                ("中・顔・横", StaggerTier.Medium, PunchZone.Face, 1, 0.45f),
+                ("中・腹・横", StaggerTier.Medium, PunchZone.Body, 1, 0.45f)
+            };
+
             float[] times = { 0.02f, 0.08f, 0.16f, 0.30f };
 
             const int cellW = 300;
             const int cellH = 620;
 
-            var sheet = new Texture2D(cellW * times.Length, cellH * tiers.Length,
+            var sheet = new Texture2D(cellW * times.Length, cellH * rows.Length,
                 TextureFormat.RGB24, false);
 
-            for (int row = 0; row < tiers.Length; row++)
+            for (int row = 0; row < rows.Length; row++)
             {
                 for (int col = 0; col < times.Length; col++)
                 {
                     anim.PreviewTired(0f);
                     anim.PreviewShove(0f);
-                    anim.PreviewHurtSide(0);
+                    anim.PreviewHurtSide(rows[row].Side);
+                    anim.PreviewHitZone = rows[row].Zone;
                     anim.ForceState(CharacterAnimator.State.Stagger, times[col],
-                        durations[row], tiers[row]);
+                        rows[row].Duration, rows[row].Tier);
 
                     var cell = RenderCell(cam, cellW, cellH);
-                    sheet.SetPixels(col * cellW, (tiers.Length - 1 - row) * cellH,
+                    sheet.SetPixels(col * cellW, (rows.Length - 1 - row) * cellH,
                         cellW, cellH, cell.GetPixels());
                     Object.DestroyImmediate(cell);
 
-                    Debug.Log($"[Tier] {names[row]} t={times[col]:F2} " +
-                              $"torso={anim.DebugTorsoPitch:F1} head={anim.DebugHeadPitch:F1}");
+                    Debug.Log($"[Tier] {rows[row].Label} t={times[col]:F2} " +
+                              $"torsoP={anim.DebugTorsoPitch:F1} torsoY={anim.DebugTorsoYaw:F1} " +
+                              $"headP={anim.DebugHeadPitch:F1} headY={anim.DebugHeadYaw:F1}");
                 }
             }
+
+            anim.PreviewHitZone = null;
 
             sheet.Apply();
 

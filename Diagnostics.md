@@ -8,7 +8,7 @@
 |---|---|---|
 | Capture Combat Strip | `combat_strip.png` | 攻撃の軌道・ダウンの形。**light2 左 当たり(正面)** で左右の打ち分けが分かる |
 | Capture Hurt Sheet | `hurt_sheet.png` | 彼女の崩れ方（正面/右/左/背中）、疲労の構え、振りほどき後の突き放し。**7 行目は正面ヒットを真横から**（のけぞりの角度） |
-| Capture Hurt Tiers | `hurt_tiers.png` | 彼女の食らい 弱・中・強 × 4 時刻を真横から。上体と頭の角度をログ出力 |
+| Capture Hurt Tiers | `hurt_tiers.png` | 彼女の食らい **弱・中・強 × 顔・腹**（＋横から殴られた 2 行）× 4 時刻を真横から。上体と頭の角度・向き（yaw）をログ出力。顔 = 首がカメラ側へ振れ、腹 = 上体が折れて両手が腹へ |
 | Capture Stagger | `enemy_stagger.png` | 敵の食らい（のけぞり → こらえる の2段） |
 | Check Enemy VRM | `enemy_vrm_front/side/quarter.png` | **敵 VRM を置いた直後の検品**。置き場所・背丈・骨17本・見た目を確認 |
 | Capture Enemy Attacks | `enemy_attacks.png` | 敵の攻撃4種（突き／振り下ろし／横薙ぎ／掴み）× 3 フェーズ。列＝攻撃、行＝振りかぶり／当てる／振り抜き。肩角・肘角・両手の位置をログ出力 |

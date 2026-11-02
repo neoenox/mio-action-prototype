@@ -275,6 +275,18 @@ namespace Ryona.Game
         [System.NonSerialized] public Vector3 DebugArmRFore;
         [System.NonSerialized] public float DebugTorsoPitch;
         [System.NonSerialized] public float DebugHeadPitch;
+        [System.NonSerialized] public float DebugTorsoYaw;
+        [System.NonSerialized] public float DebugHeadYaw;
+
+        /// <summary>
+        /// プレビュー専用: 被弾の場所（顔 / 腹）。null なら <see cref="Stats"/> の値を使う。
+        /// Editor の診断（Capture Hurt Tiers など）は PlayerStats を持たないので、
+        /// これが無いと顔 / 腹の分岐を一切確認できない。
+        /// </summary>
+        [System.NonSerialized] public PunchZone? PreviewHitZone;
+
+        /// <summary>いま使っている被弾の場所。実機は Stats、プレビューは PreviewHitZone。</summary>
+        public PunchZone? CurrentHitZone => Stats != null ? Stats.LastHitZone : PreviewHitZone;
 
         void Awake()
         {
@@ -362,7 +374,7 @@ namespace Ryona.Game
             CaptureFaceYaw();
             CaptureHurtSide();
 
-            if (Stats != null && Stats.LastHitZone == PunchZone.Face && _hurtSide != 2)
+            if (CurrentHitZone == PunchZone.Face && _hurtSide != 2)
             {
                 _faceFlickAt = Time.time;
                 _faceFlickLogged = false;
@@ -372,7 +384,7 @@ namespace Ryona.Game
             // （<c>-statlog</c> のときだけ。既定は黙る）。
             if (PlayerStats.StatLogging)
             {
-                string zone = Stats == null ? "-" : (Stats.LastHitZone?.ToString() ?? "none");
+                string zone = CurrentHitZone?.ToString() ?? "none";
                 Debug.Log($"[Hurt] zone={zone} tier={result.Stagger} " +
                     $"side={_hurtSide} t={Time.time:F2}");
             }
@@ -1090,8 +1102,9 @@ namespace Ryona.Game
                     // 殴られた場所で崩れ方を変える。
                     //   顔: 頭が弾かれて後ろへ振れる（上体は少し反る）
                     //   腹: 上体が前へ折れて腹を抱える（息が詰まる）
-                    bool bodyBlow = !fromBehind && Stats != null && Stats.LastHitZone == PunchZone.Body;
-                    bool faceBlow = !fromBehind && Stats != null && Stats.LastHitZone == PunchZone.Face;
+                    // 場所が分からないとき（投げなど）は、どちらにも倒さない。
+                    bool bodyBlow = !fromBehind && CurrentHitZone == PunchZone.Body;
+                    bool faceBlow = !fromBehind && CurrentHitZone == PunchZone.Face;
 
                     torsoPitch = StanceTorsoPitch + (fromBehind ? bend * 0.80f
                         : (bodyBlow ? bend * 0.95f : -bend * 0.38f)) * kv;
@@ -1866,6 +1879,8 @@ namespace Ryona.Game
             DebugArmRFore = ArmDirection(false, armRFore).normalized;
             DebugTorsoPitch = torsoPitch;
             DebugHeadPitch = headPitch;
+            DebugTorsoYaw = torsoYaw;
+            DebugHeadYaw = headYaw;
 
             // 指を握る。開いたままだと攻撃が「手を差し出す」に見える。
             // 曲がる向きは左右で鏡像なので、リグ側が左右別々の軸を使う。
