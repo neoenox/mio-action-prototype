@@ -102,6 +102,13 @@ namespace Ryona.Game
         // どこから殴られたか（0=正面, ±1=左右, 2=背後）。怯みの向きを変える。
         int _hurtSide;
 
+        // 顔を殴られた時刻。怯みの長さ（軽い一撃は 0.2 秒）に関係なく、
+        // 顔がカメラ側へ弾かれて、少し止まり、ゆっくり戻る動きを最後まで見せるために持つ。
+        float _faceFlickAt = -10f;
+
+        // この振れについて、効き始めの角度をまだログっていないか（1 回だけ測る）。
+        bool _faceFlickLogged = true;
+
         // 疲労度（0=平気, 1=息が上がりきっている）。待機の呼吸と構えに効く。
         float _tired;
 
@@ -153,13 +160,13 @@ namespace Ryona.Game
         static readonly Vector3 ArmIdleUpper = new Vector3(0.30f, -1f, 0.02f);
         static readonly Vector3 ArmIdleFore = new Vector3(0.10f, -1f, 0.30f);
 
-        // ファイティングスタンスの腕。Idle と、そこから崩れる Stagger で共有する。
-        // 肘を張ったまま拳を顔の横へ上げると「猫の手」に見えるので、
-        // 肘は体の脇へ落とし、拳は顔の前に出す（エディタで数値を振って決めた）。
-        public static Vector3 StanceArmLUpper = new Vector3(0.18f, -0.86f, 0.34f);
-        public static Vector3 StanceArmLFore = new Vector3(0.00f, 0.62f, 0.72f);
-        public static Vector3 StanceArmRUpper = new Vector3(-0.18f, -0.88f, 0.22f);
-        public static Vector3 StanceArmRFore = new Vector3(0.00f, 0.80f, 0.42f);
+        // 構えの腕。Idle と、そこから崩れる Stagger で共有する。
+        // 構えの腕。拳を顔の前に上げるファイティングポーズではなく、
+        // 肘を軽く曲げて腕を下ろしただけの、力の抜けた構え（拳は腰〜腹の高さ）。
+        public static Vector3 StanceArmLUpper = new Vector3(0.18f, -0.90f, 0.26f);
+        public static Vector3 StanceArmLFore = new Vector3(0.00f, -0.10f, 0.99f);
+        public static Vector3 StanceArmRUpper = new Vector3(-0.18f, -0.92f, 0.18f);
+        public static Vector3 StanceArmRFore = new Vector3(0.00f, -0.05f, 0.99f);
         /// <summary>
         /// 構えの手首のひねり。0 = 前腕と手がまっすぐ繋がる向き。
         /// 0 のままだと掌が外向き（左手は後ろ、右手は前）で左右が揃わず、拳が「猫の手」に見える。
@@ -355,6 +362,21 @@ namespace Ryona.Game
             CaptureFaceYaw();
             CaptureHurtSide();
 
+            if (Stats != null && Stats.LastHitZone == PunchZone.Face && _hurtSide != 2)
+            {
+                _faceFlickAt = Time.time;
+                _faceFlickLogged = false;
+            }
+
+            // どの向きから・どの場所を殴られたか。見た目の分岐が効いているかを数字で確かめる
+            // （<c>-statlog</c> のときだけ。既定は黙る）。
+            if (PlayerStats.StatLogging)
+            {
+                string zone = Stats == null ? "-" : (Stats.LastHitZone?.ToString() ?? "none");
+                Debug.Log($"[Hurt] zone={zone} tier={result.Stagger} " +
+                    $"side={_hurtSide} t={Time.time:F2}");
+            }
+
             // ガードブレイクだけは膝をつかせる
             if (result.Stagger == StaggerTier.GuardBreak)
             {
@@ -416,6 +438,47 @@ namespace Ryona.Game
                 _hurtSide = 2;
             else if (Mathf.Abs(local.x) > 0.35f)
                 _hurtSide = local.x > 0f ? 1 : -1;
+        }
+
+        /// <summary>
+        /// 顔を殴られたあとの首の動き。カメラのほうへ顔が弾かれて（0.05 秒）、
+        /// しばらく横を向いたまま耐え、ゆっくり正面へ戻る（合計約 0.95 秒）。
+        /// 怯みの長さとは別に時間を持つので、軽い一撃でも動きが最後まで見える。
+        /// </summary>
+        void ApplyFaceFlick(ref float pitch, ref float yaw, ref float roll)
+        {
+            float t = Time.time - _faceFlickAt;
+            if (t < 0f || t > 0.95f)
+                return;
+
+            float env = Mathf.SmoothStep(0f, 1f, t / 0.05f)
+                        * (1f - Mathf.SmoothStep(0f, 1f, (t - 0.45f) / 0.50f));
+
+            float toCamera = 0f;
+            var cam = Camera.main;
+            if (cam != null)
+            {
+                Vector3 to = cam.transform.position - transform.position;
+                to.y = 0f;
+                if (to.sqrMagnitude > 1e-4f)
+                {
+                    Vector3 local = transform.InverseTransformDirection(to.normalized);
+                    toCamera = Mathf.Clamp(Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg, -80f, 80f);
+                }
+            }
+
+            yaw = Mathf.Lerp(yaw, StanceHeadYaw + toCamera * 0.95f, env);
+            roll += -Mathf.Sign(toCamera == 0f ? 1f : toCamera) * 10f * env;
+            pitch -= 6f * env;
+
+            // 振れきった瞬間の角度を 1 回だけ残す（見た目が「横を向いている」かを数字で確かめる）。
+            if (!_faceFlickLogged && t >= 0.10f)
+            {
+                _faceFlickLogged = true;
+                if (PlayerStats.StatLogging)
+                    Debug.Log($"[FaceFlick] toCam={toCamera:F0} yaw={yaw:F0} " +
+                        $"pitch={pitch:F0} roll={roll:F0} t={t:F2}");
+            }
         }
 
         void CaptureFaceYaw()
@@ -1080,6 +1143,68 @@ namespace Ryona.Game
                     armRFore = Vector3.Lerp(StanceArmRFore,
                         new Vector3(-0.24f, 0.72f, 0.36f), kv * flail * 0.6f);
 
+                    // --- 殴られた場所ごとの崩れ方（上の共通の動きを上書きする）-----------------
+                    float hit = _stateTime;
+                    float hold = _tier switch
+                    {
+                        StaggerTier.Small => 0.10f,
+                        StaggerTier.Medium => 0.18f,
+                        _ => 0.32f
+                    };
+
+                    if (faceBlow)
+                    {
+                        // 顔を殴られたら、顔がカメラ側へ弾かれるように横を向く。
+                        // 一瞬で振られ、少し止まり、ゆっくり戻る（往復して痙攣しない）。
+                        float turn = Mathf.SmoothStep(0f, 1f, hit / 0.07f)
+                                     * (1f - Mathf.SmoothStep(0f, 1f, (hit - hold) / 0.35f));
+
+                        float toCamera = 0f;
+                        var cam = Camera.main;
+                        if (cam != null)
+                        {
+                            Vector3 to = cam.transform.position - transform.position;
+                            to.y = 0f;
+                            Vector3 local = transform.InverseTransformDirection(to.normalized);
+                            toCamera = Mathf.Clamp(Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg, -75f, 75f);
+                        }
+
+                        headYaw = StanceHeadYaw + toCamera * 0.9f * turn;
+                        headRoll = -Mathf.Sign(toCamera == 0f ? 1f : toCamera) * 9f * turn;
+                        headPitch = StanceHeadPitch - 6f * turn;
+                        // 首だけでなく肩も少し付いていく。ただし「殴られた方向への 20° のねじれ」は
+                        // 消さずに足す（上書きすると、横から殴られたときだけ上体が正面を向く）。
+                        // side が 0 の正面ヒットでは 20*kv*0 ＝ 0 なので、従来と同じ値になる。
+                        torsoYaw = StanceTorsoYaw
+                            + Mathf.Clamp(20f * kv * side + toCamera * 0.22f * turn, -34f, 34f);
+                    }
+                    else if (bodyBlow)
+                    {
+                        // 腹を殴られたら、腰を引いて上体を「く」の字に折る。腹を抱えて頭が落ちる。
+                        // 当たった瞬間に折れ、少し耐えてから起き上がる。
+                        float fold = Mathf.SmoothStep(0f, 1f, hit / 0.09f)
+                                     * (1f - Mathf.SmoothStep(0f, 1f, (hit - hold) / 0.45f));
+
+                        torsoPitch = StanceTorsoPitch + Mathf.Min(bend * 1.25f, 66f) * fold;
+                        torsoYaw = StanceTorsoYaw;
+                        torsoRoll = 0f;
+                        headPitch = StanceHeadPitch + bend * 0.55f * fold;
+                        headYaw = StanceHeadYaw;
+                        headRoll = 0f;
+
+                        // 腰は後ろへ引いて沈む。上体が前、腰が後ろで「く」の形になる。
+                        hipsOffset.y = StanceHipsY - 0.13f * fold;
+                        hipsOffset.z = StanceHipsZ - 0.20f * fold;
+
+                        // 両手は腹へ。
+                        var bellyUpper = new Vector3(0.30f, -0.88f, 0.25f);
+                        var bellyFore = new Vector3(-0.70f, -0.20f, 0.68f);
+                        armLUpper = Vector3.Lerp(StanceArmLUpper, bellyUpper, fold);
+                        armLFore = Vector3.Lerp(StanceArmLFore, bellyFore, fold);
+                        armRUpper = Vector3.Lerp(StanceArmRUpper, bellyUpper, fold);
+                        armRFore = Vector3.Lerp(StanceArmRFore, bellyFore, fold);
+                    }
+
                     handRollL = StanceHandRollL;
                     handRollR = StanceHandRollR;
                     grip = 0.55f;
@@ -1094,7 +1219,15 @@ namespace Ryona.Game
                     float pulse = StrugglePulseOverride >= 0f
                         ? StrugglePulseOverride
                         : (Grapple != null ? Grapple.StrugglePulse : 0f);
-                    float tremor = Mathf.Sin(Time.time * 26f) * (0.6f + pulse * 2.6f);
+                    // 細かく震えるのではなく、「逃げようと体を引く → 掴まれて止められる → 戻される」を
+                    // ゆっくり繰り返す。逃げたいのに逃げられない、が体の動きで見えるようにする。
+                    // 連打すると、引く力が強くなって、止められる衝撃も大きくなる。
+                    float cycle = Mathf.Repeat(_stateTime * 0.9f, 1f);
+                    float ramp = cycle < 0.62f
+                        ? Mathf.SmoothStep(0f, 1f, cycle / 0.62f)                       // じわじわ引く
+                        : 1f - Mathf.SmoothStep(0f, 1f, (cycle - 0.62f) / 0.12f);       // 止められて引き戻される
+                    float strain = Mathf.Clamp01(ramp * 0.6f + pulse * 0.55f) * pull;
+                    float tremor = 0f;
 
                     // 前から掴まれたか、後ろから掴まれたか。掴んだ側で姿勢を作り替える。
                     // 前は「相手の腕を掴んで押し返す」、後ろは「首に回った腕を剥がす」で、
@@ -1131,6 +1264,13 @@ namespace Ryona.Game
                         armLFore = nelsonFore + new Vector3(0f, claw * 1.6f, claw);
                         armRFore = nelsonFore + new Vector3(0f, claw * 1.2f, claw * 0.8f);
 
+                        // 逃げようと前へ体を投げ出す（腕は押さえられたまま、体だけが相手から離れようとする）。
+                        torsoPitch += 9f * strain;
+                        headPitch += 5f * strain;
+                        hipsOffset.z += 0.05f * strain;
+                        armLUpper += new Vector3(0f, 0.12f * strain, 0f);
+                        armRUpper += new Vector3(0f, 0.12f * strain, 0f);
+
                         handRollL = StanceHandRollL;
                         handRollR = StanceHandRollR;
                         grip = 1f;
@@ -1152,7 +1292,8 @@ namespace Ryona.Game
                     hipsOffset.y = StanceHipsY - 0.045f * pull;
                     hipsOffset.z = StanceHipsZ + 0.040f * pull;
 
-                    torsoPitch = -15f * pull + tremor * 0.8f;
+                    torsoPitch = -15f * pull - 7f * strain;
+                    hipsOffset.z -= 0.05f * strain;
                     torsoYaw = Mathf.Sin(Time.time * 2.2f) * 3f;
                     torsoRoll = tremor * 1.6f;
 
@@ -1713,6 +1854,7 @@ namespace Ryona.Game
 
             Rig.OffsetHips(transform.TransformDirection(hipsOffset));
             Rig.BendTorso(torsoPitch, torsoRoll, torsoYaw);
+            ApplyFaceFlick(ref headPitch, ref headYaw, ref headRoll);
             Rig.TurnHead(headPitch, headYaw, headRoll);
 
             Rig.SetArm(true, ArmDirection(true, armLUpper).normalized,

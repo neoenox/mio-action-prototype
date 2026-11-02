@@ -74,8 +74,16 @@ namespace Ryona.Game
         /// <summary>最後に殴ってきた相手。被弾したときにその方向へ向き直るために使う。</summary>
         public Transform LastAttacker { get; private set; }
 
-        /// <summary>最後に殴られた場所（顔 / 腹）。被弾の見た目が使う。</summary>
-        public PunchZone LastHitZone { get; set; } = PunchZone.Face;
+        /// <summary>
+        /// 最後に殴られた場所（顔 / 腹）。被弾の見た目が使う。
+        /// <para>
+        /// null は「殴られた場所が無い」＝ 掴み失敗の投げなど、パンチ以外で怯んだ場合。
+        /// 直前の値が残ると、投げなのに腹打ちの折れ方をするので、投げの経路では明示的に消す
+        /// （<see cref="PlayerGrapple"/>）。既定値も null（ゲーム開始直後の怯みで
+        /// 顔を殴られた扱いにならないように）。
+        /// </para>
+        /// </summary>
+        public PunchZone? LastHitZone { get; set; }
 
         /// <summary>ダウン（倒れている）残り時間。コア状態の IsDown をここで立てる。</summary>
         float _downRemaining;
@@ -92,6 +100,11 @@ namespace Ryona.Game
 
         /// <summary>状態ログを出すか（<c>-statlog</c>）。既定は出さない（ログが埋まるため）。</summary>
         static bool _statLog;
+
+        /// <summary>
+        /// 状態ログが有効か。姿勢側（被弾の向き・顔の振れ）も同じ条件で測れるように公開する。
+        /// </summary>
+        public static bool StatLogging => _statLog;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         static void ParseStatLogFlag()

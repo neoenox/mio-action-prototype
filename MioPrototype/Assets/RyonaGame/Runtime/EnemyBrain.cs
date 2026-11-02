@@ -951,6 +951,10 @@ namespace Ryona.Game
                 }
             }
 
+            // 正面からの掴みは無い。背後に回れていなければ、掴みは空振りする。
+            if (kind != GrappleKind.Back)
+                return false;
+
             grapple.Begin(this, kind);
             return true;
         }
@@ -1096,6 +1100,16 @@ namespace Ryona.Game
             return true;
         }
 
+        /// <summary>この敵が、プレイヤーの背中側にいるか。</summary>
+        bool IsBehindPlayer()
+        {
+            if (Player == null)
+                return false;
+
+            return Vector3.Dot(Player.transform.forward,
+                transform.position - Player.transform.position) < -0.25f;
+        }
+
         int CollectCandidates(float distance, bool excludeLast)
         {
             int count = 0;
@@ -1112,6 +1126,10 @@ namespace Ryona.Game
                     continue;
 
                 if (id == AttackId.Grab && (alreadyGrappled || Time.time < _grabReadyAt))
+                    continue;
+
+                // 掴みは背後からだけ（羽交い締め）。正面からの掴みは無い。
+                if (id == AttackId.Grab && !IsBehindPlayer())
                     continue;
 
                 if (excludeLast && _hasLast && _lastAttack == id)

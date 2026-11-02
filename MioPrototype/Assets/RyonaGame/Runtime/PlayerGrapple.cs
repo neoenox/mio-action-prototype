@@ -244,6 +244,10 @@ namespace Ryona.Game
                 recoverySeconds = 0f
             };
 
+            // 投げは「殴られた場所」ではない。直前のパンチの顔 / 腹が残っていると、
+            // 投げなのに腹打ちの折れ方（上体 57〜71°）をするので、ここで消す。
+            Stats.LastHitZone = null;
+
             var result = Stats.ReceiveHit(captor != null ? captor.State : null, throwAttack,
                 captor != null ? captor.transform : null);
 
