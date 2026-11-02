@@ -72,6 +72,31 @@
   `Start-Sleep` は 22〜24 秒取る（短いと画像が出ない）
 - 遮蔽・間合いの数値を見たいときは `-occlog -statlog` を併用
 
+## 被弾の見た目を変えたら（毎回）
+
+同じ穴を 3 回踏んだ（顔の上体ねじれ / 腹のねじれ / 投げの持ち越し）ので、**2 つセットで**回す。
+
+1. `Ryona/Diagnostics/Capture Hurt Tiers` → `hurt_tiers.png` を目で見る
+   （弱・中・強 × 顔・腹 ＋ 横から 2 行。ログに `[Tier]` で角度が出る）
+2. PlayMode テスト `HurtPoseRuntimeTests`（4 件）を通す
+
+```
+"<Unity.exe>" -batchmode -runTests -projectPath "<MioPrototype>" ^
+  -testPlatform PlayMode -testResults "%TEMP%\play.xml"
+```
+
+`HurtPoseRuntimeTests` が見ているもの:
+
+| テスト | 期待 |
+|---|---|
+| 顔を殴られたら首がカメラ側へ振れ上体は折れない | `headYaw` > 40°、`torsoPitch` < 32° |
+| 腹を殴られたら上体が折れて首は振れない | `torsoPitch` > 50°、`headYaw` は顔の半分未満 |
+| 横から殴られた腹ヒットは上体がねじれる | 正面との `torsoYaw` の差 > 4° |
+| 場所が分からない被弾は腹の折れ方にならない | 腹（70°）より 15° 以上浅い |
+
+`CharacterAnimator.PreviewHitZone` に顔 / 腹を入れると、敵を待たずに 1 フレームで姿勢を作れる
+（実機では常に null。設定した値が `Stats.LastHitZone` より優先される）。
+
 ## 当たり判定の読み方（`-hitlog`）
 
 攻撃の発生の瞬間に 1 行出る。

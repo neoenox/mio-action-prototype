@@ -93,6 +93,39 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator FrontGrabWhiffsAndOnlyBackGrabConnects()
+        {
+            yield return TestScene.LoadPrototype();
+            var player = Object.FindFirstObjectByType<PlayerStats>();
+            var grapple = player.GetComponent<PlayerGrapple>();
+            if (grapple.IsGrappled)
+                grapple.Release();
+
+            var captor = Object.FindFirstObjectByType<EnemyBrain>();
+            player.transform.rotation = Quaternion.LookRotation(Vector3.right);
+
+            var tryGrab = typeof(EnemyBrain).GetMethod("TryGrab",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(tryGrab, "TryGrab not found");
+
+            // 正面（+X）からは掴めない。掴みは羽交い締め（背後）だけ。
+            captor.transform.position = player.transform.position + Vector3.right;
+            captor.transform.rotation = Quaternion.LookRotation(Vector3.left);
+            Assert.IsFalse((bool)tryGrab.Invoke(captor, null), "A front grab must whiff");
+            Assert.IsFalse(grapple.IsGrappled, "The player must not be held from the front");
+
+            // 背後（-X）なら掴める。
+            captor.transform.position = player.transform.position + Vector3.left * 0.6f;
+            captor.transform.rotation = Quaternion.LookRotation(Vector3.right);
+            Assert.IsTrue((bool)tryGrab.Invoke(captor, null), "A back grab must connect");
+            Assert.IsTrue(grapple.IsGrappled);
+            Assert.AreEqual(GrappleKind.Back, grapple.Kind);
+
+            grapple.Release();
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator BackGrabKeepsPlayerFacingAwayFromCaptor()
         {
             yield return TestScene.LoadPrototype();
