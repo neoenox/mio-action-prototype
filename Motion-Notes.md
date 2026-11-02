@@ -239,7 +239,7 @@
 - `Ryona/Diagnostics/Capture Enemy Wrist` … 敵の右手首を 4 フェーズで寄り撮り＋折れ角ログ
 - `-vrmlog` … プリミティブの手首と VRM の手の骨の距離を 0.25 秒ごとに出力
 - `-grappletest` … 3 秒ごとに最寄りの敵を**背後 1m**（既定。`-grapplefront` で正面、`-grappleside` で真横）に立たせて掴ませる。`-holdmash` で腹パンの前に振りほどき、
-  付けなければ 1.6 秒後に腹パン → くの字 → 解放を確認。`-nofeint` でフェイントを切れる。掴まれている間は `[GrappleContact]` を 0.25 秒ごとに出力
+  付けなければ 1.6 秒後に腹パン5連続 → くの字 → 解放を確認。`-nofeint` でフェイントを切れる。掴まれている間は `[GrappleContact]` を 0.25 秒ごとに出力
   （敵ローカル座標で手首・胸・肩・彼女の両手の位置と距離）
 - 実行ファイル: `-hudshot <png> -hudshotdelays a,b,c`（ゲーム内時間）、`-statlog`
 - PlayMode テスト: `Unity.exe -batchmode -runTests -projectPath <MioPrototype> -testPlatform PlayMode -testResults tests.xml`

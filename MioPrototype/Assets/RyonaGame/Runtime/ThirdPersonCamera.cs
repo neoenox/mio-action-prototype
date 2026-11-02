@@ -167,6 +167,7 @@ namespace Ryona.Game
         /// <summary>腹パン演出などで、画面の中心を一時的に指定した X へ寄せる。</summary>
         float _focusX;
         float _focusPitch;
+        float _focusYaw;
         float _focusRemaining;
 
         // このフレームで実際に使う値（毎フレーム TickEffects が更新する）
@@ -375,7 +376,7 @@ namespace Ryona.Game
             _smoothPivot = Vector3.Lerp(_smoothPivot, pivot,
                 1f - Mathf.Exp(-follow * followDt));
 
-            Quaternion rotation = Quaternion.Euler(pitch, BeltYaw, 0f);
+            Quaternion rotation = Quaternion.Euler(pitch, BeltYaw + (focusing ? _focusYaw : 0f), 0f);
             Vector3 direction = rotation * Vector3.back;
 
             transform.position = _smoothPivot + direction * distance;
@@ -498,7 +499,7 @@ namespace Ryona.Game
         /// 画面の中心を一時的に指定した X へ寄せる（腹パン演出でプレイヤーを中央に置く）。
         /// <see cref="BeltScreenLock"/> の範囲内の X を渡すこと。時間は実時間で数える。
         /// </summary>
-        public void PushFocus(float x, float seconds, float pitchOffset = 0f)
+        public void PushFocus(float x, float seconds, float pitchOffset = 0f, float yawOffset = 0f)
         {
             if (seconds <= 0f)
             {
@@ -508,6 +509,7 @@ namespace Ryona.Game
 
             _focusX = x;
             _focusPitch = pitchOffset;
+            _focusYaw = yawOffset;
             _focusRemaining = Mathf.Max(_focusRemaining, seconds);
         }
 
@@ -518,6 +520,7 @@ namespace Ryona.Game
             ResetPivotEffect();
             _focusRemaining = 0f;
             _focusPitch = 0f;
+            _focusYaw = 0f;
         }
 
         /// <summary>演出の残り時間を進め、このフレームで使う倍率・オフセットを決める。</summary>

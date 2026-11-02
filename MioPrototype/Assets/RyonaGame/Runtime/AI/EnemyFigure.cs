@@ -1530,11 +1530,12 @@ namespace Ryona.Game
             PunchZone zone = _brain.Zone;
             Vector3 target = EnemyBrain.PunchTarget(_brain.Player, zone);
 
-            // 拳は狙いの手前（こちら側）の表面で止める。狙いの中心まで突き抜けない。
+            // 拳は顔なら手前の表面で止める。腹は「めり込む」ように少し内側へ入れる
+            // （0.11m 手前で止めると、当たっているのに拳が届いていないように見えた）。
             Vector3 toMe = upper.position - target;
             toMe.y = 0f;
             toMe = toMe.sqrMagnitude > 1e-4f ? toMe.normalized : -transform.forward;
-            Vector3 goal = target + toMe * (zone == PunchZone.Face ? 0.09f : 0.11f);
+            Vector3 goal = target + toMe * (zone == PunchZone.Face ? 0.09f : -0.03f);
 
             // 肘は顔なら外へ、腹なら下・外へ向ける（腹を狙うときは肘が体の前に回らない）。
             float down = zone == PunchZone.Face ? 0.30f : 0.50f;

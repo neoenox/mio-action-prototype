@@ -964,11 +964,14 @@ namespace Ryona.Game
         /// 正面・間合い内・攻撃トークンありのときだけ開始する。
         /// 演出側（<see cref="HeldBellyPunchDirector"/>）が位置と向きを合わせてから呼ぶ。
         /// </summary>
-        public bool TryStartBellyPunch()
+        public bool TryStartBellyPunch(bool allowRecover = false)
         {
             if (Phase == EnemyPhase.Dead || Phase == EnemyPhase.Windup ||
-                Phase == EnemyPhase.Attack || Phase == EnemyPhase.Recover ||
-                Phase == EnemyPhase.Stagger || IsRising)
+                Phase == EnemyPhase.Attack || Phase == EnemyPhase.Stagger || IsRising)
+                return false;
+
+            // コンボ中は前の一発の硬直を切って次を打たせる（5 連続をテンポよく見せる）。
+            if (Phase == EnemyPhase.Recover && !allowRecover)
                 return false;
 
             if (Player == null || Player.IsDead)

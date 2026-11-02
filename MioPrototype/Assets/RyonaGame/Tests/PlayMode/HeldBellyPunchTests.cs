@@ -130,16 +130,21 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator 腹パンでくの字とカメラ寄せが始まり演出後に解放される()
+        public IEnumerator 腹パンでくの字とカメラ寄せが始まり5発後に解放される()
         {
             yield return LoadAndGrab(waitForAnimator: true);
             PlaceAttackerInFront();
 
             Hit(_attacker, PunchZone.Body);
+            // コンボの残り4発は敵自身に振らせる必要があるので有効化する。
+            // ただし AI が勝手に別の攻撃を始めないよう、攻撃予約だけ止めておく。
+            _attacker.HoldFire(10f);
+            _attacker.enabled = true;
             yield return null;
 
-            Assert.IsTrue(_director.IsPerforming, "Belly punch performance must start");
-            Assert.IsTrue(_grapple.IsStruggleSuppressed, "Struggle must stop during the performance");
+            Assert.IsTrue(_director.IsPerforming, "Belly punch combo must start");
+            Assert.AreEqual(1, _director.ComboHitsLanded, "The first hit must be counted");
+            Assert.IsTrue(_grapple.IsStruggleSuppressed, "Struggle must stop during the combo");
             Assert.IsTrue(_anim.IsHeldBellyPunch, "Held belly punch pose must play");
             Assert.Less(_camera.EffectDistanceScale, 0.6f, "Camera must push in");
             Assert.Greater(_camera.EffectPivotOffset, 0.2f, "Camera pivot must rise to the belly/face");
@@ -147,13 +152,17 @@ namespace Ryona.Tests
 
             // 0.3 秒後: まだ拘束中で、くの字のピーク付近
             yield return new WaitForSeconds(0.30f);
-            Assert.IsTrue(_grapple.IsGrappled, "The hold must remain during the performance");
+            Assert.IsTrue(_grapple.IsGrappled, "The hold must remain during the combo");
             Assert.Greater(_anim.HeldBellyPunchFold, 0.5f, "The body must fold");
 
-            // 演出後: 解放される
-            yield return new WaitForSeconds(0.50f);
-            Assert.IsFalse(_grapple.IsGrappled, "The hold must be released after the performance");
-            Assert.IsFalse(_director.IsPerforming, "The performance must end");
+            // 5 発を食らってから解放される
+            float deadline = Time.realtimeSinceStartup + 6f;
+            while (_director.IsPerforming && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.IsFalse(_director.IsPerforming, "The combo must end");
+            Assert.AreEqual(5, _director.ComboHitsLanded, "The player must take 5 belly punches");
+            Assert.IsFalse(_grapple.IsGrappled, "The hold must be released after the combo");
         }
 
         [UnityTest]

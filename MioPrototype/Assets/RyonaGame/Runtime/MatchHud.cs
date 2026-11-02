@@ -149,7 +149,7 @@ namespace Ryona.Game
             }
             else if (_bellyPunch.IsPerforming)
             {
-                tail = "腹パン！";
+                tail = $"腹パン！ {_bellyPunch.ComboHitsLanded}/{_bellyPunch.ComboHitsTotal}";
                 danger = true;
             }
             else if (_bellyPunch.IsPunchIncoming)
