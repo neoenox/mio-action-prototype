@@ -1099,6 +1099,11 @@ namespace Ryona.Game
                     bool fromBehind = _hurtSide == 2;
                     float side = _hurtSide == 0 ? 1f : (_hurtSide == 2 ? 0f : -_hurtSide);
 
+                    // 本当に横から殴られたときの符号（0 = 正面 / 背後）。
+                    // side は正面ヒットでも 1 になる（揺れに方向を与えるため）ので、
+                    // 「横からの一撃か」はこちらで判断する。
+                    float lateralSide = _hurtSide == 1 ? -1f : (_hurtSide == -1 ? 1f : 0f);
+
                     // 殴られた場所で崩れ方を変える。
                     //   顔: 頭が弾かれて後ろへ振れる（上体は少し反る）
                     //   腹: 上体が前へ折れて腹を抱える（息が詰まる）
@@ -1199,7 +1204,10 @@ namespace Ryona.Game
                                      * (1f - Mathf.SmoothStep(0f, 1f, (hit - hold) / 0.45f));
 
                         torsoPitch = StanceTorsoPitch + Mathf.Min(bend * 1.25f, 66f) * fold;
-                        torsoYaw = StanceTorsoYaw;
+                        // 横から殴られたときは、折れながら殴られた方向へ少しねじれる。
+                        // 前へ折れる動きが主役なので、顔（20°）より控えめの 12°。
+                        // 正面ヒットでは lateralSide が 0 なので、従来どおりまっすぐ折れる。
+                        torsoYaw = StanceTorsoYaw + 12f * kv * lateralSide;
                         torsoRoll = 0f;
                         headPitch = StanceHeadPitch + bend * 0.55f * fold;
                         headYaw = StanceHeadYaw;
