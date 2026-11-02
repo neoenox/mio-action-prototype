@@ -1354,7 +1354,7 @@ namespace Ryona.Game
                             strain = 0f;
                             claw = 0f;
 
-                            torsoPitch = Mathf.Lerp(torsoPitch, 52f, fold);
+                            torsoPitch = Mathf.Lerp(torsoPitch, 50f, fold);
                             torsoYaw = Mathf.Lerp(torsoYaw, 0f, fold);
 
                             // 顔は下を向かせない。上体は折れても、顔だけ上げてカメラ側へ向ける。
@@ -1373,7 +1373,7 @@ namespace Ryona.Game
                                 }
                             }
 
-                            headPitch = Mathf.Lerp(headPitch, -35f, fold);
+                            headPitch = Mathf.Lerp(headPitch, -40f, fold);
                             headYaw = Mathf.Lerp(headYaw, toCamera * 0.90f, fold);
 
                             hipsOffset.y = Mathf.Lerp(hipsOffset.y, StanceHipsY - 0.15f, fold);

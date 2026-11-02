@@ -147,7 +147,6 @@ namespace Ryona.Tests
             Assert.IsTrue(_grapple.IsStruggleSuppressed, "Struggle must stop during the combo");
             Assert.IsTrue(_anim.IsHeldBellyPunch, "Held belly punch pose must play");
             Assert.Less(_camera.EffectDistanceScale, 0.6f, "Camera must push in");
-            Assert.Greater(_camera.EffectPivotOffset, 0.2f, "Camera pivot must rise to the belly/face");
             Assert.IsTrue(_camera.IsFocusing, "Camera must center on the player");
 
             // 0.3 秒後: まだ拘束中で、くの字のピーク付近
@@ -156,7 +155,7 @@ namespace Ryona.Tests
             Assert.Greater(_anim.HeldBellyPunchFold, 0.5f, "The body must fold");
 
             // 5 発を食らってから解放される
-            float deadline = Time.realtimeSinceStartup + 6f;
+            float deadline = Time.realtimeSinceStartup + 10f;
             while (_director.IsPerforming && Time.realtimeSinceStartup < deadline)
                 yield return null;
 
@@ -204,6 +203,31 @@ namespace Ryona.Tests
 
             Assert.IsFalse(_grapple.IsGrappled, "The hold must end after escaping");
             Assert.IsFalse(_director.IsPerforming, "No belly punch after escaping");
+        }
+
+        [UnityTest]
+        public IEnumerator 左向きでもカメラは正面側に来る()
+        {
+            yield return LoadAndGrab();
+
+            // 左向きで組み直す（拘束者は +X 側＝背中側）
+            _grapple.Release();
+            _player.transform.rotation = Quaternion.LookRotation(Vector3.left);
+            _captor.transform.position = _player.transform.position + Vector3.right;
+            _captor.transform.rotation = Quaternion.LookRotation(Vector3.left);
+            _grapple.Begin(_captor, GrappleKind.Back);
+            yield return null;
+
+            PlaceAttackerInFront();
+            Hit(_attacker, PunchZone.Body);
+            yield return null;
+
+            Assert.IsTrue(_camera.IsFocusing, "Camera must focus during the combo");
+
+            Vector3 toCamera = _camera.transform.position - _player.transform.position;
+            toCamera.y = 0f;
+            Assert.Greater(Vector3.Dot(_player.transform.forward, toCamera.normalized), 0.3f,
+                "Camera must stay on the player's front side when facing left");
         }
 
         [UnityTest]

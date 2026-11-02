@@ -49,16 +49,16 @@ namespace Ryona.Game
 
         [Header("Camera")]
         [Tooltip("腹パン中のカメラ距離倍率（1 未満で寄る）")]
-        public float CameraDistanceScale = 0.38f;
+        public float CameraDistanceScale = 0.36f;
 
         [Tooltip("腹パン中のピボット上下（正で上がる）")]
-        public float CameraPivotOffset = 0.25f;
+        public float CameraPivotOffset = 0f;
 
         [Tooltip("腹パン中の俯角オフセット（負で見上げる）")]
         public float CameraPitchOffset = -16f;
 
         [Tooltip("腹パン中のヨーオフセット（負でプレイヤーの正面側へ回り込む）")]
-        public float CameraYawOffset = -48f;
+        public float CameraYawOffset = -25f;
 
         [Header("Aim")]
         [Tooltip("腹パン役を立たせる、プレイヤーからの前方距離（m）")]
@@ -412,16 +412,27 @@ namespace Ryona.Game
                 forward = Vector3.right;
             forward.Normalize();
 
-            // プレイヤーの左側へずらす。カメラは右斜め前から見るので、
-            // 腹パン役の体が彼女の顔を隠さない。
-            Vector3 left = -Vector3.Cross(Vector3.up, forward);
-            if (left.sqrMagnitude < 1e-4f)
-                left = Vector3.forward;
-            left.Normalize();
+            // 腹パン役はカメラの反対側へ置く。カメラはベルトでは常に -Z 側にいるので、
+            // 左向きのときに「彼女の左」へ置くとカメラ側に回り込み、背中が映ってしまう。
+            Vector3 side = Vector3.forward;
+            if (_camera == null)
+            {
+                var cam = Camera.main;
+                _camera = cam != null
+                    ? cam.GetComponent<ThirdPersonCamera>()
+                    : FindFirstObjectByType<ThirdPersonCamera>();
+            }
+
+            if (_camera != null)
+            {
+                Vector3 toCam = _camera.transform.position - _stats.transform.position;
+                if (toCam.z > 0f)
+                    side = Vector3.back;
+            }
 
             Vector3 spot = _stats.transform.position
                 + forward * Mathf.Max(0.8f, AttackerDistance)
-                + left * AttackerSideOffset;
+                + side * AttackerSideOffset;
             spot.y = best.transform.position.y;
 
             Vector3 toPlayer = _stats.transform.position - spot;
@@ -597,7 +608,14 @@ namespace Ryona.Game
             float hold = Mathf.Max(0.2f, seconds);
             _camera.PushDistance(CameraDistanceScale, hold);
             _camera.PushPivot(CameraPivotOffset, hold);
-            _camera.PushFocus(_stats.transform.position.x, hold, CameraPitchOffset, CameraYawOffset);
+
+            // プレイヤーの向きに合わせて、カメラを「正面側」へ回り込ませる。
+            // 左向きのときに固定 -48° のままだと背中側へ回ってしまう。
+            float facing = _stats.transform.forward.x;
+            float sign = Mathf.Abs(facing) > 0.1f ? Mathf.Sign(facing) : 1f;
+            float yaw = CameraYawOffset * sign;
+
+            _camera.PushFocus(_stats.transform.position.x, hold, CameraPitchOffset, yaw);
         }
 
         /// <summary>演出の間、周囲の敵が追撃しないようにする。</summary>

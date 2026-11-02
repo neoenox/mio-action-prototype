@@ -92,7 +92,7 @@ namespace Ryona.Game
             if (_cam == null)
                 return Mathf.Max(1f, Distance);
 
-            Vector3 p0 = new Vector3(_beltX, BeltPivotHeight, z);
+            Vector3 p0 = new Vector3(_beltX, BeltPivotHeight + _pivotOffsetY, z);
             Vector3 p1 = p0 + Vector3.right;   // 1m 右の点
 
             Vector3 v0 = _cam.WorldToViewportPoint(p0);
@@ -326,7 +326,7 @@ namespace Ryona.Game
             // 腹パン中は見下ろしを弱め、折れて下を向いた顔を画面に入れる。
             float pitch = BeltPitch + (focusing ? _focusPitch : 0f);
             float distance = Mathf.Max(1f, Distance * _distanceScale);
-            float height = BeltPivotHeight;
+            float height = BeltPivotHeight + _pivotOffsetY;
 
             // 倒れているあいだは少し引いて、体全体が入るようにする
             if (_downBlend > 0.001f)
