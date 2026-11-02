@@ -1214,7 +1214,7 @@ namespace Ryona.Game
                 case State.Grabbed:
                 {
                     // 相手に掴まれ、引かれている。上体は反り、両手で相手の腕を掴もうとする。
-                    // もがくたびに肩・肘・首が震える（レバガチャの手応えを体で返す）。
+                    // もがくたびに肘が開き、掴もうとする手が跳ねる（レバガチャの手応えを体で返す）。
                     float pull = 1f - Mathf.Exp(-_stateTime * 10f);
                     float pulse = StrugglePulseOverride >= 0f
                         ? StrugglePulseOverride
@@ -1227,7 +1227,6 @@ namespace Ryona.Game
                         ? Mathf.SmoothStep(0f, 1f, cycle / 0.62f)                       // じわじわ引く
                         : 1f - Mathf.SmoothStep(0f, 1f, (cycle - 0.62f) / 0.12f);       // 止められて引き戻される
                     float strain = Mathf.Clamp01(ramp * 0.6f + pulse * 0.55f) * pull;
-                    float tremor = 0f;
 
                     // 前から掴まれたか、後ろから掴まれたか。掴んだ側で姿勢を作り替える。
                     // 前は「相手の腕を掴んで押し返す」、後ろは「首に回った腕を剥がす」で、
@@ -1245,13 +1244,13 @@ namespace Ryona.Game
                         // 彼女の腕は、その腕に押し上げられて肘が横へ大きく開き、
                         // 前腕は力なく体の前へ垂れる（抗って、相手の腕を掴もうとする）。
                         // 頭と上体は後ろから押されて前へ折れ、顎が引ける。苦悶の形。
-                        torsoPitch = 6f * pull + tremor * 0.9f;
+                        torsoPitch = 6f * pull;
                         torsoYaw = Mathf.Sin(Time.time * 2.6f) * 4f;
-                        torsoRoll = tremor * 1.8f;
+                        torsoRoll = 0f;
 
-                        headPitch = 16f * pull - tremor * 1.4f;
+                        headPitch = 16f * pull;
                         headYaw = Mathf.Sin(Time.time * 3.8f) * 5f;
-                        headRoll = tremor * 2.2f;
+                        headRoll = 0f;
 
                         // 上腕は肩の高さで真横へ、前腕は体の前へ向けて下へ垂らす。
                         // もがくと肘が上がり、前腕が相手の腕を掴みに跳ね上がる。
@@ -1295,11 +1294,11 @@ namespace Ryona.Game
                     torsoPitch = -15f * pull - 7f * strain;
                     hipsOffset.z -= 0.05f * strain;
                     torsoYaw = Mathf.Sin(Time.time * 2.2f) * 3f;
-                    torsoRoll = tremor * 1.6f;
+                    torsoRoll = 0f;
 
-                    headPitch = 6f * pull - tremor * 1.2f;
+                    headPitch = 6f * pull;
                     headYaw = Mathf.Sin(Time.time * 3.4f) * 4f;
-                    headRoll = tremor * 2.0f;
+                    headRoll = 0f;
 
                     // 相手の腕を掴む。肘を肩の高さより上げない（上げると「降参」に見える。
                     // 実測で手が 1.38m＝顔の高さまで上がっていた）。胸の高さで前へ掴む。
