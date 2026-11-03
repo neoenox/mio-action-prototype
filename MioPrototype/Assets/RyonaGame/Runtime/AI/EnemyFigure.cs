@@ -1528,7 +1528,7 @@ namespace Ryona.Game
             if (upper == null || elbow == null || wrist == null || _brain.Player == null) return;
 
             PunchZone zone = _brain.Zone;
-            Vector3 target = EnemyBrain.PunchTarget(_brain.Player, zone);
+            Vector3 target = EnemyBrain.PunchTarget(_brain.Player, zone, _brain.BodyTargetBias);
 
             // 拳は顔なら手前の表面で止める。腹は「めり込む」ように少し内側へ入れる
             // （0.11m 手前で止めると、当たっているのに拳が届いていないように見えた）。

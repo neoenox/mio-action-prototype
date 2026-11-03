@@ -30,7 +30,7 @@ namespace Ryona.Game
         public int ComboHits = 5;
 
         [Tooltip("次の腹パンを指示するまでの秒数（前の一発が当たってから）")]
-        public float ComboIntervalSeconds = 0.45f;
+        public float ComboIntervalSeconds = 0.55f;
 
         [Tooltip("1 発ごとの「く」の字の長さ")]
         public float HitPoseSeconds = 0.55f;
@@ -64,7 +64,7 @@ namespace Ryona.Game
         [Tooltip("腹パン役を立たせる、プレイヤーからの前方距離（m）")]
         public float AttackerDistance = 0.98f;
 
-        [Tooltip("腹パン役を正面から左右へずらす量（m）。カメラと体が重ならないようにする")]
+        [Tooltip("（未使用）ベルトでは敵の z が毎フレーム彼女に合わせられるため、側方オフセットは効かない")]
         public float AttackerSideOffset = 0.68f;
 
         [Tooltip("この距離より遠い敵は腹パン役に選ばない（m）")]
@@ -380,6 +380,10 @@ namespace Ryona.Game
             EnemyBrain best = null;
             float bestDistance = Mathf.Max(1f, AttackerSearchRange);
 
+            // 立たせる基準は「拳が狙う腹の座標」にする。root を基準にすると、
+            // 腹とのずれのぶんだけ向きが狂い、拳が 0.3m 外れる（実測: gap 0.33）。
+            Vector3 anchor = BodyAnchor();
+
             foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
             {
                 if (enemy == null || !enemy.IsAlive || enemy.IsRising || enemy == captor)
@@ -390,7 +394,7 @@ namespace Ryona.Game
                     enemy.Phase == EnemyPhase.Stagger)
                     continue;
 
-                float distance = Vector3.Distance(enemy.transform.position, _stats.transform.position);
+                float distance = Vector3.Distance(enemy.transform.position, anchor);
                 if (distance >= bestDistance)
                     continue;
 
@@ -412,40 +416,38 @@ namespace Ryona.Game
                 forward = Vector3.right;
             forward.Normalize();
 
-            // 腹パン役はカメラの反対側へ置く。カメラはベルトでは常に -Z 側にいるので、
-            // 左向きのときに「彼女の左」へ置くとカメラ側に回り込み、背中が映ってしまう。
-            Vector3 side = Vector3.forward;
-            if (_camera == null)
-            {
-                var cam = Camera.main;
-                _camera = cam != null
-                    ? cam.GetComponent<ThirdPersonCamera>()
-                    : FindFirstObjectByType<ThirdPersonCamera>();
-            }
-
-            if (_camera != null)
-            {
-                Vector3 toCam = _camera.transform.position - _stats.transform.position;
-                if (toCam.z > 0f)
-                    side = Vector3.back;
-            }
-
-            Vector3 spot = _stats.transform.position
-                + forward * Mathf.Max(0.8f, AttackerDistance)
-                + side * AttackerSideOffset;
+            // ベルトなので奥行き（z）は EnemyBrain.LateUpdate が毎フレーム彼女に合わせる。
+            // ここで側方（z）へずらしても次のフレームで戻され、「ずらした前提の向き」だけが
+            // 残って腹から 35° 外れる（実測: 拳が 0.33m 届かず空振り）。
+            // 立ち位置は前後（x）だけで決め、向きは実際に立つ位置から腹へ向ける。
+            Vector3 spot = anchor + forward * Mathf.Max(0.8f, AttackerDistance);
+            spot.z = _stats.transform.position.z;
             spot.y = best.transform.position.y;
 
-            Vector3 toPlayer = _stats.transform.position - spot;
+            Vector3 toPlayer = anchor - spot;
             toPlayer.y = 0f;
 
             best.transform.position = spot;
             if (toPlayer.sqrMagnitude > 1e-4f)
                 best.transform.rotation = Quaternion.LookRotation(toPlayer.normalized, Vector3.up);
 
-            if (!best.TryStartBellyPunch(allowRecover: true))
+            if (!best.TryStartBellyPunch(allowRecover: true, holdPoseSeconds: HitPoseSeconds + 0.05f))
                 return false;
 
             return true;
+        }
+
+        /// <summary>
+        /// 立ち位置と向きの基準。拳が狙うのと同じ「腹の座標」を使う。
+        /// root を基準にすると、腹とのずれのぶんだけ腹パン役の向きが狂う。
+        /// </summary>
+        Vector3 BodyAnchor()
+        {
+            if (_stats == null)
+                return Vector3.zero;
+
+            Vector3 belly = EnemyBrain.PunchTarget(_stats, PunchZone.Body, 0.28f);
+            return new Vector3(belly.x, _stats.transform.position.y, belly.z);
         }
 
         void OnHitReceived(HitResult result)
