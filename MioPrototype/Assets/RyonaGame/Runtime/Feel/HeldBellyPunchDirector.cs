@@ -58,7 +58,7 @@ namespace Ryona.Game
         public float CameraPitchOffset = -12f;
 
         [Tooltip("腹パン中のヨーオフセット（負でプレイヤーの正面側へ回り込む）")]
-        public float CameraYawOffset = -25f;
+        public float CameraYawOffset = -40f;
 
         [Header("Aim")]
         [Tooltip("腹パン役を立たせる、プレイヤーからの前方距離（m）")]
