@@ -35,6 +35,9 @@ namespace Ryona.Game
         [Tooltip("1 発ごとの「く」の字の長さ")]
         public float HitPoseSeconds = 0.55f;
 
+        [Tooltip("当たった瞬間から拳を腹に押し込んでおく秒数。彼女の折れ（HitPoseSeconds）より十分短くする。長いと次の一発まで拳が伸びたままになり、打つ動作に見えない")]
+        public float FistHoldSeconds = 0.28f;
+
         [Tooltip("最後の一発から拘束を解放するまでの余韻")]
         public float ComboTailSeconds = 0.55f;
 
@@ -467,7 +470,7 @@ namespace Ryona.Game
             if (toPlayer.sqrMagnitude > 1e-4f)
                 best.transform.rotation = Quaternion.LookRotation(toPlayer.normalized, Vector3.up);
 
-            if (!best.TryStartBellyPunch(allowRecover: true, holdPoseSeconds: HitPoseSeconds + 0.05f))
+            if (!best.TryStartBellyPunch(allowRecover: true, holdPoseSeconds: FistHoldSeconds))
                 return false;
 
             return true;
