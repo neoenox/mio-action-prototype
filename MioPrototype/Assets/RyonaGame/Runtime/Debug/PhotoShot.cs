@@ -57,12 +57,15 @@ namespace Ryona.Game
         [Tooltip("撮影用。敵を振り抜きの任意コマ（経過秒）で止める。負で通常")]
         public float EnemySwing = -1f;
 
-        [Tooltip("撮影用。表情の配合を上書きする（負で既定値）。-shotangry/-shotsad/-shotmouth/-shotblink")]
+        [Tooltip("撮影用。表情の配合を上書きする（負で既定値）。-shotangry/-shotsad/-shotmouth/-shotih/-shotblink")]
         public float FaceAngry = -1f;
         public float FaceSad = -1f;
         public float FaceMouth = -1f;
         public float FaceGrit = -1f;
         public float FaceBlink = -1f;
+
+        [Tooltip("撮影用。0-1 で腹パンの配合へ寄せる（負で通常）。-shotbelly")]
+        public float FaceBelly = -1f;
 
         [Tooltip("状態を入れてから撮るまでの待ち時間。髪が落ち着くのを待つ")]
         public float SettleSeconds = 2.5f;
@@ -132,6 +135,8 @@ namespace Ryona.Game
                 shot.FaceGrit = grit;
             if (float.TryParse(Value(args, "-shotblink"), out float blink))
                 shot.FaceBlink = blink;
+            if (float.TryParse(Value(args, "-shotbelly"), out float belly))
+                shot.FaceBelly = belly;
 
             if (float.TryParse(Value(args, "-shotpain"), out float pain))
                 shot.Pain = pain;
@@ -296,17 +301,20 @@ namespace Ryona.Game
 
                 if (face != null)
                 {
-                    if (FaceAngry >= 0f) face.PainAngry = FaceAngry;
-                    if (FaceSad >= 0f) face.PainSad = FaceSad;
-                    if (FaceMouth >= 0f) face.PainMouth = FaceMouth;
-                    if (FaceGrit >= 0f) face.PainGrit = FaceGrit;
-                    if (FaceBlink >= 0f) face.PainBlink = FaceBlink;
+                    if (FaceAngry >= 0f) face.FacePain.Angry = FaceAngry;
+                    if (FaceSad >= 0f) face.FacePain.Sad = FaceSad;
+                    if (FaceMouth >= 0f) face.FacePain.Mouth = FaceMouth;
+                    if (FaceGrit >= 0f) face.FacePain.Grit = FaceGrit;
+                    if (FaceBlink >= 0f) face.FacePain.Blink = FaceBlink;
+
+                    if (FaceBelly >= 0f) face.PreviewBelly = FaceBelly;
 
                     face.PreviewAmount = Pain;
-                    Debug.Log($"[Shot] face {face.name} pain={Pain:F2} " +
-                              $"angry={face.PainAngry:F2} sad={face.PainSad:F2} " +
-                              $"mouth={face.PainMouth:F2} grit={face.PainGrit:F2} " +
-                              $"blink={face.PainBlink:F2}");
+                    var shape = face.FacePain;
+                    Debug.Log($"[Shot] face {face.name} pain={Pain:F2} belly={face.PreviewBelly:F2} " +
+                              $"angry={shape.Angry:F2} sad={shape.Sad:F2} " +
+                              $"mouth={shape.Mouth:F2} grit={shape.Grit:F2} " +
+                              $"blink={shape.Blink:F2}");
                 }
                 else
                 {

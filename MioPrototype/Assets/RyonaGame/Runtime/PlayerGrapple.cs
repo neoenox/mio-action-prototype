@@ -9,7 +9,10 @@ namespace Ryona.Game
     /// 数値の本体はエンジン非依存の <see cref="GrappleResistance"/> が持っていて、
     /// ここは「入力を受け取る・時間で失敗させる・演出に知らせる」だけを担当する。
     /// 掴まれたら J / K / L / Space の連打で必要回数ぶんもがくと振りほどける。
-    /// 時間切れになると腕にダメージ＋スタミナを失って大きく怯む。
+    ///
+    /// 後ろ拘束（<see cref="GrappleKind.Back"/>）は時間切れで解けない。
+    /// 連打で振りほどくか、別の敵の腹パンを受けて解放されるかの二択にする。
+    /// 時間切れの投げは、押さえつけ（<see cref="GrappleKind.Pin"/>、未実装）用に残す。
     /// </summary>
     [AddComponentMenu("Ryona/Player Grapple")]
     public sealed class PlayerGrapple : MonoBehaviour
@@ -22,11 +25,13 @@ namespace Ryona.Game
         /// <summary>振りほどけた瞬間。</summary>
         public event Action Escaped;
 
-        /// <summary>振りほどけずに投げられた瞬間。</summary>
+        /// <summary>押さえつけの時間切れで投げられた瞬間（後ろ拘束では起きない）。</summary>
         public event Action Failed;
 
         GrappleResistance _resistance;
         float _remaining;
+        float _heldSeconds;
+        float _suppressRemaining;
 
         /// <summary>押さえつけ（未実装）で掴まれている間の、相手との距離（m）。</summary>
         /// <remarks>
@@ -42,8 +47,34 @@ namespace Ryona.Game
         /// <summary>掴まれているか。</summary>
         public bool IsGrappled { get; private set; }
 
-        /// <summary>掴まれている直前の残り時間。</summary>
-        public float Remaining => Mathf.Max(0f, _remaining);
+        /// <summary>
+        /// 掴まれている残り時間。後ろ拘束は時間切れが無いので 0 を返す
+        /// （表示するときは <see cref="HasTimeLimit"/> で分岐する）。
+        /// </summary>
+        public float Remaining =>
+            HasTimeLimit ? Mathf.Max(0f, _remaining) : 0f;
+
+        /// <summary>時間切れで投げられる拘束か。後ろ拘束は false（連打か腹パンでだけ終わる）。</summary>
+        public bool HasTimeLimit => Kind == GrappleKind.Pin;
+
+        /// <summary>掴まれてからの経過秒。ログとテスト用。</summary>
+        public float HeldSeconds => _heldSeconds;
+
+        /// <summary>腹パン演出などで、もがき入力を一時的に止めているか。</summary>
+        public bool IsStruggleSuppressed => _suppressRemaining > 0f;
+
+        /// <summary>もがき入力を止めている残り秒。</summary>
+        public float SuppressRemaining => Mathf.Max(0f, _suppressRemaining);
+
+        /// <summary>
+        /// 指定秒だけ、もがき入力を受け付けない（腹パンで「く」の字になっている間）。
+        /// 拘束そのものは続くので、演出が終わればまた連打できる。
+        /// </summary>
+        public void SuppressStruggle(float seconds)
+        {
+            if (seconds > 0f)
+                _suppressRemaining = Mathf.Max(_suppressRemaining, seconds);
+        }
 
         /// <summary>掴んだ相手。倒されたら掴みは解ける。</summary>
         public EnemyBrain Captor { get; private set; }
@@ -104,7 +135,27 @@ namespace Ryona.Game
                 return;
             }
 
-            _remaining -= Time.deltaTime;
+            _heldSeconds += Time.deltaTime;
+
+            // 腹パンで「く」の字になっている間は、もがき入力を受け付けない。
+            // 拘束は続くので、演出が終わればまた連打できる。
+            if (_suppressRemaining > 0f)
+            {
+                _suppressRemaining = Mathf.Max(0f, _suppressRemaining - Time.deltaTime);
+                StrugglePulse = Mathf.Max(0f, StrugglePulse - Time.deltaTime * 6f);
+                return;
+            }
+
+            // 後ろ拘束は時間切れで解けない。押さえつけ（Pin）だけが時間切れで投げる。
+            if (HasTimeLimit)
+            {
+                _remaining -= Time.deltaTime;
+                if (_remaining <= 0f)
+                {
+                    Fail();
+                    return;
+                }
+            }
 
             if (InputReader.StrugglePressed())
             {
@@ -116,9 +167,6 @@ namespace Ryona.Game
                     return;
                 }
             }
-
-            if (_remaining <= 0f)
-                Fail();
         }
 
         /// <summary>掴まれる。外部（敵の掴み攻撃）から呼ぶ。掴みは背後からだけ。</summary>
@@ -139,7 +187,11 @@ namespace Ryona.Game
             RequiredInputs = ResistanceMath.RequiredInputs(kind, 1f, armInjury);
 
             _resistance = new GrappleResistance(kind, RequiredInputs);
-            _remaining = CombatConstants.GrappleLimitSeconds;
+            _remaining = kind == GrappleKind.Pin
+                ? CombatConstants.GrappleLimitSeconds
+                : float.PositiveInfinity;
+            _heldSeconds = 0f;
+            _suppressRemaining = 0f;
             IsGrappled = true;
             StrugglePulse = 0f;
 
@@ -149,17 +201,21 @@ namespace Ryona.Game
 
             PlaySfx(SfxId.Impact, 0.9f);
 
+            string limit = HasTimeLimit ? $"{_remaining:F2}s" : "none";
             Debug.Log($"[Grapple] begin kind={kind} need={RequiredInputs:F1} " +
-                      $"limit={_remaining:F2}s arm={armInjury:F0} captor={(captor != null ? captor.name : "none")}");
+                      $"limit={limit} arm={armInjury:F0} captor={(captor != null ? captor.name : "none")}");
 
             Started?.Invoke(kind);
         }
 
-        /// <summary>罰なしで解放する（相手が倒れた・プレイヤーが倒れた）。</summary>
+        /// <summary>
+        /// 罰なしで解放する（相手が倒れた・プレイヤーが倒れた・腹パン演出が終わった）。
+        /// </summary>
         public void Release()
         {
             IsGrappled = false;
             _remaining = 0f;
+            _suppressRemaining = 0f;
             Captor = null;
         }
 
@@ -199,10 +255,11 @@ namespace Ryona.Game
         {
             var captor = Captor;
             int inputs = InputCount;
-            float spent = CombatConstants.GrappleLimitSeconds - Remaining;
+            float spent = _heldSeconds;
 
             IsGrappled = false;
             _remaining = 0f;
+            _suppressRemaining = 0f;
             Captor = null;
 
             PlaySfx(SfxId.Guard, 0.9f);
@@ -215,6 +272,7 @@ namespace Ryona.Game
             Escaped?.Invoke();
         }
 
+        /// <summary>押さえつけ（Pin）の時間切れ。後ろ拘束では呼ばない。</summary>
         void Fail()
         {
             var captor = Captor;
@@ -225,6 +283,7 @@ namespace Ryona.Game
 
             IsGrappled = false;
             _remaining = 0f;
+            _suppressRemaining = 0f;
             Captor = null;
 
             Stats.State.ConsumeStamina(stamina);

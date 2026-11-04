@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Reflection;
 using NUnit.Framework;
 using Ryona.Game;
 using UnityEngine;
@@ -169,7 +170,7 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator 掴みの投げが終わった後に敵が攻撃を再開する()
+        public IEnumerator 後ろ拘束は時間切れで解けず振りほどくと敵が攻撃を再開する()
         {
             yield return LoadPrototype();
             var player = Object.FindFirstObjectByType<PlayerStats>();
@@ -182,16 +183,24 @@ namespace Ryona.Tests
             holder.transform.position = player.transform.position + Vector3.left;
             holder.transform.rotation = Quaternion.LookRotation(Vector3.right);
             holder.QueueGrab();
-            float deadline = Time.realtimeSinceStartup + 16f;
+            float deadline = Time.realtimeSinceStartup + 20f;
             while (!grapple.IsGrappled && Time.realtimeSinceStartup < deadline) yield return null;
-            Assert.IsTrue(grapple.IsGrappled, "Enemy should grab before the throw");
-            while (grapple.IsGrappled && Time.realtimeSinceStartup < deadline) yield return null;
-            Assert.IsFalse(grapple.IsGrappled, "The throw must end");
-            Vector3 throwStart = player.transform.position;
-            Vector3 awayFromCaptor = (throwStart - holder.transform.position).normalized;
-            yield return new WaitForSeconds(0.35f);
-            float away = Vector3.Dot(player.transform.position - throwStart, awayFromCaptor);
-            Assert.Greater(away, 0.1f, "Throw should move the player away from the captor");
+            Assert.IsTrue(grapple.IsGrappled, "Enemy should grab");
+
+            // 後ろ拘束は時間切れで解けない（投げも無い）
+            yield return new WaitForSeconds(3.4f);
+            Assert.IsTrue(grapple.IsGrappled, "Back hold must not time out");
+            Assert.IsFalse(grapple.HasTimeLimit);
+
+            // 振りほどくと拘束者がよろけ、その後で攻撃を再開する
+            var escape = typeof(PlayerGrapple).GetMethod("Escape",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(escape, "Escape not found");
+            escape.Invoke(grapple, null);
+            yield return null;
+            Assert.IsFalse(grapple.IsGrappled, "Escape must end the hold");
+
+            deadline = Time.realtimeSinceStartup + 12f;
             bool sawPunch = false;
             bool landedPunch = false;
             player.HitReceived += result =>
@@ -208,8 +217,8 @@ namespace Ryona.Tests
                 sawPunch |= holder.Phase == EnemyPhase.Attack && holder.CurrentAttack != EnemyBrain.AttackId.Grab;
                 yield return null;
             }
-            Assert.IsTrue(sawPunch, $"No punch after throw: phase={holder.Phase} distance={Vector3.Distance(holder.transform.position, player.transform.position):F2} holding={holder.IsHolding} token={holder.HasAttackToken}");
-            Assert.IsTrue(landedPunch, "Enemy must land a punch after the throw");
+            Assert.IsTrue(sawPunch, $"No punch after escape: phase={holder.Phase} distance={Vector3.Distance(holder.transform.position, player.transform.position):F2} holding={holder.IsHolding} token={holder.HasAttackToken}");
+            Assert.IsTrue(landedPunch, "Enemy must land a punch after the escape");
         }
 
         [UnityTest]

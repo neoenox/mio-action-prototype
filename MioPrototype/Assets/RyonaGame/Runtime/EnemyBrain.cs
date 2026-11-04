@@ -312,7 +312,7 @@ namespace Ryona.Game
         public float PunchHitRadius = 0.30f;
 
         /// <summary>プレイヤーの顔・腹の中心（ワールド座標）。拳の狙いと当たり判定が共有する。</summary>
-        public static Vector3 PunchTarget(PlayerStats player, PunchZone zone)
+        public static Vector3 PunchTarget(PlayerStats player, PunchZone zone, float bodyBias = 0.40f)
         {
             if (player == null)
                 return Vector3.zero;
@@ -323,7 +323,7 @@ namespace Ryona.Game
                 // 顔は頭の中心、腹は腰と胸のあいだ（へその少し上）
                 return zone == PunchZone.Face
                     ? rig.Head.position
-                    : Vector3.Lerp(rig.Hips.position, rig.Chest.position, 0.40f);
+                    : Vector3.Lerp(rig.Hips.position, rig.Chest.position, Mathf.Clamp01(bodyBias));
             }
 
             return player.transform.position + Vector3.up * (zone == PunchZone.Face ? 1.35f : 0.95f);
@@ -332,13 +332,65 @@ namespace Ryona.Game
         /// <summary>現在フェーズの残り秒数（予備動作・硬直・怯みで共用）。</summary>
         float _timer;
         float _punchVisualTimer;
+
+        /// <summary>腹パンが当たった瞬間から、拳を腹に押し込んでおく残り秒。</summary>
+        float _punchPoseHoldSeconds;
+
+        /// <summary>
+        /// タッグ腹パンの発注時に受け取った保持秒。
+        /// 発注時ではなく<b>当たった瞬間</b>に <see cref="_punchPoseHoldSeconds"/> へ移す
+        /// （発注時から伸ばすと、振りかぶる前から拳が腹に着いて見える）。
+        /// </summary>
+        float _bellyPunchPendingHold;
+
+        /// <summary>
+        /// タッグ技（腹 / 顔）の発注から当たるまでの間。振りかぶり中の拳の伸ばし方に使う。
+        /// 近距離から当てるので、通常のジャブより早く伸ばしきらないと空振りする。
+        /// </summary>
+        bool _tagPunchPending;
+
+        /// <summary>拳と狙いの距離をログる（`-hitlog`）。</summary>
+        bool _hitLog;
+
+        /// <summary>通常の Body 狙い（腰と胸のあいだ）。</summary>
+        const float DefaultBodyBias = 0.40f;
+
+        /// <summary>腹パンだけは低め（腰寄り）を狙う。</summary>
+        const float BellyPunchBodyBias = 0.28f;
+
+        /// <summary>
+        /// Body 狙いのとき、腰から胸のどこを狙うか（0=腰, 1=胸）。
+        /// 腹パンのあいだだけ低くし、終わったら通常へ戻す。
+        /// フィールドにすると 0.28 がその敵に残り、以後の腹ジャブまで低いままになる。
+        /// </summary>
+        public float BodyTargetBias =>
+            _punchPoseHoldSeconds > 0f || _bellyPunchPendingHold > 0f
+                ? BellyPunchBodyBias
+                : DefaultBodyBias;
+
         public float PunchPoseWeight
         {
             get
             {
                 if (_currentAttack == AttackId.Grab) return 0f;
+
+                // タッグ技の腹パンは、彼女が「く」の字に折れる間ずっと拳を腹に押し込む。
+                // 通常の Recover（0.18 秒）だけで戻すと、折れる前に拳が引いて見える。
+                // 予備動作・怯み・死亡では伸ばさない（振りかぶりが潰れる／死体が拳を突き出したままになる）。
+                if (_punchPoseHoldSeconds > 0f &&
+                    (Phase == EnemyPhase.Attack || Phase == EnemyPhase.Recover))
+                    return 1f;
+
                 if (Phase == EnemyPhase.Windup)
-                    return Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((WindupProgress - 0.7f) / 0.3f));
+                {
+                    // 当たりは「前フレームに描いた拳」で取る。通常の 0.7 から伸ばす ramp だと、
+                    // 間合いの端（1.19m）で拳が伸びきる前に判定が来て空振りする。
+                    // タッグ技（腹 / 顔）だけ早めに伸ばしきって、当てにいく。
+                    bool tag = _tagPunchPending;
+                    float start = tag ? 0.30f : 0.70f;
+                    float span = tag ? 0.45f : 0.30f;
+                    return Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((WindupProgress - start) / span));
+                }
                 if (Phase == EnemyPhase.Attack) return 1f;
                 if (Phase == EnemyPhase.Recover) return Mathf.Clamp01(_punchVisualTimer / 0.18f);
                 return 0f;
@@ -522,6 +574,7 @@ namespace Ryona.Game
             {
                 if (arg.Equals("-punchzone=face", System.StringComparison.OrdinalIgnoreCase)) ForceZone = PunchZone.Face;
                 else if (arg.Equals("-punchzone=body", System.StringComparison.OrdinalIgnoreCase)) ForceZone = PunchZone.Body;
+                else if (arg.Equals("-hitlog", System.StringComparison.OrdinalIgnoreCase)) _hitLog = true;
                 else if (arg.Equals("-nofeint", System.StringComparison.OrdinalIgnoreCase))
                 {
                     // 掴みもフェイント対象なので、22% で「掴みの予備動作だけ見せて引く」。
@@ -594,6 +647,7 @@ namespace Ryona.Game
                 return;
 
             float dt = Time.deltaTime;
+            _punchPoseHoldSeconds = Mathf.Max(0f, _punchPoseHoldSeconds - dt);
 
             State.Tick(dt, moving: Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe);
 
@@ -903,9 +957,18 @@ namespace Ryona.Game
                         // 腹を殴られると息が詰まる。ガードされなかったときだけスタミナを削る。
                         if (Zone == PunchZone.Body && !hit.Blocked)
                             Player.State.ConsumeStamina(BodyBlowStaminaDamage);
+
+                        // タッグ腹パンは、当たった瞬間から拳を腹に押し込む。
+                        // 外れた／別の部位なら押し込まない（空振りで腕だけ残ると不自然）。
+                        if (_bellyPunchPendingHold > 0f && Zone == PunchZone.Body)
+                            _punchPoseHoldSeconds = _bellyPunchPendingHold;
                     }
                 }
             }
+
+            // この一振りで予約は使い切る。次の通常攻撃に持ち越さない。
+            _bellyPunchPendingHold = 0f;
+            _tagPunchPending = false;
 
             _punchVisualTimer = _run.Id == AttackId.Grab ? 0f : 0.18f;
             Phase = EnemyPhase.Recover;
@@ -931,11 +994,23 @@ namespace Ryona.Game
             var figure = GetComponent<EnemyFigure>();
             var fist = figure != null ? figure.Fist(false) : null;
             if (fist == null || Player == null) return false;
-            Vector3 target = PunchTarget(Player, Zone);
+            Vector3 target = PunchTarget(Player, Zone, BodyTargetBias);
             Vector3 toPlayer = Player.transform.position - transform.position;
             toPlayer.y = 0f;
             if (Vector3.Dot(transform.forward, toPlayer) <= 0f) return false;
             float gap = Vector3.Distance(fist.position, target);
+            // 腹パンの距離は -hitlog のときだけ出す（常時出すとログが埋まる）。
+            if (_hitLog && (_punchPoseHoldSeconds > 0f || _bellyPunchPendingHold > 0f))
+            {
+                Transform wrist = figure.WristBone(false);
+                float wristGap = wrist != null ? Vector3.Distance(wrist.position, target) : -1f;
+                Debug.Log($"[BellyHit] att={name} pos=({transform.position.x:F2},{transform.position.z:F2}) " +
+                          $"yaw={transform.eulerAngles.y:F0} " +
+                          $"fist=({fist.position.x:F2},{fist.position.y:F2},{fist.position.z:F2}) " +
+                          $"target=({target.x:F2},{target.y:F2},{target.z:F2}) gap={gap:F2} wristGap={wristGap:F2} " +
+                          $"bias={BodyTargetBias:F2}");
+            }
+
             return gap <= Mathf.Max(0.05f, PunchHitRadius);
         }
 
@@ -959,6 +1034,59 @@ namespace Ryona.Game
             return true;
         }
 
+        /// <summary>
+        /// 拘束中のプレイヤーへ、タッグ技のジャブを開始する（狙いは腹 or 顔）。
+        /// 正面・間合い内・攻撃トークンありのときだけ開始する。
+        /// 演出側（<see cref="HeldBellyPunchDirector"/>）が位置と向きを合わせてから呼ぶ。
+        /// </summary>
+        public bool TryStartTagPunch(PunchZone zone, bool allowRecover = false, float holdPoseSeconds = 0f)
+        {
+            if (Phase == EnemyPhase.Dead || Phase == EnemyPhase.Windup ||
+                Phase == EnemyPhase.Attack || Phase == EnemyPhase.Stagger || IsRising)
+                return false;
+
+            // コンボ中は前の一発の硬直を切って次を打たせる（5 連続をテンポよく見せる）。
+            if (Phase == EnemyPhase.Recover && !allowRecover)
+                return false;
+
+            if (Player == null || Player.IsDead)
+                return false;
+
+            var grapple = Player.GetComponent<PlayerGrapple>();
+            if (grapple == null || !grapple.IsGrappled || grapple.Captor == this)
+                return false;
+
+            Vector3 to = Player.transform.position - transform.position;
+            to.y = 0f;
+            float distance = to.magnitude;
+            if (distance > RangeOf(AttackId.Jab) + 0.25f)
+                return false;
+
+            Vector3 facing = transform.forward;
+            facing.y = 0f;
+            if (to.sqrMagnitude < 0.0001f || facing.sqrMagnitude < 0.0001f ||
+                Vector3.Dot(facing.normalized, to.normalized) < 0.85f)
+                return false;
+
+            // 同時攻撃の上限は守る。取れなければ演出側が少し待って選び直す。
+            if (Group != null && !Group.TryAcquireAttackToken(this))
+                return false;
+
+            ForceZone = zone;
+            BeginWindup(AttackId.Jab);
+
+            // 彼女が折れる間、拳を腹に押し込んだままにする。数え始めは「当たった瞬間」
+            // （Strike）。ここで数えると予備動作の 0.35 秒を食って、折れている間に足りなくなる。
+            // 顔を狙うときは押し込まない（通常の顔面パンチと同じ当たり方にする）。
+            _bellyPunchPendingHold = zone == PunchZone.Body ? Mathf.Max(0f, holdPoseSeconds) : 0f;
+            _tagPunchPending = true;
+            ForceZone = null;
+
+            Debug.Log($"[HeldPunch] order {name} zone={zone} dist={distance:F2} " +
+                      $"pos=({transform.position.x:F2},{transform.position.z:F2})");
+            return true;
+        }
+
         /// <summary>外部から怯ませる（振りほどかれた時など）。</summary>
         public void ForceStagger(float seconds)
         {
@@ -969,6 +1097,8 @@ namespace Ryona.Game
             _riseTimer = 0f;
             _swingsWithToken = 0;
             IsHolding = false;
+            _punchPoseHoldSeconds = 0f;
+            _bellyPunchPendingHold = 0f;
             _timer = Mathf.Max(0.05f, seconds);
             _staggerTotal = _timer;
             StaggerProgress = 1f;
@@ -1159,6 +1289,9 @@ namespace Ryona.Game
         void BeginWindup(AttackId id)
         {
             _currentAttack = id;
+            _punchPoseHoldSeconds = 0f;
+            _bellyPunchPendingHold = 0f;
+            _tagPunchPending = false;
 
             AttackData data = DataOf(id);
             if (data != null)
@@ -1348,6 +1481,8 @@ namespace Ryona.Game
             // 進行中の攻撃はキャンセルする。トークンも返して他の敵に順番を渡す。
             HideTelegraph();
             _swingsWithToken = 0;
+            _punchPoseHoldSeconds = 0f;
+            _bellyPunchPendingHold = 0f;
             ReleaseToken();
 
             Phase = EnemyPhase.Stagger;
@@ -1398,6 +1533,8 @@ namespace Ryona.Game
             Phase = EnemyPhase.Dead;
             HideTelegraph();
             IsHolding = false;
+            _punchPoseHoldSeconds = 0f;
+            _bellyPunchPendingHold = 0f;
             ReleaseToken();
             UnregisterGroup();
             enabled = false;
@@ -1500,6 +1637,12 @@ namespace Ryona.Game
         void KeepSpacing()
         {
             if (Phase == EnemyPhase.Dead || IsHolding)
+                return;
+
+            // タッグ腹パンは演出側（HeldBellyPunchDirector）が当たる位置を決めている。
+            // ここで仲間と押し分けると、置いた位置から横へずれて拳が届かなくなる
+            // （実測: 0.33m ずれて gap 0.33 の空振りが続いた）。
+            if (_bellyPunchPendingHold > 0f || _punchPoseHoldSeconds > 0f)
                 return;
 
             KeepOutOfPlayer();

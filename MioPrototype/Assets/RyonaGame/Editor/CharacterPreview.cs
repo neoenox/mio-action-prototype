@@ -3700,6 +3700,110 @@ namespace Ryona.EditorTools
         }
 
         /// <summary>
+        /// 顔ヒットと腹パンで苦悶の表情がどう変わるかを並べて書き出す。
+        /// <see cref="PlayerFace.DefaultFacePain"/> / <see cref="PlayerFace.DefaultBellyPain"/> を
+        /// そのまま使うので、コードの値を変えたらこのシートで見た目を確認できる。
+        /// 左から 顔・強 / 腹・弱 / 腹・中 / 腹・強 / 無表情。
+        /// 「弱」は StaggerTier.Small の濃さ（0.66 + BellyPeakBonus）。
+        /// </summary>
+        [MenuItem("Ryona/Diagnostics/Capture Pain Faces")]
+        public static void CapturePainFaces()
+        {
+            string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
+            if (!File.Exists(vrmPath))
+            {
+                Debug.LogError($"[Ryona] VRM not found: {vrmPath}");
+                return;
+            }
+
+            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            SetupLights();
+
+            Vrm10Instance vrm = Vrm10
+                .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
+                .GetAwaiter().GetResult();
+
+            if (vrm == null)
+            {
+                Debug.LogError("[Ryona] VRM load returned null");
+                return;
+            }
+
+            var rig = vrm.gameObject.AddComponent<ProceduralRig>();
+            rig.Capture();
+            var anim = vrm.gameObject.AddComponent<CharacterAnimator>();
+            anim.Rig = rig;
+            anim.ForceState(CharacterAnimator.State.Idle, 0.5f, 2f, StaggerTier.None, log: false);
+
+            // エディットモードでは、これが無いとモーフの結果が描画に反映されない
+            foreach (var s in vrm.GetComponentsInChildren<SkinnedMeshRenderer>())
+                s.forceMatrixRecalculationPerRender = true;
+
+            var camGo = new GameObject("Face Camera");
+            var cam = camGo.AddComponent<Camera>();
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(0.26f, 0.27f, 0.30f);
+            cam.fieldOfView = 24f;
+            cam.nearClipPlane = 0.02f;
+
+            Vector3 face = rig.Head.position + rig.Head.up * 0.055f + rig.Head.forward * 0.05f;
+            cam.transform.position = face + new Vector3(0.09f, 0.01f, 0.78f);
+            cam.transform.LookAt(face);
+
+            var belly = PlayerFace.DefaultBellyPain;
+            var none = default(PlayerFace.PainShape);
+
+            var variants = new (string name, PlayerFace.PainShape shape)[]
+            {
+                ("顔・強(現行)", PlayerFace.DefaultFacePain),
+                ("腹・弱", PlayerFace.PainShape.Lerp(none, belly, 0.76f)),
+                ("腹・中", PlayerFace.PainShape.Lerp(none, belly, 0.98f)),
+                ("腹・強", belly),
+                ("無表情", none),
+            };
+
+            const int cellW = 380;
+            const int cellH = 380;
+            int cols = variants.Length;
+            int rows = 1;
+
+            var sheet = new Texture2D(cellW * cols, cellH * rows, TextureFormat.RGB24, false);
+
+            for (int i = 0; i < variants.Length; i++)
+            {
+                var v = variants[i];
+                var e = vrm.Runtime.Expression;
+                e.SetWeight(ExpressionKey.Angry, v.shape.Angry);
+                e.SetWeight(ExpressionKey.Sad, v.shape.Sad);
+                e.SetWeight(ExpressionKey.Aa, v.shape.Mouth);
+                e.SetWeight(ExpressionKey.Ih, v.shape.Grit);
+                e.SetWeight(ExpressionKey.Blink, v.shape.Blink);
+                vrm.Runtime.Process();
+
+                var cell = RenderCell(cam, cellW, cellH);
+                int cx = i % cols;
+                int cy = rows - 1 - (i / cols);
+                sheet.SetPixels(cx * cellW, cy * cellH, cellW, cellH, cell.GetPixels());
+                Object.DestroyImmediate(cell);
+
+                Debug.Log($"[Pain] {i} {v.name}: angry={v.shape.Angry:F2} sad={v.shape.Sad:F2} " +
+                          $"mouth={v.shape.Mouth:F2} grit={v.shape.Grit:F2} blink={v.shape.Blink:F2}");
+            }
+
+            sheet.Apply();
+
+            string root = Directory.GetParent(Application.dataPath).FullName;
+            string outPath = Path.Combine(root, "pain_faces.png");
+            File.WriteAllBytes(outPath, sheet.EncodeToPNG());
+            Object.DestroyImmediate(sheet);
+
+            Object.DestroyImmediate(camGo);
+            Object.DestroyImmediate(vrm.gameObject);
+
+            Debug.Log($"[Ryona] pain faces: {outPath}");
+        }
+
+        /// <summary>
         /// 腕が「肩の高さで真横に伸びている」なら false を返す（T ポーズ判定）。
         /// 体の向きに左右されないよう、腰のローカル座標で測る。
         /// </summary>

@@ -91,6 +91,82 @@ namespace Ryona.Game
         public float StateTime => _stateTime;
         public float StateDuration => _stateDuration;
 
+        // 腹パン演出（後ろ拘束中に別の敵の腹パンチを受けたとき）の残り時間。
+        float _heldBellyPunchRemaining;
+        float _heldBellyPunchTotal;
+
+        float _heldFacePunchRemaining;
+        float _heldFacePunchTotal;
+
+        /// <summary>いま腹パンの「く」の字オーバーレイ中か。</summary>
+        public bool IsHeldBellyPunch => _heldBellyPunchRemaining > 0f;
+
+        /// <summary>いま拘束中の顔面パンチ（首が手前へ振れる）オーバーレイ中か。</summary>
+        public bool IsHeldFacePunch => _heldFacePunchRemaining > 0f;
+
+        /// <summary>
+        /// 拘束中に顔面を殴られたときの首の振れ（0..1）。入り 0.05 秒、保持、戻り 0.22 秒。
+        /// 通常の顔面パンチ（<see cref="ApplyFaceFlick"/>）と同じ向き＝カメラ側へ顔を背ける。
+        /// テストと Editor 診断が数値で確認できるように公開している。
+        /// </summary>
+        public float HeldFacePunchFlick
+        {
+            get
+            {
+                if (_heldFacePunchTotal <= 0f || _heldFacePunchRemaining <= 0f)
+                    return 0f;
+
+                float t = _heldFacePunchTotal - _heldFacePunchRemaining;
+                float inT = Mathf.SmoothStep(0f, 1f, t / 0.05f);
+                float outT = 1f - Mathf.SmoothStep(0f, 1f, (t - 0.20f) / 0.22f);
+                return Mathf.Clamp01(inT * outT);
+            }
+        }
+
+        /// <summary>
+        /// 拘束中に顔面を殴られた反応。腹パンの「く」の字とは別で、上体は折らずに
+        /// 首だけ手前（カメラ側）へ振る。呼んでも状態は Grabbed のまま。
+        /// </summary>
+        public void PlayHeldFacePunch(float seconds)
+        {
+            if (seconds <= 0f)
+                return;
+
+            _heldFacePunchTotal = seconds;
+            _heldFacePunchRemaining = seconds;
+        }
+
+        /// <summary>
+        /// 腹パンの「く」の字を再生する。拘束（Grabbed）の上に重ねるので、
+        /// 呼んでも状態は Grabbed のまま。
+        /// </summary>
+        public void PlayHeldBellyPunch(float seconds)
+        {
+            if (seconds <= 0f)
+                return;
+
+            _heldBellyPunchTotal = seconds;
+            _heldBellyPunchRemaining = seconds;
+        }
+
+        /// <summary>
+        /// 腹パンの折れ具合（0..1）。入り 0.07 秒、保持、戻り 0.18 秒。
+        /// テストと Editor 診断が姿勢を数値で確認するために公開している。
+        /// </summary>
+        public float HeldBellyPunchFold
+        {
+            get
+            {
+                if (_heldBellyPunchTotal <= 0f || _heldBellyPunchRemaining <= 0f)
+                    return 0f;
+
+                float t = _heldBellyPunchTotal - _heldBellyPunchRemaining;
+                float inT = Mathf.SmoothStep(0f, 1f, t / 0.07f);
+                float outT = 1f - Mathf.SmoothStep(0f, 1f, (t - 0.37f) / 0.18f);
+                return Mathf.Clamp01(inT * outT);
+            }
+        }
+
         /// <summary>倒れている（立ち上がり中を含む）。移動できない区間。</summary>
         public bool IsDowned => _state == State.Down || _state == State.GetUp;
 
@@ -470,18 +546,7 @@ namespace Ryona.Game
             float env = Mathf.SmoothStep(0f, 1f, t / 0.05f)
                         * (1f - Mathf.SmoothStep(0f, 1f, (t - 0.45f) / 0.50f));
 
-            float toCamera = 0f;
-            var cam = Camera.main;
-            if (cam != null)
-            {
-                Vector3 to = cam.transform.position - transform.position;
-                to.y = 0f;
-                if (to.sqrMagnitude > 1e-4f)
-                {
-                    Vector3 local = transform.InverseTransformDirection(to.normalized);
-                    toCamera = Mathf.Clamp(Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg, -80f, 80f);
-                }
-            }
+            float toCamera = CameraYawToMe();
 
             yaw = Mathf.Lerp(yaw, StanceHeadYaw + toCamera * 0.95f, env);
             roll += -Mathf.Sign(toCamera == 0f ? 1f : toCamera) * 10f * env;
@@ -495,6 +560,25 @@ namespace Ryona.Game
                     Debug.Log($"[FaceFlick] toCam={toCamera:F0} yaw={yaw:F0} " +
                         $"pitch={pitch:F0} roll={roll:F0} t={t:F2}");
             }
+        }
+
+        /// <summary>
+        /// カメラがどちら側にいるか（度）。正面 0、右 +、左 −。
+        /// 顔を「手前（カメラ側）へ背ける」向きを出すのに使う。
+        /// </summary>
+        float CameraYawToMe()
+        {
+            var cam = Camera.main;
+            if (cam == null)
+                return 0f;
+
+            Vector3 to = cam.transform.position - transform.position;
+            to.y = 0f;
+            if (to.sqrMagnitude <= 1e-4f)
+                return 0f;
+
+            Vector3 local = transform.InverseTransformDirection(to.normalized);
+            return Mathf.Clamp(Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg, -80f, 80f);
         }
 
         void CaptureFaceYaw()
@@ -584,6 +668,10 @@ namespace Ryona.Game
 
             if (_shoveTime > 0f)
                 _shoveTime = Mathf.Max(0f, _shoveTime - dt);
+
+            // 腹パンの「く」の字。ヒットストップ中は dt=0 なので、当たった瞬間の姿勢で止まる。
+            _heldBellyPunchRemaining = Mathf.Max(0f, _heldBellyPunchRemaining - dt);
+            _heldFacePunchRemaining = Mathf.Max(0f, _heldFacePunchRemaining - dt);
 
             // 実際の移動速度。足を地面に固定する（滑らせない）ために使う。
             Vector3 move = transform.position - _lastPosition;
@@ -1304,6 +1392,43 @@ namespace Ryona.Game
                         footR += StanceFootR;
                         footL += new Vector3(0f, 0f, 0.05f);
                         footPitchL = 30f * pull;
+
+                        // 腹パン: 羽交い締めのまま上体を折り、腰を引いて膝を曲げる（くの字）。
+                        // もがきの脈（strain / claw）は止めて、抵抗していないことを見せる。
+                        float toCamera = CameraYawToMe();
+                        float fold = HeldBellyPunchFold;
+                        if (fold > 0f)
+                        {
+                            strain = 0f;
+                            claw = 0f;
+
+                            torsoPitch = Mathf.Lerp(torsoPitch, 50f, fold);
+                            torsoYaw = Mathf.Lerp(torsoYaw, 0f, fold);
+
+                            // 顔は下を向かせない。上体は折れても、顔だけ上げてカメラ側へ向ける。
+                            // 下を向くとポニーテールが前に落ちて顔が完全に隠れる。
+                            float foldYaw = Mathf.Clamp(toCamera, -60f, 60f);
+                            headPitch = Mathf.Lerp(headPitch, -40f, fold);
+                            headYaw = Mathf.Lerp(headYaw, foldYaw * 0.90f, fold);
+
+                            hipsOffset.y = Mathf.Lerp(hipsOffset.y, StanceHipsY - 0.15f, fold);
+                            hipsOffset.z = Mathf.Lerp(hipsOffset.z, StanceHipsZ - 0.13f, fold);
+                        }
+
+                        // 顔面パンチ: 上体は折らず、首だけ手前（カメラ側）へ振る。
+                        // 通常の顔面パンチ（ApplyFaceFlick）と同じ向きにしないと、
+                        // 拘束中だけ後ろへ仰け反って「別の反応」に見える。
+                        float faceFlick = HeldFacePunchFlick;
+                        if (faceFlick > 0f)
+                        {
+                            float side = toCamera >= 0f ? 1f : -1f;
+                            torsoPitch = Mathf.Lerp(torsoPitch, torsoPitch - 8f, faceFlick);
+                            torsoYaw = Mathf.Lerp(torsoYaw, torsoYaw + 10f * side, faceFlick);
+                            headPitch = Mathf.Lerp(headPitch, headPitch - 14f, faceFlick);
+                            headYaw = Mathf.Lerp(headYaw, toCamera * 0.95f, faceFlick);
+                            headRoll = Mathf.Lerp(headRoll, -side * 9f, faceFlick);
+                        }
+
                         break;
                     }
 

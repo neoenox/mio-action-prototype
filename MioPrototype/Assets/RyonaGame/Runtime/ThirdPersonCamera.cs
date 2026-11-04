@@ -92,7 +92,7 @@ namespace Ryona.Game
             if (_cam == null)
                 return Mathf.Max(1f, Distance);
 
-            Vector3 p0 = new Vector3(_beltX, BeltPivotHeight, z);
+            Vector3 p0 = new Vector3(_beltX, BeltPivotHeight + _pivotOffsetY, z);
             Vector3 p1 = p0 + Vector3.right;   // 1m 右の点
 
             Vector3 v0 = _cam.WorldToViewportPoint(p0);
@@ -163,6 +163,12 @@ namespace Ryona.Game
         float _pivotMeters;
         float _pivotRemaining;
         float _pivotDuration;
+
+        /// <summary>腹パン演出などで、画面の中心を一時的に指定した X へ寄せる。</summary>
+        float _focusX;
+        float _focusPitch;
+        float _focusYaw;
+        float _focusRemaining;
 
         // このフレームで実際に使う値（毎フレーム TickEffects が更新する）
         float _distanceScale = 1f;
@@ -315,9 +321,12 @@ namespace Ryona.Game
             _beltLead = Mathf.Lerp(_beltLead, facing * BeltLookAhead,
                 1f - Mathf.Exp(-4f * Time.deltaTime));
 
-            float pitch = BeltPitch;
+            bool focusing = _focusRemaining > 0f;
+
+            // 腹パン中は見下ろしを弱め、折れて下を向いた顔を画面に入れる。
+            float pitch = BeltPitch + (focusing ? _focusPitch : 0f);
             float distance = Mathf.Max(1f, Distance * _distanceScale);
-            float height = BeltPivotHeight;
+            float height = BeltPivotHeight + _pivotOffsetY;
 
             // 倒れているあいだは少し引いて、体全体が入るようにする
             if (_downBlend > 0.001f)
@@ -342,6 +351,14 @@ namespace Ryona.Game
             else if (want < _beltX - dead)
                 _beltX = want + dead;
 
+            // 腹パン演出中は、画面ロックの中心ではなくプレイヤーを中央に置く。
+            // ロック中は彼女が画面の端にいることがあり、寄るだけでは小さく写るため。
+            if (focusing)
+            {
+                _focusRemaining = Mathf.Max(0f, _focusRemaining - Time.unscaledDeltaTime);
+                _beltX = _focusX;
+            }
+
             float minX = Mathf.Max(BeltMinX, Mathf.Min(GateMinX, GateMaxX));
             float maxX = Mathf.Min(BeltMaxX, Mathf.Max(GateMinX, GateMaxX));
 
@@ -352,10 +369,14 @@ namespace Ryona.Game
                 height,
                 0f);
 
-            _smoothPivot = Vector3.Lerp(_smoothPivot, pivot,
-                1f - Mathf.Exp(-BeltFollowSharpness * Time.deltaTime));
+            // 寄せる間は追従を速くして、演出の 0.1 秒で彼女を中央へ寄せる。
+            float follow = focusing ? 26f : BeltFollowSharpness;
+            float followDt = focusing ? Time.unscaledDeltaTime : Time.deltaTime;
 
-            Quaternion rotation = Quaternion.Euler(pitch, BeltYaw, 0f);
+            _smoothPivot = Vector3.Lerp(_smoothPivot, pivot,
+                1f - Mathf.Exp(-follow * followDt));
+
+            Quaternion rotation = Quaternion.Euler(pitch, BeltYaw + (focusing ? _focusYaw : 0f), 0f);
             Vector3 direction = rotation * Vector3.back;
 
             transform.position = _smoothPivot + direction * distance;
@@ -471,11 +492,79 @@ namespace Ryona.Game
             _pivotDuration = Mathf.Max(_pivotDuration, _pivotRemaining);
         }
 
+        /// <summary>画面の中心を一時的に指定した X へ寄せているか。</summary>
+        public bool IsFocusing => _focusRemaining > 0f;
+
+        /// <summary>
+        /// 画面の中心を一時的に指定した X へ寄せる（腹パン演出でプレイヤーを中央に置く）。
+        /// <see cref="BeltScreenLock"/> の範囲内の X を渡すこと。時間は実時間で数える。
+        /// </summary>
+        public void PushFocus(float x, float seconds, float pitchOffset = 0f, float yawOffset = 0f)
+        {
+            if (seconds <= 0f)
+            {
+                _focusRemaining = 0f;
+                return;
+            }
+
+            _focusX = x;
+            _focusPitch = pitchOffset;
+            _focusYaw = yawOffset;
+            _focusRemaining = Mathf.Max(_focusRemaining, seconds);
+        }
+
+        /// <summary>
+        /// 寄り・ピボット・フォーカスを毎フレーム呼んで保持する（腹パンのコンボ中など）。
+        ///
+        /// <see cref="PushDistance"/> は残り時間の減衰で濃さが抜けるので、ヒットのたびに
+        /// 押し直しても 0.2 秒で通常の距離へ戻ってしまう（実測: 2 発目で scale=0.91）。
+        /// 数秒あいだ同じ構図を保ちたいときはこちらを使う。呼ぶのをやめると
+        /// <paramref name="seconds"/> かけて戻る。
+        /// </summary>
+        /// <param name="distanceScale">距離に掛ける倍率（1 未満で寄る）。</param>
+        /// <param name="pivotMeters">ピボットの上下（m）。</param>
+        /// <param name="x">画面の中心に置く X。</param>
+        /// <param name="seconds">呼ぶのをやめてから戻るまでの秒数。</param>
+        public void HoldFocus(float distanceScale, float pivotMeters, float x, float seconds,
+            float pitchOffset = 0f, float yawOffset = 0f)
+        {
+            if (seconds <= 0f)
+            {
+                PushFocus(0f, 0f);
+                PushDistance(1f, 0f);
+                PushPivot(0f, 0f);
+                return;
+            }
+
+            if (distanceScale > 0f)
+            {
+                _pushScale = distanceScale;
+                _pushRemaining = seconds;
+                _pushDuration = seconds;
+
+                _pullScale = 1f;
+                _pullRemaining = 0f;
+                _pullDuration = 0f;
+            }
+
+            _pivotMeters = pivotMeters;
+            _pivotRemaining = seconds;
+            _pivotDuration = seconds;
+
+            _focusX = x;
+            _focusPitch = pitchOffset;
+            _focusYaw = yawOffset;
+            _focusRemaining = seconds;
+        }
+
         void OnDisable()
         {
             // タイトルへ戻ったときなどに演出が残らないよう、必ず既定値へ戻す
             ResetDistanceEffect();
             ResetPivotEffect();
+            _focusRemaining = 0f;
+            _focusPitch = 0f;
+            _focusYaw = 0f;
         }
 
         /// <summary>演出の残り時間を進め、このフレームで使う倍率・オフセットを決める。</summary>

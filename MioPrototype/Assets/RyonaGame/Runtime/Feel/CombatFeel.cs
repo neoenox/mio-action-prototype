@@ -42,7 +42,7 @@ namespace Ryona.Game
 
         [Header("Voice")]
         [Tooltip("被弾の声を続けて出さない間隔（秒）。連続で殴られても「あっあっあっ」にしない")]
-        public float HurtVoiceInterval = 0.8f;
+        public float HurtVoiceInterval = 0.55f;
 
         CameraShake _shake;
         ProceduralSfx _sfx;
@@ -154,6 +154,14 @@ namespace Ryona.Game
             // 敵は素手。重い被弾も金属音ではなく打撃音を使う。
             PlaySfx(SfxId.Impact, weight > 1.1f ? 1f : 0.8f);
             PlaySfx(SfxId.Stagger, 0.7f);
+
+            // 腹への一撃は、軽いジャブでも重い声（hurt_ku）にする。
+            // 腹パンは「息が詰まる」音でないと、軽く払われたように聞こえる。
+            if (Stats != null && Stats.LastHitZone == PunchZone.Body)
+            {
+                PlayHurtVoice(SfxId.HurtKu);
+                return;
+            }
 
             // 軽い被弾は hurt_u、重い被弾は hurt_ku。中くらいは半々。
             SfxId voice = result.Stagger switch
