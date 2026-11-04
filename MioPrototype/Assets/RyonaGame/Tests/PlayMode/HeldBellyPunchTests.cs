@@ -8,11 +8,11 @@ using UnityEngine.TestTools;
 namespace Ryona.Tests
 {
     /// <summary>
-    /// 後ろ拘束中の腹パン演出の回帰テスト。
+    /// 後ろ拘束中のタッグ技（腹パン / 顔面パンチ）の回帰テスト。
     ///
-    /// 後ろ拘束は時間切れで解けない。別の敵の腹パンチが当たると
-    /// 「く」の字＋カメラ寄せが始まり、演出後に解放される。
-    /// 顔パンチや拘束者自身の攻撃では発動しない。
+    /// 後ろ拘束は時間切れで解けない。別の敵のパンチが当たると
+    /// 「く」の字（腹）または首振り（顔）＋カメラ寄せが始まり、演出後に解放される。
+    /// 拘束者自身の攻撃では発動しない。
     /// </summary>
     public sealed class HeldBellyPunchTests
     {
@@ -133,6 +133,9 @@ namespace Ryona.Tests
         public IEnumerator 腹パンでくの字とカメラ寄せが始まり5発後に解放される()
         {
             yield return LoadAndGrab(waitForAnimator: true);
+
+            // このテストは「く」の字と解放だけを見る。狙いを腹に固定する。
+            _director.FacePunchChance = 0f;
             PlaceAttackerInFront();
 
             Hit(_attacker, PunchZone.Body);
@@ -165,16 +168,23 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator 顔パンチでは腹パン演出が始まらない()
+        public IEnumerator 顔面パンチでもコンボが始まり首が手前へ振れる()
         {
-            yield return LoadAndGrab();
+            yield return LoadAndGrab(waitForAnimator: true);
+            _director.FacePunchChance = 1f;   // 顔面に固定
             PlaceAttackerInFront();
 
             Hit(_attacker, PunchZone.Face);
             yield return null;
 
-            Assert.IsFalse(_director.IsPerforming, "A face punch must not start the belly punch");
-            Assert.IsTrue(_grapple.IsGrappled, "The hold must remain after a face punch");
+            Assert.IsTrue(_director.IsPerforming, "A face punch must start the combo too");
+            Assert.AreEqual(PunchZone.Face, _director.LastLandedZone, "The landed zone must be the face");
+            Assert.IsTrue(_anim.IsHeldFacePunch, "The face-punch reaction must play");
+            Assert.IsFalse(_anim.IsHeldBellyPunch, "A face punch must not fold the body");
+
+            yield return new WaitForSeconds(0.12f);
+            Assert.Greater(_anim.HeldFacePunchFlick, 0.5f, "The head must snap away toward the camera");
+            Assert.IsTrue(_grapple.IsGrappled, "The hold must remain during the combo");
         }
 
         [UnityTest]
@@ -236,8 +246,19 @@ namespace Ryona.Tests
             yield return LoadAndGrab();
             PlaceAttackerInFront();
 
-            Assert.IsTrue(_attacker.TryStartBellyPunch(), "The tag-team belly punch must start");
+            Assert.IsTrue(_attacker.TryStartTagPunch(PunchZone.Body), "The tag-team belly punch must start");
             Assert.AreEqual(PunchZone.Body, _attacker.Zone, "The punch must aim at the belly");
+            Assert.AreEqual(EnemyPhase.Windup, _attacker.Phase, "The enemy must enter windup");
+        }
+
+        [UnityTest]
+        public IEnumerator 拘束中の敵に顔面パンチも指示できる()
+        {
+            yield return LoadAndGrab();
+            PlaceAttackerInFront();
+
+            Assert.IsTrue(_attacker.TryStartTagPunch(PunchZone.Face), "The tag-team face punch must start");
+            Assert.AreEqual(PunchZone.Face, _attacker.Zone, "The punch must aim at the face");
             Assert.AreEqual(EnemyPhase.Windup, _attacker.Phase, "The enemy must enter windup");
         }
     }

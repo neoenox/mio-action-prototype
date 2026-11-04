@@ -149,17 +149,18 @@ namespace Ryona.Game
             }
             else if (_bellyPunch.IsPerforming)
             {
-                tail = $"腹パン！ {_bellyPunch.ComboHitsLanded}/{_bellyPunch.ComboHitsTotal}";
+                string what = _bellyPunch.LastLandedZone == PunchZone.Face ? "顔面！" : "腹パン！";
+                tail = $"{what} {_bellyPunch.ComboHitsLanded}/{_bellyPunch.ComboHitsTotal}";
                 danger = true;
             }
             else if (_bellyPunch.IsPunchIncoming)
             {
-                tail = "腹パンが来る！";
+                tail = "パンチが来る！";
                 danger = true;
             }
             else if (_bellyPunch.HasAttacker)
             {
-                tail = $"腹パンまで {_bellyPunch.NextPunchRemaining:F1}s";
+                tail = $"パンチまで {_bellyPunch.NextPunchRemaining:F1}s";
                 danger = _bellyPunch.NextPunchRemaining <= 0.5f;
             }
             else

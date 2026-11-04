@@ -29,6 +29,10 @@ namespace Ryona.Game
         [Tooltip("1 回の拘束で食らう腹パンの回数")]
         public int ComboHits = 5;
 
+        [Range(0f, 1f)]
+        [Tooltip("各パンチが顔面を狙う確率。残りは腹パン。0 で腹パンのみ、1 で顔面のみ")]
+        public float FacePunchChance = 0.5f;
+
         [Tooltip("次の腹パンを指示するまでの秒数（前の一発が当たってから）")]
         public float ComboIntervalSeconds = 0.55f;
 
@@ -84,6 +88,9 @@ namespace Ryona.Game
 
         /// <summary>いま当たった腹パンの数。</summary>
         public int ComboHitsLanded => _hits;
+
+        /// <summary>最後に当たったパンチの狙い（顔 / 腹）。HUD と見た目の分岐に使う。</summary>
+        public PunchZone LastLandedZone { get; private set; } = PunchZone.Body;
 
         /// <summary>この拘束で食らう腹パンの総数。</summary>
         public int ComboHitsTotal => Mathf.Max(1, ComboHits);
@@ -166,6 +173,8 @@ namespace Ryona.Game
                     CameraPitchOffset = pitch;
                 else if (TryRead(a, "-heldpunchcamyaw=", out float yaw))
                     CameraYawOffset = yaw;
+                else if (TryRead(a, "-heldpunchface=", out float face))
+                    FacePunchChance = Mathf.Clamp01(face);
             }
         }
 
@@ -470,10 +479,18 @@ namespace Ryona.Game
             if (toPlayer.sqrMagnitude > 1e-4f)
                 best.transform.rotation = Quaternion.LookRotation(toPlayer.normalized, Vector3.up);
 
-            if (!best.TryStartBellyPunch(allowRecover: true, holdPoseSeconds: FistHoldSeconds))
+            if (!best.TryStartTagPunch(NextZone(), allowRecover: true, holdPoseSeconds: FistHoldSeconds))
                 return false;
 
             return true;
+        }
+
+        /// <summary>次の一発の狙い。腹パンと顔面パンチを毎回ランダムに選ぶ。</summary>
+        PunchZone NextZone()
+        {
+            return UnityEngine.Random.value < Mathf.Clamp01(FacePunchChance)
+                ? PunchZone.Face
+                : PunchZone.Body;
         }
 
         /// <summary>
@@ -493,13 +510,14 @@ namespace Ryona.Game
         {
             if (!_comboActive)
             {
+                // 最初の一発が腹でも顔でも、それでコンボが始まる（狙いは当たった場所）。
                 if (ShouldStartCombo(result))
-                    BeginCombo();
+                    BeginCombo(_stats.LastHitZone ?? PunchZone.Body);
 
                 return;
             }
 
-            if (!IsBellyHit(result))
+            if (!IsTagPunchHit(result))
                 return;
 
             if (_hits >= ComboHitsTotal)
@@ -512,21 +530,32 @@ namespace Ryona.Game
             // 1 発を重く見せる。既存の被弾ヒットストップ（約 0.07 秒）より少し長く止める。
             HitStop.Play(0.09f);
 
-            // 1 発ごとに「く」の字をやり直す。カメラはコンボ中ずっと同じ構図。
+            // 狙いで見た目を分ける。
+            //   腹: 「く」の字に折れる（拘束されたまま腹を抱える）
+            //   顔: 通常の顔面パンチと同じく、首が手前（カメラ側）へ振れる
+            PunchZone zone = _stats.LastHitZone ?? PunchZone.Body;
+            LastLandedZone = zone;
+
             if (_anim != null)
-                _anim.PlayHeldBellyPunch(HitPoseSeconds);
+            {
+                if (zone == PunchZone.Face)
+                    _anim.PlayHeldFacePunch(HitPoseSeconds);
+                else
+                    _anim.PlayHeldBellyPunch(HitPoseSeconds);
+            }
+
             RefreshCamera(1.6f);
             _grapple.SuppressStruggle(1.6f);
 
             if (_hits >= ComboHitsTotal)
             {
                 _comboEndTimer = Mathf.Max(0.1f, ComboTailSeconds);
-                Debug.Log($"[HeldPunch] combo {_hits}/{ComboHitsTotal} → release");
+                Debug.Log($"[HeldPunch] combo {_hits}/{ComboHitsTotal} ({zone}) → release");
             }
             else
             {
                 _nextPunchTimer = Mathf.Max(0.1f, ComboIntervalSeconds);
-                Debug.Log($"[HeldPunch] combo {_hits}/{ComboHitsTotal}");
+                Debug.Log($"[HeldPunch] combo {_hits}/{ComboHitsTotal} ({zone})");
             }
         }
 
@@ -544,16 +573,17 @@ namespace Ryona.Game
             if (_stats.IsDead)
                 return false;
 
-            return IsBellyHit(result);
+            return IsTagPunchHit(result);
         }
 
-        /// <summary>「別の敵の腹パンチ」として演出を始めてよいか。</summary>
-        bool IsBellyHit(HitResult result)
+        /// <summary>「別の敵のパンチ（腹 / 顔）」として演出を始めてよいか。</summary>
+        bool IsTagPunchHit(HitResult result)
         {
             if (result.Damage <= 0f || result.Blocked)
                 return false;
 
-            if (_stats.LastHitZone != PunchZone.Body)
+            PunchZone? zone = _stats.LastHitZone;
+            if (zone != PunchZone.Body && zone != PunchZone.Face)
                 return false;
 
             var captor = _grapple.Captor;
@@ -574,7 +604,7 @@ namespace Ryona.Game
             return Vector3.Dot(forward.normalized, to.normalized) > 0.1f;
         }
 
-        void BeginCombo()
+        void BeginCombo(PunchZone zone)
         {
             if (_comboActive || _cooldown > 0f)
                 return;
@@ -582,6 +612,7 @@ namespace Ryona.Game
             _comboActive = true;
             IsPerforming = true;
             _hits = 1;
+            LastLandedZone = zone;
             _waitingForFirst = false;
             _waitingForHit = false;
             _attempts = 0;
@@ -597,7 +628,12 @@ namespace Ryona.Game
             _grapple.SuppressStruggle(suppress);
 
             if (_anim != null)
-                _anim.PlayHeldBellyPunch(HitPoseSeconds);
+            {
+                if (zone == PunchZone.Face)
+                    _anim.PlayHeldFacePunch(HitPoseSeconds);
+                else
+                    _anim.PlayHeldBellyPunch(HitPoseSeconds);
+            }
 
             RefreshCamera(2.0f);
             HoldOthers(ComboHitsTotal * 0.7f + 1f);
