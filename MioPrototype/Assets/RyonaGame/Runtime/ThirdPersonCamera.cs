@@ -513,6 +513,50 @@ namespace Ryona.Game
             _focusRemaining = Mathf.Max(_focusRemaining, seconds);
         }
 
+        /// <summary>
+        /// 寄り・ピボット・フォーカスを毎フレーム呼んで保持する（腹パンのコンボ中など）。
+        ///
+        /// <see cref="PushDistance"/> は残り時間の減衰で濃さが抜けるので、ヒットのたびに
+        /// 押し直しても 0.2 秒で通常の距離へ戻ってしまう（実測: 2 発目で scale=0.91）。
+        /// 数秒あいだ同じ構図を保ちたいときはこちらを使う。呼ぶのをやめると
+        /// <paramref name="seconds"/> かけて戻る。
+        /// </summary>
+        /// <param name="distanceScale">距離に掛ける倍率（1 未満で寄る）。</param>
+        /// <param name="pivotMeters">ピボットの上下（m）。</param>
+        /// <param name="x">画面の中心に置く X。</param>
+        /// <param name="seconds">呼ぶのをやめてから戻るまでの秒数。</param>
+        public void HoldFocus(float distanceScale, float pivotMeters, float x, float seconds,
+            float pitchOffset = 0f, float yawOffset = 0f)
+        {
+            if (seconds <= 0f)
+            {
+                PushFocus(0f, 0f);
+                PushDistance(1f, 0f);
+                PushPivot(0f, 0f);
+                return;
+            }
+
+            if (distanceScale > 0f)
+            {
+                _pushScale = distanceScale;
+                _pushRemaining = seconds;
+                _pushDuration = seconds;
+
+                _pullScale = 1f;
+                _pullRemaining = 0f;
+                _pullDuration = 0f;
+            }
+
+            _pivotMeters = pivotMeters;
+            _pivotRemaining = seconds;
+            _pivotDuration = seconds;
+
+            _focusX = x;
+            _focusPitch = pitchOffset;
+            _focusYaw = yawOffset;
+            _focusRemaining = seconds;
+        }
+
         void OnDisable()
         {
             // タイトルへ戻ったときなどに演出が残らないよう、必ず既定値へ戻す

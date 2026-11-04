@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UniVRM10;
 
@@ -10,12 +11,70 @@ namespace Ryona.Game
     /// の重ね合わせで作る。1 つのプリセットだけだと、怒っているのか悲しんでいるのか
     /// はっきりしない表情になる。怯みの強さに合わせて濃さを変え、怯みが終わると戻す。
     ///
+    /// 顔ヒットと腹パン（ボディーブロー）では配合を分ける。
+    /// 腹パンは息が詰まるので、眉を寄せたまま口を開けて息を漏らし、目を強くつぶる。
+    /// 顔ヒット（口を結んで歯を食いしばる）より「息ができない」顔になる。
+    ///
     /// 平常時はまばたきだけを動かす（止まった顔は人形に見える）。
     /// 倒れている間は苦悶を保ち、立ち上がるときにゆっくり戻す。
     /// </summary>
     [AddComponentMenu("Ryona/Player Face")]
     public sealed class PlayerFace : MonoBehaviour
     {
+        /// <summary>
+        /// 苦悶の表情の配合（重み 0-1）。
+        /// 眉・口・目の重ね方を 1 組にして、顔ヒットと腹パンで差し替える。
+        /// </summary>
+        [Serializable]
+        public struct PainShape
+        {
+            [Tooltip("眉を寄せる。痛みの中心。")]
+            public float Angry;
+
+            [Tooltip("眉の内側を上げる。怒りだけだと「怒っている」に見えるので足す。")]
+            public float Sad;
+
+            [Tooltip("口を開ける（aa）。食いしばりに足す「痛っ」の息。開けすぎると口を尖らせた顔になる。")]
+            public float Mouth;
+
+            [Tooltip("歯を食いしばる（ih）。口を横に広げて薄く結ぶ。")]
+            public float Grit;
+
+            [Tooltip("目を細める。0 にすると見開いたままになる。")]
+            public float Blink;
+
+            public PainShape(float angry, float sad, float mouth, float grit, float blink)
+            {
+                Angry = angry;
+                Sad = sad;
+                Mouth = mouth;
+                Grit = grit;
+                Blink = blink;
+            }
+
+            /// <summary>2 つの配合を混ぜる（腹パンの表情へ寄せるのに使う）。</summary>
+            public static PainShape Lerp(in PainShape a, in PainShape b, float t)
+            {
+                t = Mathf.Clamp01(t);
+                return new PainShape(
+                    Mathf.Lerp(a.Angry, b.Angry, t),
+                    Mathf.Lerp(a.Sad, b.Sad, t),
+                    Mathf.Lerp(a.Mouth, b.Mouth, t),
+                    Mathf.Lerp(a.Grit, b.Grit, t),
+                    Mathf.Lerp(a.Blink, b.Blink, t));
+            }
+        }
+
+        /// <summary>顔を殴られたときの既定の配合。Editor の表情シートも同じ値を使う。</summary>
+        public static PainShape DefaultFacePain => new PainShape(0.82f, 0.50f, 0.12f, 0.95f, 0.32f);
+
+        /// <summary>
+        /// 腹パンの既定の配合。眉を寄せたまま口を開け、目を強くつぶって息を漏らす。
+        /// 顔ヒット（口を結んで耐える）より「息ができない」顔にする。
+        /// 目を完全に閉じると眠って見えるので、まぶたの線が残る濃さに留める。
+        /// </summary>
+        public static PainShape DefaultBellyPain => new PainShape(0.93f, 0.24f, 0.52f, 0.40f, 0.80f);
+
         [Header("References")]
         public PlayerStats Stats;
         public Vrm10Instance Vrm;
@@ -24,20 +83,18 @@ namespace Ryona.Game
         public CharacterAnimator Anim;
 
         [Header("苦悶の作り（重み 0-1）")]
-        [Tooltip("眉を寄せる。痛みの中心。")]
-        public float PainAngry = 0.82f;
+        [Tooltip("顔を殴られたときの配合。")]
+        public PainShape FacePain = DefaultFacePain;
 
-        [Tooltip("眉の内側を上げる。怒りだけだと「怒っている」に見えるので足す。")]
-        public float PainSad = 0.50f;
+        [Header("腹パン（ボディーブロー）の苦悶")]
+        [Tooltip("腹を殴られたときの配合。同じ段の顔ヒットより「堪えている」顔にする。")]
+        public PainShape BellyPain = DefaultBellyPain;
 
-        [Tooltip("口を開ける（aa）。食いしばりに足す「痛っ」の息。開けすぎると口を尖らせた顔になる。")]
-        public float PainMouth = 0.12f;
+        [Tooltip("腹ヒットで表情の濃さを底上げする量。弱い腹パンでも苦悶を見せる。")]
+        public float BellyPeakBonus = 0.10f;
 
-        [Tooltip("歯を食いしばる（ih）。口を横に広げて薄く結ぶ。開いた口より痛みが伝わる。")]
-        public float PainGrit = 0.95f;
-
-        [Tooltip("目を細める。0 にすると見開いたままになる。")]
-        public float PainBlink = 0.32f;
+        [Tooltip("腹ヒットで苦悶を保つ追加時間（秒）。連続の腹パンで表情が戻りきらないようにする。")]
+        public float BellyHoldExtraSeconds = 0.18f;
 
         [Header("速さ（秒）")]
         [Tooltip("歪むまでの時間。短いほど「叩かれた瞬間に顔が歪む」。")]
@@ -89,6 +146,9 @@ namespace Ryona.Game
         float _peak;        // このヒットでの最大の濃さ
         float _holdUntil;   // この時刻まではピークへ寄せる（unscaled）
 
+        float _bellyBlend;  // 0=顔ヒットの配合 1=腹パンの配合
+        float _bellyTarget; // 直近のヒットが腹なら 1
+
         float _blinkTimer = 2f;   // 次のまばたきまで
         float _blinkT = -1f;      // まばたき中だけ 0 以上
         int _blinkCount;          // 動作確認用（最初の数回だけログに出す）
@@ -101,6 +161,17 @@ namespace Ryona.Game
         /// 0 以上にすると、その濃さで固定する（撮影・確認用）。負で通常動作。
         /// </summary>
         public float PreviewAmount = -1f;
+
+        /// <summary>
+        /// 0-1 で腹パンの配合へ寄せる（撮影・確認用）。負なら通常動作。
+        /// </summary>
+        public float PreviewBelly = -1f;
+
+        /// <summary>腹パンの配合へ寄っている度合い（0=顔ヒット用、1=腹パン用）。</summary>
+        public float BellyBlend => _bellyBlend;
+
+        /// <summary>いま使っている苦悶の配合（テスト・ログ用）。</summary>
+        public PainShape CurrentShape => PainShape.Lerp(FacePain, BellyPain, _bellyBlend);
 
         void OnEnable()
         {
@@ -129,6 +200,11 @@ namespace Ryona.Game
 
         void OnHitReceived(HitResult result)
         {
+            // 腹パンは顔ヒットと別の配合にする。殴られた場所は ReceiveHit の前に
+            // EnemyBrain が立てている（投げなどでは null）。
+            bool belly = Stats != null && Stats.LastHitZone == PunchZone.Body;
+            _bellyTarget = belly ? 1f : 0f;
+
             // ガードで受け止めただけなら、痛みはほぼ無い（少しだけ顔を歪める）
             float peak;
             float hold;
@@ -148,18 +224,34 @@ namespace Ryona.Game
                     _ => 0.45f
                 };
                 hold = result.StunSeconds + HoldExtraSeconds;
+
+                // 腹パンは同じ段でも重く見せる。弱い一撃で表情が薄いと、
+                // 5 連続の腹パンが「軽く小突かれている」ように見える。
+                if (belly)
+                {
+                    peak += BellyPeakBonus;
+                    hold += BellyHoldExtraSeconds;
+                }
             }
 
             // 連続で殴られたときは、強いほうを残す（弱い一撃で上書きしない）
-            _peak = Mathf.Max(_peak, peak);
+            _peak = Mathf.Max(_peak, Mathf.Clamp01(peak));
             _holdUntil = Mathf.Max(_holdUntil, Time.unscaledTime + hold);
 
             Debug.Log($"[Face] hit tier={result.Stagger} blocked={result.Blocked} " +
-                      $"peak={peak:F2} hold={hold:F2}");
+                      $"zone={(belly ? "belly" : "face")} peak={peak:F2} hold={hold:F2}");
         }
 
         void Update()
         {
+            float dt = Time.unscaledDeltaTime;
+
+            // 顔ヒット ⇔ 腹パンの配合は、痛みが引くのと同じ速さで戻す。
+            // 一瞬で切り替えると、連続で殴られたときに顔がパタパタ変わる。
+            // Vrm が無くても進める（テストと状態ログが配合を読めるように）。
+            float blendSeconds = _bellyTarget > _bellyBlend ? RaiseSeconds : ReleaseSeconds;
+            _bellyBlend = Mathf.MoveTowards(_bellyBlend, _bellyTarget, dt / Mathf.Max(0.01f, blendSeconds));
+
             if (Vrm == null)
                 return;
 
@@ -169,11 +261,11 @@ namespace Ryona.Game
             if (PreviewAmount >= 0f)
             {
                 _pain = Mathf.Clamp01(PreviewAmount);
+                if (PreviewBelly >= 0f)
+                    _bellyBlend = Mathf.Clamp01(PreviewBelly);
                 Apply(_pain, 0f);
                 return;
             }
-
-            float dt = Time.unscaledDeltaTime;
 
             UpdateBlink(dt);
             UpdateEyesClosed(dt);
@@ -276,7 +368,7 @@ namespace Ryona.Game
                 if (_blinkT >= BlinkSeconds)
                 {
                     _blinkT = -1f;
-                    _blinkTimer = Random.Range(BlinkIntervalMin, BlinkIntervalMax);
+                    _blinkTimer = UnityEngine.Random.Range(BlinkIntervalMin, BlinkIntervalMax);
                 }
                 return;
             }
@@ -352,13 +444,14 @@ namespace Ryona.Game
 
             amount = Mathf.Clamp01(amount);
             var expression = Vrm.Runtime.Expression;
+            var shape = PainShape.Lerp(FacePain, BellyPain, _bellyBlend);
 
-            expression.SetWeight(AngryKey, PainAngry * amount);
-            expression.SetWeight(SadKey, PainSad * amount);
-            expression.SetWeight(MouthKey, PainMouth * amount);
-            expression.SetWeight(GritKey, PainGrit * amount);
+            expression.SetWeight(AngryKey, shape.Angry * amount);
+            expression.SetWeight(SadKey, shape.Sad * amount);
+            expression.SetWeight(MouthKey, shape.Mouth * amount);
+            expression.SetWeight(GritKey, shape.Grit * amount);
             // 倒れている間は目を閉じる（閉じた目でまばたきが混ざらないよう最大値で取る）
-            float blink = Mathf.Clamp01(PainBlink * amount + BlinkAmount() * blinkScale);
+            float blink = Mathf.Clamp01(shape.Blink * amount + BlinkAmount() * blinkScale);
             expression.SetWeight(BlinkKey, Mathf.Max(blink, _eyeClose));
         }
     }
