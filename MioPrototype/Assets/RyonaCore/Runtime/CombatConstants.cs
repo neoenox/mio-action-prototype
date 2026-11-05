@@ -61,6 +61,28 @@ namespace Ryona
         /// <summary>振りほどいた直後、掴んでいた側がよろける時間（反撃の隙）。</summary>
         public const float GrappleEscapeStun = 0.70f;
 
+        // --- 押さえつけ（Pin）の入口と膝蹴り ---------------------------
+        /// <summary>押さえつけを始める間合いの下限（m）。これより近いと殴る。</summary>
+        public const float PinMinDistance = 0.80f;
+
+        /// <summary>押さえつけを始める間合いの上限（m）。</summary>
+        public const float PinMaxDistance = 1.30f;
+
+        /// <summary>前回の押さえつけから次を始めるまで空ける秒。連発で「何もできない時間」にしない。</summary>
+        public const float PinCooldown = 5.0f;
+
+        /// <summary>押さえつけ中に入れる膝蹴りの回数。</summary>
+        public const int PinKneeCount = 5;
+
+        /// <summary>押さえつけ開始から 1 発目の膝蹴りまでの秒。</summary>
+        public const float PinKneeDelay = 0.35f;
+
+        /// <summary>膝蹴りの間隔（秒）。3 秒の制限時間に 5 発入る。</summary>
+        public const float PinKneeInterval = 0.50f;
+
+        /// <summary>膝蹴り 1 発のダメージ。</summary>
+        public const float PinKneeDamage = 4.0f;
+
         /// <summary>
         /// 掴まれている最中に、掴んでいる相手以外から受けるダメージの倍率。
         /// 1 回の掴みで包囲側に袋叩きにされると HP が半分飛ぶため、追撃は弱める。

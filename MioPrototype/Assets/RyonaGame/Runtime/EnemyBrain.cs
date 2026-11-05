@@ -445,20 +445,9 @@ namespace Ryona.Game
         [Tooltip("正面から押さえつける（巨躯用）。既定は false。テストは -pintest")]
         public bool CanPin;
 
-        [Tooltip("押さえつけを始める間合いの下限（m）")]
-        public float PinMinDistance = 0.90f;
-
-        [Tooltip("押さえつけを始める間合いの上限（m）")]
-        public float PinMaxDistance = 1.30f;
-
-        [Tooltip("前回の押さえつけから次を始めるまで空ける秒。連発で「何もできない時間」にしない")]
-        public float PinCooldown = 10f;
-
-        [Tooltip("押さえつけ開始から膝蹴りを入れるまでの秒。1 回の押さえつけで 1 発だけ")]
-        public float PinKneeDelay = 1.5f;
-
-        [Tooltip("押さえつけ中の膝蹴りのダメージ")]
-        public float PinKneeDamage = 4f;
+        // 間合い・クールダウン・膝蹴りの回数は CombatConstants に置いてある。
+        // ここを public フィールドにすると、シーン（Prototype.unity）に保存された
+        // 古い既定値が読み込まれてコードの値を上書きしてしまう（実測でそうなった）。
 
         /// <summary>次の予備動作を押さえつけにする（デバッグの指示用）。</summary>
         bool _pinOrder;
@@ -469,8 +458,11 @@ namespace Ryona.Game
         /// <summary>前回の押さえつけが始まった時刻。</summary>
         float _lastPinAt = -999f;
 
-        /// <summary>この押さえつけで膝蹴りを入れる時刻（0 = 済み／予定なし）。</summary>
-        float _pinKneeAt;
+        /// <summary>この押さえつけで残っている膝蹴りの回数。</summary>
+        int _pinKneesLeft;
+
+        /// <summary>次の膝蹴りを入れる時刻（0 = 予定なし）。</summary>
+        float _pinNextKneeAt;
 
         /// <summary>押さえつけ中の相手か（掴んでいる本人）。見た目側が姿勢を組むのに使う。</summary>
         public bool IsPinning { get; private set; }
@@ -634,6 +626,7 @@ namespace Ryona.Game
                 if (arg.Equals("-punchzone=face", System.StringComparison.OrdinalIgnoreCase)) ForceZone = PunchZone.Face;
                 else if (arg.Equals("-punchzone=body", System.StringComparison.OrdinalIgnoreCase)) ForceZone = PunchZone.Body;
                 else if (arg.Equals("-hitlog", System.StringComparison.OrdinalIgnoreCase)) _hitLog = true;
+                else if (arg.Equals("-pinlog", System.StringComparison.OrdinalIgnoreCase)) _pinLog = true;
                 else if (arg.Equals("-nofeint", System.StringComparison.OrdinalIgnoreCase))
                 {
                     // 掴みもフェイント対象なので、22% で「掴みの予備動作だけ見せて引く」。
@@ -737,6 +730,8 @@ namespace Ryona.Game
             if (Target == null || Player == null)
                 return;
 
+            if ((Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe) && TryApproachForPin())
+                return;
             if ((Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe) && TryFlank(dt))
                 return;
             if (Phase != EnemyPhase.Chase && Phase != EnemyPhase.Strafe)
@@ -780,10 +775,11 @@ namespace Ryona.Game
                 case EnemyPhase.Recover:
                     _punchVisualTimer = Mathf.Max(0f, _punchVisualTimer - dt);
 
-                    // 押さえつけ中の膝蹴り（1 回だけ）
-                    if (IsPinning && _pinKneeAt > 0f && Time.time >= _pinKneeAt)
+                    // 押さえつけ中の膝蹴り（5 発）
+                    if (IsPinning && _pinKneesLeft > 0 && Time.time >= _pinNextKneeAt)
                     {
-                        _pinKneeAt = 0f;
+                        _pinKneesLeft--;
+                        _pinNextKneeAt = Time.time + Mathf.Max(0.1f, CombatConstants.PinKneeInterval);
                         DoPinKnee();
                     }
 
@@ -794,7 +790,7 @@ namespace Ryona.Game
                             break;
                         IsHolding = false;
                         IsPinning = false;
-                        _pinKneeAt = 0f;
+                        _pinKneesLeft = 0;
                         _timer = 0f;
                     }
                     _timer -= dt;
@@ -1271,8 +1267,24 @@ namespace Ryona.Game
 
             BeginWindup(id);
             _pinPending = pin;
+
+            // 押さえつけが選ばれなかった理由を 1 秒に 1 回だけ出す（-pinlog）
+            if (_pinLog && !pin && CanPin && Time.time >= _pinLogNextAt)
+            {
+                _pinLogNextAt = Time.time + 1f;
+                Debug.Log($"[PinCheck] {name} id={id} dist={distance:F2} " +
+                          $"behind={IsBehindPlayer()} grappled={(_grapple != null && _grapple.IsGrappled)} " +
+                          $"tok={HasAttackToken} sincePin={Time.time - _lastPinAt:F1} " +
+                          $"range={CombatConstants.PinMinDistance:F2}-{CombatConstants.PinMaxDistance:F2}");
+            }
             return true;
         }
+
+        /// <summary>次の [PinCheck] ログまで（-pinlog）。</summary>
+        float _pinLogNextAt;
+
+        /// <summary>押さえつけが選ばれない理由をログに出す（-pinlog）。</summary>
+        bool _pinLog;
 
         /// <summary>
         /// 押さえつけ（Pin）を始めてよいか。正面・間合い・クールダウンを満たすときだけ true。
@@ -1287,7 +1299,7 @@ namespace Ryona.Game
             if (Player == null || Player.IsDead)
                 return false;
 
-            if (distance < PinMinDistance || distance > PinMaxDistance)
+            if (distance < CombatConstants.PinMinDistance || distance > CombatConstants.PinMaxDistance)
                 return false;
 
             if (_grapple == null)
@@ -1309,7 +1321,7 @@ namespace Ryona.Game
                 return false;
 
             // 指示されたとき（-pintest）以外は、連発しないよう間を空ける。
-            if (!_pinOrder && Time.time < _lastPinAt + PinCooldown)
+            if (!_pinOrder && Time.time < _lastPinAt + CombatConstants.PinCooldown)
                 return false;
 
             return true;
@@ -1338,9 +1350,10 @@ namespace Ryona.Game
             _lastPinAt = Time.time;
             _pinOrder = false;
             IsPinning = true;
-            // 押さえつけている間に 1 回だけ膝を入れる（何もできない 3 秒にしない）
-            _pinKneeAt = Time.time + Mathf.Max(0.2f, PinKneeDelay);
-            Debug.Log($"[Pin] begin {name} dist={to.magnitude:F2}");
+            // 押さえつけている間に膝を 5 発入れる（何もできない 3 秒にしない）
+            _pinKneesLeft = Mathf.Max(1, CombatConstants.PinKneeCount);
+            _pinNextKneeAt = Time.time + Mathf.Max(0.1f, CombatConstants.PinKneeDelay);
+            Debug.Log($"[Pin] begin {name} dist={to.magnitude:F2} knees={_pinKneesLeft}");
             return true;
         }
 
@@ -1358,8 +1371,8 @@ namespace Ryona.Game
             {
                 id = "pin_knee",
                 kind = AttackKind.Light,
-                damage = Mathf.Max(0f, PinKneeDamage),
-                postureDamage = 8f,
+                damage = Mathf.Max(0f, CombatConstants.PinKneeDamage),
+                postureDamage = 4f,   // 5 発でも体勢を折り切らない（投げと二重にしない）
                 partDamage = 0f,
                 targetPart = BodyPart.Torso,
                 startupSeconds = 0f,
@@ -1373,7 +1386,7 @@ namespace Ryona.Game
             grapple.KickKnee();
             PlaySfx(SfxId.Impact, 0.85f);
 
-            Debug.Log($"[Pin] knee {name} hp={Player.State.Hp:F0}");
+            Debug.Log($"[Pin] knee {name} left={_pinKneesLeft} hp={Player.State.Hp:F0}");
         }
 
         /// <summary>
@@ -1418,6 +1431,47 @@ namespace Ryona.Game
             }
 
             id = _candidateIds[pick];
+            return true;
+        }
+
+        /// <summary>
+        /// 押さえつけの準備ができているとき、彼女の正面へ回り込む。
+        /// 背後にいると <see cref="CanStartPin"/> が通らず、羽交い締め（Back）ばかりになって
+        /// 「正面から掴まれない」状態になる（実測）。正面 1.0m まで歩いてから攻撃抽選に戻す。
+        /// </summary>
+        bool TryApproachForPin()
+        {
+            if (!CanPin && !_pinOrder)
+                return false;
+
+            if (IsPinning || Player == null || Player.IsDead)
+                return false;
+
+            if (_grapple == null)
+                _grapple = Player.GetComponent<PlayerGrapple>();
+            if (_grapple == null || _grapple.IsGrappled)
+                return false;
+
+            // クールダウン中は回り込まない（ふだんどおり戦う）
+            if (!_pinOrder && Time.time < _lastPinAt + CombatConstants.PinCooldown)
+                return false;
+
+            // すでに正面なら、通常の攻撃抽選（CanStartPin）に任せる
+            if (!IsBehindPlayer())
+                return false;
+
+            Vector3 front = Player.transform.forward;
+            front.y = 0f;
+            if (front.sqrMagnitude < 1e-4f)
+                return false;
+
+            Vector3 target = Player.transform.position + front.normalized * 1.0f;
+            Vector3 dir = target - transform.position;
+            dir.y = 0f;
+            if (dir.sqrMagnitude < 0.04f)
+                return false;
+
+            Move(dir.normalized, MoveSpeed * 0.9f);
             return true;
         }
 

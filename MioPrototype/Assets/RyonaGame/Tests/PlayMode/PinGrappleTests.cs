@@ -152,7 +152,7 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator 押さえつけ中に膝蹴りが1回入る()
+        public IEnumerator 押さえつけ中に膝蹴りが5回入る()
         {
             yield return Load();
 
@@ -173,15 +173,15 @@ namespace Ryona.Tests
 
             Assert.AreEqual(0, hits, "掴んだ瞬間はまだ膝蹴りは入らない");
 
-            // 膝蹴りは開始 1.5 秒後。2 秒待てば 1 回だけ入っている。
-            yield return new WaitForSeconds(2.0f);
+            // 膝蹴りは 0.35 秒後から 0.5 秒間隔で 5 発（最後は 2.35 秒）。
+            yield return new WaitForSeconds(2.6f);
 
-            Assert.AreEqual(1, hits, "押さえつけ中に膝蹴りは 1 回だけ");
-            Assert.Less(_player.State.Hp, hpBefore - 1f, "膝蹴りで HP が減る");
+            Assert.AreEqual(CombatConstants.PinKneeCount, hits, "押さえつけ中に膝蹴りが 5 発入る");
+            Assert.Less(_player.State.Hp, hpBefore - 10f, "膝蹴り 5 発ぶん HP が減る");
 
-            // 3 秒の制限時間を超えても 2 発目は入らない
-            yield return new WaitForSeconds(0.9f);
-            Assert.AreEqual(1, hits, "膝蹴りは 1 回の押さえつけにつき 1 発まで");
+            // 時間切れの投げ（3.0 秒）より前に撃ち終わっている
+            yield return new WaitForSeconds(0.25f);
+            Assert.AreEqual(CombatConstants.PinKneeCount, hits, "3.0 秒の制限時間に 5 発で収まる");
         }
 
         [UnityTest]
