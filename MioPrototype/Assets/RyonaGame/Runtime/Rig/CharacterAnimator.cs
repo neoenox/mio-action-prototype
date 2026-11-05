@@ -1436,6 +1436,37 @@ namespace Ryona.Game
                         break;
                     }
 
+                    // 関節技（腕ひしぎ）。右手首を取られて腕を背後へ極められる。
+                    // 上体は極められた側へねじれ、膝が折れる。左手で相手の手を剥がそうとする。
+                    if (Grapple != null && Grapple.Kind == GrappleKind.ArmLock)
+                    {
+                        hipsOffset.y = StanceHipsY - 0.12f * pull;
+                        hipsOffset.z = StanceHipsZ + 0.03f * pull;
+
+                        torsoPitch = 10f * pull + 5f * strain;
+                        torsoYaw = (28f + 8f * strain) * pull;   // 極められた側へねじる
+                        torsoRoll = -6f * pull;
+
+                        headPitch = -14f * pull;                 // 顔は上げて相手を見る
+                        headYaw = -22f * pull;
+                        headRoll = 6f * pull;
+
+                        // 右手は背後へ引かれ、左手は相手の手首を剥がそうと伸びる。
+                        armRUpper = new Vector3(-0.62f, -0.30f, -0.52f);
+                        armRFore = new Vector3(-0.78f, 0.34f, -0.30f);
+                        float pry = 0.10f * pulse;
+                        armLUpper = new Vector3(0.55f, -0.42f, 0.62f) + new Vector3(0f, pry, 0f);
+                        armLFore = new Vector3(0.10f, 0.30f, 0.92f) + new Vector3(0f, pry, 0f);
+
+                        grip = 1f;
+
+                        footL += StanceFootL;
+                        footR += StanceFootR;
+                        footL += new Vector3(0f, 0f, 0.04f);
+                        footR += new Vector3(0f, 0f, -0.04f);
+                        break;
+                    }
+
                     // 押さえつけ（Pin）。正面から両肩を押され、膝が折れかけて耐える。
                     // 上体は前へ折り、顔は上げて相手を見る（下を向くと前髪で顔が隠れる）。
                     hipsOffset.y = StanceHipsY - 0.18f * pull;
