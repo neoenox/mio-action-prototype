@@ -112,6 +112,8 @@ namespace Ryona.Game
             ReadTagPoseArgs();
             if (GetComponent<BackHoldPose>() == null)
                 gameObject.AddComponent<BackHoldPose>();
+            if (GetComponent<PinHoldPose>() == null)
+                gameObject.AddComponent<PinHoldPose>();
             // 最初のフレームから正しい立ち姿勢にしておく
             // （補間値が 0 のままだと 1 フレームだけ体が潰れて見える）
             Step(0f, true);
@@ -911,6 +913,15 @@ namespace Ryona.Game
                 elbowL = ForceLeftArm.Value.y;
                 armLSpread = ForceLeftArm.Value.z;
             }
+            // 押さえつけ（Pin）: 肩を押し込むので上体を前へ倒し、膝を落として踏ん張る。
+            // 腕は PinHoldPose が彼女の肩へ向けて毎フレーム引き直す。
+            if (Brain != null && Brain.IsPinning)
+            {
+                torsoPitch += 12f;
+                hipsY -= 0.06f;
+                kneeR += 10f;
+                kneeL += 10f;
+            }
             // --- 立ち上がり（倒れた姿勢から起こす） ---------------------
             // 4 つの形を順に通す: 仰向け → 上体を起こす → しゃがみ（膝を深く折る）
             // → 立ち上がる。途中で必ず膝を折って足を体の下へ入れる。
@@ -1656,6 +1667,77 @@ namespace Ryona.Game
             Vector3 pole = target.position - transform.up * 0.55f
                 + player.right * (side * 0.34f)
                 + player.forward * 0.28f;
+            ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);
+        }
+    }
+
+    /// <summary>
+    /// 彼女の姿勢更新後、正面から両肩を押さえつける腕を実際の体格に合わせる。
+    /// 手は肩へ置き、肘は外へ開く（腕を体の前で交差させると「抱きしめている」画になる）。
+    /// 押さえつけ中はカメラも少し寄せる。
+    /// </summary>
+    [DefaultExecutionOrder(21000)]
+    public sealed class PinHoldPose : MonoBehaviour
+    {
+        EnemyFigure _figure;
+        EnemyBrain _brain;
+        ProceduralRig _targetRig;
+        ThirdPersonCamera _camera;
+
+        void LateUpdate()
+        {
+            if (_figure == null) _figure = GetComponent<EnemyFigure>();
+            if (_brain == null) _brain = GetComponent<EnemyBrain>();
+            if (_figure == null || _brain == null || _brain.Player == null)
+                return;
+            if (!_brain.IsPinning)
+                return;
+
+            var hold = _brain.Player.GetComponent<PlayerGrapple>();
+            if (hold == null || !hold.IsGrappled || hold.Captor != _brain || hold.Kind != GrappleKind.Pin)
+                return;
+
+            if (_targetRig == null)
+                _targetRig = _brain.Player.GetComponentInChildren<ProceduralRig>();
+            if (_targetRig == null || !_targetRig.Ready ||
+                _targetRig.LUpperArm == null || _targetRig.RUpperArm == null)
+                return;
+
+            Solve(false, _targetRig.RUpperArm);
+            Solve(true, _targetRig.LUpperArm);
+
+            // 演出中だけ寄る。ヒット時の押し込みと同じ API を使い、毎フレーム押し直す。
+            if (_camera == null)
+                _camera = FindFirstObjectByType<ThirdPersonCamera>();
+            if (_camera != null)
+            {
+                _camera.PushDistance(0.72f, 0.2f);
+                _camera.PushPivot(-0.10f, 0.2f);
+            }
+        }
+
+        void Solve(bool left, Transform shoulder)
+        {
+            var upper = _figure.ShoulderBone(left);
+            var elbow = _figure.ElbowBone(left);
+            var wrist = _figure.WristBone(left);
+            if (upper == null || elbow == null || wrist == null || shoulder == null)
+                return;
+
+            Transform player = _brain.Player.transform;
+
+            // 手は肩の少し内側へ。肩の上へ置くと首を掴んで見える。
+            Vector3 inward = player.position - shoulder.position;
+            inward.y = 0f;
+            inward = inward.sqrMagnitude > 1e-4f ? inward.normalized : player.forward;
+            Vector3 goal = shoulder.position + inward * 0.06f + Vector3.up * 0.02f;
+
+            // 肘は外へ開き、少し下へ。真横から見て「押し込んでいる」形にする。
+            float side = left ? -1f : 1f;
+            Vector3 pole = shoulder.position
+                + transform.right * (side * 0.55f)
+                - Vector3.up * 0.30f;
+
             ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);
         }
     }

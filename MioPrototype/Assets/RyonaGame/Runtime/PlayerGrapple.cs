@@ -12,7 +12,8 @@ namespace Ryona.Game
     ///
     /// 後ろ拘束（<see cref="GrappleKind.Back"/>）は時間切れで解けない。
     /// 連打で振りほどくか、別の敵の腹パンを受けて解放されるかの二択にする。
-    /// 時間切れの投げは、押さえつけ（<see cref="GrappleKind.Pin"/>、未実装）用に残す。
+    /// 押さえつけ（<see cref="GrappleKind.Pin"/>）は 3 秒の制限時間つきで、
+    /// 時間切れになると投げられる（<see cref="Fail"/>）。
     /// </summary>
     [AddComponentMenu("Ryona/Player Grapple")]
     public sealed class PlayerGrapple : MonoBehaviour
@@ -33,7 +34,7 @@ namespace Ryona.Game
         float _heldSeconds;
         float _suppressRemaining;
 
-        /// <summary>押さえつけ（未実装）で掴まれている間の、相手との距離（m）。</summary>
+        /// <summary>押さえつけ（Pin）で掴まれている間の、相手との距離（m）。</summary>
         /// <remarks>
         /// 敵カプセル 0.40 + 彼女 0.30 = 0.70 が体の重ならない下限。
         /// 0.72 にすると敵が <see cref="EnemyBrain"/> 側の下限（0.95）まで押し戻され、
@@ -167,15 +168,22 @@ namespace Ryona.Game
             }
 
             if (InputReader.StrugglePressed())
-            {
-                StrugglePulse = 1f;
+                Struggle();
+        }
 
-                if (_resistance.RegisterInput())
-                {
-                    Escape();
-                    return;
-                }
-            }
+        /// <summary>
+        /// もがく。入力を待たずに呼べるようにしておく（テストと自動操作のため）。
+        /// 必要回数に届いたらその場で振りほどく。
+        /// </summary>
+        public void Struggle()
+        {
+            if (!IsGrappled || IsStruggleSuppressed)
+                return;
+
+            StrugglePulse = 1f;
+
+            if (_resistance.RegisterInput())
+                Escape();
         }
 
         /// <summary>掴まれる。外部（敵の掴み攻撃）から呼ぶ。掴みは背後からだけ。</summary>
@@ -251,13 +259,20 @@ namespace Ryona.Game
 
             dir.Normalize();
 
-            // 羽交い締めは密着させる。押さえつけ（未実装）は腕を伸ばす余地を残す。
+            // 羽交い締めは密着させる。押さえつけは腕を伸ばす余地を残す。
             Vector3 spot = captor.transform.position + dir * (kind == GrappleKind.Back ? BackGrabDistance : GrabDistance);
             spot.y = transform.position.y;
             transform.position = spot;
 
-            // 背中を向けたまま掴まれている（羽交い締め）ので、向きは変えない。
-            // 以前は正面掴みのときだけ相手の方を向かせていたが、正面掴みは廃止した。
+            // 羽交い締めは背中を向けたまま掴まれる（向きは変えない）。
+            // 押さえつけは正面から掴まれるので、相手の方を向かせる。
+            if (kind == GrappleKind.Pin)
+            {
+                Vector3 look = captor.transform.position - spot;
+                look.y = 0f;
+                if (look.sqrMagnitude > 1e-4f)
+                    transform.rotation = Quaternion.LookRotation(look.normalized, Vector3.up);
+            }
         }
 
         void Escape()

@@ -23,6 +23,9 @@ namespace Ryona.Game
         /// <summary>掴ませる位置を背後にする。<c>-grapplefront</c> を付けたときだけ false。</summary>
         public bool BackView = true;
 
+        /// <summary>押さえつけ（Pin）を正面から指示する（<c>-pintest</c>）。</summary>
+        public bool PinTest;
+
         float _timer = 1.5f;
         PlayerGrapple _grapple;
         PlayerStats _player;
@@ -41,6 +44,13 @@ namespace Ryona.Game
         /// <summary><c>-heldpunchburst=</c> の接頭辞。コンボ開始から連番で撮る。</summary>
         string _burstPrefix;
         bool _burstDone;
+
+        /// <summary><c>-pinshot=</c>。押さえつけ開始から 0.3 秒後を撮る。</summary>
+        string _pinShotPath;
+        float _pinShotDelay = -1f;
+
+        /// <summary>押さえつけ開始から撮影までの秒数（<c>-pinshotdelay=</c>）。</summary>
+        float _pinShotDelaySeconds = 0.30f;
         bool _once;
         bool _grabbedOnce;
         bool _hitAfterThrowOnly;
@@ -59,6 +69,9 @@ namespace Ryona.Game
             string heldPunchShotPath = null;
             float heldPunchShotDelay = 0.12f;
             string heldPunchBurst = null;
+            bool pin = false;
+            string pinShotPath = null;
+            float pinShotDelay = 0.30f;
 
             foreach (string a in System.Environment.GetCommandLineArgs())
             {
@@ -88,6 +101,17 @@ namespace Ryona.Game
                     front = true;   // 掴めないことを確かめる用（背後に回れていない状態）
                 else if (string.Equals(a, "-grappleback", System.StringComparison.OrdinalIgnoreCase))
                     back = true;    // 既定と同じ。明示して読みやすくするため残す
+                else if (string.Equals(a, "-pintest", System.StringComparison.OrdinalIgnoreCase))
+                    pin = true;
+                else if (a.StartsWith("-pinshot=", System.StringComparison.OrdinalIgnoreCase))
+                    pinShotPath = a.Substring("-pinshot=".Length);
+                else if (a.StartsWith("-pinshotdelay=", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    if (float.TryParse(a.Substring("-pinshotdelay=".Length),
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out float d) && d >= 0f)
+                        pinShotDelay = d;
+                }
             }
 
             if (!wanted)
@@ -98,17 +122,33 @@ namespace Ryona.Game
             driver.SideView = side;
             // 掴みは背後からしか成立しないので、既定は背後に立たせる。
             // 正面に立たせると「指示した敵が必ず空振りする」実行になってしまう。
-            driver.BackView = back || !front;
+            // 押さえつけ（Pin）は正面からなので、-pintest のときだけ正面に立たせる。
+            driver.PinTest = pin;
+            driver.BackView = !pin && (back || !front);
             driver._hitShotPath = hitShotPath;
             driver._heldPunchShotPath = heldPunchShotPath;
             driver._heldPunchShotDelaySeconds = heldPunchShotDelay;
             driver._burstPrefix = heldPunchBurst;
+            driver._pinShotPath = pinShotPath;
+            driver._pinShotDelaySeconds = pinShotDelay;
             driver._once = once;
             driver._hitAfterThrowOnly = hitAfterThrow;
         }
 
         void Update()
         {
+            // 押さえつけ開始から 0.3 秒後を撮る（-pinshot）
+            if (_pinShotDelay >= 0f)
+            {
+                _pinShotDelay -= Time.unscaledDeltaTime;
+                if (_pinShotDelay <= 0f && _pinShotPath != null)
+                {
+                    ScreenCapture.CaptureScreenshot(_pinShotPath);
+                    Debug.Log($"[PinShot] {_pinShotPath}");
+                    _pinShotPath = null;
+                }
+            }
+
             // 腹パン演出の撮影（演出開始から 0.12 秒後）
             if (_heldPunchShotDelay >= 0f)
             {
@@ -130,7 +170,13 @@ namespace Ryona.Game
                 {
                     if (_player != null && _hitShotPath != null)
                         _player.HitReceived += CaptureHit;
-                    _grapple.Started += kind => { _grabbedOnce = true; Debug.Log($"[GrappleTest] 掴まれた kind={kind}"); };
+                    _grapple.Started += kind =>
+                    {
+                        _grabbedOnce = true;
+                        Debug.Log($"[GrappleTest] 掴まれた kind={kind}");
+                        if (kind == GrappleKind.Pin && _pinShotPath != null)
+                            _pinShotDelay = Mathf.Max(0f, _pinShotDelaySeconds);
+                    };
                     _grapple.Escaped += () => { _holdFinished = true; Debug.Log("[GrappleTest] 振りほどけた"); };
                     _grapple.Failed += () => { _holdFinished = true; Debug.Log("[GrappleTest] 振りほどけなかった"); };
                 }
@@ -203,6 +249,15 @@ namespace Ryona.Game
 
             target.transform.position = spot;
             target.transform.rotation = Quaternion.LookRotation(-place, Vector3.up);
+
+            if (PinTest)
+            {
+                target.QueuePin();
+                _orders++;
+                Debug.Log($"[GrappleTest] #{_orders} {target.name} に押さえつけを指示 dist={best:F2}");
+                return;
+            }
+
             target.QueueGrab();
 
             _orders++;

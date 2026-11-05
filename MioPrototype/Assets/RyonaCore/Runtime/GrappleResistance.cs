@@ -1,8 +1,8 @@
 namespace Ryona
 {
     /// <summary>
-    /// 掴まれ方。正面からの掴みは作らない（はさみ込む形が取れないため、背後からのみ成立する）。
-    /// <see cref="Pin"/>（押さえつけ）は仕様書 §4.3 の 3 種目だが、まだ実装していない。
+    /// 掴まれ方。正面からの「腕を回す掴み」は作らない（はさみ込む形が取れないため、背後からのみ成立する）。
+    /// <see cref="Pin"/>（押さえつけ）は仕様書 §4.3 の 3 種目。正面から肩を押さえる形なので成立する。
     /// </summary>
     public enum GrappleKind
     {
@@ -21,7 +21,13 @@ namespace Ryona
         public GrappleKind Kind { get; }
         public int InputCount { get; private set; }
         public float Progress { get; private set; }
-        public bool IsEscaped => Progress >= 1f;
+
+        /// <summary>
+        /// 必要回数ぶんもがけたか。
+        /// 進捗の足し込み（1/必要数 の累積）で判定すると、12 回必要でも
+        /// 浮動小数の誤差で 0.9999… になり 13 回目まで逃げられない。回数で数える。
+        /// </summary>
+        public bool IsEscaped => InputCount >= (int)System.Math.Ceiling(_requiredInputs);
 
         public GrappleResistance(GrappleKind kind, float requiredInputs)
         {
@@ -36,8 +42,7 @@ namespace Ryona
                 return true;
 
             InputCount++;
-            Progress += 1f / _requiredInputs;
-
+            Progress = InputCount / _requiredInputs;
             if (Progress > 1f)
                 Progress = 1f;
 

@@ -440,6 +440,32 @@ namespace Ryona.Game
         /// <summary>デバッグ用: 次の攻撃を掴みに固定する（-grappletest）。</summary>
         bool _forceGrab;
 
+        // --- 押さえつけ（GrappleKind.Pin） ------------------------------------
+        [Header("押さえつけ（Pin）")]
+        [Tooltip("正面から押さえつける（巨躯用）。既定は false。テストは -pintest")]
+        public bool CanPin;
+
+        [Tooltip("押さえつけを始める間合いの下限（m）")]
+        public float PinMinDistance = 0.90f;
+
+        [Tooltip("押さえつけを始める間合いの上限（m）")]
+        public float PinMaxDistance = 1.30f;
+
+        [Tooltip("前回の押さえつけから次を始めるまで空ける秒。連発で「何もできない時間」にしない")]
+        public float PinCooldown = 10f;
+
+        /// <summary>次の予備動作を押さえつけにする（デバッグの指示用）。</summary>
+        bool _pinOrder;
+
+        /// <summary>この一振りが押さえつけか。予備動作で決めて、当たった瞬間に使う。</summary>
+        bool _pinPending;
+
+        /// <summary>前回の押さえつけが始まった時刻。</summary>
+        float _lastPinAt = -999f;
+
+        /// <summary>押さえつけ中の相手か（掴んでいる本人）。見た目側が姿勢を組むのに使う。</summary>
+        public bool IsPinning { get; private set; }
+
         /// <summary>掴まれ状態を見るためだけに持つプレイヤー側の参照。</summary>
         PlayerGrapple _grapple;
 
@@ -447,6 +473,14 @@ namespace Ryona.Game
         public void QueueGrab()
         {
             _forceGrab = true;
+            _attackReadyAt = Time.time;
+        }
+
+        /// <summary>次の掴みを押さえつけ（Pin）にする。デバッグの駆動用（-pintest）。</summary>
+        public void QueuePin()
+        {
+            _pinOrder = true;
+            _lastPinAt = -999f;   // 指示されたときはクールダウンを無視する
             _attackReadyAt = Time.time;
         }
 
@@ -742,6 +776,7 @@ namespace Ryona.Game
                         if (hold != null && hold.IsGrappled && hold.Captor == this)
                             break;
                         IsHolding = false;
+                        IsPinning = false;
                         _timer = 0f;
                     }
                     _timer -= dt;
@@ -964,7 +999,7 @@ namespace Ryona.Game
                 if (distance <= _run.Range + StrikeTolerance)
                 {
                     if (_run.Id == AttackId.Grab)
-                        grabbed = TryGrab();
+                        grabbed = _pinPending ? TryPin() : TryGrab();
                     else if (PunchTouchesPlayer())
                     {
                         Player.LastHitZone = Zone;
@@ -985,6 +1020,9 @@ namespace Ryona.Game
             // この一振りで予約は使い切る。次の通常攻撃に持ち越さない。
             _bellyPunchPendingHold = 0f;
             _tagPunchPending = false;
+            _pinPending = false;
+            if (!grabbed)
+                IsPinning = false;
 
             _punchVisualTimer = _run.Id == AttackId.Grab ? 0f : 0.18f;
             Phase = EnemyPhase.Recover;
@@ -1159,6 +1197,14 @@ namespace Ryona.Game
             if (Player == null || Player.IsDead)
                 return false;
 
+            if (_grapple == null)
+                _grapple = Player.GetComponent<PlayerGrapple>();
+
+            // 押さえつけ中は、押さえている本人以外は殴らない。
+            // 3 秒のあいだ袋叩きにされると、読ませる演出にならない。
+            if (_grapple != null && _grapple.IsGrappled && _grapple.Kind == GrappleKind.Pin)
+                return false;
+
             // 回り込み直後は反対を向いていることがある。予備動作中は旋回を
             // 固定するため、向き直る前に攻撃を始めると必ず空振りになる。
             Vector3 facingTarget = Player.transform.position - transform.position;
@@ -1180,12 +1226,19 @@ namespace Ryona.Game
 
             AttackId id;
             bool force = _forceGrab;
+            bool pin = false;
 
             bool fromBehind = Vector3.Dot(Player.transform.forward, transform.position - Player.transform.position) < -0.25f;
             if (_grapple != null && !_grapple.IsGrappled && fromBehind && distance <= RangeOf(AttackId.Grab)
                 && Time.time >= _grabReadyAt && (!_hasLast || _lastAttack != AttackId.Grab)
                 && UnityEngine.Random.value < 0.65f)
                 id = AttackId.Grab;
+            else if (CanStartPin(distance))
+            {
+                // 正面からの押さえつけ。当たると 3 秒 / 12 回のレバガチャになる。
+                id = AttackId.Grab;
+                pin = true;
+            }
             else if (force && distance <= RangeOf(AttackId.Grab))
             {
                 _forceGrab = false;
@@ -1199,6 +1252,75 @@ namespace Ryona.Game
                 return false;
 
             BeginWindup(id);
+            _pinPending = pin;
+            return true;
+        }
+
+        /// <summary>
+        /// 押さえつけ（Pin）を始めてよいか。正面・間合い・クールダウンを満たすときだけ true。
+        /// 攻撃トークン（同時攻撃の上限）は呼び出し側の <see cref="TryBeginAttack"/> が見る。
+        /// 背後からは羽交い締め（Back）になるので出さない。
+        /// </summary>
+        public bool CanStartPin(float distance)
+        {
+            if (!CanPin && !_pinOrder)
+                return false;
+
+            if (Player == null || Player.IsDead)
+                return false;
+
+            if (distance < PinMinDistance || distance > PinMaxDistance)
+                return false;
+
+            if (_grapple == null)
+                _grapple = Player.GetComponent<PlayerGrapple>();
+
+            if (_grapple == null || _grapple.IsGrappled)
+                return false;
+
+            // 背後からは羽交い締め。押さえつけは正面からだけ。
+            if (IsBehindPlayer())
+                return false;
+
+            Vector3 to = Player.transform.position - transform.position;
+            to.y = 0f;
+            if (to.sqrMagnitude < 1e-4f)
+                return false;
+
+            if (Vector3.Dot(transform.forward, to.normalized) < 0.6f)
+                return false;
+
+            // 指示されたとき（-pintest）以外は、連発しないよう間を空ける。
+            if (!_pinOrder && Time.time < _lastPinAt + PinCooldown)
+                return false;
+
+            return true;
+        }
+
+        /// <summary>
+        /// 押さえつけが当たったとき。正面から掴んで 3 秒 / 12 回のレバガチャへ移す。
+        /// </summary>
+        bool TryPin()
+        {
+            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            if (grapple == null || grapple.IsGrappled)
+                return false;
+
+            // 判定は抽選（CanStartPin）と同じ向き・間合いで取る。
+            // ここだけ別の条件にすると「選ばれたのに空振りする」角度ができる。
+            if (IsBehindPlayer())
+                return false;
+
+            Vector3 to = Player.transform.position - transform.position;
+            to.y = 0f;
+            if (to.magnitude > RangeOf(AttackId.Grab) + StrikeTolerance)
+                return false;
+
+            grapple.Begin(this, GrappleKind.Pin);
+            _lastPinAt = Time.time;
+            _pinOrder = false;
+            IsPinning = true;
+            Debug.Log($"[Pin] begin {name} dist={to.magnitude:F2}");
             return true;
         }
 
@@ -1310,6 +1432,7 @@ namespace Ryona.Game
             _bellyPunchPendingHold = 0f;
             _tagPunchPending = false;
             _tagPunchSwing = false;
+            _pinPending = false;
 
             AttackData data = DataOf(id);
             if (data != null)

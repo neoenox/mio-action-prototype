@@ -1341,9 +1341,8 @@ namespace Ryona.Game
                         : 1f - Mathf.SmoothStep(0f, 1f, (cycle - 0.62f) / 0.12f);       // 止められて引き戻される
                     float strain = Mathf.Clamp01(ramp * 0.6f + pulse * 0.55f) * pull;
 
-                    // 掴まれた向きで姿勢を作り替える。いまは背后からの羽交い締めだけが起きる
-                    // （正面掴みは廃止）。後ろは「首に回った腕を剥がす」、下の else は
-                    // 押さえつけ（未実装）用に「相手の腕を掴んで押し返す」形を残してある。
+                    // 掴まれた向きで姿勢を作り替える。背後は羽交い締め（Back）、
+                    // それ以外は正面からの押さえつけ（Pin）。
                     if (Grapple != null && Grapple.Kind == GrappleKind.Back)
                     {
                         // 羽交い締め。相手の腕が首に回り、上体を後ろへ反らされる。
@@ -1432,25 +1431,20 @@ namespace Ryona.Game
                         break;
                     }
 
-                    // 引かれて腰が前へ出て、上体が後ろへ反る。
-                    // 腰の高さは構え（StanceHipsY）から数える。絶対値で書くと
-                    // 掴まれた瞬間にかえって腰が上がる（ガードで同じ間違いをしていた）。
-                    // 腰は沈める。沈めないと脚が突っ張って爪先立ちになり、
-                    // 「踏ん張っている」ではなく「持ち上げられている」画になる。
-                    hipsOffset.y = StanceHipsY - 0.045f * pull;
-                    hipsOffset.z = StanceHipsZ + 0.040f * pull;
+                    // 押さえつけ（Pin）。正面から両肩を押され、膝が折れかけて耐える。
+                    // 上体は前へ折り、顔は上げて相手を見る（下を向くと前髪で顔が隠れる）。
+                    hipsOffset.y = StanceHipsY - 0.18f * pull;
+                    hipsOffset.z = StanceHipsZ - 0.02f * pull;
 
-                    torsoPitch = -15f * pull - 7f * strain;
-                    hipsOffset.z -= 0.05f * strain;
+                    torsoPitch = 18f * pull + 6f * strain;
                     torsoYaw = Mathf.Sin(Time.time * 2.2f) * 3f;
                     torsoRoll = 0f;
 
-                    headPitch = 6f * pull;
+                    headPitch = -30f * pull;
                     headYaw = Mathf.Sin(Time.time * 3.4f) * 4f;
                     headRoll = 0f;
 
-                    // 相手の腕を掴む。肘を肩の高さより上げない（上げると「降参」に見える。
-                    // 実測で手が 1.38m＝顔の高さまで上がっていた）。胸の高さで前へ掴む。
+                    // 相手の腕を掴んで剥がそうとする。胸の高さで前へ（肘は肩より上げない）。
                     Vector3 gripUpper = new Vector3(0.20f, -0.42f, 0.88f);
                     Vector3 gripFore = new Vector3(0.05f, 0.10f, 0.99f);
 
@@ -1468,8 +1462,9 @@ namespace Ryona.Game
                     footL += StanceFootL;
                     footR += StanceFootR;
 
-                    // 掴まれて踏ん張る: 後ろ足をさらに引く
-                    footR += new Vector3(0f, 0f, -0.05f);
+                    // 前後に足を割って踏ん張る。両足を揃えると「座っている」画になる。
+                    footL += new Vector3(0f, 0f, 0.04f);
+                    footR += new Vector3(0f, 0f, -0.04f);
                     break;
                 }
 
