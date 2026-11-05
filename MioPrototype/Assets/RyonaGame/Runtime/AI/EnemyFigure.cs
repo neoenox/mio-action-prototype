@@ -1734,7 +1734,9 @@ namespace Ryona.Game
                 return;
 
             var hold = _brain.Player.GetComponent<PlayerGrapple>();
-            if (hold == null || !hold.IsGrappled || hold.Captor != _brain || hold.Kind != GrappleKind.Pin)
+            if (hold == null || !hold.IsGrappled || hold.Captor != _brain)
+                return;
+            if (hold.Kind != GrappleKind.Pin && hold.Kind != GrappleKind.ArmLock)
                 return;
 
             if (_targetRig == null)
@@ -1743,23 +1745,33 @@ namespace Ryona.Game
                 _targetRig.LUpperArm == null || _targetRig.RUpperArm == null)
                 return;
 
-            Solve(false, _targetRig.RLowerArm, _targetRig.RHand);
-            Solve(true, _targetRig.LLowerArm, _targetRig.LHand);
+            // カメラ側の腕は演出で使うので、掴む腕は状況で選ぶ。
+            var cam = Camera.main;
+            bool leftNear = false;
+            if (cam != null)
+            {
+                Vector3 toCam = cam.transform.position - transform.position;
+                toCam.y = 0f;
+                leftNear = Vector3.Dot(toCam, transform.right) < 0f;
+            }
+
+            if (hold.Kind == GrappleKind.ArmLock)
+            {
+                // 関節技: 右手で彼女の右手首、左手で彼女の左肩を押さえる。
+                SolvePoint(false, _targetRig.RHand, 0.02f);
+                SolvePoint(true, _targetRig.LUpperArm, 0.03f);
+            }
+            else
+            {
+                // 押さえつけ: 奥の腕で前腕を掴む（カメラ側は膝・腹パン用に空ける）。
+                if (leftNear)
+                    Solve(false, _targetRig.RLowerArm, _targetRig.RHand);
+                else
+                    Solve(true, _targetRig.LLowerArm, _targetRig.LHand);
+            }
 
             // もがかれるほど彼女の肩が浮く（押し返されている）。手は毎フレーム腕を追う。
             _lift = 0.12f * Mathf.Clamp01(hold.Progress);
-
-            if (hold.KneePulse > 0.02f)
-            {
-                Vector3 kneeR = _figure.KneeBone(false).position;
-                Vector3 kneeL = _figure.KneeBone(true).position;
-                Vector3 belly = EnemyBrain.PunchTarget(_brain.Player, PunchZone.Body, 0.22f);
-                Debug.Log($"[KneeGap] p={hold.KneePulse:F2} " +
-                          $"R={Vector3.Distance(kneeR, belly):F2} L={Vector3.Distance(kneeL, belly):F2} " +
-                          $"kneeR=({kneeR.x:F2},{kneeR.y:F2},{kneeR.z:F2}) " +
-                          $"kneeL=({kneeL.x:F2},{kneeL.y:F2},{kneeL.z:F2}) " +
-                          $"belly=({belly.x:F2},{belly.y:F2},{belly.z:F2})");
-            }
 
             // 演出中だけ寄る。HoldFocus は「毎フレーム呼んで構図を保つ」API で、
             // PushDistance のように減衰で薄まらない（実測: Push だと 0.28 を指定しても 0.37 までしか寄らなかった）。
@@ -1792,10 +1804,10 @@ namespace Ryona.Game
                 if (_pinLog && Time.time >= _pinCamLogAt)
                 {
                     _pinCamLogAt = Time.time + 0.2f;
-                    var cam = _camera.GetComponent<Camera>();
-                    if (cam != null)
+                    var viewCam = _camera.GetComponent<Camera>();
+                    if (viewCam != null)
                     {
-                        Vector3 v = cam.WorldToViewportPoint(player.position + Vector3.up * 1.0f);
+                        Vector3 v = viewCam.WorldToViewportPoint(player.position + Vector3.up * 1.0f);
                         Debug.Log($"[PinCenter] near={Time.time < _kneeCamUntil} " +
                                   $"vp=({v.x:F2},{v.y:F2}) focusX={x:F2} beltX={_camera.CurrentX:F2}");
                     }
@@ -1850,6 +1862,24 @@ namespace Ryona.Game
             float side = left ? -1f : 1f;
             Vector3 pole = grip
                 + transform.right * (side * 0.55f)
+                - Vector3.up * 0.30f;
+
+            ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);
+        }
+
+        /// <summary>指定した一点（彼女の手首や肩）を掴む。関節技で使う。</summary>
+        void SolvePoint(bool left, Transform target, float up)
+        {
+            var upper = _figure.ShoulderBone(left);
+            var elbow = _figure.ElbowBone(left);
+            var wrist = _figure.WristBone(left);
+            if (upper == null || elbow == null || wrist == null || target == null)
+                return;
+
+            Vector3 goal = target.position + Vector3.up * up + _lift * Vector3.up;
+            float side = left ? -1f : 1f;
+            Vector3 pole = goal
+                + transform.right * (side * 0.50f)
                 - Vector3.up * 0.30f;
 
             ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);

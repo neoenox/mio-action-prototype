@@ -52,6 +52,24 @@ namespace Ryona
         /// <summary>押さえつけ（仕様書 §4.3 の 3 種目。まだ実装していない）の入力回数。</summary>
         public const int MashBasePin = 12;
 
+        /// <summary>関節技（腕ひしぎ）を振りほどくのに必要な入力回数。押さえつけより重い。</summary>
+        public const int MashBaseArmLock = 14;
+
+        // --- 関節技（ArmLock） ------------------------------------------
+        /// <summary>関節技が入る間合い（m）。</summary>
+        public const float ArmLockMinDistance = 0.55f;
+        public const float ArmLockMaxDistance = 1.15f;
+
+        /// <summary>関節技を次に出すまでのクールダウン（秒）。</summary>
+        public const float ArmLockCooldown = 6.0f;
+
+        /// <summary>関節を極められている間、何秒ごとに腕へダメージが入るか。</summary>
+        public const float ArmLockTickSeconds = 0.8f;
+
+        /// <summary>関節技の 1 ティックあたりのダメージ（HP / 腕）。</summary>
+        public const float ArmLockTickDamage = 2.0f;
+        public const float ArmLockTickPartDamage = 3.0f;
+
         /// <summary>
         /// 押さえつけ（<see cref="GrappleKind.Pin"/>）で掴まれてから投げられるまでの猶予（秒）。
         /// 掴まれてすぐ膝蹴りを始めず、しばらくそのまま押さえる（脱出する猶予）。

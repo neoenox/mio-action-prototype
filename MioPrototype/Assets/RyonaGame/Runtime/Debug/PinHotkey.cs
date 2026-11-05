@@ -17,6 +17,9 @@ namespace Ryona.Game
         PlayerStats _player;
         float _autoAt = -1f;
 
+        /// <summary><c>-armlocknow</c> で 1 回だけ関節技を指示する時刻。</summary>
+        float _autoArmLockAt = -1f;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
         {
@@ -24,10 +27,13 @@ namespace Ryona.Game
                 return;
 
             bool auto = false;
+            bool autoLock = false;
             foreach (string a in System.Environment.GetCommandLineArgs())
             {
                 if (string.Equals(a, "-pinnow", System.StringComparison.OrdinalIgnoreCase))
                     auto = true;
+                else if (string.Equals(a, "-armlocknow", System.StringComparison.OrdinalIgnoreCase))
+                    autoLock = true;
             }
 
             var go = new GameObject("Pin Hotkey");
@@ -36,6 +42,11 @@ namespace Ryona.Game
             {
                 hotkey._autoAt = Time.time + 1.5f;
                 Debug.Log("[Pin] -pinnow: 1.5 秒後に押さえつけを 1 回指示します");
+            }
+            if (autoLock)
+            {
+                hotkey._autoArmLockAt = Time.time + 1.5f;
+                Debug.Log("[Pin] -armlocknow: 1.5 秒後に関節技を 1 回指示します");
             }
         }
 
@@ -47,14 +58,21 @@ namespace Ryona.Game
             if (_autoAt > 0f && Time.time >= _autoAt)
             {
                 _autoAt = -1f;
-                TryOrderPin();
+                TryOrderGrapple(true);
+            }
+            if (_autoArmLockAt > 0f && Time.time >= _autoArmLockAt)
+            {
+                _autoArmLockAt = -1f;
+                TryOrderGrapple(false);
             }
 
             if (InputReader.PinTestPressed())
-                TryOrderPin();
+                TryOrderGrapple(true);
+            if (InputReader.ArmLockTestPressed())
+                TryOrderGrapple(false);
         }
 
-        void TryOrderPin()
+        void TryOrderGrapple(bool pin)
         {
             if (_player == null || _player.IsDead)
                 return;
@@ -93,10 +111,19 @@ namespace Ryona.Game
             spot.y = best.transform.position.y;
             best.transform.position = spot;
             best.transform.rotation = Quaternion.LookRotation(-forward, Vector3.up);
-            best.CanPin = true;
-            best.QueuePin();
 
-            Debug.Log($"[Pin] ホットキー: {best.name} に押さえつけを指示");
+            if (pin)
+            {
+                best.CanPin = true;
+                best.QueuePin();
+                Debug.Log($"[Pin] ホットキー: {best.name} に押さえつけを指示");
+            }
+            else
+            {
+                best.CanArmLock = true;
+                best.QueueArmLock();
+                Debug.Log($"[Pin] ホットキー: {best.name} に関節技を指示");
+            }
         }
     }
 }

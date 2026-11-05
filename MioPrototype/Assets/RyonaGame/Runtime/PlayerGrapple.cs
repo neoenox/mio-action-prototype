@@ -34,6 +34,9 @@ namespace Ryona.Game
         float _heldSeconds;
         float _suppressRemaining;
 
+        /// <summary>関節技の次のダメージまでの残り秒。</summary>
+        float _armLockTick;
+
         /// <summary>押さえつけ（Pin）で掴まれている間の、相手との距離（m）。</summary>
         /// <remarks>
         /// 敵カプセル 0.40 + 彼女 0.30 = 0.70 が体の重ならない下限。
@@ -194,6 +197,18 @@ namespace Ryona.Game
                 }
             }
 
+            // 関節技は時間切れが無い代わりに、極められている間ずっと腕へダメージが入る。
+            // 逃げない限り削られ続けるので、連打するしかない。
+            if (Kind == GrappleKind.ArmLock)
+            {
+                _armLockTick -= Time.deltaTime;
+                if (_armLockTick <= 0f)
+                {
+                    _armLockTick = CombatConstants.ArmLockTickSeconds;
+                    ApplyArmLockTick();
+                }
+            }
+
             if (InputReader.StrugglePressed())
                 Struggle();
         }
@@ -236,6 +251,7 @@ namespace Ryona.Game
                 : float.PositiveInfinity;
             _heldSeconds = 0f;
             _suppressRemaining = 0f;
+            _armLockTick = CombatConstants.ArmLockTickSeconds;
             IsGrappled = true;
             StrugglePulse = 0f;
             KneePulse = 0f;
@@ -287,14 +303,17 @@ namespace Ryona.Game
 
             dir.Normalize();
 
-            // 羽交い締めは密着させる。押さえつけは腕を伸ばす余地を残す。
-            Vector3 spot = captor.transform.position + dir * (kind == GrappleKind.Back ? BackGrabDistance : GrabDistance);
+            // 羽交い締めは密着させる。押さえつけ・関節技は腕を伸ばす余地を残す。
+            float gap = kind == GrappleKind.Back ? BackGrabDistance
+                : kind == GrappleKind.ArmLock ? 0.52f
+                : GrabDistance;
+            Vector3 spot = captor.transform.position + dir * gap;
             spot.y = transform.position.y;
             transform.position = spot;
 
             // 羽交い締めは背中を向けたまま掴まれる（向きは変えない）。
-            // 押さえつけは正面から掴まれるので、相手の方を向かせる。
-            if (kind == GrappleKind.Pin)
+            // 押さえつけ・関節技は正面から掴まれるので、相手の方を向かせる。
+            if (kind == GrappleKind.Pin || kind == GrappleKind.ArmLock)
             {
                 Vector3 look = captor.transform.position - spot;
                 look.y = 0f;
@@ -324,9 +343,33 @@ namespace Ryona.Game
             Escaped?.Invoke();
         }
 
-        /// <summary>押さえつけ（Pin）の時間切れ。後ろ拘束では呼ばない。</summary>
-        void Fail()
+        /// <summary>関節技の 1 ティック。腕に少しずつダメージが入る（逃げないと壊れる）。</summary>
+        void ApplyArmLockTick()
         {
+            if (Stats == null || Stats.IsDead)
+                return;
+
+            var data = new AttackData
+            {
+                id = "arm_lock",
+                kind = AttackKind.Grapple,
+                damage = CombatConstants.ArmLockTickDamage,
+                postureDamage = 3f,
+                partDamage = CombatConstants.ArmLockTickPartDamage,
+                targetPart = BodyPart.Arms,
+                startupSeconds = 0f,
+                activeSeconds = 0f,
+                recoverySeconds = 0f
+            };
+
+            // 関節技は「殴られた場所」ではない。直前の腹/顔が残っていると折れ方をする。
+            Stats.LastHitZone = null;
+            Stats.ReceiveHit(Captor != null ? Captor.State : null,
+                data, Captor != null ? Captor.transform : null);
+        }
+
+        /// <summary>押さえつけ（Pin）の時間切れ。後ろ拘束では呼ばない。</summary>
+        void Fail()        {
             var captor = Captor;
 
             int inputs = InputCount;
