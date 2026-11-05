@@ -292,6 +292,17 @@ namespace Ryona.Game
 #endif
         }
 
+        /// <summary>押さえつけの確認用（P キー）。新 Input System 専用。</summary>
+        public static bool PinTestPressed()
+        {
+#if ENABLE_INPUT_SYSTEM
+            var kb = UnityEngine.InputSystem.Keyboard.current;
+            return kb != null && kb.pKey.wasPressedThisFrame;
+#else
+            return false;
+#endif
+        }
+
         static bool KeyDown(KeyCode key)
         {
 #if ENABLE_INPUT_SYSTEM

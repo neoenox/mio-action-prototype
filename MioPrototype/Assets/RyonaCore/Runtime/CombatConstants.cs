@@ -54,9 +54,10 @@ namespace Ryona
 
         /// <summary>
         /// 押さえつけ（<see cref="GrappleKind.Pin"/>）で掴まれてから投げられるまでの猶予（秒）。
+        /// 掴まれてすぐ膝蹴りを始めず、しばらくそのまま押さえる（脱出する猶予）。
         /// 後ろ拘束（<see cref="GrappleKind.Back"/>）は時間切れで解けないので、この値は使わない。
         /// </summary>
-        public const float GrappleLimitSeconds = 3.0f;
+        public const float GrappleLimitSeconds = 4.2f;
 
         /// <summary>振りほどいた直後、掴んでいた側がよろける時間（反撃の隙）。</summary>
         public const float GrappleEscapeStun = 0.70f;
@@ -69,16 +70,16 @@ namespace Ryona
         public const float PinMaxDistance = 1.30f;
 
         /// <summary>前回の押さえつけから次を始めるまで空ける秒。連発で「何もできない時間」にしない。</summary>
-        public const float PinCooldown = 5.0f;
+        public const float PinCooldown = 2.5f;
 
         /// <summary>押さえつけ中に入れる膝蹴りの回数。</summary>
         public const int PinKneeCount = 5;
 
-        /// <summary>押さえつけ開始から 1 発目の膝蹴りまでの秒。</summary>
-        public const float PinKneeDelay = 0.35f;
+        /// <summary>押さえつけ開始から 1 発目の膝蹴りまでの秒。しばらく押さえたままにして脱出の猶予を作る。</summary>
+        public const float PinKneeDelay = 1.1f;
 
-        /// <summary>膝蹴りの間隔（秒）。3 秒の制限時間に 5 発入る。</summary>
-        public const float PinKneeInterval = 0.50f;
+        /// <summary>膝蹴りの間隔（秒）。タッグ腹パンと同じテンポ。</summary>
+        public const float PinKneeInterval = 0.55f;
 
         /// <summary>膝蹴り 1 発のダメージ。</summary>
         public const float PinKneeDamage = 4.0f;

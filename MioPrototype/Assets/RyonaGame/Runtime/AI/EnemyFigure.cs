@@ -1771,12 +1771,15 @@ namespace Ryona.Game
                     _kneeCamUntil = Time.time + 0.30f;
 
                 Transform player = _brain.Player.transform;
-                float x = player.position.x;
+                float facing = player.forward.x;
+                float sign = Mathf.Abs(facing) > 0.1f ? Mathf.Sign(facing) : 1f;
+
+                // 画面の中心を彼女の正面方向へ少しずらす。彼女が画面の左（逆向きなら右）へ寄り、
+                // 正面に立つ相手と膝が入る余白ができる。
+                float x = player.position.x + sign * 0.30f;
 
                 if (Time.time < _kneeCamUntil)
                 {
-                    float facing = player.forward.x;
-                    float sign = Mathf.Abs(facing) > 0.1f ? Mathf.Sign(facing) : 1f;
                     // 秒数は腹パンと同じ 0.5。短くすると減衰で寄りが薄まる
                     // （実測: 0.12 秒だと 0.28 指定でも実効 0.46 までしか寄らない）。
                     _camera.HoldFocus(KneeCamDistance, KneeCamPivot, x, 0.5f, KneeCamPitch, KneeCamYaw * sign);
@@ -1785,18 +1788,46 @@ namespace Ryona.Game
                 {
                     _camera.HoldFocus(0.72f, -0.10f, x, 0.5f);
                 }
+
+                if (_pinLog && Time.time >= _pinCamLogAt)
+                {
+                    _pinCamLogAt = Time.time + 0.2f;
+                    var cam = _camera.GetComponent<Camera>();
+                    if (cam != null)
+                    {
+                        Vector3 v = cam.WorldToViewportPoint(player.position + Vector3.up * 1.0f);
+                        Debug.Log($"[PinCenter] near={Time.time < _kneeCamUntil} " +
+                                  $"vp=({v.x:F2},{v.y:F2}) focusX={x:F2} beltX={_camera.CurrentX:F2}");
+                    }
+                }
             }
         }
 
-        // 膝蹴りの演出カメラ。寄りとピボットは腹パンと同じ値（同じ秒数で押さえる）。
-        // 押さえつけは相手が正面に立つので、ヨーだけは真横寄りの -15 にする。
+        // 膝蹴りの演出カメラ。寄りは腹パンと同じ 0.28 だが、彼女は前傾しているので
+        // 画面の中心を胸（+0.27）ではなく体の真ん中あたり（+0.05）へ下げ、
+        // 頭から腰までが入るようにする。
         const float KneeCamDistance = 0.28f;
-        const float KneeCamPivot = 0.27f;
-        const float KneeCamPitch = 6f;
-        const float KneeCamYaw = -15f;
+        const float KneeCamPivot = 0.05f;
+        const float KneeCamPitch = 2f;
+        const float KneeCamYaw = -32f;
 
         /// <summary>膝蹴りの寄りを保つ終了時刻。</summary>
         float _kneeCamUntil;
+
+        /// <summary>次の [PinCenter] ログまで（一時診断）。</summary>
+        float _pinCamLogAt;
+
+        /// <summary>構図の中心をログに出す（-pinlog）。</summary>
+        bool _pinLog;
+
+        void Awake()
+        {
+            foreach (string a in System.Environment.GetCommandLineArgs())
+            {
+                if (string.Equals(a, "-pinlog", System.StringComparison.OrdinalIgnoreCase))
+                    _pinLog = true;
+            }
+        }
 
         void Solve(bool left, Transform lowerArm, Transform hand)
         {
