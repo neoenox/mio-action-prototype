@@ -1743,10 +1743,10 @@ namespace Ryona.Game
                 _targetRig.LUpperArm == null || _targetRig.RUpperArm == null)
                 return;
 
-            Solve(false, _targetRig.RUpperArm);
-            Solve(true, _targetRig.LUpperArm);
+            Solve(false, _targetRig.RLowerArm, _targetRig.RHand);
+            Solve(true, _targetRig.LLowerArm, _targetRig.LHand);
 
-            // もがかれるほど彼女の肩が浮く（押し返されている）。手は毎フレーム肩を追う。
+            // もがかれるほど彼女の肩が浮く（押し返されている）。手は毎フレーム腕を追う。
             _lift = 0.12f * Mathf.Clamp01(hold.Progress);
 
             if (hold.KneePulse > 0.02f)
@@ -1761,61 +1761,63 @@ namespace Ryona.Game
                           $"belly=({belly.x:F2},{belly.y:F2},{belly.z:F2})");
             }
 
-            // 演出中だけ寄る。ヒット時の押し込みと同じ API を使い、毎フレーム押し直す。
+            // 演出中だけ寄る。HoldFocus は「毎フレーム呼んで構図を保つ」API で、
+            // PushDistance のように減衰で薄まらない（実測: Push だと 0.28 を指定しても 0.37 までしか寄らなかった）。
             if (_camera == null)
                 _camera = FindFirstObjectByType<ThirdPersonCamera>();
             if (_camera != null)
             {
-                // 膝蹴り中は腹パンと同じ寄りの構図にする（押さえつけ自体は少し引いた画）。
                 if (hold.KneePulse > 0f)
                     _kneeCamUntil = Time.time + 0.30f;
 
+                Transform player = _brain.Player.transform;
+                float x = player.position.x;
+
                 if (Time.time < _kneeCamUntil)
                 {
-                    Transform player = _brain.Player.transform;
                     float facing = player.forward.x;
                     float sign = Mathf.Abs(facing) > 0.1f ? Mathf.Sign(facing) : 1f;
-
-                    _camera.PushDistance(KneeCamDistance, 0.25f);
-                    _camera.PushPivot(KneeCamPivot, 0.25f);
-                    _camera.PushFocus(player.position.x, 0.25f, KneeCamPitch, KneeCamYaw * sign);
+                    // 秒数は腹パンと同じ 0.5。短くすると減衰で寄りが薄まる
+                    // （実測: 0.12 秒だと 0.28 指定でも実効 0.46 までしか寄らない）。
+                    _camera.HoldFocus(KneeCamDistance, KneeCamPivot, x, 0.5f, KneeCamPitch, KneeCamYaw * sign);
                 }
                 else
                 {
-                    _camera.PushDistance(0.72f, 0.2f);
-                    _camera.PushPivot(-0.10f, 0.2f);
+                    _camera.HoldFocus(0.72f, -0.10f, x, 0.5f);
                 }
             }
         }
 
-        // 膝蹴りの演出カメラ。寄りの強さは腹パンと同じ 0.28。
-        // 押さえつけは相手が正面に立つので、腹パンと同じヨー -40 だと相手の体で隠れる。
-        // ほぼ真横（-15）から撮り、少しだけ上から覗く。
+        // 膝蹴りの演出カメラ。寄りとピボットは腹パンと同じ値（同じ秒数で押さえる）。
+        // 押さえつけは相手が正面に立つので、ヨーだけは真横寄りの -15 にする。
         const float KneeCamDistance = 0.28f;
-        const float KneeCamPivot = 0.22f;
+        const float KneeCamPivot = 0.27f;
         const float KneeCamPitch = 6f;
         const float KneeCamYaw = -15f;
 
         /// <summary>膝蹴りの寄りを保つ終了時刻。</summary>
         float _kneeCamUntil;
 
-        void Solve(bool left, Transform shoulder)
+        void Solve(bool left, Transform lowerArm, Transform hand)
         {
             var upper = _figure.ShoulderBone(left);
             var elbow = _figure.ElbowBone(left);
             var wrist = _figure.WristBone(left);
-            if (upper == null || elbow == null || wrist == null || shoulder == null)
+            if (upper == null || elbow == null || wrist == null || lowerArm == null)
                 return;
 
             Transform player = _brain.Player.transform;
 
-            // 手は彼女の肩へ。内側（首側）へ寄せると「首を掴んでいる」画になるので、
-            // 肩の関節の少し上へ置く。
-            Vector3 goal = shoulder.position + Vector3.up * 0.03f + _lift * Vector3.up;
+            // 手は彼女の前腕（手首寄り）を掴む。肩を押さえるより「押さえ込んでいる」形になり、
+            // 彼女が腕を振りほどこうとする動きとも噛み合う。
+            Vector3 grip = hand != null
+                ? Vector3.Lerp(lowerArm.position, hand.position, 0.75f)
+                : lowerArm.position;
+            Vector3 goal = grip + Vector3.up * 0.02f + _lift * Vector3.up;
 
             // 肘は外へ開き、少し下へ。真横から見て「押し込んでいる」形にする。
             float side = left ? -1f : 1f;
-            Vector3 pole = shoulder.position
+            Vector3 pole = grip
                 + transform.right * (side * 0.55f)
                 - Vector3.up * 0.30f;
 
