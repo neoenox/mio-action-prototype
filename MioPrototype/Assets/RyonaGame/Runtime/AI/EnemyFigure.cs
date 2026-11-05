@@ -1788,12 +1788,12 @@ namespace Ryona.Game
             }
         }
 
-        // 膝蹴りの演出カメラ（タッグ腹パンと同じ「寄って斜め前から」の作り。
-        // 膝は腹の高さなので、腹パンより少し引いてピボットを下げ、膝と顔を同じ画に入れる）
-        const float KneeCamDistance = 0.38f;
-        const float KneeCamPivot = 0.12f;
-        const float KneeCamPitch = -8f;
-        const float KneeCamYaw = -40f;
+        // 膝蹴りの演出カメラ。腹パンと同じ「寄って上から」だが、押さえつけは相手が正面に立つ。
+        // 正面寄り（ヨー -40 以上）に置くと相手の体で隠れるので、ほぼ真横から撮る。
+        const float KneeCamDistance = 0.30f;
+        const float KneeCamPivot = 0.22f;
+        const float KneeCamPitch = 6f;
+        const float KneeCamYaw = -15f;
 
         /// <summary>膝蹴りの寄りを保つ終了時刻。</summary>
         float _kneeCamUntil;
@@ -1808,11 +1808,9 @@ namespace Ryona.Game
 
             Transform player = _brain.Player.transform;
 
-            // 手は肩の少し内側へ。肩の上へ置くと首を掴んで見える。
-            Vector3 inward = player.position - shoulder.position;
-            inward.y = 0f;
-            inward = inward.sqrMagnitude > 1e-4f ? inward.normalized : player.forward;
-            Vector3 goal = shoulder.position + inward * 0.06f + Vector3.up * (0.02f + _lift);
+            // 手は彼女の肩へ。内側（首側）へ寄せると「首を掴んでいる」画になるので、
+            // 肩の関節の少し上へ置く。
+            Vector3 goal = shoulder.position + Vector3.up * 0.03f + _lift * Vector3.up;
 
             // 肘は外へ開き、少し下へ。真横から見て「押し込んでいる」形にする。
             float side = left ? -1f : 1f;
