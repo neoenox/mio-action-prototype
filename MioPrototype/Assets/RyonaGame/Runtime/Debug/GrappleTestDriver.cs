@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 namespace Ryona.Game
@@ -33,6 +34,13 @@ namespace Ryona.Game
         string _hitShotPath;
         string _heldPunchShotPath;
         float _heldPunchShotDelay = -1f;
+
+        /// <summary>腹パン開始から撮影までの秒数（`-heldpunchshotdelay=` で差し替え）。</summary>
+        float _heldPunchShotDelaySeconds = 0.12f;
+
+        /// <summary><c>-heldpunchburst=</c> の接頭辞。コンボ開始から連番で撮る。</summary>
+        string _burstPrefix;
+        bool _burstDone;
         bool _once;
         bool _grabbedOnce;
         bool _hitAfterThrowOnly;
@@ -49,6 +57,8 @@ namespace Ryona.Game
             bool hitAfterThrow = false;
             string hitShotPath = null;
             string heldPunchShotPath = null;
+            float heldPunchShotDelay = 0.12f;
+            string heldPunchBurst = null;
 
             foreach (string a in System.Environment.GetCommandLineArgs())
             {
@@ -61,6 +71,15 @@ namespace Ryona.Game
                     hitShotPath = a.Substring("-enemyhitshot=".Length);
                 else if (a.StartsWith("-heldpunchshot=", System.StringComparison.OrdinalIgnoreCase))
                     heldPunchShotPath = a.Substring("-heldpunchshot=".Length);
+                else if (a.StartsWith("-heldpunchburst=", System.StringComparison.OrdinalIgnoreCase))
+                    heldPunchBurst = a.Substring("-heldpunchburst=".Length);
+                else if (a.StartsWith("-heldpunchshotdelay=", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    if (float.TryParse(a.Substring("-heldpunchshotdelay=".Length),
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out float delay) && delay >= 0f)
+                        heldPunchShotDelay = delay;
+                }
                 else if (string.Equals(a, "-grappletest", System.StringComparison.OrdinalIgnoreCase))
                     wanted = true;
                 else if (string.Equals(a, "-grappleside", System.StringComparison.OrdinalIgnoreCase))
@@ -82,6 +101,8 @@ namespace Ryona.Game
             driver.BackView = back || !front;
             driver._hitShotPath = hitShotPath;
             driver._heldPunchShotPath = heldPunchShotPath;
+            driver._heldPunchShotDelaySeconds = heldPunchShotDelay;
+            driver._burstPrefix = heldPunchBurst;
             driver._once = once;
             driver._hitAfterThrowOnly = hitAfterThrow;
         }
@@ -192,8 +213,42 @@ namespace Ryona.Game
         {
             Debug.Log("[GrappleTest] 腹パン演出 開始");
 
+            if (_burstPrefix != null && !_burstDone)
+            {
+                _burstDone = true;
+                StartCoroutine(BurstShots());
+            }
+
             if (_heldPunchShotPath != null && _heldPunchShotDelay < 0f)
-                _heldPunchShotDelay = 0.12f;
+                _heldPunchShotDelay = Mathf.Max(0f, _heldPunchShotDelaySeconds);
+        }
+
+        /// <summary>
+        /// コンボ開始から 0.05 秒ごとに連番で撮る（<c>-heldpunchburst=&lt;接頭辞&gt;</c>）。
+        /// 1 枚ずつ別プロセスで撮ると位相がずれて、パンチの振りが確認できないため。
+        /// </summary>
+        IEnumerator BurstShots()
+        {
+            const int count = 30;
+            const float interval = 0.05f;
+
+            string dir = System.IO.Path.GetDirectoryName(_burstPrefix);
+            string name = System.IO.Path.GetFileNameWithoutExtension(_burstPrefix);
+
+            float next = Time.unscaledTime;
+            for (int i = 0; i < count; i++)
+            {
+                while (Time.unscaledTime < next)
+                    yield return null;
+
+                string file = System.IO.Path.Combine(dir, $"{name}_{i:00}.png");
+                ScreenCapture.CaptureScreenshot(file);
+                next += interval;
+            }
+
+            Debug.Log($"[GrappleTest] burst {count} 枚 {_burstPrefix}_XX.png");
+            yield return new WaitForSecondsRealtime(0.6f);
+            Application.Quit();
         }
 
         void CaptureHit(HitResult result)
