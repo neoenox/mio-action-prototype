@@ -68,8 +68,8 @@ namespace Ryona.Game
         public float CameraYawOffset = -40f;
 
         [Header("Aim")]
-        [Tooltip("腹パン役を立たせる、プレイヤーからの前方距離（m）")]
-        public float AttackerDistance = 0.98f;
+        [Tooltip("腹パン役を立たせる、プレイヤーの腹からの前方距離（m）")]
+        public float AttackerDistance = 0.74f;
 
         [Tooltip("（未使用）ベルトでは敵の z が毎フレーム彼女に合わせられるため、側方オフセットは効かない")]
         public float AttackerSideOffset = 0.68f;
@@ -502,7 +502,7 @@ namespace Ryona.Game
             if (_stats == null)
                 return Vector3.zero;
 
-            Vector3 belly = EnemyBrain.PunchTarget(_stats, PunchZone.Body, 0.28f);
+            Vector3 belly = EnemyBrain.PunchTarget(_stats, PunchZone.Body, 0.22f);
             return new Vector3(belly.x, _stats.transform.position.y, belly.z);
         }
 

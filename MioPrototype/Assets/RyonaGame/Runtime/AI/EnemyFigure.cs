@@ -829,10 +829,27 @@ namespace Ryona.Game
                 && (phase == EnemyPhase.Windup || phase == EnemyPhase.Attack || phase == EnemyPhase.Recover))
             {
                 float bw = Brain.PunchPoseWeight;
-                torsoPitch -= 16f * bw;
-                hipsY -= 0.10f * bw;
-                kneeR += 14f * bw;
-                kneeL += 14f * bw;
+                if (Brain.IsBellyPunch)
+                {
+                    // タッグ腹パン。彼女は「く」の字に折れて腹が下がっているので、
+                    // 立ったまま腕を下ろすと「手を添えている」画になる。
+                    // ただし深くしゃがむと「座っている」画になるので、
+                    // 前足に乗るランジで肩だけを腹の高さへ落とす。
+                    torsoPitch -= 15f * bw;
+                    hipsY -= 0.24f * bw;
+                    kneeR += 55f * bw;
+                    kneeL += 18f * bw;
+                    // 前後に足を割る。両足を揃えて沈むと「座っている」画になる。
+                    legRPitch -= 22f * bw;
+                    legLPitch += 16f * bw;
+                }
+                else
+                {
+                    torsoPitch -= 16f * bw;
+                    hipsY -= 0.10f * bw;
+                    kneeR += 14f * bw;
+                    kneeL += 14f * bw;
+                }
             }
             // --- 立ち上がり（倒れた姿勢から起こす） ---------------------
             // 4 つの形を順に通す: 仰向け → 上体を起こす → しゃがみ（膝を深く折る）
@@ -1532,14 +1549,19 @@ namespace Ryona.Game
 
             // 拳は顔なら手前の表面で止める。腹は「めり込む」ように少し内側へ入れる
             // （0.11m 手前で止めると、当たっているのに拳が届いていないように見えた）。
+            // タッグ腹パンは腕が伸びきって中心まで届かないので、腹の表面（手前 0.11m）を狙う。
+            // 判定は中心との距離（半径 0.30）なので、表面で止めても当たる。
             Vector3 toMe = upper.position - target;
             toMe.y = 0f;
             toMe = toMe.sqrMagnitude > 1e-4f ? toMe.normalized : -transform.forward;
-            Vector3 goal = target + toMe * (zone == PunchZone.Face ? 0.09f : -0.03f);
+            float reach = zone == PunchZone.Face ? 0.09f : (_brain.IsBellyPunch ? 0.11f : -0.03f);
+            Vector3 goal = target + toMe * reach;
 
             // 肘は顔なら外へ、腹なら下・外へ向ける（腹を狙うときは肘が体の前に回らない）。
-            float down = zone == PunchZone.Face ? 0.30f : 0.50f;
-            Vector3 pole = upper.position - transform.up * down + transform.right * 0.20f;
+            // タッグ腹パンは肘を高く外へ張り、前腕を腹へ水平気味に差し込む（ボディーブロー）。
+            float down = zone == PunchZone.Face ? 0.30f : (_brain.IsBellyPunch ? 0.28f : 0.50f);
+            float out_ = _brain.IsBellyPunch ? 0.34f : 0.20f;
+            Vector3 pole = upper.position - transform.up * down + transform.right * out_;
 
             Quaternion oldUpper = upper.rotation;
             Quaternion oldElbow = elbow.rotation;
