@@ -158,14 +158,15 @@ namespace Ryona.Game
                 tail = "パンチが来る！";
                 danger = true;
             }
-            else if (_bellyPunch.HasAttacker)
+            else if (_bellyPunch.NextPunchRemaining > 0f)
             {
-                tail = $"パンチまで {_bellyPunch.NextPunchRemaining:F1}s";
-                danger = _bellyPunch.NextPunchRemaining <= 0.5f;
+                float remaining = _bellyPunch.NextPunchRemaining;
+                tail = $"パンチまで {remaining:F1}s";
+                danger = remaining <= 0.5f;
             }
             else
             {
-                // 5 発を撃ち終えたあとも拘束は続く。抜ける手段は連打だけ。
+                // 撃ち終えて次の予約も無い（敵がいない等）。抜ける手段は連打だけ。
                 tail = "連打で逃げる";
             }
 

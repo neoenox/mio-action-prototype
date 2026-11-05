@@ -168,10 +168,13 @@ namespace Ryona.Tests
             Assert.IsTrue(_grapple.IsGrappled, "The hold must continue after the combo");
             Assert.IsFalse(_grapple.IsStruggleSuppressed, "Mashing must work right after the combo");
 
-            // 同じ拘束で 2 回目のコンボは始めない（拘束から抜けられなくなる）
-            Hit(_attacker, PunchZone.Body);
-            yield return null;
-            Assert.IsFalse(_director.IsPerforming, "A second combo must not start in the same hold");
+            // 数秒のクールタイム後に、また 5 発が始まる（拘束は続いたまま）
+            float secondDeadline = Time.realtimeSinceStartup + 6f;
+            while (!_director.IsPerforming && Time.realtimeSinceStartup < secondDeadline)
+                yield return null;
+
+            Assert.IsTrue(_director.IsPerforming, "A second combo must start after the cooldown");
+            Assert.IsTrue(_grapple.IsGrappled, "The hold must stay during the second combo");
 
             // 連打で抜けられる（抜けたら拘束終了）
             var escape = typeof(PlayerGrapple).GetMethod("Escape",

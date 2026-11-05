@@ -51,6 +51,9 @@ namespace Ryona.Game
         [Tooltip("腹パンが外れた／中断されたときに、次を試すまでの秒数")]
         public float RetrySeconds = 0.6f;
 
+        [Tooltip("5 発を撃ち終えてから、次の 5 発を始めるまでの秒数（拘束は続く）")]
+        public float RestartCooldownSeconds = 3.0f;
+
         [Tooltip("1 回の拘束で腹パンを指示する最大試行回数")]
         public int MaxAttempts = 8;
 
@@ -110,9 +113,6 @@ namespace Ryona.Game
 
         bool _waitingForFirst;
         float _punchTimer;
-
-        /// <summary>この拘束でタッグ技を撃ち終えたか。同じ拘束で 2 回目のコンボを始めない。</summary>
-        bool _comboDone;
 
         bool _comboActive;
         int _hits;
@@ -251,7 +251,10 @@ namespace Ryona.Game
         {
             ResetHold();
             _hits = 0;
-            _comboDone = false;
+
+            // 前の拘束で残ったクールタイムを持ち越さない（持ち越すと、掴み直した直後の
+            // 一発がコンボを始められず、拘束されているのに演出だけ出ない）
+            _cooldown = 0f;
 
             // 腹パンのタッグ技は後ろ拘束のときだけ
             if (kind != GrappleKind.Back)
@@ -568,11 +571,6 @@ namespace Ryona.Game
             if (_grapple == null || _stats == null)
                 return false;
 
-            // 1 回の拘束につき 1 コンボ。撃ち終わったあとに殴られても、
-            // 拘束だけが残る（抜けるには連打）。2 回目を許すと拘束から出られない。
-            if (_comboDone)
-                return false;
-
             if (!_grapple.IsGrappled || _grapple.Kind != GrappleKind.Back)
                 return false;
 
@@ -661,7 +659,6 @@ namespace Ryona.Game
 
             _comboActive = false;
             IsPerforming = false;
-            _comboDone = true;
             _nextPunchTimer = 0f;
             _comboEndTimer = 0f;
             _waitingForHit = false;
@@ -677,8 +674,24 @@ namespace Ryona.Game
             }
 
             HoldOthers(ReleaseGraceSeconds);
-            _cooldown = 0.6f;
+
+            // 数秒のクールタイムを置いて、また 5 発のコンボを始められる状態に戻す。
+            // 抜けるまで「撃たれる → 少し休む → また撃たれる」が続く。
+            StartComboCooldown();
             HasAttacker = false;
+        }
+
+        /// <summary>次のコンボまでの待ち時間を入れて、最初の一発を予約し直す。</summary>
+        void StartComboCooldown()
+        {
+            _attempts = 0;
+            _cooldown = Mathf.Max(0.1f, RestartCooldownSeconds);
+
+            if (_grapple == null || !_grapple.IsGrappled || _grapple.Kind != GrappleKind.Back)
+                return;
+
+            _waitingForFirst = true;
+            _punchTimer = _cooldown;
         }
 
         /// <summary>コンボ中、カメラを斜め前の構図に保つ。ヒットごとに押し直す。</summary>
