@@ -1203,8 +1203,12 @@ namespace Ryona.Game
                     bool bodyBlow = !fromBehind && CurrentHitZone == PunchZone.Body;
                     bool faceBlow = !fromBehind && CurrentHitZone == PunchZone.Face;
 
+                    // 顔ヒットは上体を大きく反らせない（のけぞりすぎると「吹き飛ばされた」画になる）。
+                    // 顔は首が弾かれる（+ 少しだけ上体が付く）で「殴られた」に見える。
+                    // 腹と背後は押された方向へ崩れるので、これまでどおり深く倒す。
+                    float torsoBack = faceBlow ? 0.16f : 0.38f;
                     torsoPitch = StanceTorsoPitch + (fromBehind ? bend * 0.80f
-                        : (bodyBlow ? bend * 0.95f : -bend * 0.38f)) * kv;
+                        : (bodyBlow ? bend * 0.95f : -bend * torsoBack)) * kv;
                     // 上体は真後ろへ反るだけでなく、殴られた方向へ少しねじれる。
                     // ねじれが無いと「自分で反った」ようにしか見えない。
                     torsoYaw = StanceTorsoYaw + 20f * kv * side;
@@ -1234,8 +1238,9 @@ namespace Ryona.Game
 
                     // 腰ごと後ろへ押され、同時に沈む（膝が抜ける）。
                     // 腰より足を大きく動かすと、脚が突っ張って「自分から下がった」画になる。
+                    // 顔ヒットは腰を引かずに首だけで受ける（引くと上体ごと逃げて見える）。
                     hipsOffset.y = StanceHipsY - 0.075f * kv;
-                    hipsOffset.z = StanceHipsZ - 0.13f * kv;
+                    hipsOffset.z = StanceHipsZ - (faceBlow ? 0.05f : 0.13f) * kv;
 
                     // 前の足（左）は引きずられて浮き、後ろの足（右）で踏ん張る。
                     float drag = Mathf.Clamp01(kv * 1.4f);
@@ -1454,6 +1459,17 @@ namespace Ryona.Game
                     armRUpper = gripUpper + new Vector3(spread * 0.6f, -spread * 0.3f, 0f);
                     armLFore = gripFore + new Vector3(0f, spread * 0.5f, 0f);
                     armRFore = gripFore + new Vector3(0f, spread * 0.4f, 0f);
+
+                    // 残り時間が少ないのに押し返せていないと、腕が落ちて力尽きて見える。
+                    // 逆に逃げられそう（進捗が高い）なときは腕が上がったまま。
+                    float progress = Grapple != null ? Mathf.Clamp01(Grapple.Progress) : 0f;
+                    float timeLeft = Grapple != null && Grapple.HasTimeLimit
+                        ? Mathf.Clamp01(Grapple.Remaining) : 1f;
+                    float give = (1f - timeLeft) * (1f - progress);
+                    armLUpper += new Vector3(0f, -0.16f * give, 0f);
+                    armRUpper += new Vector3(0f, -0.16f * give, 0f);
+                    armLFore += new Vector3(0f, -0.12f * give, 0f);
+                    armRFore += new Vector3(0f, -0.12f * give, 0f);
 
                     grip = 1f;
 
