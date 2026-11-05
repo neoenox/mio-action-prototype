@@ -349,6 +349,13 @@ namespace Ryona.Game
         /// </summary>
         bool _tagPunchPending;
 
+        /// <summary>
+        /// この一振りがタッグ技（腹 / 顔）か。予備動作から振り抜きまで true のままにする。
+        /// 見た目側が「片手で打つ」姿勢（反対の腕を腰の横へ引く）を組むのに使う。
+        /// <see cref="_tagPunchPending"/> は当たった瞬間に落とすので、振り抜きの間はこちらを見る。
+        /// </summary>
+        bool _tagPunchSwing;
+
         /// <summary>拳と狙いの距離をログる（`-hitlog`）。</summary>
         bool _hitLog;
 
@@ -370,6 +377,12 @@ namespace Ryona.Game
 
         /// <summary>タッグ腹パンの最中（発注から拳を押し込んでいる間）。見た目側がしゃがみ込むのに使う。</summary>
         public bool IsBellyPunch => _bellyPunchPendingHold > 0f || _punchPoseHoldSeconds > 0f;
+
+        /// <summary>
+        /// この一振りがタッグ技（腹 / 顔）か。見た目側が片手打ちの姿勢を組むのに使う。
+        /// 腹と顔が混ざるコンボでも腕の形が入れ替わらないよう、振り抜きまで true を保つ。
+        /// </summary>
+        public bool IsTagPunch => _tagPunchSwing;
 
         public float PunchPoseWeight
         {
@@ -1083,6 +1096,7 @@ namespace Ryona.Game
             // 顔を狙うときは押し込まない（通常の顔面パンチと同じ当たり方にする）。
             _bellyPunchPendingHold = zone == PunchZone.Body ? Mathf.Max(0f, holdPoseSeconds) : 0f;
             _tagPunchPending = true;
+            _tagPunchSwing = true;
             ForceZone = null;
 
             Debug.Log($"[HeldPunch] order {name} zone={zone} dist={distance:F2} " +
@@ -1295,6 +1309,7 @@ namespace Ryona.Game
             _punchPoseHoldSeconds = 0f;
             _bellyPunchPendingHold = 0f;
             _tagPunchPending = false;
+            _tagPunchSwing = false;
 
             AttackData data = DataOf(id);
             if (data != null)

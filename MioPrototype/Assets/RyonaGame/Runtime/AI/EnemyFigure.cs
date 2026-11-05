@@ -851,6 +851,17 @@ namespace Ryona.Game
                     kneeL += 14f * bw;
                 }
             }
+            // タッグ技（腹 / 顔）は片手で打つ。通常のジャブは左前腕を胸の前へ水平に構えるので、
+            // 腹パンの体勢（上体を前へ倒す）と重なると「両手を前に出して押している」画になる。
+            // 左腕は脇を締めて腰の横へ引き、右の拳だけを出す。
+            // 腹と顔が混ざるコンボでも腕の形が入れ替わらないよう、振り抜きまで同じ形を保つ。
+            if (Brain != null && Brain.IsTagPunch && AttackNow != AttackId.Grab
+                && (phase == EnemyPhase.Windup || phase == EnemyPhase.Attack || phase == EnemyPhase.Recover))
+            {
+                armLPitch = 30f;
+                elbowL = 95f;
+                armLSpread = 14f;
+            }
             // --- 立ち上がり（倒れた姿勢から起こす） ---------------------
             // 4 つの形を順に通す: 仰向け → 上体を起こす → しゃがみ（膝を深く折る）
             // → 立ち上がる。途中で必ず膝を折って足を体の下へ入れる。
