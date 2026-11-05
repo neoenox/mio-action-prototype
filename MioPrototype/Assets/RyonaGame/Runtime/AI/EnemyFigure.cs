@@ -1788,9 +1788,10 @@ namespace Ryona.Game
             }
         }
 
-        // 膝蹴りの演出カメラ。腹パンと同じ「寄って上から」だが、押さえつけは相手が正面に立つ。
-        // 正面寄り（ヨー -40 以上）に置くと相手の体で隠れるので、ほぼ真横から撮る。
-        const float KneeCamDistance = 0.30f;
+        // 膝蹴りの演出カメラ。寄りの強さは腹パンと同じ 0.28。
+        // 押さえつけは相手が正面に立つので、腹パンと同じヨー -40 だと相手の体で隠れる。
+        // ほぼ真横（-15）から撮り、少しだけ上から覗く。
+        const float KneeCamDistance = 0.28f;
         const float KneeCamPivot = 0.22f;
         const float KneeCamPitch = 6f;
         const float KneeCamYaw = -15f;
