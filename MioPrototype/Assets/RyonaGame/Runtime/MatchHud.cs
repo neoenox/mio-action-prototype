@@ -109,18 +109,29 @@ namespace Ryona.Game
         /// 掴まれている間だけ、画面下中央に「連打しろ」とバーを出す。
         /// 数値は PlayerGrapple が持っているので、ここは見た目だけ。
         /// </summary>
+        /// <summary>押さえつけの時間切れで投げられた直後、「振りほどけなかった」を出す残り秒。</summary>
+        float _failedRemaining;
+
         void UpdateGrapple()
         {
             if (_grappleRoot == null)
                 return;
 
             if (_grapple == null)
+            {
                 _grapple = FindFirstObjectByType<PlayerGrapple>();
+                if (_grapple != null)
+                    _grapple.Failed += OnGrappleFailed;
+            }
 
             if (_bellyPunch == null)
                 _bellyPunch = FindFirstObjectByType<HeldBellyPunchDirector>();
 
-            bool show = _grapple != null && _grapple.IsGrappled && !Player.IsDead;
+            if (_failedRemaining > 0f)
+                _failedRemaining = Mathf.Max(0f, _failedRemaining - Time.unscaledDeltaTime);
+
+            bool grappled = _grapple != null && _grapple.IsGrappled && !Player.IsDead;
+            bool show = grappled || _failedRemaining > 0f;
 
             if (_grappleRoot.gameObject.activeSelf != show)
                 _grappleRoot.gameObject.SetActive(show);
@@ -128,12 +139,24 @@ namespace Ryona.Game
             if (!show)
                 return;
 
+            if (!grappled)
+            {
+                // 時間切れで投げられた直後
+                _grappleText.text = "振りほどけなかった";
+                _grappleText.color = new Color(1f, 0.40f, 0.32f, 0.98f);
+                _grappleFill.fillAmount = 0f;
+                _grappleFill.color = new Color(0.95f, 0.45f, 0.35f, 0.95f);
+                return;
+            }
+
             float progress = Mathf.Clamp01(_grapple.Progress);
             int need = Mathf.CeilToInt(_grapple.RequiredInputs);
 
             // 後ろから掴まれたときは振りほどきにくい（背中側は力が入らない）。
             // 見た目は同じ掴みなので、せめて文字で分かるようにする。
-            string where = _grapple.Kind == GrappleKind.Back ? "（後ろから）" : string.Empty;
+            string where = _grapple.Kind == GrappleKind.Back ? "（後ろから）"
+                : _grapple.Kind == GrappleKind.Pin ? "（押さえつけ）"
+                : string.Empty;
 
             // 後ろ拘束は時間切れが無い。代わりに「次の腹パンまで」を出す。
             string tail;
@@ -142,6 +165,8 @@ namespace Ryona.Game
             if (_grapple.HasTimeLimit)
             {
                 tail = $"あと {_grapple.Remaining:F1}s";
+                // 残り 1 秒を切ったら赤字にして、投げられる直前だと分かるようにする
+                danger = _grapple.Remaining <= 1f;
             }
             else if (_bellyPunch == null)
             {
@@ -185,6 +210,12 @@ namespace Ryona.Game
                 new Color(0.95f, 0.45f, 0.35f, 0.95f),
                 new Color(0.55f, 0.95f, 0.55f, 0.95f),
                 progress);
+        }
+
+        /// <summary>押さえつけで時間切れになった。投げられたことを 1.5 秒だけ出す。</summary>
+        void OnGrappleFailed()
+        {
+            _failedRemaining = 1.5f;
         }
 
         /// <summary>

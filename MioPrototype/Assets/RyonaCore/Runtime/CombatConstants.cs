@@ -53,7 +53,7 @@ namespace Ryona
         public const int MashBasePin = 12;
 
         /// <summary>
-        /// 押さえつけ（<see cref="GrappleKind.Pin"/>、未実装）で掴まれてから投げられるまでの猶予（秒）。
+        /// 押さえつけ（<see cref="GrappleKind.Pin"/>）で掴まれてから投げられるまでの猶予（秒）。
         /// 後ろ拘束（<see cref="GrappleKind.Back"/>）は時間切れで解けないので、この値は使わない。
         /// </summary>
         public const float GrappleLimitSeconds = 3.0f;

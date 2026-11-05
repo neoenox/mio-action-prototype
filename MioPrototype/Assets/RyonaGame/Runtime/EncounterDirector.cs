@@ -195,6 +195,16 @@ namespace Ryona.Game
 
             Alive = CountAlive();
 
+            // 押さえつけ（Pin）は本来「巨躯」の役割だが、巨躯の見た目はまだ無い。
+            // 設計（docs/plans/2026-11-03-pin-grapple-design.md）の判断どおり、
+            // 既存の敵 1 体に任せて数値と姿勢を先に固める。
+            if (_enemies.Count > 0 && _enemies[_enemies.Count - 1] != null)
+            {
+                var pinner = _enemies[_enemies.Count - 1];
+                pinner.CanPin = true;
+                Debug.Log($"[Encounter] 押さえつけ担当: {pinner.name}");
+            }
+
             Debug.Log($"[Encounter] 敵 {_enemies.Count} 体を登録 1画面={ScreenSpan:F1}m " +
                 $"（-screenspan=N で上書き可）");
         }
