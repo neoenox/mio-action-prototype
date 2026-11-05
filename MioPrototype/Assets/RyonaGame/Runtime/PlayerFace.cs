@@ -70,14 +70,14 @@ namespace Ryona.Game
         /// 目は強くつぶる（殴られた瞬間に反射で閉じる）。口をわずかに開けて歯を食いしばる。
         /// まぶたが完全に閉じても、眉を寄せ・歯を食いしばったままなら眠っては見えない。
         /// </summary>
-        public static PainShape DefaultFacePain => new PainShape(0.85f, 0.62f, 0.20f, 0.95f, 0.90f);
+        public static PainShape DefaultFacePain => new PainShape(0.85f, 0.62f, 0.20f, 0.95f, 1.00f);
 
         /// <summary>
         /// 腹パンの既定の配合。眉を寄せたまま口を開け、目を強くつぶって息を漏らす。
         /// 顔ヒット（口を結んで耐える）より「息ができない」顔にする。
-        /// 目を完全に閉じると眠って見えるので、まぶたの線が残る濃さに留める。
+        /// 目はギュッと閉じる（痛みで反射的に閉じるので、弱い一撃でも半開きにしない）。
         /// </summary>
-        public static PainShape DefaultBellyPain => new PainShape(0.93f, 0.24f, 0.52f, 0.40f, 0.80f);
+        public static PainShape DefaultBellyPain => new PainShape(0.93f, 0.24f, 0.52f, 0.40f, 1.00f);
 
         [Header("References")]
         public PlayerStats Stats;
@@ -455,7 +455,10 @@ namespace Ryona.Game
             expression.SetWeight(MouthKey, shape.Mouth * amount);
             expression.SetWeight(GritKey, shape.Grit * amount);
             // 倒れている間は目を閉じる（閉じた目でまばたきが混ざらないよう最大値で取る）
-            float blink = Mathf.Clamp01(shape.Blink * amount + BlinkAmount() * blinkScale);
+            // 痛みの濃さに比例させると、弱い一撃（濃さ 0.66）で 3 分の 2 しか閉じず
+            // 「半開きで痛がっている」ように見える。ダメージを受けたらギュッと閉じる。
+            float blink = Mathf.Clamp01(shape.Blink * Mathf.Clamp01(amount * 1.45f)
+                                        + BlinkAmount() * blinkScale);
             expression.SetWeight(BlinkKey, Mathf.Max(blink, _eyeClose));
         }
     }
