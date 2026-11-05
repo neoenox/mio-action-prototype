@@ -30,11 +30,14 @@ namespace Ryona.Game
         /// <summary>ステージクリアの報せ。最後の一団を片付けた瞬間に鳴らす。</summary>
         Clear = 10,
 
-        /// <summary>被弾の声（録音素材 hurt_u）。軽い被弾に使う。</summary>
-        HurtU = 11,
+        /// <summary>被弾の声（録音素材 hurt_small）。軽い被弾に使う。</summary>
+        HurtSmall = 11,
 
-        /// <summary>被弾の声（録音素材 hurt_ku）。重い被弾に使う。</summary>
-        HurtKu = 12
+        /// <summary>被弾の声（録音素材 hurt_large）。重い被弾に使う。</summary>
+        HurtLarge = 12,
+
+        /// <summary>被弾の声（録音素材 hurt_belly）。腹への一撃に使う。</summary>
+        HurtBelly = 13
     }
 
     /// <summary>
@@ -86,8 +89,9 @@ namespace Ryona.Game
             SfxId.Clear => 0.60f,
 
             // 声は効果音より少し控えめに。打撃音に重なっても言葉として聞こえる程度。
-            SfxId.HurtU => 0.70f,
-            SfxId.HurtKu => 0.75f,
+            SfxId.HurtSmall => 0.70f,
+            SfxId.HurtLarge => 0.75f,
+            SfxId.HurtBelly => 0.80f,
             _ => 1f
         };
 
@@ -102,8 +106,9 @@ namespace Ryona.Game
             SfxId.Impact => 0.05f,
             SfxId.Guard => 0.05f,
             SfxId.Stagger => 0.04f,
-            SfxId.HurtU => 0.05f,
-            SfxId.HurtKu => 0.05f,
+            SfxId.HurtSmall => 0.05f,
+            SfxId.HurtLarge => 0.05f,
+            SfxId.HurtBelly => 0.05f,
             _ => 0f
         };
 
@@ -270,8 +275,10 @@ namespace Ryona.Game
             _clips[SfxId.Clear] = MakeClip("Sfx_Clear", BuildClear());
 
             // 被弾の声は録音素材（Assets/RyonaGame/Resources/Voice）。無ければ鳴らさない。
-            LoadVoice(SfxId.HurtU, "Voice/hurt_u");
-            LoadVoice(SfxId.HurtKu, "Voice/hurt_ku");
+            // 差し替え前の hurt_u / hurt_ku は VoiceBackup/ に置いてある（戻すときは README 参照）。
+            LoadVoice(SfxId.HurtSmall, "Voice/hurt_small");
+            LoadVoice(SfxId.HurtLarge, "Voice/hurt_large");
+            LoadVoice(SfxId.HurtBelly, "Voice/hurt_belly");
         }
 
         void LoadVoice(SfxId id, string path)
@@ -284,6 +291,8 @@ namespace Ryona.Game
             }
 
             _clips[id] = clip;
+            // どの素材がどの声に付いたかを 1 度だけ出す（差し替えの確認用）
+            Debug.Log($"[Sfx] voice {id} <- {path} ({clip.length:F2}s)");
         }
 
         /// <summary>

@@ -11,7 +11,7 @@ MioPrototype.exe -sfxaudition
 ```
 
 時間が止まった状態で、1.6 秒おきに 1 音ずつ鳴ります。画面左上に
-**11 音の一覧**が出て、いま鳴っている音が黄色で示されます。
+**効果音の一覧**が出て、いま鳴っている音が黄色で示されます。
 
 ## 操作
 
@@ -31,7 +31,7 @@ MioPrototype.exe -sfxaudition
 
 音は 2 種類あります。
 
-- **その場で鳴る音（2D）**: 1 Swing / 2 Impact / 3 Guard / 4 Stagger / 5 Break / 9 Step / 11 Clear
+- **その場で鳴る音（2D）**: 1 Swing / 2 Impact / 3 Guard / 4 Stagger / 5 Break / 9 Step / 11 Clear / 12 HurtSmall / 13 HurtLarge / 14 HurtBelly
   （自分の体から鳴るので、左右に振れません）
 - **敵の位置から鳴る音（3D）**: 6 Tell / 7 TellHeavy / 8 Pipe / 10 BodyDrop
   （敵がどこにいるかが音で分かります）
@@ -54,6 +54,9 @@ MioPrototype.exe -sfxaudition
 | 9 | Step | 足音 | -35.0 dBFS |
 | 10 | BodyDrop | 倒れる音（ダウン・決着） | -24.0 dBFS |
 | 11 | Clear | ステージクリアの報せ（ドミソの3音） | -22.6 dBFS |
+| 12 | HurtSmall | 被弾の声（小）＝軽い一撃 | 未測定 |
+| 13 | HurtLarge | 被弾の声（大）＝重い一撃・投げ | 未測定 |
+| 14 | HurtBelly | 被弾の声（腹）＝腹への一撃（腹パン・膝蹴り） | 未測定 |
 
 `Enter` の重ね合わせは次の 3 つです（実際のゲームと同じ比率）。
 
