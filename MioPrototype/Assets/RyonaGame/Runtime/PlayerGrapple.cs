@@ -76,6 +76,15 @@ namespace Ryona.Game
                 _suppressRemaining = Mathf.Max(_suppressRemaining, seconds);
         }
 
+        /// <summary>
+        /// もがきの抑制をすぐ解除する。腹パンを撃ち終えて「拘束だけが残る」ときに使う
+        /// （抑制が残ったままだと、5 発のあと数秒間は連打しても抜けられない）。
+        /// </summary>
+        public void ClearStruggleSuppression()
+        {
+            _suppressRemaining = 0f;
+        }
+
         /// <summary>掴んだ相手。倒されたら掴みは解ける。</summary>
         public EnemyBrain Captor { get; private set; }
 
