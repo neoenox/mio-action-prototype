@@ -915,9 +915,12 @@ namespace Ryona.Game
             }
             // 押さえつけ（Pin）: 肩を押し込むので上体を前へ倒し、膝を落として踏ん張る。
             // 腕は PinHoldPose が彼女の肩へ向けて毎フレーム引き直す。
+            // もがかれるほど押し返されて上体が起こされる（振りほどきが効いているのが見える）。
             if (Brain != null && Brain.IsPinning)
             {
-                torsoPitch += 12f;
+                var pin = Brain.Player.GetComponent<PlayerGrapple>();
+                float progress = pin != null ? Mathf.Clamp01(pin.Progress) : 0f;
+                torsoPitch += Mathf.Lerp(12f, -6f, progress);
                 hipsY -= 0.06f;
                 kneeR += 10f;
                 kneeL += 10f;
@@ -1684,6 +1687,9 @@ namespace Ryona.Game
         ProceduralRig _targetRig;
         ThirdPersonCamera _camera;
 
+        /// <summary>もがかれて肩が浮いた分（m）。手の狙いを上げる。</summary>
+        float _lift;
+
         void LateUpdate()
         {
             if (_figure == null) _figure = GetComponent<EnemyFigure>();
@@ -1705,6 +1711,9 @@ namespace Ryona.Game
 
             Solve(false, _targetRig.RUpperArm);
             Solve(true, _targetRig.LUpperArm);
+
+            // もがかれるほど彼女の肩が浮く（押し返されている）。手は毎フレーム肩を追う。
+            _lift = 0.12f * Mathf.Clamp01(hold.Progress);
 
             // 演出中だけ寄る。ヒット時の押し込みと同じ API を使い、毎フレーム押し直す。
             if (_camera == null)
@@ -1730,7 +1739,7 @@ namespace Ryona.Game
             Vector3 inward = player.position - shoulder.position;
             inward.y = 0f;
             inward = inward.sqrMagnitude > 1e-4f ? inward.normalized : player.forward;
-            Vector3 goal = shoulder.position + inward * 0.06f + Vector3.up * 0.02f;
+            Vector3 goal = shoulder.position + inward * 0.06f + Vector3.up * (0.02f + _lift);
 
             // 肘は外へ開き、少し下へ。真横から見て「押し込んでいる」形にする。
             float side = left ? -1f : 1f;
