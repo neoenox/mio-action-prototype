@@ -355,8 +355,8 @@ namespace Ryona.Game
         /// <summary>通常の Body 狙い（腰と胸のあいだ）。</summary>
         const float DefaultBodyBias = 0.40f;
 
-        /// <summary>腹パンだけは低め（腰寄り）を狙う。</summary>
-        const float BellyPunchBodyBias = 0.28f;
+        /// <summary>腹パンだけは低め（へそ寄り）を狙う。</summary>
+        const float BellyPunchBodyBias = 0.22f;
 
         /// <summary>
         /// Body 狙いのとき、腰から胸のどこを狙うか（0=腰, 1=胸）。
@@ -367,6 +367,9 @@ namespace Ryona.Game
             _punchPoseHoldSeconds > 0f || _bellyPunchPendingHold > 0f
                 ? BellyPunchBodyBias
                 : DefaultBodyBias;
+
+        /// <summary>タッグ腹パンの最中（発注から拳を押し込んでいる間）。見た目側がしゃがみ込むのに使う。</summary>
+        public bool IsBellyPunch => _bellyPunchPendingHold > 0f || _punchPoseHoldSeconds > 0f;
 
         public float PunchPoseWeight
         {
