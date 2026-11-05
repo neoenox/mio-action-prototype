@@ -298,12 +298,66 @@ namespace Ryona.Tests
         }
 
         /// <summary>
+        /// 打たない腕は腰の横へ下ろさず、脇を締めて拳を胸の前に構える。
+        /// 下ろすと上体を前へ倒す腹パンの姿勢と重なって「腕がだらりと下がった」画になる。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 打たない腕は脇を締めて胸の前に構える()
+        {
+            // 演出は拘束 1.6 秒後に自分でパンチを振るため、先に始まると Phase が
+            // Windup のままになり、こちらから指示できない。手で 1 発振らせるので切る。
+            yield return LoadAndGrab(waitForAnimator: true, directorEnabled: false);
+            PlaceAttackerInFront();
+            _attacker.HoldFire(10f);
+            Assert.IsTrue(_attacker.TryStartTagPunch(PunchZone.Body, holdPoseSeconds: 0.3f),
+                "タッグ技が始まらない");
+            _attacker.enabled = true;
+
+            var figure = _attacker.GetComponent<EnemyFigure>();
+            Vector3 target = EnemyBrain.PunchTarget(_player, PunchZone.Body, _attacker.BodyTargetBias);
+            var fistR = figure.Fist(false);
+            var fistL = figure.Fist(true);
+
+            // 右の拳が一番伸びた瞬間の、左の拳の位置を測る
+            float bestRight = float.MaxValue;
+            float leftHeight = 0f;
+            float leftForward = 0f;
+            float deadline = Time.realtimeSinceStartup + 3f;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                float r = Vector3.Distance(fistR.position, target);
+                if (r < bestRight)
+                {
+                    bestRight = r;
+                    Vector3 local = _attacker.transform.InverseTransformPoint(fistL.position);
+                    leftHeight = local.y;
+                    leftForward = local.z;
+                }
+
+                if (bestRight < 0.30f)
+                    break;
+
+                yield return null;
+            }
+
+            Vector3 hip = _attacker.transform.InverseTransformPoint(figure.HipBone(false).position);
+
+            Assert.Greater(leftForward, 0.20f, "打たない腕は胴の前（拳を構える位置）へ出すこと");
+            Assert.Greater(leftHeight - hip.y, 0.25f, "打たない腕は腰まで下ろさず、胸の高さに構えること");
+            Assert.Greater(Vector3.Distance(fistL.position, target), 0.45f,
+                "打たない腕は狙いへ届かせない（両手で押している画になる）");
+        }
+
+        /// <summary>
         /// 打つ手（右）が狙いに届き、反対の手（左）は腰の横へ引いてあることを確かめる。
         /// 一番伸びた瞬間（右の拳が狙いに最も近づいたフレーム）で左右を比べる。
         /// </summary>
         IEnumerator AssertOneHandedTagPunch(PunchZone zone)
         {
-            yield return LoadAndGrab(waitForAnimator: true);
+            // 演出（HeldBellyPunchDirector）は拘束 1.6 秒後に自分でパンチを振る。
+            // リグの読み込み待ちの間に始まって Phase が Windup のままだと、こちらから
+            // 指示できない。このテストは手で 1 発振らせるので演出は切っておく。
+            yield return LoadAndGrab(waitForAnimator: true, directorEnabled: false);
             PlaceAttackerInFront();
 
             _attacker.HoldFire(10f);

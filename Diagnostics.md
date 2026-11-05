@@ -14,6 +14,7 @@
 | Check Enemy VRM | `enemy_vrm_front/side/quarter.png` | **敵 VRM を置いた直後の検品**。置き場所・背丈・骨17本・見た目を確認 |
 | Capture Enemy Attacks | `enemy_attacks.png` | 敵の攻撃4種（突き／振り下ろし／横薙ぎ／掴み）× 3 フェーズ。列＝攻撃、行＝振りかぶり／当てる／振り抜き。肩角・肘角・両手の位置をログ出力 |
 | Capture Enemy Wrist | `enemy_wrist.png` | 敵の右手首の折れ（構え／振りかぶり／当てる／振り抜き）＋折れ角ログ |
+| Capture Tag Guard Sweep | `tag_guard_sweep.png` | タッグ技（片手打ち）の間、**打たない左腕の構え** 3×3（肩角 −6/−12/−20 × 肘 115/128/140）。斜め前から。拳の位置をログ出力 |
 | Capture Walk Cycle | `walk_cycle.png` | 歩き 7 コマ × 2 段（上＝前進を真横から、下＝横歩きを正面から） |
 | Capture Player Walk Cycle | `player_walk_cycle.png` | 彼女の歩き 7 コマ × 3 段（前進＝真横／横歩き＝正面／後退り＝真横） |
 | Capture Enemy GetUp | `enemy_getup.png` | 敵の立ち上がり 7 コマ（仰向け → しゃがみ → 構え）＋腰高・倒れ角ログ |
@@ -51,6 +52,7 @@
 | `-heldpunchshot=<png>` | 腹パン演出の開始 0.12 秒後を撮影（`-grappletest` と併用） |
 | `-heldpunchcamdist=` / `-heldpunchcampivot=` / `-heldpunchcampitch=` / `-heldpunchcamyaw=` | 腹パン中のカメラ値を起動時だけ差し替える（顔が入る構図の撮り比べ用）。既定は 0.34 / 0.27 / −12 / −40 |
 | `-heldpunchface=<0〜1>` | タッグ技が顔面を狙う確率を差し替える（既定 0.5）。`1` で顔面のみ、`0` で腹パンのみ |
+| `-tagarmL=` / `-tagelbowL=` / `-tagspreadL=` | タッグ技のあいだ、打たない左腕の角度を差し替える（既定 −12 / 126 / 2）。構えの撮り比べ用 |
 | `-nofeint` | 敵のフェイントを切る。掴みもフェイント対象（22%）なので、数秒の検証では「掴めなかった」のか「引かれた」のか区別できない。切ってから回す |
 | `-encountertest [-encounterkills=N]` | 2秒ごとに敵を1体倒して決着と波の進行を回す |
 | `-screenspan=N` | 波の「1画面ぶんの距離」を起動時だけ差し替える（既定 8）。7/9/11 を再ビルドなしで撮り比べられる |

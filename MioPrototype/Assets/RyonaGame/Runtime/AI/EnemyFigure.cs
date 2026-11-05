@@ -95,14 +95,50 @@ namespace Ryona.Game
 
         /// <summary>倒れ角（0 = 立ち、90 = 横倒し）。復帰の確認用。</summary>
         public float FallAngle => _fallAngle;
+
+        // --- タッグ技（片手打ち）の構え ---------------------------------
+        // 打たない側（左）の腕。脇を締めたまま拳を胸の前に構える。
+        // 腰の横へ下ろすと、上体を前へ倒す腹パンの姿勢と重なって
+        // 「腕がだらりと下がった」画になる（実測）。
+        // 数値を変えて撮り比べられるよう、起動引数で差し替えられるようにする
+        // （-tagarmL= / -tagelbowL= / -tagspreadL=）。
+        float _tagArmL = -12f;
+        float _tagElbowL = 126f;
+        float _tagSpreadL = 2f;
+
         void Awake()
         {
             Build();
+            ReadTagPoseArgs();
             if (GetComponent<BackHoldPose>() == null)
                 gameObject.AddComponent<BackHoldPose>();
             // 最初のフレームから正しい立ち姿勢にしておく
             // （補間値が 0 のままだと 1 フレームだけ体が潰れて見える）
             Step(0f, true);
+        }
+
+        /// <summary>
+        /// タッグ技の構えを起動引数で差し替える（撮り比べ用）。
+        /// 例: <c>-tagarmL=-6 -tagelbowL=100 -tagspreadL=8</c>
+        /// </summary>
+        void ReadTagPoseArgs()
+        {
+            foreach (string arg in System.Environment.GetCommandLineArgs())
+            {
+                if (TryReadFloat(arg, "-tagarmL=", out float armL)) _tagArmL = armL;
+                else if (TryReadFloat(arg, "-tagelbowL=", out float elbowL)) _tagElbowL = elbowL;
+                else if (TryReadFloat(arg, "-tagspreadL=", out float spreadL)) _tagSpreadL = spreadL;
+            }
+        }
+
+        static bool TryReadFloat(string arg, string key, out float value)
+        {
+            value = 0f;
+            if (!arg.StartsWith(key, System.StringComparison.OrdinalIgnoreCase))
+                return false;
+            return float.TryParse(arg.Substring(key.Length),
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out value);
         }
         // --- 静止画確認用の上書き ---------------------------------------
         // エディタから 1 コマだけ姿勢を見たいときに使う。実行中は常に null。
@@ -114,6 +150,12 @@ namespace Ryona.Game
         float _previewSwing;
         AttackId _previewAttack;
         float _previewSpeed;
+
+        /// <summary>
+        /// 検証用。左腕の (pitch, elbow, spread) を強制する（エディタの撮り比べ）。
+        /// 実行中は常に null。
+        /// </summary>
+        [System.NonSerialized] public Vector3? ForceLeftArm;
 
         /// <summary>倒れる進み具合（0→1）。Dead 以外では毎フレーム 0 に戻す。</summary>
         float _deadProgress;
@@ -853,14 +895,21 @@ namespace Ryona.Game
             }
             // タッグ技（腹 / 顔）は片手で打つ。通常のジャブは左前腕を胸の前へ水平に構えるので、
             // 腹パンの体勢（上体を前へ倒す）と重なると「両手を前に出して押している」画になる。
-            // 左腕は脇を締めて腰の横へ引き、右の拳だけを出す。
+            // 打たない左腕は脇を締めたまま拳を胸の前に構え、右の拳だけを出す。
             // 腹と顔が混ざるコンボでも腕の形が入れ替わらないよう、振り抜きまで同じ形を保つ。
             if (Brain != null && Brain.IsTagPunch && AttackNow != AttackId.Grab
                 && (phase == EnemyPhase.Windup || phase == EnemyPhase.Attack || phase == EnemyPhase.Recover))
             {
-                armLPitch = 30f;
-                elbowL = 95f;
-                armLSpread = 14f;
+                armLPitch = _tagArmL;
+                elbowL = _tagElbowL;
+                armLSpread = _tagSpreadL;
+            }
+            // 検証用の上書き（エディタで姿勢を撮り比べる）。実行中は null なので影響しない。
+            if (ForceLeftArm.HasValue)
+            {
+                armLPitch = ForceLeftArm.Value.x;
+                elbowL = ForceLeftArm.Value.y;
+                armLSpread = ForceLeftArm.Value.z;
             }
             // --- 立ち上がり（倒れた姿勢から起こす） ---------------------
             // 4 つの形を順に通す: 仰向け → 上体を起こす → しゃがみ（膝を深く折る）

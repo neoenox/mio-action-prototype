@@ -4633,6 +4633,90 @@ namespace Ryona.EditorTools
         }
 
         /// <summary>
+        /// タッグ技（片手打ち）の「打たない腕」の構えを撮り比べる。
+        /// 腰の横へ下ろすと上体を前へ倒す腹パンの姿勢と重なって腕がだらりと見えるため、
+        /// 胸の前に構える角度を 3x3 で並べて選ぶ。
+        /// </summary>
+        [MenuItem("Ryona/Diagnostics/Capture Tag Guard Sweep")]
+        public static void CaptureTagGuardSweep()
+        {
+            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            SetupLights();
+
+            var floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
+            floor.name = "Floor";
+            floor.transform.localScale = Vector3.one * 6f;
+            var floorMat = new Material(Shader.Find("Standard"));
+            floorMat.color = new Color(0.22f, 0.23f, 0.26f);
+            floor.GetComponent<MeshRenderer>().sharedMaterial = floorMat;
+
+            var skin = new Material(Shader.Find("Standard"));
+            skin.color = new Color(0.63f, 0.51f, 0.45f);
+            var cloth = new Material(Shader.Find("Standard"));
+            cloth.color = new Color(0.35f, 0.30f, 0.28f);
+
+            var figureGo = new GameObject("Enemy Figure");
+            var figure = figureGo.AddComponent<EnemyFigure>();
+            figure.BodyMaterial = skin;
+            figure.ClothMaterial = cloth;
+
+            var camGo = new GameObject("Enemy Camera");
+            var cam = camGo.AddComponent<Camera>();
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(0.26f, 0.27f, 0.30f);
+            cam.fieldOfView = 38f;
+            cam.nearClipPlane = 0.05f;
+
+            float h = 1.75f;
+            float[] pitches = { -6f, -12f, -20f };
+            float[] elbows = { 115f, 128f, 140f };
+
+            const int cellW = 360;
+            const int cellH = 520;
+
+            var sheet = new Texture2D(cellW * pitches.Length, cellH * elbows.Length,
+                TextureFormat.RGB24, false);
+
+            for (int r = 0; r < elbows.Length; r++)
+            {
+                for (int c = 0; c < pitches.Length; c++)
+                {
+                    figure.ForceLeftArm = new Vector3(pitches[c], elbows[r], 2f);
+                    // 打つ直前（拳を伸ばし切る手前）で、打たない腕の形を見る
+                    figure.Preview(EnemyPhase.Windup, 0.78f, AttackId.Jab, 0f);
+
+                    // 斜め前から。正面だと前腕が胴に隠れて形が読めない。
+                    cam.transform.position = new Vector3(h * 1.15f, h * 0.52f, h * 1.45f);
+                    cam.transform.LookAt(new Vector3(0f, h * 0.48f, 0f));
+
+                    var cell = RenderCell(cam, cellW, cellH);
+                    sheet.SetPixels(c * cellW, (elbows.Length - 1 - r) * cellH, cellW, cellH, cell.GetPixels());
+                    Object.DestroyImmediate(cell);
+
+                    Vector3 fist = figure.Fist(true).position;
+                    Vector3 local = figureGo.transform.InverseTransformPoint(fist);
+                    Debug.Log($"[TagGuard] pitch={pitches[c]:F0} elbow={elbows[r]:F0} " +
+                        $"local=({local.x:F2},{local.y:F2},{local.z:F2}) " +
+                        $"hipY={figure.HipBone(false).position.y:F2}");
+                }
+            }
+
+            figure.ForceLeftArm = null;
+            sheet.Apply();
+
+            string root = Directory.GetParent(Application.dataPath).FullName;
+            string outPath = Path.Combine(root, "tag_guard_sweep.png");
+            File.WriteAllBytes(outPath, sheet.EncodeToPNG());
+            Object.DestroyImmediate(sheet);
+
+            Object.DestroyImmediate(camGo);
+            Object.DestroyImmediate(figureGo);
+            Object.DestroyImmediate(floor);
+
+            Debug.Log($"[Ryona] tag guard sweep: {outPath}");
+        }
+
+        /// <summary>
         /// 肩の X 角を振って、どの角度が「前」「上」「後ろ」かを実測する。
         /// EnemyFigure の armRPitch は 0=真下 を基準にした回転なので、
         /// ポーズを組む前に一度きちんと対応表を作るためのシート。
@@ -7576,3 +7660,5 @@ namespace Ryona.EditorTools
         }
     }
 }
+
+
