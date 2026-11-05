@@ -50,7 +50,7 @@
 | `-holdmash` | もがき入力を自動で入れる |
 | `-grappletest [-holdmash] [-grappleback\|-grapplefront\|-grappleside]` | 数秒ごとに最寄りの敵を彼女の**背後 1m**（既定）に立たせて掴みを指示する。後ろ拘束は時間切れで解けない。付けなければ **1.6 秒後に腹パン5連続 → くの字 → 3 秒のクールタイム → また 5 連続**を、**振りほどく（`-holdmash`）まで繰り返す**。`-grapplefront` は「正面からでは掴めない」ことの確認用（掴みは背後からのみ成立する）。掴まれている間は `[GrappleContact]` を 0.25 秒ごとに出力（敵ローカル座標で手首・胸・肩・彼女の両手） |
 | `-heldpunchshot=<png>` | 腹パン演出の開始 0.12 秒後を撮影（`-grappletest` と併用） |
-| `-heldpunchcamdist=` / `-heldpunchcampivot=` / `-heldpunchcampitch=` / `-heldpunchcamyaw=` | 腹パン中のカメラ値を起動時だけ差し替える（顔が入る構図の撮り比べ用）。既定は 0.34 / 0.27 / −12 / −40 |
+| `-heldpunchcamdist=` / `-heldpunchcampivot=` / `-heldpunchcampitch=` / `-heldpunchcamyaw=` | 腹パン中のカメラ値を起動時だけ差し替える（顔が入る構図の撮り比べ用）。既定は 0.28 / 0.27 / −12 / −40 |
 | `-heldpunchface=<0〜1>` | タッグ技が顔面を狙う確率を差し替える（既定 0.5）。`1` で顔面のみ、`0` で腹パンのみ |
 | `-tagarmL=` / `-tagelbowL=` / `-tagspreadL=` | タッグ技のあいだ、打たない左腕の角度を差し替える（既定 −12 / 126 / 2）。構えの撮り比べ用 |
 | `-nofeint` | 敵のフェイントを切る。掴みもフェイント対象（22%）なので、数秒の検証では「掴めなかった」のか「引かれた」のか区別できない。切ってから回す |

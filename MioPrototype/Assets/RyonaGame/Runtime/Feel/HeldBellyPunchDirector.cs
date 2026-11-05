@@ -58,8 +58,8 @@ namespace Ryona.Game
         public int MaxAttempts = 8;
 
         [Header("Camera")]
-        [Tooltip("腹パン中のカメラ距離倍率（1 未満で寄る）")]
-        public float CameraDistanceScale = 0.34f;
+        [Tooltip("腹パン中のカメラ距離倍率（1 未満で寄る）。0.28 で約 1.5m（基本距離 5.2m × 0.28）")]
+        public float CameraDistanceScale = 0.28f;
 
         [Tooltip("腹パン中のピボット上下（正で上がる）。顔が画面に入る高さまで上げる")]
         public float CameraPivotOffset = 0.27f;
