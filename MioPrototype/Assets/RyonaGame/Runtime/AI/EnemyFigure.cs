@@ -924,6 +924,19 @@ namespace Ryona.Game
                 hipsY -= 0.06f;
                 kneeR += 10f;
                 kneeL += 10f;
+
+                // 膝蹴り。右膝を腹へ入れる（片足で立ったまま腰を落とす）。
+                // 腿を水平近くまで上げないと、膝が彼女の腹（押さえつけで 0.7m ほど）まで届かない。
+                float knee = pin != null ? pin.KneePulse : 0f;
+                if (knee > 0f)
+                {
+                    torsoPitch += 8f * knee;
+                    hipsY -= 0.05f * knee;
+                    hipsZ += 0.05f * knee;
+                    kneeR += 85f * knee;
+                    legRPitch -= 85f * knee;
+                    kneeL += 8f * knee;
+                }
             }
             // --- 立ち上がり（倒れた姿勢から起こす） ---------------------
             // 4 つの形を順に通す: 仰向け → 上体を起こす → しゃがみ（膝を深く折る）

@@ -1471,6 +1471,17 @@ namespace Ryona.Game
                     armLFore += new Vector3(0f, -0.12f * give, 0f);
                     armRFore += new Vector3(0f, -0.12f * give, 0f);
 
+                    // 膝蹴りを受けた瞬間、腹へ入る分だけ上体が折れて腰が落ちる。
+                    // 顔は下げない（前髪で顔が隠れる）。掴まれたままなので少しでよい。
+                    float knee = Grapple != null ? Grapple.KneePulse : 0f;
+                    if (knee > 0f)
+                    {
+                        torsoPitch += 10f * knee;
+                        hipsOffset.y -= 0.05f * knee;
+                        hipsOffset.z += 0.03f * knee;
+                        headPitch -= 12f * knee;   // 顎を上げて顔を残す（前髪で隠れない）
+                    }
+
                     grip = 1f;
 
                     // 構えの足の位置から始める。Rest（T ポーズ）のままだと脚が伸びきって

@@ -152,6 +152,39 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator 押さえつけ中に膝蹴りが1回入る()
+        {
+            yield return Load();
+
+            // 実際の入口（予備動作 → 当たり → 押さえつけ）から始める。膝蹴りは Recover 中に入る。
+            _captor.enabled = true;
+            _captor.QueuePin();
+
+            float deadline = Time.realtimeSinceStartup + 4f;
+            while (!_grapple.IsGrappled && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.IsTrue(_grapple.IsGrappled, "押さえつけが始まらない");
+            Assert.AreEqual(GrappleKind.Pin, _grapple.Kind);
+
+            int hits = 0;
+            float hpBefore = _player.State.Hp;
+            _player.HitReceived += _ => hits++;
+
+            Assert.AreEqual(0, hits, "掴んだ瞬間はまだ膝蹴りは入らない");
+
+            // 膝蹴りは開始 1.5 秒後。2 秒待てば 1 回だけ入っている。
+            yield return new WaitForSeconds(2.0f);
+
+            Assert.AreEqual(1, hits, "押さえつけ中に膝蹴りは 1 回だけ");
+            Assert.Less(_player.State.Hp, hpBefore - 1f, "膝蹴りで HP が減る");
+
+            // 3 秒の制限時間を超えても 2 発目は入らない
+            yield return new WaitForSeconds(0.9f);
+            Assert.AreEqual(1, hits, "膝蹴りは 1 回の押さえつけにつき 1 発まで");
+        }
+
+        [UnityTest]
         public IEnumerator 押さえつけ中は他の敵が殴らない()
         {
             yield return Load();

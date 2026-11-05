@@ -454,6 +454,12 @@ namespace Ryona.Game
         [Tooltip("前回の押さえつけから次を始めるまで空ける秒。連発で「何もできない時間」にしない")]
         public float PinCooldown = 10f;
 
+        [Tooltip("押さえつけ開始から膝蹴りを入れるまでの秒。1 回の押さえつけで 1 発だけ")]
+        public float PinKneeDelay = 1.5f;
+
+        [Tooltip("押さえつけ中の膝蹴りのダメージ")]
+        public float PinKneeDamage = 4f;
+
         /// <summary>次の予備動作を押さえつけにする（デバッグの指示用）。</summary>
         bool _pinOrder;
 
@@ -462,6 +468,9 @@ namespace Ryona.Game
 
         /// <summary>前回の押さえつけが始まった時刻。</summary>
         float _lastPinAt = -999f;
+
+        /// <summary>この押さえつけで膝蹴りを入れる時刻（0 = 済み／予定なし）。</summary>
+        float _pinKneeAt;
 
         /// <summary>押さえつけ中の相手か（掴んでいる本人）。見た目側が姿勢を組むのに使う。</summary>
         public bool IsPinning { get; private set; }
@@ -770,6 +779,14 @@ namespace Ryona.Game
 
                 case EnemyPhase.Recover:
                     _punchVisualTimer = Mathf.Max(0f, _punchVisualTimer - dt);
+
+                    // 押さえつけ中の膝蹴り（1 回だけ）
+                    if (IsPinning && _pinKneeAt > 0f && Time.time >= _pinKneeAt)
+                    {
+                        _pinKneeAt = 0f;
+                        DoPinKnee();
+                    }
+
                     if (IsHolding && Player != null)
                     {
                         var hold = Player.GetComponent<PlayerGrapple>();
@@ -777,6 +794,7 @@ namespace Ryona.Game
                             break;
                         IsHolding = false;
                         IsPinning = false;
+                        _pinKneeAt = 0f;
                         _timer = 0f;
                     }
                     _timer -= dt;
@@ -1320,8 +1338,42 @@ namespace Ryona.Game
             _lastPinAt = Time.time;
             _pinOrder = false;
             IsPinning = true;
+            // 押さえつけている間に 1 回だけ膝を入れる（何もできない 3 秒にしない）
+            _pinKneeAt = Time.time + Mathf.Max(0.2f, PinKneeDelay);
             Debug.Log($"[Pin] begin {name} dist={to.magnitude:F2}");
             return true;
+        }
+
+        /// <summary>
+        /// 押さえつけ中の膝蹴り。彼女は掴まれたままなので、姿勢は崩れずダメージだけ入る
+        /// （見た目は <see cref="PlayerGrapple.KneePulse"/> を両者が読んで作る）。
+        /// </summary>
+        void DoPinKnee()
+        {
+            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            if (grapple == null || !grapple.IsGrappled || grapple.Captor != this)
+                return;
+
+            var knee = new AttackData
+            {
+                id = "pin_knee",
+                kind = AttackKind.Light,
+                damage = Mathf.Max(0f, PinKneeDamage),
+                postureDamage = 8f,
+                partDamage = 0f,
+                targetPart = BodyPart.Torso,
+                startupSeconds = 0f,
+                activeSeconds = 0f,
+                recoverySeconds = 0f
+            };
+
+            // 腹への一撃。表情も腹ヒット用に切り替える（投げの直前で消す必要はない）。
+            Player.LastHitZone = PunchZone.Body;
+            Player.ReceiveHit(State, knee, transform);
+            grapple.KickKnee();
+            PlaySfx(SfxId.Impact, 0.85f);
+
+            Debug.Log($"[Pin] knee {name} hp={Player.State.Hp:F0}");
         }
 
         /// <summary>
