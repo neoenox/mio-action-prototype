@@ -37,8 +37,9 @@ namespace Ryona.Game
             new Entry { Id = SfxId.Step,      Name = "Step 足音",                Level = "-35.0" },
             new Entry { Id = SfxId.BodyDrop,  Name = "BodyDrop 倒れる",           Level = "-24.0" },
             new Entry { Id = SfxId.Clear,     Name = "Clear クリア",              Level = "-22.6" },
-            new Entry { Id = SfxId.HurtU,     Name = "HurtU 被弾の声（う）",     Level = "未測定" },
-            new Entry { Id = SfxId.HurtKu,     Name = "HurtKu 被弾の声（く）",     Level = "未測定" }
+            new Entry { Id = SfxId.HurtSmall, Name = "HurtSmall 被弾の声（小）", Level = "未測定" },
+            new Entry { Id = SfxId.HurtLarge, Name = "HurtLarge 被弾の声（大）", Level = "未測定" },
+            new Entry { Id = SfxId.HurtBelly, Name = "HurtBelly 被弾の声（腹）", Level = "未測定" }
         };
 
         struct Combo

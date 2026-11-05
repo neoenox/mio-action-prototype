@@ -23,5 +23,8 @@ MioPrototype/Build/
 # 被弾ボイスの素材（配布元のライセンスが未確認のため含めない）
 MioPrototype/Assets/RyonaGame/Resources/Voice/
 
+# 差し替え前の被弾ボイスの控え（同じ理由で音源は含めない。README だけ残す）
+/VoiceBackup/*.wav
+
 # 重複している VRM
 /test.vrm

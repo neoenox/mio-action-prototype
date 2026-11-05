@@ -127,7 +127,7 @@ namespace Ryona.Game
                 Shake(GuardBreakShake, GuardBreakShakeSeconds);
                 HitStop.Play(GuardBreakHitStop);
                 PlaySfx(SfxId.Break);
-                PlayHurtVoice(SfxId.HurtKu);
+                PlayHurtVoice(SfxId.HurtLarge);
                 return;
             }
 
@@ -155,21 +155,21 @@ namespace Ryona.Game
             PlaySfx(SfxId.Impact, weight > 1.1f ? 1f : 0.8f);
             PlaySfx(SfxId.Stagger, 0.7f);
 
-            // 腹への一撃は、軽いジャブでも重い声（hurt_ku）にする。
-            // 腹パンは「息が詰まる」音でないと、軽く払われたように聞こえる。
+            // 腹への一撃は専用の声（hurt_belly）。「息が詰まる」音でないと、
+            // 軽く払われたように聞こえる。
             if (Stats != null && Stats.LastHitZone == PunchZone.Body)
             {
-                PlayHurtVoice(SfxId.HurtKu);
+                PlayHurtVoice(SfxId.HurtBelly);
                 return;
             }
 
-            // 軽い被弾は hurt_u、重い被弾は hurt_ku。中くらいは半々。
+            // 軽い被弾は hurt_small、重い被弾は hurt_large。中くらいは半々。
             SfxId voice = result.Stagger switch
             {
-                StaggerTier.Small => SfxId.HurtU,
-                StaggerTier.Large => SfxId.HurtKu,
-                StaggerTier.GuardBreak => SfxId.HurtKu,
-                _ => Random.value < 0.5f ? SfxId.HurtU : SfxId.HurtKu
+                StaggerTier.Small => SfxId.HurtSmall,
+                StaggerTier.Large => SfxId.HurtLarge,
+                StaggerTier.GuardBreak => SfxId.HurtLarge,
+                _ => Random.value < 0.5f ? SfxId.HurtSmall : SfxId.HurtLarge
             };
             PlayHurtVoice(voice);
         }
