@@ -103,6 +103,18 @@ namespace Ryona.Game
         /// <summary>もがいた瞬間の 0..1。見た目の震えに使う。</summary>
         public float StrugglePulse { get; private set; }
 
+        /// <summary>
+        /// 押さえつけ中に入る膝蹴りの 0..1。1 から 0 へ減衰する。
+        /// 押さえる側（膝）と彼女（崩れ）の両方が見る。
+        /// </summary>
+        public float KneePulse { get; private set; }
+
+        /// <summary>押さえつけ中に膝蹴りの見た目を立てる（押さえる側から呼ぶ）。</summary>
+        public void KickKnee()
+        {
+            KneePulse = 1f;
+        }
+
         void Awake()
         {
             if (Stats == null)
@@ -127,6 +139,10 @@ namespace Ryona.Game
         {
             if (StrugglePulse > 0f)
                 StrugglePulse = Mathf.Max(0f, StrugglePulse - Time.deltaTime * 4f);
+
+            // 膝蹴りの見た目は掴まれていなくても抜けきるまで減衰させる（投げられた直後に残らない）
+            if (KneePulse > 0f)
+                KneePulse = Mathf.Max(0f, KneePulse - Time.deltaTime * 3f);
 
             if (!IsGrappled)
                 return;
@@ -211,6 +227,7 @@ namespace Ryona.Game
             _suppressRemaining = 0f;
             IsGrappled = true;
             StrugglePulse = 0f;
+            KneePulse = 0f;
 
             // 掴まれている間は移動もガードもできない
             Stats.IsMoving = false;
