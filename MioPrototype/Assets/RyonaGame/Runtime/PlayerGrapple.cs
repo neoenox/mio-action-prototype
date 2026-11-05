@@ -112,8 +112,13 @@ namespace Ryona.Game
         /// <summary>押さえつけ中に膝蹴りの見た目を立てる（押さえる側から呼ぶ）。</summary>
         public void KickKnee()
         {
+            _kneeHold = KneeHoldSeconds;
             KneePulse = 1f;
         }
+
+        /// <summary>膝蹴りの形を保つ秒。姿勢の補間（約 0.1 秒）が追いついてから減衰させる。</summary>
+        const float KneeHoldSeconds = 0.18f;
+        float _kneeHold;
 
         void Awake()
         {
@@ -141,8 +146,14 @@ namespace Ryona.Game
                 StrugglePulse = Mathf.Max(0f, StrugglePulse - Time.deltaTime * 4f);
 
             // 膝蹴りの見た目は掴まれていなくても抜けきるまで減衰させる（投げられた直後に残らない）
-            if (KneePulse > 0f)
-                KneePulse = Mathf.Max(0f, KneePulse - Time.deltaTime * 3f);
+            if (_kneeHold > 0f)
+            {
+                // 姿勢の補間が追いつくまで形を保つ。すぐ減衰させると腿が上がりきらない。
+                _kneeHold -= Time.deltaTime;
+                KneePulse = 1f;
+            }
+            else if (KneePulse > 0f)
+                KneePulse = Mathf.Max(0f, KneePulse - Time.deltaTime * 4f);
 
             if (!IsGrappled)
                 return;

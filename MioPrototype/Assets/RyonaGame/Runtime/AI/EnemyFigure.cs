@@ -925,17 +925,38 @@ namespace Ryona.Game
                 kneeR += 10f;
                 kneeL += 10f;
 
-                // 膝蹴り。右膝を腹へ入れる（片足で立ったまま腰を落とす）。
-                // 腿を水平近くまで上げないと、膝が彼女の腹（押さえつけで 0.7m ほど）まで届かない。
+                // 膝蹴り。カメラ側の脚で入れる（奥の脚だと彼の体に隠れて見えない）。
                 float knee = pin != null ? pin.KneePulse : 0f;
                 if (knee > 0f)
                 {
+                    var cam = Camera.main;
+                    bool leftKnee = false;
+                    if (cam != null)
+                    {
+                        Vector3 toCam = cam.transform.position - transform.position;
+                        toCam.y = 0f;
+                        leftKnee = Vector3.Dot(toCam, transform.right) < 0f;
+                    }
+
                     torsoPitch += 8f * knee;
                     hipsY -= 0.05f * knee;
-                    hipsZ += 0.05f * knee;
-                    kneeR += 85f * knee;
-                    legRPitch -= 85f * knee;
-                    kneeL += 8f * knee;
+                    hipsZ += 0.08f * knee;
+                    if (leftKnee)
+                    {
+                        // 骨盤を右へずらして、左膝を彼女の腹の中心線へ入れる
+                        // （そのまま上げると膝が彼女の脇腹の横を通って「当たっていない」画になる）
+                        hipsX += 0.10f * knee;
+                        kneeL += 90f * knee;
+                        legLPitch -= 95f * knee;
+                        kneeR += 8f * knee;
+                    }
+                    else
+                    {
+                        hipsX -= 0.10f * knee;
+                        kneeR += 90f * knee;
+                        legRPitch -= 95f * knee;
+                        kneeL += 8f * knee;
+                    }
                 }
             }
             // --- 立ち上がり（倒れた姿勢から起こす） ---------------------
@@ -1728,15 +1749,54 @@ namespace Ryona.Game
             // もがかれるほど彼女の肩が浮く（押し返されている）。手は毎フレーム肩を追う。
             _lift = 0.12f * Mathf.Clamp01(hold.Progress);
 
+            if (hold.KneePulse > 0.02f)
+            {
+                Vector3 kneeR = _figure.KneeBone(false).position;
+                Vector3 kneeL = _figure.KneeBone(true).position;
+                Vector3 belly = EnemyBrain.PunchTarget(_brain.Player, PunchZone.Body, 0.22f);
+                Debug.Log($"[KneeGap] p={hold.KneePulse:F2} " +
+                          $"R={Vector3.Distance(kneeR, belly):F2} L={Vector3.Distance(kneeL, belly):F2} " +
+                          $"kneeR=({kneeR.x:F2},{kneeR.y:F2},{kneeR.z:F2}) " +
+                          $"kneeL=({kneeL.x:F2},{kneeL.y:F2},{kneeL.z:F2}) " +
+                          $"belly=({belly.x:F2},{belly.y:F2},{belly.z:F2})");
+            }
+
             // 演出中だけ寄る。ヒット時の押し込みと同じ API を使い、毎フレーム押し直す。
             if (_camera == null)
                 _camera = FindFirstObjectByType<ThirdPersonCamera>();
             if (_camera != null)
             {
-                _camera.PushDistance(0.72f, 0.2f);
-                _camera.PushPivot(-0.10f, 0.2f);
+                // 膝蹴り中は腹パンと同じ寄りの構図にする（押さえつけ自体は少し引いた画）。
+                if (hold.KneePulse > 0f)
+                    _kneeCamUntil = Time.time + 0.30f;
+
+                if (Time.time < _kneeCamUntil)
+                {
+                    Transform player = _brain.Player.transform;
+                    float facing = player.forward.x;
+                    float sign = Mathf.Abs(facing) > 0.1f ? Mathf.Sign(facing) : 1f;
+
+                    _camera.PushDistance(KneeCamDistance, 0.25f);
+                    _camera.PushPivot(KneeCamPivot, 0.25f);
+                    _camera.PushFocus(player.position.x, 0.25f, KneeCamPitch, KneeCamYaw * sign);
+                }
+                else
+                {
+                    _camera.PushDistance(0.72f, 0.2f);
+                    _camera.PushPivot(-0.10f, 0.2f);
+                }
             }
         }
+
+        // 膝蹴りの演出カメラ（タッグ腹パンと同じ「寄って斜め前から」の作り。
+        // 膝は腹の高さなので、腹パンより少し引いてピボットを下げ、膝と顔を同じ画に入れる）
+        const float KneeCamDistance = 0.38f;
+        const float KneeCamPivot = 0.12f;
+        const float KneeCamPitch = -8f;
+        const float KneeCamYaw = -40f;
+
+        /// <summary>膝蹴りの寄りを保つ終了時刻。</summary>
+        float _kneeCamUntil;
 
         void Solve(bool left, Transform shoulder)
         {

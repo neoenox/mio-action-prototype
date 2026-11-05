@@ -49,6 +49,10 @@ namespace Ryona.Game
         string _pinShotPath;
         float _pinShotDelay = -1f;
 
+        /// <summary><c>-pinburst=</c> の接頭辞。押さえつけ開始から連番で撮る（膝蹴りまで含める）。</summary>
+        string _pinBurstPrefix;
+        bool _pinBurstDone;
+
         /// <summary>押さえつけ開始から撮影までの秒数（<c>-pinshotdelay=</c>）。</summary>
         float _pinShotDelaySeconds = 0.30f;
         bool _once;
@@ -72,6 +76,7 @@ namespace Ryona.Game
             bool pin = false;
             string pinShotPath = null;
             float pinShotDelay = 0.30f;
+            string pinBurst = null;
 
             foreach (string a in System.Environment.GetCommandLineArgs())
             {
@@ -112,6 +117,8 @@ namespace Ryona.Game
                         System.Globalization.CultureInfo.InvariantCulture, out float d) && d >= 0f)
                         pinShotDelay = d;
                 }
+                else if (a.StartsWith("-pinburst=", System.StringComparison.OrdinalIgnoreCase))
+                    pinBurst = a.Substring("-pinburst=".Length);
             }
 
             if (!wanted)
@@ -131,6 +138,7 @@ namespace Ryona.Game
             driver._burstPrefix = heldPunchBurst;
             driver._pinShotPath = pinShotPath;
             driver._pinShotDelaySeconds = pinShotDelay;
+            driver._pinBurstPrefix = pinBurst;
             driver._once = once;
             driver._hitAfterThrowOnly = hitAfterThrow;
         }
@@ -176,6 +184,11 @@ namespace Ryona.Game
                         Debug.Log($"[GrappleTest] 掴まれた kind={kind}");
                         if (kind == GrappleKind.Pin && _pinShotPath != null)
                             _pinShotDelay = Mathf.Max(0f, _pinShotDelaySeconds);
+                        if (kind == GrappleKind.Pin && _pinBurstPrefix != null && !_pinBurstDone)
+                        {
+                            _pinBurstDone = true;
+                            StartCoroutine(PinBurstShots());
+                        }
                     };
                     _grapple.Escaped += () => { _holdFinished = true; Debug.Log("[GrappleTest] 振りほどけた"); };
                     _grapple.Failed += () => { _holdFinished = true; Debug.Log("[GrappleTest] 振りほどけなかった"); };
@@ -252,6 +265,14 @@ namespace Ryona.Game
 
             if (PinTest)
             {
+                // 押さえつけの確認中は、他の敵が背後から掴んで邪魔しないようにする。
+                // （背後拘束は時間切れが無いので、一度掴まれると押さえつけの機会が無くなる）
+                foreach (var other in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+                {
+                    if (other != null && other != target && other.IsAlive)
+                        other.HoldFire(30f);
+                }
+
                 target.QueuePin();
                 _orders++;
                 Debug.Log($"[GrappleTest] #{_orders} {target.name} に押さえつけを指示 dist={best:F2}");
@@ -262,6 +283,32 @@ namespace Ryona.Game
 
             _orders++;
             Debug.Log($"[GrappleTest] #{_orders} {target.name} に掴みを指示 dist={best:F2}");
+        }
+
+        /// <summary>
+        /// 押さえつけ開始から 0.05 秒ごとに連番で撮る（<c>-pinburst=&lt;接頭辞&gt;</c>）。
+        /// 膝蹴りは開始 1.5 秒後なので、2.0 秒ぶん撮って前後が分かるようにする。
+        /// </summary>
+        IEnumerator PinBurstShots()
+        {
+            const int count = 40;
+            const float interval = 0.05f;
+
+            string dir = System.IO.Path.GetDirectoryName(_pinBurstPrefix);
+            string name = System.IO.Path.GetFileNameWithoutExtension(_pinBurstPrefix);
+
+            float next = Time.unscaledTime;
+            for (int i = 0; i < count; i++)
+            {
+                while (Time.unscaledTime < next)
+                    yield return null;
+
+                string file = System.IO.Path.Combine(dir, $"{name}_{i:00}.png");
+                ScreenCapture.CaptureScreenshot(file);
+                next += interval;
+            }
+
+            Debug.Log($"[GrappleTest] pin burst {count} 枚 {_pinBurstPrefix}_XX.png");
         }
 
         void OnBellyPunchPerformed()
