@@ -475,7 +475,10 @@ namespace Ryona.Game
             // ここで側方（z）へずらしても次のフレームで戻され、「ずらした前提の向き」だけが
             // 残って腹から 35° 外れる（実測: 拳が 0.33m 届かず空振り）。
             // 立ち位置は前後（x）だけで決め、向きは実際に立つ位置から腹へ向ける。
-            Vector3 spot = anchor + forward * Mathf.Max(0.8f, AttackerDistance);
+            // 下限はカプセルが重ならない距離（彼女 0.30 + 敵 0.40 = 0.70m）に置く。
+            // 0.8 に固定していたときは AttackerDistance が効かず、拳が届く位置まで
+            // 踏み込めなかった（実測の立ち位置は常に 0.8m）。
+            Vector3 spot = anchor + forward * Mathf.Max(0.70f, AttackerDistance);
             spot.z = _stats.transform.position.z;
             spot.y = best.transform.position.y;
 
