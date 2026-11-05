@@ -280,5 +280,67 @@ namespace Ryona.Tests
             Assert.AreEqual(PunchZone.Face, _attacker.Zone, "The punch must aim at the face");
             Assert.AreEqual(EnemyPhase.Windup, _attacker.Phase, "The enemy must enter windup");
         }
+
+        /// <summary>
+        /// タッグ技（腹 / 顔）は片手で打つ。左腕を胸の前へ構えたままだと、上体を前へ倒す
+        /// 腹パンの姿勢と重なって「両手で押している」画になる（実測でそう見えていた）。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 腹パンは片手で打ち反対の手は狙いから離れている()
+        {
+            yield return AssertOneHandedTagPunch(PunchZone.Body);
+        }
+
+        [UnityTest]
+        public IEnumerator 顔面タッグパンチも片手で打つ()
+        {
+            yield return AssertOneHandedTagPunch(PunchZone.Face);
+        }
+
+        /// <summary>
+        /// 打つ手（右）が狙いに届き、反対の手（左）は腰の横へ引いてあることを確かめる。
+        /// 一番伸びた瞬間（右の拳が狙いに最も近づいたフレーム）で左右を比べる。
+        /// </summary>
+        IEnumerator AssertOneHandedTagPunch(PunchZone zone)
+        {
+            yield return LoadAndGrab(waitForAnimator: true);
+            PlaceAttackerInFront();
+
+            _attacker.HoldFire(10f);
+            Assert.IsTrue(_attacker.TryStartTagPunch(zone, holdPoseSeconds: 0.3f),
+                $"タッグ技（{zone}）が始まらない");
+            _attacker.enabled = true;
+
+            var figure = _attacker.GetComponent<EnemyFigure>();
+            Assert.IsNotNull(figure, "EnemyFigure が無い");
+
+            Vector3 target = EnemyBrain.PunchTarget(_player, zone, _attacker.BodyTargetBias);
+            var fistR = figure.Fist(false);
+            var fistL = figure.Fist(true);
+            Assert.IsNotNull(fistR, "右の拳が無い");
+            Assert.IsNotNull(fistL, "左の拳が無い");
+
+            float bestRight = float.MaxValue;
+            float leftAtBest = float.MaxValue;
+            float deadline = Time.realtimeSinceStartup + 3f;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                float r = Vector3.Distance(fistR.position, target);
+                if (r < bestRight)
+                {
+                    bestRight = r;
+                    leftAtBest = Vector3.Distance(fistL.position, target);
+                }
+
+                if (bestRight < 0.30f)
+                    break;
+
+                yield return null;
+            }
+
+            Assert.Less(bestRight, 0.35f, "打つ手（右）は狙いへ届いていること");
+            Assert.Greater(leftAtBest, 0.45f, "反対の手（左）は腰の横へ引いてあること");
+            Assert.Greater(leftAtBest, bestRight + 0.20f, "打つ手だけが前へ出ていること");
+        }
     }
 }
