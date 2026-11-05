@@ -165,7 +165,8 @@ namespace Ryona.Game
             }
             else
             {
-                tail = "別の敵なし";
+                // 5 発を撃ち終えたあとも拘束は続く。抜ける手段は連打だけ。
+                tail = "連打で逃げる";
             }
 
             _grappleText.text =

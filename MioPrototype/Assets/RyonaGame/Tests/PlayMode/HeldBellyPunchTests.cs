@@ -11,7 +11,8 @@ namespace Ryona.Tests
     /// 後ろ拘束中のタッグ技（腹パン / 顔面パンチ）の回帰テスト。
     ///
     /// 後ろ拘束は時間切れで解けない。別の敵のパンチが当たると
-    /// 「く」の字（腹）または首振り（顔）＋カメラ寄せが始まり、演出後に解放される。
+    /// 「く」の字（腹）または首振り（顔）＋カメラ寄せが始まる。
+    /// 5 発を撃ち終えても拘束は続き、抜けるには連打（もがき）が必要。
     /// 拘束者自身の攻撃では発動しない。
     /// </summary>
     public sealed class HeldBellyPunchTests
@@ -130,11 +131,11 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator 腹パンでくの字とカメラ寄せが始まり5発後に解放される()
+        public IEnumerator 腹パンでくの字とカメラ寄せが始まり5発後も拘束が続く()
         {
             yield return LoadAndGrab(waitForAnimator: true);
 
-            // このテストは「く」の字と解放だけを見る。狙いを腹に固定する。
+            // このテストは「く」の字と拘束の継続だけを見る。狙いを腹に固定する。
             _director.FacePunchChance = 0f;
             PlaceAttackerInFront();
 
@@ -157,14 +158,29 @@ namespace Ryona.Tests
             Assert.IsTrue(_grapple.IsGrappled, "The hold must remain during the combo");
             Assert.Greater(_anim.HeldBellyPunchFold, 0.5f, "The body must fold");
 
-            // 5 発を食らってから解放される
+            // 5 発を食らっても拘束は続く
             float deadline = Time.realtimeSinceStartup + 10f;
             while (_director.IsPerforming && Time.realtimeSinceStartup < deadline)
                 yield return null;
 
             Assert.IsFalse(_director.IsPerforming, "The combo must end");
             Assert.AreEqual(5, _director.ComboHitsLanded, "The player must take 5 belly punches");
-            Assert.IsFalse(_grapple.IsGrappled, "The hold must be released after the combo");
+            Assert.IsTrue(_grapple.IsGrappled, "The hold must continue after the combo");
+            Assert.IsFalse(_grapple.IsStruggleSuppressed, "Mashing must work right after the combo");
+
+            // 同じ拘束で 2 回目のコンボは始めない（拘束から抜けられなくなる）
+            Hit(_attacker, PunchZone.Body);
+            yield return null;
+            Assert.IsFalse(_director.IsPerforming, "A second combo must not start in the same hold");
+
+            // 連打で抜けられる（抜けたら拘束終了）
+            var escape = typeof(PlayerGrapple).GetMethod("Escape",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(escape, "Escape not found");
+            escape.Invoke(_grapple, null);
+            yield return null;
+
+            Assert.IsFalse(_grapple.IsGrappled, "Mashing must free the player after the combo");
         }
 
         [UnityTest]

@@ -111,6 +111,9 @@ namespace Ryona.Game
         bool _waitingForFirst;
         float _punchTimer;
 
+        /// <summary>この拘束でタッグ技を撃ち終えたか。同じ拘束で 2 回目のコンボを始めない。</summary>
+        bool _comboDone;
+
         bool _comboActive;
         int _hits;
         float _nextPunchTimer;
@@ -248,6 +251,7 @@ namespace Ryona.Game
         {
             ResetHold();
             _hits = 0;
+            _comboDone = false;
 
             // 腹パンのタッグ技は後ろ拘束のときだけ
             if (kind != GrappleKind.Back)
@@ -550,7 +554,7 @@ namespace Ryona.Game
             if (_hits >= ComboHitsTotal)
             {
                 _comboEndTimer = Mathf.Max(0.1f, ComboTailSeconds);
-                Debug.Log($"[HeldPunch] combo {_hits}/{ComboHitsTotal} ({zone}) → release");
+                Debug.Log($"[HeldPunch] combo {_hits}/{ComboHitsTotal} ({zone}) → finish");
             }
             else
             {
@@ -562,6 +566,11 @@ namespace Ryona.Game
         bool ShouldStartCombo(HitResult result)
         {
             if (_grapple == null || _stats == null)
+                return false;
+
+            // 1 回の拘束につき 1 コンボ。撃ち終わったあとに殴られても、
+            // 拘束だけが残る（抜けるには連打）。2 回目を許すと拘束から出られない。
+            if (_comboDone)
                 return false;
 
             if (!_grapple.IsGrappled || _grapple.Kind != GrappleKind.Back)
@@ -652,15 +661,19 @@ namespace Ryona.Game
 
             _comboActive = false;
             IsPerforming = false;
+            _comboDone = true;
             _nextPunchTimer = 0f;
             _comboEndTimer = 0f;
             _waitingForHit = false;
             _hitTimeout = 0f;
 
+            // 5 発を撃ち終えても拘束は続ける。ここで解放すると「5 発で自動的に助かる」
+            // ことになり、後ろ拘束の圧が消える。抜けるにはもがき（連打）が必要。
+            // 撃ち終わりと同時に連打を受けるよう、抑制も切る。
             if (_grapple != null && _grapple.IsGrappled)
             {
-                _grapple.Release();
-                Debug.Log($"[HeldPunch] release after {hits} hits");
+                _grapple.ClearStruggleSuppression();
+                Debug.Log($"[HeldPunch] combo end {hits}/{ComboHitsTotal} → hold continues");
             }
 
             HoldOthers(ReleaseGraceSeconds);
