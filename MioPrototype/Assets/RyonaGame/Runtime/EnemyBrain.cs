@@ -1456,16 +1456,17 @@ namespace Ryona.Game
             if (!_pinOrder && Time.time < _lastPinAt + CombatConstants.PinCooldown)
                 return false;
 
-            // すでに正面なら、通常の攻撃抽選（CanStartPin）に任せる
-            if (!IsBehindPlayer())
+            // すでに正面にいれば、通常の攻撃抽選（CanStartPin）に任せる
+            Vector3 toEnemy = transform.position - Player.transform.position;
+            toEnemy.y = 0f;
+            Vector3 playerForward = Player.transform.forward;
+            playerForward.y = 0f;
+            if (toEnemy.sqrMagnitude > 1e-4f && playerForward.sqrMagnitude > 1e-4f &&
+                Vector3.Dot(playerForward.normalized, toEnemy.normalized) > 0.9f)
                 return false;
 
-            Vector3 front = Player.transform.forward;
-            front.y = 0f;
-            if (front.sqrMagnitude < 1e-4f)
-                return false;
-
-            Vector3 target = Player.transform.position + front.normalized * 1.0f;
+            Vector3 front = playerForward.sqrMagnitude > 1e-4f ? playerForward.normalized : Vector3.right;
+            Vector3 target = Player.transform.position + front * 1.0f;
             Vector3 dir = target - transform.position;
             dir.y = 0f;
             if (dir.sqrMagnitude < 0.04f)

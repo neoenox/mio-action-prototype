@@ -10,7 +10,7 @@ namespace Ryona.Tests
     /// 押さえつけ（<see cref="GrappleKind.Pin"/>）の回帰テスト。
     ///
     /// 後ろ拘束（Back）は時間切れで解けないが、押さえつけは
-    /// 3.0 秒の制限時間内に 12 回もがけば逃げられ、時間切れなら投げられる。
+    /// 4.2 秒の制限時間内に 12 回もがけば逃げられ、時間切れなら投げられる。
     /// 入口は正面 0.90〜1.30m・攻撃トークンあり・クールダウン外だけ。
     /// </summary>
     public sealed class PinGrappleTests
@@ -60,7 +60,7 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator 押さえつけは3秒の制限時間で始まり相手の方を向く()
+        public IEnumerator 押さえつけは制限時間つきで始まり相手の方を向く()
         {
             yield return Load();
 
@@ -70,7 +70,7 @@ namespace Ryona.Tests
             Assert.AreEqual(GrappleKind.Pin, _grapple.Kind);
             Assert.IsTrue(_grapple.HasTimeLimit, "押さえつけは時間切れがある");
             Assert.AreEqual(CombatConstants.GrappleLimitSeconds, _grapple.Remaining, 0.05f,
-                "制限時間は 3.0 秒");
+                $"制限時間は {CombatConstants.GrappleLimitSeconds:F1} 秒");
             Assert.AreEqual(CombatConstants.MashBasePin, _grapple.RequiredInputs, 0.01f,
                 "必要入力は 12 回");
 
@@ -173,15 +173,15 @@ namespace Ryona.Tests
 
             Assert.AreEqual(0, hits, "掴んだ瞬間はまだ膝蹴りは入らない");
 
-            // 膝蹴りは 0.35 秒後から 0.5 秒間隔で 5 発（最後は 2.35 秒）。
-            yield return new WaitForSeconds(2.6f);
+            // 膝蹴りは 1.1 秒後から 0.55 秒間隔で 5 発（最後は 3.3 秒）。
+            yield return new WaitForSeconds(3.6f);
 
             Assert.AreEqual(CombatConstants.PinKneeCount, hits, "押さえつけ中に膝蹴りが 5 発入る");
             Assert.Less(_player.State.Hp, hpBefore - 10f, "膝蹴り 5 発ぶん HP が減る");
 
-            // 時間切れの投げ（3.0 秒）より前に撃ち終わっている
-            yield return new WaitForSeconds(0.25f);
-            Assert.AreEqual(CombatConstants.PinKneeCount, hits, "3.0 秒の制限時間に 5 発で収まる");
+            // 時間切れの投げ（4.2 秒）より前に撃ち終わっている
+            yield return new WaitForSeconds(0.3f);
+            Assert.AreEqual(CombatConstants.PinKneeCount, hits, "制限時間内に 5 発で収まる");
         }
 
         [UnityTest]

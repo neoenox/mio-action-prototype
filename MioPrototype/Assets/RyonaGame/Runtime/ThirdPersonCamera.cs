@@ -353,16 +353,21 @@ namespace Ryona.Game
 
             // 腹パン演出中は、画面ロックの中心ではなくプレイヤーを中央に置く。
             // ロック中は彼女が画面の端にいることがあり、寄るだけでは小さく写るため。
-            if (focusing)
-            {
-                _focusRemaining = Mathf.Max(0f, _focusRemaining - Time.unscaledDeltaTime);
-                _beltX = _focusX;
-            }
-
             float minX = Mathf.Max(BeltMinX, Mathf.Min(GateMinX, GateMaxX));
             float maxX = Mathf.Min(BeltMaxX, Mathf.Max(GateMinX, GateMaxX));
 
-            _beltX = Mathf.Clamp(_beltX, minX, maxX);
+            if (focusing)
+            {
+                _focusRemaining = Mathf.Max(0f, _focusRemaining - Time.unscaledDeltaTime);
+                // 演出中は関所（画面ロック）のクランプを外す。ロックの端で彼女が
+                // 画面の外へ寄り、寄せた画で「中心に居ない」ように見えるため。
+                // ステージ端だけは守る。
+                _beltX = Mathf.Clamp(_focusX, BeltMinX, BeltMaxX);
+            }
+            else
+            {
+                _beltX = Mathf.Clamp(_beltX, minX, maxX);
+            }
 
             Vector3 pivot = new Vector3(
                 Mathf.Clamp(_beltX, minX, maxX),
