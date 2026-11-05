@@ -65,8 +65,12 @@ namespace Ryona.Game
             }
         }
 
-        /// <summary>顔を殴られたときの既定の配合。Editor の表情シートも同じ値を使う。</summary>
-        public static PainShape DefaultFacePain => new PainShape(0.82f, 0.50f, 0.12f, 0.95f, 0.32f);
+        /// <summary>
+        /// 顔を殴られたときの既定の配合。Editor の表情シートも同じ値を使う。
+        /// 目は強くつぶる（殴られた瞬間に反射で閉じる）。口をわずかに開けて歯を食いしばる。
+        /// まぶたが完全に閉じても、眉を寄せ・歯を食いしばったままなら眠っては見えない。
+        /// </summary>
+        public static PainShape DefaultFacePain => new PainShape(0.85f, 0.62f, 0.20f, 0.95f, 0.90f);
 
         /// <summary>
         /// 腹パンの既定の配合。眉を寄せたまま口を開け、目を強くつぶって息を漏らす。

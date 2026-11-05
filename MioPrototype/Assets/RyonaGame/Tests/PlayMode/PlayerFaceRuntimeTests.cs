@@ -78,14 +78,19 @@ namespace Ryona.Tests
         }
 
         [Test]
-        public void 腹パンの配合は顔ヒットより口を開け目を強くつぶる()
+        public void 腹パンは顔ヒットより口を開けどちらも目を強くつぶる()
         {
             var face = PlayerFace.DefaultFacePain;
             var belly = PlayerFace.DefaultBellyPain;
 
             Assert.Greater(belly.Mouth, face.Mouth, "腹パンは口を開けて息を漏らす");
-            Assert.Greater(belly.Blink, face.Blink, "腹パンは目を強くつぶる");
             Assert.Less(belly.Grit, face.Grit, "腹パンは食いしばりを緩める（口を開けるため）");
+
+            // 殴られた瞬間はどちらも反射で目を閉じる。顔ヒットは口を結んだままなので、
+            // まぶたが閉じても「眠っている」顔にならないよう眉と食いしばりで作る。
+            Assert.GreaterOrEqual(face.Blink, 0.85f, "顔ヒットは目を強くつぶる");
+            Assert.GreaterOrEqual(belly.Blink, 0.75f, "腹パンも目を強くつぶる");
+            Assert.GreaterOrEqual(face.Angry, 0.75f, "目を閉じても眠って見えないよう眉を寄せる");
         }
 
         [UnityTest]
