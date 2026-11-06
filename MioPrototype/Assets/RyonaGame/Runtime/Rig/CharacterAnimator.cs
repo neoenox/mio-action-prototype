@@ -2358,12 +2358,22 @@ namespace Ryona.Game
                 || (footL - Rig.RestFootL).sqrMagnitude > 0.0004f
                 || (footR - Rig.RestFootR).sqrMagnitude > 0.0004f;
 
+            // うつ伏せは膝の向き（ポール）を下へ回す。立ち姿勢のまま「前＋上」で解くと、
+            // 体を伏せたときに膝が逆向き（過伸展）に折れる（実測）。
+            Vector3 poleNow = pole;
+            if (_downForward && (_state == State.Down || _state == State.GetUp) && layAngle > 1f)
+            {
+                float t = Mathf.Clamp01(layAngle / 92f);
+                Vector3 pronePole = transform.position - Vector3.up * 1.6f + transform.forward * 0.6f;
+                poleNow = Vector3.Lerp(pole, pronePole, t);
+            }
+
             if (needLegSolve)
             {
                 // 足を狙った位置へ置く（接地）。このとき脚の形は IK が決めるので、
                 // しゃがみ姿勢を上書きしない（上書きすると足が地面から外れる）。
-                Rig.SolveLeg(true, transform.TransformPoint(footL), pole);
-                Rig.SolveLeg(false, transform.TransformPoint(footR), pole);
+                Rig.SolveLeg(true, transform.TransformPoint(footL), poleNow);
+                Rig.SolveLeg(false, transform.TransformPoint(footR), poleNow);
             }
             else if (legTuck > 0.001f)
             {
@@ -2385,8 +2395,8 @@ namespace Ryona.Game
             if (_downForward && (_state == State.Down || _state == State.GetUp)
                 && needLegSolve && layAngle > 1f)
             {
-                Rig.SolveLeg(true, transform.TransformPoint(footL), pole);
-                Rig.SolveLeg(false, transform.TransformPoint(footR), pole);
+                Rig.SolveLeg(true, transform.TransformPoint(footL), poleNow);
+                Rig.SolveLeg(false, transform.TransformPoint(footR), poleNow);
             }
 
             // うつ伏せ系の腕は、体を回した後に**世界の向き**で置き直す。
