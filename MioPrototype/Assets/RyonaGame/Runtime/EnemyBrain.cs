@@ -464,6 +464,18 @@ namespace Ryona.Game
         /// <summary>次の膝蹴りを入れる時刻（0 = 予定なし）。</summary>
         float _pinNextKneeAt;
 
+        /// <summary>突き飛ばす側の腕を前に出す残り秒。</summary>
+        float _pushUntil;
+
+        /// <summary>引き渡しで彼女を押し出す瞬間、両腕を突き出す（0.2 秒）。</summary>
+        public void PushAway()
+        {
+            _pushUntil = Time.time + 0.22f;
+        }
+
+        /// <summary>いま押し出している最中か（見た目側が腕を突き出すのに使う）。</summary>
+        public bool IsPushing => Time.time < _pushUntil;
+
         /// <summary>押さえつけ中の相手か（掴んでいる本人）。見た目側が姿勢を組むのに使う。</summary>
         public bool IsPinning { get; private set; }
 
@@ -1156,9 +1168,31 @@ namespace Ryona.Game
             return true;
         }
 
-        /// <summary>外部から怯ませる（振りほどかれた時など）。</summary>
-        public void ForceStagger(float seconds)
+        /// <summary>
+        /// 引き渡しで拘束を受け持つ。掴んだまま硬直（Recover）を維持し、
+        /// 相手がもがき終えるまで離さない。
+        /// </summary>
+        public void TakeOverHold(float seconds)
         {
+            IsHolding = true;
+            HideTelegraph();
+            _currentAttack = AttackId.Grab;
+            _timer = Mathf.Max(0.5f, seconds);
+            Phase = EnemyPhase.Recover;
+            ReleaseToken();
+
+            // 正面拘束（Pin）を引き継いだときは、そのまま膝蹴りまで続ける。
+            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            bool pin = grapple != null && grapple.Kind == GrappleKind.Pin;
+            IsPinning = pin;
+            _pinKneesLeft = pin ? Mathf.Max(1, CombatConstants.PinKneeCount) : 0;
+            _pinNextKneeAt = pin ? Time.time + Mathf.Max(0.1f, CombatConstants.PinKneeDelay) : 0f;
+
+            Debug.Log($"[HandOff] {name} が拘束を受け持つ {seconds:F1}s pin={pin}");
+        }
+
+        /// <summary>外部から怯ませる（振りほどかれた時など）。</summary>
+        public void ForceStagger(float seconds)        {
             if (Phase == EnemyPhase.Dead)
                 return;
 

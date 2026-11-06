@@ -53,6 +53,7 @@
 | **P キー** | いちばん近い敵に押さえつけを指示（`-pinnow` で起動 1.5 秒後に 1 回） |
 | **O キー** | 関節技を指示（見送りに伴い、実装ごと削除） |
 | `-pinburst=<prefix>` | 拘束開始から 0.05 秒ごとに 80 枚（4 秒ぶん）を撮る |
+| `-handoffburst=<prefix>` | 引き渡しが起きた瞬間から 0.05 秒ごとに 40 枚（2 秒ぶん）を撮る（1 回だけ） |
 
 `PinHotkey` は「すでに掴まれている」と失敗するので、**0.6 秒おきに再試行**する実装にしてある。
 
@@ -63,3 +64,52 @@
 3. 彼の手も IK（手首・肘の2点）
 4. カメラは `HoldFocus(0.28, +0.05, x, 0.5f, 2, -32)` から始めて撮り比べ
 5. 形が決まってから、ダメージ（0.8 秒ごとに腕 −3）と HUD を載せる
+
+## 7. 引き渡し（たらい回し）で分かったこと
+
+3 体で戦っているとき、拘束している敵が彼女を別の敵へ渡す。抜けても次に捕まるので「数で押される」圧力が出る。
+
+### 7.1 姿勢の追加は必ず `ApplyPose()` の**後**に書く
+
+`CharacterAnimator.ApplyPose()` は状態ごとに全ボーンを組み直すので、
+**メソッドの前に足した姿勢は毎フレーム上書きされて消える**（今回これで 2 回空振りした）。
+
+```csharp
+ApplyPose();
+
+// ここに書く（Grapple.PushPulse など）
+if (Grapple != null && Grapple.PushPulse > 0f && Rig.Ready)
+{
+    float p = Mathf.Clamp01(Grapple.PushPulse);
+    Rig.Chest.localRotation *= Quaternion.Euler(20f * p, 0f, 0f);
+    Rig.LUpperArm.localRotation *= Quaternion.Euler(45f * p, 0f, 0f);
+    ...
+}
+```
+
+`ApplyPose()` の呼び出しは 3 か所ある（`Bind()` 直後 / `LateUpdate` の終わり / ポーズ撮影用）。
+**実行時に効くのは `LateUpdate` の 1 か所**なので、そこに足す。
+
+### 7.2 押し出したら掴み位置へ寄せ直す
+
+`PlayerMotor.Knockback(0.9m, 0.3s)` だけで終わると、相手との距離が開いたまま拘束が始まり
+**「2 人目の拘束が遠い」**になる（実測）。押し出し＋向き変更のあとに `SnapToCaptor(next, kind)` で
+掴み位置ぴったりに寄せる（実装は `PlayerGrapple.Shove`）。
+
+### 7.3 3 者が動くと「突き飛ばし」に見える
+
+| 対象 | 動き | 実装 |
+|---|---|---|
+| 押す側 | 両腕を前へ突き出す 0.22 秒 | `EnemyBrain.PushAway()` / `IsPushing` → `EnemyFigure` が腕を組む |
+| 彼女 | 上体 +20°、腕を後ろへ 45°、顔だけ起こす 0.35 秒 | `PlayerGrapple.PushPulse` |
+| 受け取る側 | 立ったまま受け止める（構えは未実装） | `EnemyBrain.TakeOverHold` |
+
+押す側が棒立ちのままだと、**彼女が自分から 2 人目へ歩いて行った＝「2 人目が掴みに来た」**に見える（ユーザー評）。
+押す側の腕だけで印象が変わる。
+
+### 7.4 抽選と派生
+
+- 引き渡しは 2.6 秒ごとに抽選。**押さえつけ（Pin）の最中とタッグ腹パンの最中は対象外**
+- 正面（`Pin`）: そのまま押さえつけ → 膝蹴り 5 発まで続く（`TakeOverHold` が `IsPinning` を立てる）
+- 背面（`Back`）: 羽交い締め → 条件を満たせばタッグ腹パン
+- 抽選比は 50:50（`GrappleHandOff` 内）。腹パンを見せたいなら背面寄りにする

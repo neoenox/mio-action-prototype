@@ -120,6 +120,22 @@ namespace Ryona.Game
         const float KneeHoldSeconds = 0.18f;
         float _kneeHold;
 
+        /// <summary>
+        /// 突き飛ばされた瞬間の 0..1。押されて上体が前へ流れ、腕が後ろへ残る。
+        /// 引き渡し（<see cref="HandOff"/>）で立てる。
+        /// </summary>
+        public float PushPulse { get; private set; }
+
+        /// <summary>突き飛ばしの見た目を立てる。</summary>
+        public void PushOff()
+        {
+            PushPulse = 1f;
+        }
+
+        /// <summary>突き飛ばしの形を保つ秒。</summary>
+        const float PushHoldSeconds = 0.12f;
+        float _pushHold;
+
         void Awake()
         {
             if (Stats == null)
@@ -154,6 +170,15 @@ namespace Ryona.Game
             }
             else if (KneePulse > 0f)
                 KneePulse = Mathf.Max(0f, KneePulse - Time.deltaTime * 4f);
+
+            // 突き飛ばしの見た目も同じ作り（保ってから減衰）
+            if (_pushHold > 0f)
+            {
+                _pushHold -= Time.deltaTime;
+                PushPulse = 1f;
+            }
+            else if (PushPulse > 0f)
+                PushPulse = Mathf.Max(0f, PushPulse - Time.deltaTime * 4f);
 
             if (!IsGrappled)
                 return;
@@ -251,6 +276,86 @@ namespace Ryona.Game
                       $"limit={limit} arm={armInjury:F0} captor={(captor != null ? captor.name : "none")}");
 
             Started?.Invoke(kind);
+        }
+
+        /// <summary>
+        /// 拘束を別の敵へ引き渡す（たらい回し）。掴まれたまま相手だけが入れ替わる。
+        /// もがきの進捗と制限時間はやり直し（抜けても次の敵に捕まる）。
+        /// </summary>
+        public void HandOff(EnemyBrain next, GrappleKind kind = GrappleKind.Back, bool shove = false)
+        {
+            if (!IsGrappled || next == null || next == Captor || Stats == null || Stats.IsDead)
+                return;
+
+            Captor = next;
+
+            if (shove)
+            {
+                // 突き飛ばし: 相手の正面（Pin）か背面（Back）へ押し出し、
+                // 背面向きのときは 180° 回す。押し終わりに必ず掴み位置へ合わせる
+                // （合わせないと「2 人目が遠い」距離で拘束が始まる）。
+                Vector3 toNext = next.transform.position - transform.position;
+                toNext.y = 0f;
+                Vector3 dirTo = toNext.sqrMagnitude > 1e-4f ? toNext.normalized : transform.forward;
+
+                bool faceTarget = kind == GrappleKind.Pin;
+                Vector3 facing = faceTarget ? dirTo : -dirTo;
+                Vector3 pushDir = dirTo;
+
+                StartCoroutine(Shove(next, kind, pushDir, facing, faceTarget));
+            }
+            else
+            {
+                SnapToCaptor(next, kind);
+            }
+
+            RequiredInputs = ResistanceMath.RequiredInputs(kind, 1f, Stats.State.Body[BodyPart.Arms]);
+            _resistance = new GrappleResistance(kind, RequiredInputs);
+            _remaining = kind == GrappleKind.Pin
+                ? CombatConstants.GrappleLimitSeconds
+                : float.PositiveInfinity;
+            _suppressRemaining = 0f;
+
+            Debug.Log($"[HandOff] {next.name} が拘束を引き継ぐ kind={kind} need={RequiredInputs:F1}");
+            Started?.Invoke(kind);
+        }
+
+        /// <summary>
+        /// 突き飛ばし → 向き直し → 掴み位置へ合わせる。
+        /// 押し出しただけで終わると、相手との距離が 1m 以上開いて「遠い拘束」になる（実測）。
+        /// </summary>
+        System.Collections.IEnumerator Shove(EnemyBrain next, GrappleKind kind,
+            Vector3 pushDir, Vector3 facing, bool faceTarget)
+        {
+            var motor = GetComponent<PlayerMotor>();
+            if (motor != null)
+                motor.Knockback(0.9f, 0.30f, pushDir);
+
+            // 押された瞬間の姿勢（上体が前へ、腕が後ろへ残る）
+            _pushHold = PushHoldSeconds;
+            PushPulse = 1f;
+
+            Quaternion target = Quaternion.LookRotation(facing, Vector3.up);
+            Quaternion from = transform.rotation;
+            float t = 0f;
+            const float turnSeconds = 0.25f;
+            while (t < turnSeconds)
+            {
+                t += Time.deltaTime;
+                transform.rotation = Quaternion.Slerp(from, target, Mathf.Clamp01(t / turnSeconds));
+                yield return null;
+            }
+            transform.rotation = target;
+
+            // 押し出しの残りが抜けてから、掴み位置ぴったりに寄せる
+            yield return new WaitForSeconds(0.05f);
+            if (IsGrappled && Captor == next)
+            {
+                SnapToCaptor(next, kind);
+                Vector3 gap = next.transform.position - transform.position;
+                gap.y = 0f;
+                Debug.Log($"[HandOff] snap kind={kind} gap={gap.magnitude:F2}");
+            }
         }
 
         /// <summary>

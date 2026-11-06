@@ -856,6 +856,17 @@ namespace Ryona.Game
             }
 
             ApplyPose();
+
+            // 突き飛ばされた瞬間: 姿勢を組んだ後に足す（上体が前へ・腕が後ろへ・顔は起こす）。
+            // ApplyPose より前に書くと上書きされるので、必ずこの位置で。
+            if (Grapple != null && Grapple.PushPulse > 0f && Rig.Ready)
+            {
+                float p = Mathf.Clamp01(Grapple.PushPulse);
+                Rig.Chest.localRotation *= Quaternion.Euler(20f * p, 0f, 0f);
+                Rig.Head.localRotation *= Quaternion.Euler(-16f * p, 0f, 0f);
+                Rig.LUpperArm.localRotation *= Quaternion.Euler(45f * p, 0f, 0f);
+                Rig.RUpperArm.localRotation *= Quaternion.Euler(45f * p, 0f, 0f);
+            }
         }
 
         float MoveSpeed()
