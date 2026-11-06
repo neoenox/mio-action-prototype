@@ -126,17 +126,26 @@ namespace Ryona
         public const float DownImmunitySeconds = 1.0f;
 
         // --- ダウンの吹き飛ばし（後ろへ放物線） ---------------------
-        /// <summary>ダウン時に後ろへ飛ぶ水平距離（m）。</summary>
-        public const float DownLaunchDistance = 1.60f;
+        // --- ダウンの吹き飛ばし（後ろへ放物線） ---------------------
+        /// <summary>
+        /// ダウン時に後ろへ下がる水平距離（m）。
+        /// 1.6m だと「吹き飛びすぎ」に見えた（ユーザー評）。
+        /// 姿勢側でも腰が後ろへ回るので、root は 0.35m だけ動かす（二重に動かすと滑って見える）。
+        /// </summary>
+        public const float DownLaunchDistance = 0.35f;
 
-        /// <summary>ダウン時に浮く高さ（m）。滞空時間はこれと重力で決まる。</summary>
-        public const float DownLaunchHeight = 0.55f;
+        /// <summary>
+        /// ダウン時に浮く高さ（m）。**低く抑える**のが大事。
+        /// 0.5m 級にすると「爆発で吹き飛ばされた」ように見える。0.16m なら足を払われて
+        /// 後ろへ倒れ込む高さで、着地してから背中をつける（滞空は約 0.24 秒）。
+        /// </summary>
+        public const float DownLaunchHeight = 0.16f;
 
-        /// <summary>拘束の投げで飛ぶ水平距離（m）。</summary>
-        public const float ThrowLaunchDistance = 1.90f;
+        /// <summary>拘束の投げで飛ぶ水平距離（m）。ダウンより少しだけ大きい。</summary>
+        public const float ThrowLaunchDistance = 0.60f;
 
         /// <summary>拘束の投げで浮く高さ（m）。</summary>
-        public const float ThrowLaunchHeight = 0.60f;
+        public const float ThrowLaunchHeight = 0.24f;
 
 
         public static float StunSeconds(StaggerTier tier)
