@@ -209,6 +209,12 @@ namespace Ryona.Game
         /// <summary>このダウンが「吹き飛ばされ」か（空中の姿勢を足すのに使う）。</summary>
         bool _downLaunched;
 
+        /// <summary>このダウンが「前へ崩れる」か（腹を殴られてうつ伏せになる）。</summary>
+        bool _downForward;
+
+        /// <summary>倒れきったときの体の角度（起き上がりはここから始める）。</summary>
+        float _downEndLay = -92f;
+
         /// <summary>
         /// 空中にいる度合い（1=空中）。着地後に 0 へ戻す。
         /// 空中で体を倒しきると「板のように飛んでいく」画になるので、
@@ -627,11 +633,18 @@ namespace Ryona.Game
             {
                 // 吹き飛ばされて倒れるときは、倒れきる時刻を着地に合わせる。
                 // 空中にいるのに「その場で崩れる」速さで倒れると、足が地面を滑って見える。
-                _downLaunched = Motor != null && Motor.IsAirborne;
+                _downForward = Stats != null && Stats.DownIsForward;
+                _downLaunched = !_downForward && Motor != null && Motor.IsAirborne;
+
                 // 吹き飛ばされるときは速く倒す。0.52 秒かけて回すと「ゆっくり傾いていく板」に見え、
                 // 倒れるというより「倒されている途中を眺めている」画になる。0.32 秒で着地と同時に倒れきる。
-                _downFallSeconds = _downLaunched ? DownFallSeconds * 0.34f : DownFallSeconds;
+                // 前へ崩れるときは腹を抱えて膝から落ちるので、少しだけ長く取る。
+                _downFallSeconds = _downForward
+                    ? DownFallSeconds * 0.79f
+                    : (_downLaunched ? DownFallSeconds * 0.34f : DownFallSeconds);
+
                 _airBlend = _downLaunched ? 1f : 0f;
+                _downEndLay = _downForward ? 92f : -92f;
             }
         }
 
@@ -1548,11 +1561,75 @@ namespace Ryona.Game
                     // 膝をついたあと、そのまま後ろへ倒れる
                     float fall = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.15f, 0.65f, rise));
 
+                    // 前へ崩れる（腹を殴られた）: 腹を抱えて膝が抜け、その場に崩れ落ちる。
+                    // うつ伏せまで回すと、脚の IK が定まらず脚が宙を向く（この姿勢系では
+                    // LayBody の回転が脚の IK の後に来るため）。膝をついて上体が折れる形にする。
+                    if (_downForward)
+                    {
+                        float drop = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.02f, 0.58f, rise));
+                        float fold = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.16f, 0.72f, rise));
+
+                        // 膝が抜けて腰が落ちる（膝立ちの高さまで）
+                        hipsOffset.y = Mathf.Lerp(0f, 0.36f - Rig.RestHips.y, drop);
+                        hipsOffset.z = Mathf.Lerp(0f, 0.10f, drop);
+
+                        layAngle = 0f;
+                        laySide = 0f;
+
+                        // 上体は腹を庇って深く折れる。顔は起こさず伏せる。
+                        torsoPitch = Mathf.Lerp(8f, 64f, fold);
+                        torsoRoll = 5f * fold;
+                        headPitch = Mathf.Lerp(6f, 26f, fold);
+                        // 顔は横へ逃がす（伏せたまま正面を向くと前髪が顔を覆う）
+                        headYaw = Mathf.Lerp(0f, 38f, fold);
+
+                        // 両手が腹へ寄り、そのまま床へ落ちる
+                        armLUpper = Vector3.Lerp(StanceArmLUpper, DownArmLUpper, drop);
+                        armLFore = Vector3.Lerp(StanceArmLFore, DownArmLFore, drop);
+                        armRUpper = Vector3.Lerp(StanceArmRUpper, DownArmRUpper, drop);
+                        armRFore = Vector3.Lerp(StanceArmRFore, DownArmRFore, drop);
+
+                        float hold = Mathf.Sin(Mathf.Clamp01(rise / 0.62f) * Mathf.PI);
+                        armLUpper += new Vector3(-0.30f * hold, -0.10f * hold, 0.42f * hold);
+                        armRUpper += new Vector3(0.30f * hold, -0.10f * hold, 0.42f * hold);
+
+                        // 崩れきったら腕は床へ（手をついて支える）
+                        float plant = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.62f, 1f, rise));
+                        armLUpper += new Vector3(0.10f * plant, -0.55f * plant, 0.35f * plant);
+                        armRUpper += new Vector3(-0.10f * plant, -0.55f * plant, 0.35f * plant);
+                        armLFore += new Vector3(0f, -0.30f * plant, 0.25f * plant);
+                        armRFore += new Vector3(0f, -0.30f * plant, 0.25f * plant);
+
+                        grip = Mathf.Lerp(0.45f, 0.10f, plant);
+
+                        // 膝から落ちる。脚は畳んだまま（膝立ち）。
+                        legTuck = Mathf.Lerp(0f, 0.85f, drop);
+                        footL += new Vector3(0f, 0f, -0.10f * drop);
+                        footR += new Vector3(0f, 0f, -0.06f * drop);
+
+                        // 床に着いた「ドサッ」
+                        float landF = Mathf.Clamp01((drop - 0.86f) / 0.14f);
+                        float bump = Mathf.Sin(landF * Mathf.PI);
+                        hipsOffset.y -= 0.015f * bump;
+                        torsoPitch += 5f * bump;
+
+                        // 崩れたあとの浅い息
+                        if (rise > 0.97f)
+                            hipsOffset.y += Mathf.Sin(_stateTime * 2.4f) * 0.003f;
+
+                        hipsOffset.y = Mathf.Max(hipsOffset.y, 0.115f - Rig.RestHips.y);
+
+                        _downEndHipsY = hipsOffset.y;
+                        _downEndHipsZ = hipsOffset.z;
+                        _downEndLay = 0f;   // 起き上がりはこの姿勢から立ち上がる
+                        break;
+                    }
+
                     // 腰が落ちる（片膝 → 仰向け）。最初の 0.2 秒で目に見えて沈むようにする
                     // 仰向けに倒す（-90 で完全に水平）。
                     // 真上を向いたままだと、重力で前髪が顔の上に落ちてくる。
                     // 体ごと横向きに倒すと、前髪は顔の横（床）へ落ちるので顔が見える。
-                    layAngle = -92f * fall;
+                    layAngle = _downEndLay * fall;
                     laySide = -30f * fall;
 
                     // 空中はまだ倒しきらない。着地してから水平になる（0.25 秒で寄せる）。
@@ -1682,6 +1759,7 @@ namespace Ryona.Game
                     // 立ち上がりはこの位置から始める（固定値だと倒れた位置と合わない）。
                     _downEndHipsY = hipsOffset.y;
                     _downEndHipsZ = hipsOffset.z;
+                    _downEndLay = -92f;   // 起き上がりの開始角度（現在値を入れると 0 に潰れる）
                     break;
                 }
 
@@ -1697,8 +1775,19 @@ namespace Ryona.Game
 
                     // 仰向け(-88) → 上体を起こす(-40) → 立ち(0)
                     // 横への倒れ込みは増やさない（増やすと体がひねれて側転に見える）
-                    layAngle = -92f + 52f * sit + 40f * rise;
-                    laySide = -30f * (1f - rise);
+                    if (_downForward)
+                    {
+                        // うつ伏せ(+92) から手で床を押して起き上がる。
+                        // 仰向けと同じ曲線を使うと、腹這いのまま背中側へ転がる不自然な動きになる。
+                        float up = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.10f, 0.86f, u));
+                        layAngle = Mathf.Lerp(_downEndLay, 0f, up);
+                        laySide = 6f * (1f - up);
+                    }
+                    else
+                    {
+                        layAngle = -92f + 52f * sit + 40f * rise;
+                        laySide = -30f * (1f - rise);
+                    }
 
                     hipsOffset.y = Mathf.Lerp(_downEndHipsY, StanceHipsY, rise) + 0.08f * sit * (1f - rise);
 
