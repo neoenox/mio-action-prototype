@@ -109,6 +109,35 @@ namespace Ryona
         /// </summary>
         public const float HitStunGrace = 0.35f;
 
+        // --- ひるみ（ダウンゲージ） -----------------------------------
+        /// <summary>ひるみの上限。ここに達するとダウンする。</summary>
+        public const float MaxFlinch = 100f;
+
+        /// <summary>最後の被弾からこの秒数は減衰しない（殴られ続けている間は溜まり続ける）。</summary>
+        public const float FlinchDecayDelay = 1.5f;
+
+        /// <summary>減衰の速さ（1 秒あたり）。</summary>
+        public const float FlinchDecayPerSecond = 10f;
+
+        /// <summary>ガード越しの被弾で加算されるひるみの倍率。ガードしていれば完全に防げるわけではない。</summary>
+        public const float BlockedFlinchScale = 0.35f;
+
+        /// <summary>起き上がり完了後、この秒数はダウンしない（無限ダウンの防止）。</summary>
+        public const float DownImmunitySeconds = 1.0f;
+
+        // --- ダウンの吹き飛ばし（後ろへ放物線） ---------------------
+        /// <summary>ダウン時に後ろへ飛ぶ水平距離（m）。</summary>
+        public const float DownLaunchDistance = 1.60f;
+
+        /// <summary>ダウン時に浮く高さ（m）。滞空時間はこれと重力で決まる。</summary>
+        public const float DownLaunchHeight = 0.55f;
+
+        /// <summary>拘束の投げで飛ぶ水平距離（m）。</summary>
+        public const float ThrowLaunchDistance = 1.90f;
+
+        /// <summary>拘束の投げで浮く高さ（m）。</summary>
+        public const float ThrowLaunchHeight = 0.60f;
+
 
         public static float StunSeconds(StaggerTier tier)
         {

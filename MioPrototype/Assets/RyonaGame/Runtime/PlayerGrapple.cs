@@ -463,21 +463,16 @@ namespace Ryona.Game
             // 投げなのに腹打ちの折れ方（上体 57〜71°）をするので、ここで消す。
             Stats.LastHitZone = null;
 
+            // 投げられたらダウン（後ろへ放物線で飛んで倒れる）。
+            // 怯みだけで済ませていた頃は「投げられたのに立っている」ように見えた。
+            // ダウンを先に立ててからダメージを渡す（受け手の姿勢が「倒れる」で始まるように）。
+            Stats.ForceDown(CombatConstants.DownDuration, "throw", captor != null ? captor.transform : null,
+                CombatConstants.ThrowLaunchDistance, CombatConstants.ThrowLaunchHeight);
+
             var result = Stats.ReceiveHit(captor != null ? captor.State : null, throwAttack,
                 captor != null ? captor.transform : null);
 
             PlaySfx(SfxId.Break, 1f);
-
-            // 突き飛ばされて囲みの外へ。その場に残すと、
-            // 怯んでいる 0.7 秒のあいだに包囲側から袋叩きにされる。
-            var motor = GetComponent<PlayerMotor>();
-            if (motor != null)
-            {
-                // 背後から投げられた場合も、掴んだ相手から離れる方向へ飛ばす。
-                Vector3 away = captor != null ? transform.position - captor.transform.position : -transform.forward;
-                motor.Knockback(CombatConstants.GrappleThrowKnockback,
-                    CombatConstants.GrappleThrowKnockbackSeconds, away);
-            }
 
             // 投げた直後、他の敵は一拍だけ様子を見る。
             // 怯んでいる 0.7 秒のあいだに殺到されると、1 回の失敗で HP が 3 割飛ぶ。

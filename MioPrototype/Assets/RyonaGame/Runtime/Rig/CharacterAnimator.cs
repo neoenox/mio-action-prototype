@@ -203,6 +203,12 @@ namespace Ryona.Game
         // （以前は死亡だけ 0.1 秒のクロスフェードで瞬間的に倒れていた）。
         const float DownFallSeconds = 0.95f;
 
+        /// <summary>このダウンで倒れきるまでの秒（吹き飛ばされるときは短くなる）。</summary>
+        float _downFallSeconds = DownFallSeconds;
+
+        /// <summary>このダウンが「吹き飛ばされ」か（空中の姿勢を足すのに使う）。</summary>
+        bool _downLaunched;
+
         float _shoveTime;
         float _walkPhase;
 
@@ -469,10 +475,11 @@ namespace Ryona.Game
                     $"side={_hurtSide} t={Time.time:F2}");
             }
 
-            // ガードブレイクだけは膝をつかせる
-            if (result.Stagger == StaggerTier.GuardBreak)
+            // ガードブレイク・ひるみの蓄積はダウン（倒れる）。
+            // 倒れている時間は「ダウンの合計 − 起き上がり」で、合計が DownDuration と揃う。
+            if (Stats != null && Stats.State != null && Stats.IsDown)
             {
-                SetState(State.Down, Mathf.Max(0.8f, result.StunSeconds));
+                SetState(State.Down, Mathf.Max(0.4f, Stats.DownRemaining - GetUpSeconds));
                 return;
             }
 
@@ -608,6 +615,14 @@ namespace Ryona.Game
             _state = state;
             _stateTime = 0f;
             _stateDuration = duration;
+
+            if (state == State.Down)
+            {
+                // 吹き飛ばされて倒れるときは、倒れきる時刻を着地に合わせる。
+                // 空中にいるのに「その場で崩れる」速さで倒れると、足が地面を滑って見える。
+                _downLaunched = Motor != null && Motor.IsAirborne;
+                _downFallSeconds = _downLaunched ? DownFallSeconds * 0.55f : DownFallSeconds;
+            }
         }
 
         /// <summary>
@@ -711,7 +726,11 @@ namespace Ryona.Game
                     break;
 
                 case State.Down:
-                    if (_stateTime >= _stateDuration)
+                    // 時間で終わるのが基本。ただしコア状態（残り秒）が先に尽きたら、
+                    // 倒れたまま動ける状態にならないよう、こちらも合わせて起き上がる。
+                    if (_stateTime >= _stateDuration
+                        || (Stats != null && Stats.DownRemaining > 0f
+                            && Stats.DownRemaining <= GetUpSeconds))
                     {
                         // 倒れたまま起き上がる。起き上がり中は動けない
                         SetState(State.GetUp, Mathf.Max(0.2f, GetUpSeconds));
@@ -1511,7 +1530,7 @@ namespace Ryona.Game
                     // 倒れる速さは状態の長さに依存させない（ダウン 2.0s / 気絶 1.2s / 死亡 ∞ の
                     // どれでも同じ 0.95 秒で倒れきる）。以前は状態の長さで正規化していたため、
                     // 死亡だけが 0.1 秒で瞬間的に倒れ、気絶は 1.2 秒かけてゆっくり倒れる逆転があった。
-                    float rise = Mathf.Clamp01(_stateTime / DownFallSeconds);
+                    float rise = Mathf.Clamp01(_stateTime / _downFallSeconds);
 
                     // 崩れ落ちる: 最初に速く落ちて、最後にゆっくり収まる
                     float settle = 1f - Mathf.Pow(1f - Mathf.Clamp01(rise), 2.2f);
@@ -1562,6 +1581,19 @@ namespace Ryona.Game
                     armRFore = Vector3.Lerp(StanceArmRFore, DownArmRFore, settle);
 
                     grip = 0.18f;
+
+                    // 吹き飛ばされている間は、体が後ろへ流れて脚が前へ残る。
+                    // 着地した瞬間にこの上乗せを外すので、地面に着いてから崩れる形になる。
+                    if (_downLaunched && Motor != null && Motor.IsAirborne)
+                    {
+                        float air = Mathf.Clamp01(_stateTime / Mathf.Max(0.05f, _downFallSeconds));
+                        torsoPitch -= 10f * (1f - air);
+                        headPitch -= 8f * (1f - air);
+
+                        legTuck = 0f;
+                        footL += new Vector3(0f, 0.10f, 0.18f);
+                        footR += new Vector3(0f, 0.06f, 0.12f);
+                    }
 
                     // 倒れきったあと、膝を少し立てる。棒のように真っ直ぐ伸びていると
                     // 「置かれた人形」に見えるので、脱力して曲がった脚を残す。
