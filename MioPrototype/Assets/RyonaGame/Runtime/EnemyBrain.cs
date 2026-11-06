@@ -1163,15 +1163,20 @@ namespace Ryona.Game
         public void TakeOverHold(float seconds)
         {
             IsHolding = true;
-            IsPinning = false;
-            _pinKneesLeft = 0;
-            _pinNextKneeAt = 0f;
             HideTelegraph();
             _currentAttack = AttackId.Grab;
             _timer = Mathf.Max(0.5f, seconds);
             Phase = EnemyPhase.Recover;
             ReleaseToken();
-            Debug.Log($"[HandOff] {name} が拘束を受け持つ {seconds:F1}s");
+
+            // 正面拘束（Pin）を引き継いだときは、そのまま膝蹴りまで続ける。
+            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            bool pin = grapple != null && grapple.Kind == GrappleKind.Pin;
+            IsPinning = pin;
+            _pinKneesLeft = pin ? Mathf.Max(1, CombatConstants.PinKneeCount) : 0;
+            _pinNextKneeAt = pin ? Time.time + Mathf.Max(0.1f, CombatConstants.PinKneeDelay) : 0f;
+
+            Debug.Log($"[HandOff] {name} が拘束を受け持つ {seconds:F1}s pin={pin}");
         }
 
         /// <summary>外部から怯ませる（振りほどかれた時など）。</summary>

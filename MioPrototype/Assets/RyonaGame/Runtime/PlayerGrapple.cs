@@ -257,13 +257,39 @@ namespace Ryona.Game
         /// 拘束を別の敵へ引き渡す（たらい回し）。掴まれたまま相手だけが入れ替わる。
         /// もがきの進捗と制限時間はやり直し（抜けても次の敵に捕まる）。
         /// </summary>
-        public void HandOff(EnemyBrain next, GrappleKind kind = GrappleKind.Back)
+        public void HandOff(EnemyBrain next, GrappleKind kind = GrappleKind.Back, bool shove = false)
         {
             if (!IsGrappled || next == null || next == Captor || Stats == null || Stats.IsDead)
                 return;
 
             Captor = next;
-            SnapToCaptor(next, kind);
+
+            if (shove)
+            {
+                // 突き飛ばし: 相手の正面（Pin）か背面（Back）へ 0.9m 押し出し、
+                // 背面向きのときは 180° 回す（その場で向きだけ変えると「瞬間移動」に見える）。
+                Vector3 toNext = next.transform.position - transform.position;
+                toNext.y = 0f;
+                Vector3 dirTo = toNext.sqrMagnitude > 1e-4f ? toNext.normalized : transform.forward;
+
+                bool faceTarget = kind == GrappleKind.Pin;
+                Vector3 pushDir = faceTarget ? dirTo : -dirTo;   // 正面なら相手へ、背面なら相手から離れる向き？
+                if (faceTarget)
+                    pushDir = dirTo;
+                else
+                    pushDir = dirTo;    // 押し出す向きはどちらも相手へ（向きだけ後ろへ変える）
+
+                var motor = GetComponent<PlayerMotor>();
+                if (motor != null)
+                    motor.Knockback(0.9f, 0.30f, pushDir);
+
+                Vector3 facing = faceTarget ? dirTo : -dirTo;
+                StartCoroutine(TurnTo(Quaternion.LookRotation(facing, Vector3.up), 0.25f));
+            }
+            else
+            {
+                SnapToCaptor(next, kind);
+            }
 
             RequiredInputs = ResistanceMath.RequiredInputs(kind, 1f, Stats.State.Body[BodyPart.Arms]);
             _resistance = new GrappleResistance(kind, RequiredInputs);
@@ -272,8 +298,22 @@ namespace Ryona.Game
                 : float.PositiveInfinity;
             _suppressRemaining = 0f;
 
-            Debug.Log($"[HandOff] {next.name} が拘束を引き継ぐ need={RequiredInputs:F1}");
+            Debug.Log($"[HandOff] {next.name} が拘束を引き継ぐ kind={kind} need={RequiredInputs:F1}");
             Started?.Invoke(kind);
+        }
+
+        /// <summary>突き飛ばしの間に、押し出されながら向きを変える。</summary>
+        System.Collections.IEnumerator TurnTo(Quaternion target, float seconds)
+        {
+            Quaternion from = transform.rotation;
+            float t = 0f;
+            while (t < seconds)
+            {
+                t += Time.deltaTime;
+                transform.rotation = Quaternion.Slerp(from, target, Mathf.Clamp01(t / seconds));
+                yield return null;
+            }
+            transform.rotation = target;
         }
 
         /// <summary>

@@ -104,9 +104,11 @@ namespace Ryona.Game
             if (best == null)
                 return false;
 
-            _grapple.HandOff(best);
+            // 抽選: 正面拘束（膝蹴り派生）か背面拘束（羽交い締め→腹パン）か。
+            GrappleKind kind = Random.value < 0.5f ? GrappleKind.Pin : GrappleKind.Back;
+            _grapple.HandOff(best, kind, shove: true);
             best.TakeOverHold(CombatConstants.GrappleLimitSeconds + 4f);
-            Debug.Log($"[HandOff] {captor.name} → {best.name}（dist={bestDistance:F2}）");
+            Debug.Log($"[HandOff] {captor.name} → {best.name} kind={kind} dist={bestDistance:F2}");
             return true;
         }
     }
