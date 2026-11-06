@@ -111,6 +111,10 @@ namespace Ryona.Game
             if (_stats.IsDead || Time.time < _nextHitAt)
                 return;
 
+            // -downhits=none: 自分では殴らず、他の仕掛け（-grappletest など）で倒れるのを待つ
+            if (Attack == "none")
+                return;
+
             _nextHitAt = Time.time + IntervalSeconds;
             Hit();
         }

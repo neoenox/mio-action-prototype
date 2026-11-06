@@ -445,6 +445,31 @@ namespace Ryona.Game
 
             Stats.State.ConsumeStamina(stamina);
 
+            // 腹パン・膝蹴りで限界まで殴られていたら、投げずに手を離す。
+            // 離した瞬間に彼女は崩れ落ちる（うつ伏せ）。投げると後ろへ飛んでしまい、
+            // 「腹を殴られ続けて立てなくなった」に見えない。
+            if (Stats.PendingDown)
+            {
+                PlaySfx(SfxId.Guard, 0.9f);
+
+                int heldNow = 0;
+                foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+                {
+                    if (enemy == null || enemy == captor || !enemy.IsAlive)
+                        continue;
+                    if (Vector3.Distance(enemy.transform.position, transform.position) > 6f)
+                        continue;
+
+                    enemy.HoldFire(CombatConstants.GrappleThrowGraceSeconds);
+                    heldNow++;
+                }
+
+                Debug.Log($"[Grapple] 限界まで殴られていたので投げずに離す" +
+                          $" inputs={inputs} hp={Stats.State.Hp:F0} holdfire={heldNow}");
+                Failed?.Invoke();
+                return;
+            }
+
             // 体勢を必ず折って、大きく怯ませる（腕にも傷害が残る）
             var throwAttack = new AttackData
             {

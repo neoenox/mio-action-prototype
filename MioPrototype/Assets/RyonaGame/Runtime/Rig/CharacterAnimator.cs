@@ -1561,59 +1561,58 @@ namespace Ryona.Game
                     // 膝をついたあと、そのまま後ろへ倒れる
                     float fall = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.15f, 0.65f, rise));
 
-                    // 前へ崩れる（腹を殴られた）: 腹を抱えて膝が抜け、その場に崩れ落ちる。
-                    // うつ伏せまで回すと、脚の IK が定まらず脚が宙を向く（この姿勢系では
-                    // LayBody の回転が脚の IK の後に来るため）。膝をついて上体が折れる形にする。
+                    // 前へ崩れる（腹を殴られた）: 膝が抜けて前へ倒れ、うつ伏せになる。
                     if (_downForward)
                     {
+                        // 腰が落ちる（膝が抜ける）
                         float drop = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.02f, 0.58f, rise));
-                        float fold = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.16f, 0.72f, rise));
+                        // 体が前へ倒れる（0 → 92° でうつ伏せ）
+                        float lay = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.16f, 0.78f, rise));
 
-                        // 膝が抜けて腰が落ちる（膝立ちの高さまで）
-                        hipsOffset.y = Mathf.Lerp(0f, 0.36f - Rig.RestHips.y, drop);
-                        hipsOffset.z = Mathf.Lerp(0f, 0.10f, drop);
+                        float lieY = 0.115f - Rig.RestHips.y;
+                        hipsOffset.y = Mathf.Lerp(0f, lieY, drop);
+                        // うつ伏せでは腰が足より前へ出る（体が前へ伸びる）。
+                        // 仰向けのとき腰が 0.87m 後ろへ回るのと裏返しで、出さないと脚が畳まれる。
+                        hipsOffset.z = Mathf.Lerp(0f, 0.78f, lay);
 
-                        layAngle = 0f;
-                        laySide = 0f;
+                        layAngle = 92f * lay;
+                        laySide = 5f * lay;
 
-                        // 上体は腹を庇って深く折れる。顔は起こさず伏せる。
-                        torsoPitch = Mathf.Lerp(8f, 64f, fold);
-                        torsoRoll = 5f * fold;
-                        headPitch = Mathf.Lerp(6f, 26f, fold);
+                        // 上体は腹を庇って折れ、着地してから脱力する
+                        torsoPitch = Mathf.Lerp(12f, 2f, lay);
+                        torsoRoll = 4f * lay;
+                        headPitch = Mathf.Lerp(10f, -2f, lay);
                         // 顔は横へ逃がす（伏せたまま正面を向くと前髪が顔を覆う）
-                        headYaw = Mathf.Lerp(0f, 38f, fold);
+                        headYaw = Mathf.Lerp(0f, 46f, lay);
 
-                        // 両手が腹へ寄り、そのまま床へ落ちる
+                        // 膝から落ちる。落ちきる前に脚を伸ばして、うつ伏せで真っ直ぐにする。
+                        float knees = Mathf.Sin(Mathf.Clamp01(rise / 0.72f) * Mathf.PI);
+                        legTuck = 0f;
+                        footL += new Vector3(0f, 0f, -0.06f * knees);
+                        footR += new Vector3(0f, 0f, -0.04f * knees);
+
+                        // 両手が腹へ寄る（腹パンの直後）→ 着地で床へ広がる
                         armLUpper = Vector3.Lerp(StanceArmLUpper, DownArmLUpper, drop);
                         armLFore = Vector3.Lerp(StanceArmLFore, DownArmLFore, drop);
                         armRUpper = Vector3.Lerp(StanceArmRUpper, DownArmRUpper, drop);
                         armRFore = Vector3.Lerp(StanceArmRFore, DownArmRFore, drop);
 
-                        float hold = Mathf.Sin(Mathf.Clamp01(rise / 0.62f) * Mathf.PI);
-                        armLUpper += new Vector3(-0.30f * hold, -0.10f * hold, 0.42f * hold);
-                        armRUpper += new Vector3(0.30f * hold, -0.10f * hold, 0.42f * hold);
+                        float hold = Mathf.Sin(Mathf.Clamp01(rise / 0.58f) * Mathf.PI);
+                        armLUpper += new Vector3(-0.30f * hold, -0.10f * hold, 0.44f * hold);
+                        armRUpper += new Vector3(0.30f * hold, -0.10f * hold, 0.44f * hold);
 
-                        // 崩れきったら腕は床へ（手をついて支える）
-                        float plant = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.62f, 1f, rise));
-                        armLUpper += new Vector3(0.10f * plant, -0.55f * plant, 0.35f * plant);
-                        armRUpper += new Vector3(-0.10f * plant, -0.55f * plant, 0.35f * plant);
-                        armLFore += new Vector3(0f, -0.30f * plant, 0.25f * plant);
-                        armRFore += new Vector3(0f, -0.30f * plant, 0.25f * plant);
+                        float spread = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.60f, 1f, rise));
+                        armLUpper += new Vector3(0.34f * spread, 0f, 0.18f * spread);
+                        armRUpper += new Vector3(-0.34f * spread, 0f, 0.18f * spread);
 
-                        grip = Mathf.Lerp(0.45f, 0.10f, plant);
-
-                        // 膝から落ちる。脚は畳んだまま（膝立ち）。
-                        legTuck = Mathf.Lerp(0f, 0.85f, drop);
-                        footL += new Vector3(0f, 0f, -0.10f * drop);
-                        footR += new Vector3(0f, 0f, -0.06f * drop);
+                        grip = Mathf.Lerp(0.45f, 0.10f, spread);
 
                         // 床に着いた「ドサッ」
-                        float landF = Mathf.Clamp01((drop - 0.86f) / 0.14f);
+                        float landF = Mathf.Clamp01((lay - 0.88f) / 0.12f);
                         float bump = Mathf.Sin(landF * Mathf.PI);
-                        hipsOffset.y -= 0.015f * bump;
-                        torsoPitch += 5f * bump;
+                        hipsOffset.y -= 0.012f * bump;
 
-                        // 崩れたあとの浅い息
+                        // うつ伏せのあとの浅い息
                         if (rise > 0.97f)
                             hipsOffset.y += Mathf.Sin(_stateTime * 2.4f) * 0.003f;
 
@@ -1621,7 +1620,7 @@ namespace Ryona.Game
 
                         _downEndHipsY = hipsOffset.y;
                         _downEndHipsZ = hipsOffset.z;
-                        _downEndLay = 0f;   // 起き上がりはこの姿勢から立ち上がる
+                        _downEndLay = 92f;   // 起き上がりの開始角度
                         break;
                     }
 
@@ -2292,6 +2291,16 @@ namespace Ryona.Game
             // 倒れるのは最後。立った姿勢を丸ごと倒すので、IK の結果も一緒に倒れる。
             if (Mathf.Abs(layAngle) > 0.01f)
                 Rig.LayBody(layAngle, laySide);
+
+            // うつ伏せ（前へ崩れる）だけは、体を回した後に脚を解き直す。
+            // LayBody は脚の IK より後に来るので、解いた脚ごと回すと脚が宙を向く（実測）。
+            // 回した後の骨格から足先へ向けて引き直せば、床に沿った脚になる。
+            if (_downForward && (_state == State.Down || _state == State.GetUp)
+                && needLegSolve && layAngle > 1f)
+            {
+                Rig.SolveLeg(true, transform.TransformPoint(footL), pole);
+                Rig.SolveLeg(false, transform.TransformPoint(footR), pole);
+            }
 
             // 状態が切り替わった直後は、切り替え前の姿勢から寄せる（カクつき防止）
             if (_blend < 1f)

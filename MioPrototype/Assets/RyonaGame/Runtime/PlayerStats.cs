@@ -57,6 +57,18 @@ namespace Ryona.Game
 
             State.Tick(Time.deltaTime, moving: IsMoving && !IsBlocking, blocking: IsBlocking);
 
+            // 掴まれている間にひるみが上限へ達していたら、離された瞬間に崩れる。
+            // 掴まれたまま倒すと姿勢が壊れるので、解けてから倒す。
+            if (_pendingDown && !IsDown && !IsGrappledNow && !IsDead)
+            {
+                _pendingDown = false;
+                ForceDown(CombatConstants.DownDuration, "flinch-release");
+            }
+            else if (_pendingDown && IsDown)
+            {
+                _pendingDown = false;   // 投げなどで先に倒れた
+            }
+
             // 難易度調整用の状態ログ（1 秒ごと）。-holdattack の通しで
             // 「怯みで何もできない時間」を数字で見るために出している。
             _statTimer -= Time.deltaTime;
@@ -104,8 +116,12 @@ namespace Ryona.Game
         public bool DownIsForward { get; private set; }
 
         /// <summary>
-        /// ひるみを溜めてよいか。ダウン中・起き上がり直後・掴まれている最中は溜めない。
+        /// ひるみを溜めてよいか。ダウン中と起き上がり直後は溜めない。
         /// ダウン中に溜めると「起き上がるそばからまた倒れる」になり、何もできなくなる。
+        /// <para>
+        /// 掴まれている最中も溜める（腹パン・膝蹴りの蓄積）。ただし掴まれている間は倒さず、
+        /// 掴みが解けた瞬間に崩れる（<see cref="_pendingDown"/>）。
+        /// </para>
         /// </summary>
         bool CanTakeFlinch
         {
@@ -116,14 +132,29 @@ namespace Ryona.Game
                 if (Time.time < _downImmuneUntil)
                     return false;
 
-                if (_grapple == null)
-                    _grapple = GetComponent<PlayerGrapple>();
-                if (_grapple != null && _grapple.IsGrappled)
-                    return false;
-
                 return true;
             }
         }
+
+        /// <summary>掴まれている最中か。</summary>
+        bool IsGrappledNow
+        {
+            get
+            {
+                if (_grapple == null)
+                    _grapple = GetComponent<PlayerGrapple>();
+                return _grapple != null && _grapple.IsGrappled;
+            }
+        }
+
+        /// <summary>
+        /// 掴まれている最中にひるみが上限へ達した印。掴みが解けた瞬間に倒す。
+        /// 腹パン・膝蹴りで限界まで殴られていたら、離されても立っていられない。
+        /// </summary>
+        bool _pendingDown;
+
+        /// <summary>掴まれたまま限界まで殴られ、離された瞬間に倒れる待ち状態か。</summary>
+        public bool PendingDown => _pendingDown;
 
         /// <summary>
         /// 強制的にダウンさせる。攻撃してきた相手が分かれば、その反対側へ放物線で吹き飛ばす。
@@ -142,6 +173,7 @@ namespace Ryona.Game
                 return;
 
             DownIsForward = forward ?? (LastHitZone == PunchZone.Body);
+            _pendingDown = false;
 
             float length = seconds > 0f ? seconds : CombatConstants.DownDuration;
             _downRemaining = Mathf.Max(_downRemaining, length);
@@ -251,7 +283,21 @@ namespace Ryona.Game
             {
                 float add = attack.Flinch * (result.Blocked ? CombatConstants.BlockedFlinchScale : 1f);
                 if (State.AddFlinch(add))
-                    ForceDown(CombatConstants.DownDuration, "flinch", attackerTransform);
+                {
+                    // 掴まれている間は倒さない（姿勢が壊れる）。解けた瞬間に倒す。
+                    if (IsGrappledNow)
+                    {
+                        if (!_pendingDown)
+                        {
+                            _pendingDown = true;
+                            Debug.Log($"[Down] flinch full while held (pending) flinch={State.Flinch:F0}");
+                        }
+                    }
+                    else
+                    {
+                        ForceDown(CombatConstants.DownDuration, "flinch", attackerTransform);
+                    }
+                }
             }
 
             HitReceived?.Invoke(result);
@@ -267,6 +313,7 @@ namespace Ryona.Game
             StunRemaining = 0f;
             _downRemaining = 0f;
             _downImmuneUntil = 0f;
+            _pendingDown = false;
             State.IsDown = false;
         }
 
