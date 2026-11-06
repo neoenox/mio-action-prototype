@@ -137,6 +137,9 @@ namespace Ryona.Game
 
             // 後ろへ放物線で飛ぶ。掴まれている最中（投げ）は掴み側が向きを決めるので、
             // ここでは相手の反対側＝飛ばされる向きを渡すだけでよい。
+            launchDistance *= _launchScale;
+            launchHeight *= _launchScale;
+
             if (launchDistance > 0f)
             {
                 Vector3 dir = attacker != null
@@ -169,15 +172,27 @@ namespace Ryona.Game
         /// </summary>
         public static bool StatLogging => _statLog;
 
+        /// <summary>
+        /// ダウンの飛距離の倍率（<c>-downlaunch=0.7</c>）。撮り比べ用。既定は 1。
+        /// </summary>
+        static float _launchScale = 1f;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         static void ParseStatLogFlag()
         {
             _statLog = false;
+            _launchScale = 1f;
 
             foreach (string a in System.Environment.GetCommandLineArgs())
             {
                 if (string.Equals(a, "-statlog", System.StringComparison.OrdinalIgnoreCase))
                     _statLog = true;
+                else if (a.StartsWith("-downlaunch=", System.StringComparison.OrdinalIgnoreCase)
+                    && float.TryParse(a.Substring("-downlaunch=".Length),
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out float scale)
+                    && scale > 0f)
+                    _launchScale = scale;
             }
         }
 

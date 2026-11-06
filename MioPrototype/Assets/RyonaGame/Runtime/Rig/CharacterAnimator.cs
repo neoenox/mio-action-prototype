@@ -209,6 +209,13 @@ namespace Ryona.Game
         /// <summary>このダウンが「吹き飛ばされ」か（空中の姿勢を足すのに使う）。</summary>
         bool _downLaunched;
 
+        /// <summary>
+        /// 空中にいる度合い（1=空中）。着地後に 0 へ戻す。
+        /// 空中で体を倒しきると「板のように飛んでいく」画になるので、
+        /// 空中は傾きを抑え、着地してから水平にする。
+        /// </summary>
+        float _airBlend;
+
         float _shoveTime;
         float _walkPhase;
 
@@ -621,7 +628,10 @@ namespace Ryona.Game
                 // 吹き飛ばされて倒れるときは、倒れきる時刻を着地に合わせる。
                 // 空中にいるのに「その場で崩れる」速さで倒れると、足が地面を滑って見える。
                 _downLaunched = Motor != null && Motor.IsAirborne;
-                _downFallSeconds = _downLaunched ? DownFallSeconds * 0.55f : DownFallSeconds;
+                // 吹き飛ばされるときは速く倒す。0.52 秒かけて回すと「ゆっくり傾いていく板」に見え、
+                // 倒れるというより「倒されている途中を眺めている」画になる。0.32 秒で着地と同時に倒れきる。
+                _downFallSeconds = _downLaunched ? DownFallSeconds * 0.34f : DownFallSeconds;
+                _airBlend = _downLaunched ? 1f : 0f;
             }
         }
 
@@ -1545,6 +1555,17 @@ namespace Ryona.Game
                     layAngle = -92f * fall;
                     laySide = -30f * fall;
 
+                    // 空中はまだ倒しきらない。着地してから水平になる（0.25 秒で寄せる）。
+                    // 空中で -92° まで回すと、板のように飛んでいく画になる（実測）。
+                    if (_downLaunched)
+                    {
+                        float air = Motor != null && Motor.IsAirborne ? 1f : 0f;
+                        _airBlend = Mathf.MoveTowards(_airBlend, air, Time.deltaTime * 4f);
+                        float tilt = Mathf.Lerp(1f, 0.40f, _airBlend);
+                        layAngle *= tilt;
+                        laySide *= tilt;
+                    }
+
                     // 崩れ落ちる: 足首を支点に腰が弧を描いて後ろへ倒れる。
                     // 「膝をついてから倒れる」形は腰が低すぎて膝が床下へ潜り、
                     // 回転後に膝が背中側へ跳ね上がる（人体に有り得ない形）ので使わない。
@@ -1555,7 +1576,16 @@ namespace Ryona.Game
                     footL += (Rig.RestHips - footL).normalized * buckle;
                     footR += (Rig.RestHips - footR).normalized * buckle;
 
-                    Vector3 pivot = (footL + footR) * 0.5f;
+                    // 足は倒れ始めに地面から離れる。かかとを支点に回したままだと
+                    // 「板を後ろへ倒した」画になり、ゲームのダウンに見えない（実測）。
+                    // 山なりに浮いて、倒れきる前に床へ戻る。
+                    float lift = Mathf.Sin(Mathf.Clamp01((rise - 0.05f) / 0.55f) * Mathf.PI);
+                    footL += new Vector3(0f, 0.22f * lift, 0.12f * lift);
+                    footR += new Vector3(0f, 0.17f * lift, 0.09f * lift);
+
+                    // 支点は倒れ始めの足元で固定する。浮いた足を支点にすると
+                    // 腰の軌道が途中で折れて「宙返り」に見える。
+                    Vector3 pivot = (Rig.RestFootL + Rig.RestFootR) * 0.5f;
                     Vector3 arcHips = pivot +
                         Quaternion.AngleAxis(layAngle, Vector3.right) * (Rig.RestHips - pivot);
                     hipsOffset = arcHips - Rig.RestHips;
@@ -1568,6 +1598,13 @@ namespace Ryona.Game
                     torsoRoll = 6f * settle;
                     headPitch = Mathf.Lerp(8f * settle, -16f, fall);
 
+                    // 倒れている途中は背中を反らせ、頭を一拍遅らせる。
+                    // 一直線のまま回ると「板が倒れる」画になる（実測）。
+                    float arch = Mathf.Sin(Mathf.Clamp01(fall) * Mathf.PI);
+                    torsoPitch -= 15f * arch;
+                    headPitch += 13f * arch;
+                    torsoYaw += 5f * arch;
+
                     // 首を横に倒す。仰向けのまま正面を向くと、重力で前髪が顔の上に落ちてくる。
                     // 横に倒すと重力が顔の面から横へ逃げるので、前髪が顔を覆わない。
                     headYaw = Mathf.Lerp(7f * settle, 15f, fall);
@@ -1579,6 +1616,20 @@ namespace Ryona.Game
                     armLFore = Vector3.Lerp(StanceArmLFore, DownArmLFore, settle);
                     armRUpper = Vector3.Lerp(StanceArmRUpper, DownArmRUpper, settle);
                     armRFore = Vector3.Lerp(StanceArmRFore, DownArmRFore, settle);
+
+                    // 二次動作: 被弾で腕が前へ振られ、倒れるにつれて横へ開いて流れる。
+                    // 脱力姿勢へ補間するだけだと腕が最初から最後まで同じ場所にあり、
+                    // 「棒人間が回っている」ように見える。
+                    float whip = Mathf.Sin(Mathf.Clamp01(rise / 0.42f) * Mathf.PI);
+                    armLUpper += new Vector3(0.10f * whip, 0.30f * whip, 0.50f * whip);
+                    armRUpper += new Vector3(-0.10f * whip, 0.26f * whip, 0.46f * whip);
+                    armLFore += new Vector3(0f, 0.16f * whip, 0.20f * whip);
+                    armRFore += new Vector3(0f, 0.14f * whip, 0.18f * whip);
+
+                    // 倒れる途中で腕が横へ開く（体から離れて流れる＝力が抜けた画）
+                    float splay = Mathf.Sin(Mathf.Clamp01(fall) * Mathf.PI);
+                    armLUpper += new Vector3(0.40f * splay, 0.10f * splay, 0.12f * splay);
+                    armRUpper += new Vector3(-0.40f * splay, 0.08f * splay, 0.12f * splay);
 
                     grip = 0.18f;
 
@@ -1598,6 +1649,16 @@ namespace Ryona.Game
                     // 倒れきったあと、膝を少し立てる。棒のように真っ直ぐ伸びていると
                     // 「置かれた人形」に見えるので、脱力して曲がった脚を残す。
                     legTuck = 0.22f * fall;
+
+                    // 寝きったあとは片膝を立て、体を少し横へ流す。
+                    // 脚を伸ばしたまま真っ直ぐ寝ると「床に置いた板」に見える（実測）。
+                    float restT = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.86f, 1f, fall));
+                    footL += new Vector3(0.05f, 0.02f, -0.34f) * restT;   // 左膝を立てる（足は床のまま）
+                    footR += new Vector3(-0.03f, 0.03f, -0.08f) * restT;
+                    armRUpper += new Vector3(-0.10f, 0.04f, 0.20f) * restT; // 右腕が腹の上へ落ちる
+                    armRFore += new Vector3(0f, 0.04f, 0.26f) * restT;
+                    armLUpper += new Vector3(0.14f, 0.02f, -0.10f) * restT; // 左腕は床へ流れる
+                    torsoRoll += 6f * restT;
 
                     // 背中が床に着いた瞬間の「ドサッ」。ここが無いと、倒れ終わりが
                     // ふわっと止まって「自分で寝た」ように見える。着地後に一度だけ沈む。

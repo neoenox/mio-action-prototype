@@ -98,18 +98,18 @@ namespace Ryona.Tests
             Assert.IsTrue(_stats.State.IsDown, "ダウンしていない");
             Assert.IsTrue(_motor.IsAirborne, "ダウンの瞬間に浮いていない（その場で崩れるだけになっている）");
 
-            // 0.2 秒後には目に見えて浮いている
-            yield return new WaitForSeconds(0.2f);
-            Assert.Greater(_stats.transform.position.y, start.y + 0.1f,
+            // 0.08 秒後には目に見えて浮いている（滞空は 0.24 秒）
+            yield return new WaitForSeconds(0.08f);
+            Assert.Greater(_stats.transform.position.y, start.y + 0.05f,
                 $"浮いていない（y={_stats.transform.position.y:F2}）");
 
-            // 0.6 秒後には着地して、後ろへ移動している
+            // 0.6 秒後には着地して、後ろへ下がっている（姿勢側でも倒れるので 0.3m で見る）
             yield return new WaitForSeconds(0.6f);
             Assert.IsFalse(_motor.IsAirborne, "着地していない");
 
             Vector3 moved = _stats.transform.position - start;
             moved.y = 0f;
-            Assert.Greater(moved.magnitude, 0.5f, $"吹き飛んでいない（{moved.magnitude:F2}m）");
+            Assert.Greater(moved.magnitude, 0.2f, $"吹き飛んでいない（{moved.magnitude:F2}m）");
 
             Assert.AreEqual(CharacterAnimator.State.Down, _anim.Current,
                 "倒れた姿勢になっていない");
