@@ -2015,6 +2015,33 @@ namespace Ryona.Game
                 footR = hipsLocal + undo * (footR - hipsLocal);
             }
 
+            // 突き飛ばされてたたらを踏む。押されている 0.35 秒の間に、左右交互に足を踏み直す。
+            // ここで足先を動かすと、この後の IK（SolveLeg）が脚の形を合わせてくれるので、
+            // 「滑っている」ではなく「踏ん張って持ちこたえている」に見える。
+            if (Grapple != null && Grapple.PushPulse > 0f && _state == State.Grabbed)
+            {
+                float p = Mathf.Clamp01(Grapple.PushPulse);
+                float t = 1f - p;                                   // 0 → 1（押され始め → 終わり）
+                float beat = t * Mathf.PI * 2f;                     // 2 歩ぶん
+                float stepL = Mathf.Max(0f, Mathf.Sin(beat));       // 左足の踏み直し
+                float stepR = Mathf.Max(0f, -Mathf.Sin(beat));      // 右足の踏み直し
+                float drag = Mathf.Sin(Mathf.PI * t);               // 押されて足が残る量
+
+                // 進まされる向き: 正面（Pin）は前へ、背面（Back）は後ろへ押される。
+                // 足はその逆へ残る。
+                float dirZ = Grapple.Kind == GrappleKind.Back ? 1f : -1f;
+
+                footL += new Vector3(0.02f, 0.07f * stepL, dirZ * (0.10f * drag + 0.05f * stepL));
+                footR += new Vector3(-0.02f, 0.07f * stepR, dirZ * (0.10f * drag - 0.05f * stepR));
+
+                // 踏み直す足はつま先立ちになる（かかとが浮く）
+                footPitchL = Mathf.Max(footPitchL, 18f * stepL);
+                footPitchR = Mathf.Max(footPitchR, 18f * stepR);
+
+                // 押されて腰が落ちる
+                hipsOffset.y -= 0.025f * drag;
+            }
+
             // 腰のずれはキャラクター基準。ワールドのまま足すと、体が回ったときに
             // 「後ろへ押される」が横や前へずれる。
             // 踏み込みで root が前へ出た分、足を後ろへ残す（足が床を滑らない）。
