@@ -282,6 +282,11 @@ namespace Ryona.Game
             else if (CanTakeFlinch)
             {
                 float add = attack.Flinch * (result.Blocked ? CombatConstants.BlockedFlinchScale : 1f);
+
+                // 腹ヒットは急所。同じ強さでも倒れやすい（腹パン・膝蹴りの蓄積で崩れる）。
+                if (LastHitZone == PunchZone.Body)
+                    add *= CombatConstants.BellyFlinchScale;
+
                 if (State.AddFlinch(add))
                 {
                     // 掴まれている間は倒さない（姿勢が壊れる）。解けた瞬間に倒す。

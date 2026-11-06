@@ -157,6 +157,44 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator うつ伏せのとき手も床についている()
+        {
+            yield return LoadPlayer();
+
+            var attackerState = new CombatState();
+            for (int i = 0; i < 30 && !_stats.State.IsDown; i++)
+            {
+                _stats.LastHitZone = PunchZone.Body;
+                _stats.ReceiveHit(attackerState, AttackLibrary.Light(), _attacker.transform);
+                yield return null;
+            }
+
+            Assert.IsTrue(_stats.DownIsForward, "うつ伏せになっていない");
+
+            // 倒れきるまで待つ（0.78 秒 + 余裕）
+            yield return new WaitForSeconds(1.0f);
+
+            var rig = _anim.Rig;
+            Assert.IsNotNull(rig, "リグが無い");
+            Assert.IsNotNull(rig.LHand, "左手が無い");
+            Assert.IsNotNull(rig.RHand, "右手が無い");
+
+            float groundY = _stats.transform.position.y;
+            float lh = rig.LHand.position.y - groundY;
+            float rh = rig.RHand.position.y - groundY;
+            float head = rig.Head.position.y - groundY;
+
+            // 腕が宙に浮いていない（肩の高さ 0.4m 前後に浮いていたら失敗）
+            Assert.Less(lh, 0.30f, $"左手が浮いている（y={lh:F2}）");
+            Assert.Less(rh, 0.30f, $"右手が浮いている（y={rh:F2}）");
+            Assert.Greater(lh, -0.05f, $"左手が床に埋まっている（y={lh:F2}）");
+            Assert.Greater(rh, -0.05f, $"右手が床に埋まっている（y={rh:F2}）");
+
+            // 顔も伏せている（立ち姿勢の 1.5m ではなく、床近く）
+            Assert.Less(head, 0.45f, $"顔が浮いている（y={head:F2}）");
+        }
+
+        [UnityTest]
         public IEnumerator ダウンから起き上がって構えに戻る()
         {
             yield return LoadPlayer();

@@ -1425,6 +1425,9 @@ namespace Ryona.Game
                 postureDamage = 4f,   // 5 発でも体勢を折り切らない（投げと二重にしない）
                 partDamage = 0f,
                 targetPart = BodyPart.Torso,
+                // ひるみ。腹ヒット倍率（×2）が掛かるので実質 20/発。
+                // 5 発で 100 に届き、押さえつけだけで限界まで追い込める。
+                flinch = 10f,
                 startupSeconds = 0f,
                 activeSeconds = 0f,
                 recoverySeconds = 0f

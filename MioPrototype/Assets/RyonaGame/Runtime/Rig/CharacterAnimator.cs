@@ -741,6 +741,17 @@ namespace Ryona.Game
 
             State before = _state;
 
+            // 被弾イベント以外から倒れる経路（掴みが解けて崩れる等）でもダウンに入る。
+            // `Stats.IsDown` は立つのに、姿勢が Idle のままという取りこぼしを防ぐ。
+            // 残りが起き上がり時間ぶんしか無いときは入らない（GetUp 後にまた Down へ戻るのを防ぐ）。
+            if (Stats != null && Stats.State != null && Stats.State.IsDown && !Stats.IsDead
+                && Stats.DownRemaining > GetUpSeconds + 0.05f
+                && _state != State.Down && _state != State.GetUp
+                && !(Grapple != null && Grapple.IsGrappled))
+            {
+                SetState(State.Down, Mathf.Max(0.4f, Stats.DownRemaining - GetUpSeconds));
+            }
+
             switch (_state)
             {
                 case State.Stagger:
@@ -1583,7 +1594,8 @@ namespace Ryona.Game
                         torsoRoll = 4f * lay;
                         headPitch = Mathf.Lerp(10f, -2f, lay);
                         // 顔は横へ逃がす（伏せたまま正面を向くと前髪が顔を覆う）
-                        headYaw = Mathf.Lerp(0f, 46f, lay);
+                        headYaw = Mathf.Lerp(0f, 52f, lay);
+                        headRoll = Mathf.Lerp(0f, -8f, lay);
 
                         // 膝から落ちる。落ちきる前に脚を伸ばして、うつ伏せで真っ直ぐにする。
                         float knees = Mathf.Sin(Mathf.Clamp01(rise / 0.72f) * Mathf.PI);
@@ -1601,9 +1613,19 @@ namespace Ryona.Game
                         armLUpper += new Vector3(-0.30f * hold, -0.10f * hold, 0.44f * hold);
                         armRUpper += new Vector3(0.30f * hold, -0.10f * hold, 0.44f * hold);
 
-                        float spread = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.60f, 1f, rise));
-                        armLUpper += new Vector3(0.34f * spread, 0f, 0.18f * spread);
-                        armRUpper += new Vector3(-0.34f * spread, 0f, 0.18f * spread);
+                        // 参考のうつ伏せ: 片腕は頭の先へ伸ばし、もう片方は肘を張って手を顔の横へ。
+                        // 体を 92° 前に回した後で床に沿うのは立ち姿勢の「上」向きなので、
+                        // 上体の向きで組むと腕が宙に浮く（実測）。
+                        float spread = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.55f, 1f, rise));
+                        Vector3 proneArmL = new Vector3(0.22f, 0.95f, 0.05f);    // 左腕は頭の先へ伸ばす
+                        Vector3 proneForeL = new Vector3(0.10f, 0.95f, 0.05f);
+                        Vector3 proneArmR = new Vector3(-0.88f, 0.30f, -0.06f);  // 右は肘を張る
+                        Vector3 proneForeR = new Vector3(0.62f, 0.66f, -0.04f);  // 前腕を内へ、手は顔の横
+
+                        armLUpper = Vector3.Lerp(armLUpper, proneArmL, spread);
+                        armLFore = Vector3.Lerp(armLFore, proneForeL, spread);
+                        armRUpper = Vector3.Lerp(armRUpper, proneArmR, spread);
+                        armRFore = Vector3.Lerp(armRFore, proneForeR, spread);
 
                         grip = Mathf.Lerp(0.45f, 0.10f, spread);
 
@@ -1769,24 +1791,89 @@ namespace Ryona.Game
                         ? 1f
                         : Mathf.Clamp01(_stateTime / Mathf.Max(0.01f, _stateDuration));
 
+                    // うつ伏せからの起き上がりは別物:
+                    //   1) 両手を頭の横について上体を押し上げる
+                    //   2) 片膝をつく
+                    //   3) 立ち上がる
+                    // 仰向けの「横に転がって座る」曲線を使うと、腹這いのまま背中側へ
+                    // 転がる不自然な動きになる（実測）。
+                    if (_downForward)
+                    {
+                        float press = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.00f, 0.34f, u));
+                        float knee = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.30f, 0.66f, u));
+                        float stand = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.62f, 1.00f, u));
+
+                        // 体の角度: うつ伏せ 92 → 押し上げ 54 → 膝立ち 28 → 立つ 0
+                        layAngle = Mathf.Lerp(92f, 54f, press);
+                        layAngle = Mathf.Lerp(layAngle, 28f, knee);
+                        layAngle = Mathf.Lerp(layAngle, 0f, stand);
+                        laySide = 5f * (1f - press);
+
+                        // 腰: 前へ出たまま（0.78）→ 膝の上（0.30）→ 立ち位置（0）
+                        hipsOffset.z = Mathf.Lerp(0.78f, 0.34f, knee);
+                        hipsOffset.z = Mathf.Lerp(hipsOffset.z, StanceHipsZ, stand);
+
+                        float lieY = 0.115f - Rig.RestHips.y;
+                        float kneelY = 0.46f - Rig.RestHips.y;
+                        float y = Mathf.Lerp(lieY, kneelY, knee);
+                        hipsOffset.y = Mathf.Lerp(y, StanceHipsY, stand);
+
+                        // 片膝（右）を前へ出す。つま先は床、膝は腰の下。
+                        float kneelFoot = Mathf.Lerp(0f, 0.34f, knee);
+                        footR += new Vector3(0f, 0f, kneelFoot);
+                        footR += new Vector3(0f, 0f, -kneelFoot) * stand;
+                        footL += new Vector3(0f, 0f, 0.10f) * knee;
+                        footL += new Vector3(0f, 0f, -0.10f) * stand;
+                        footPitchR = Mathf.Max(footPitchR, 0f);
+
+                        // 上体: 押し上げで顔が上がり、立ち上がりで構えへ
+                        torsoPitch = Mathf.Lerp(2f, 24f, press);
+                        torsoRoll = 4f * (1f - press);
+                        headPitch = Mathf.Lerp(-2f, -10f, press);
+                        headYaw = Mathf.Lerp(52f, 18f, press);
+                        headRoll = -6f * (1f - press);
+
+                        // 腕: 頭の横について押す → 立ち上がりで構えへ戻す
+                        Vector3 plantArmL = new Vector3(0.66f, 0.58f, 0.02f);
+                        Vector3 plantArmR = new Vector3(-0.66f, 0.58f, 0.02f);
+                        Vector3 plantForeL = new Vector3(0.22f, 0.72f, -0.06f);
+                        Vector3 plantForeR = new Vector3(-0.22f, 0.72f, -0.06f);
+
+                        armLUpper = Vector3.Lerp(DownArmLUpper, plantArmL, press);
+                        armLFore = Vector3.Lerp(DownArmLFore, plantForeL, press);
+                        armRUpper = Vector3.Lerp(DownArmRUpper, plantArmR, press);
+                        armRFore = Vector3.Lerp(DownArmRFore, plantForeR, press);
+
+                        armLUpper = Vector3.Lerp(armLUpper, StanceArmLUpper, stand);
+                        armLFore = Vector3.Lerp(armLFore, StanceArmLFore, stand);
+                        armRUpper = Vector3.Lerp(armRUpper, StanceArmRUpper, stand);
+                        armRFore = Vector3.Lerp(armRFore, StanceArmRFore, stand);
+
+                        grip = Mathf.Lerp(0.10f, 0.95f, stand);
+                        legTuck = 0f;
+
+                        // 最後は構えの数値へ着地させる（切り替わりで跳ねないように）
+                        float toStanceF = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.70f, 1f, u));
+                        hipsOffset.y = Mathf.Lerp(hipsOffset.y, StanceHipsY, toStanceF);
+                        hipsOffset.z = Mathf.Lerp(hipsOffset.z, StanceHipsZ, toStanceF);
+                        torsoPitch = Mathf.Lerp(torsoPitch, StanceTorsoPitch, toStanceF);
+                        torsoYaw = Mathf.Lerp(torsoYaw, StanceTorsoYaw, toStanceF);
+                        torsoRoll = Mathf.Lerp(torsoRoll, 0f, toStanceF);
+                        headPitch = Mathf.Lerp(headPitch, StanceHeadPitch, toStanceF);
+                        headYaw = Mathf.Lerp(headYaw, StanceHeadYaw, toStanceF);
+                        headRoll = Mathf.Lerp(headRoll, 0f, toStanceF);
+
+                        hipsOffset.y = Mathf.Max(hipsOffset.y, 0.10f - Rig.RestHips.y);
+                        break;
+                    }
+
                     float sit = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.22f, 0.60f, u));
                     float rise = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.58f, 1.00f, u));
 
                     // 仰向け(-88) → 上体を起こす(-40) → 立ち(0)
                     // 横への倒れ込みは増やさない（増やすと体がひねれて側転に見える）
-                    if (_downForward)
-                    {
-                        // うつ伏せ(+92) から手で床を押して起き上がる。
-                        // 仰向けと同じ曲線を使うと、腹這いのまま背中側へ転がる不自然な動きになる。
-                        float up = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.10f, 0.86f, u));
-                        layAngle = Mathf.Lerp(_downEndLay, 0f, up);
-                        laySide = 6f * (1f - up);
-                    }
-                    else
-                    {
-                        layAngle = -92f + 52f * sit + 40f * rise;
-                        laySide = -30f * (1f - rise);
-                    }
+                    layAngle = -92f + 52f * sit + 40f * rise;
+                    laySide = -30f * (1f - rise);
 
                     hipsOffset.y = Mathf.Lerp(_downEndHipsY, StanceHipsY, rise) + 0.08f * sit * (1f - rise);
 
