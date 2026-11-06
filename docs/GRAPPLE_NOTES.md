@@ -104,9 +104,28 @@ if (Grapple != null && Grapple.PushPulse > 0f && Rig.Ready)
 | 押す側 | 両腕を前へ突き出す 0.22 秒 | `EnemyBrain.PushAway()` / `IsPushing` → `EnemyFigure` が腕を組む |
 | 彼女 | 上体 +20°、腕を後ろへ 45°、顔だけ起こす 0.35 秒 | `PlayerGrapple.PushPulse` |
 | 受け取る側 | 両腕を開いて胸の高さに構え、半歩かがんで受け止める（0.9 秒） | `EnemyBrain.BeginCatch()` / `IsCatching` → `EnemyFigure` が構えを組む |
+| 彼女の足 | 押されている間、左右交互に踏み直す（たたらを踏む） | `ApplyPose()` 内、`SolveLeg` の**前**で `footL` / `footR` をずらす |
 
 押す側が棒立ちのままだと、**彼女が自分から 2 人目へ歩いて行った＝「2 人目が掴みに来た」**に見える（ユーザー評）。
 押す側の腕だけで印象が変わる。
+
+### 7.5 足は `ApplyPose()` の**中**、`SolveLeg` の前で動かす
+
+腕は `ApplyPose()` の後に足せば効くが、**足は効かない**（同じ理由で上書きされる）。
+足先は `footL` / `footR`（キャラクター基準のローカル座標）を書き換え、
+その後の `Rig.SolveLeg(..., transform.TransformPoint(footR), pole)` に拾わせる。
+
+```csharp
+// ApplyPose() 内、Rig.OffsetHips より前（＝ SolveLeg より前）
+float t = 1f - Mathf.Clamp01(Grapple.PushPulse);   // 0 → 1
+float dirZ = Grapple.Kind == GrappleKind.Back ? 1f : -1f;   // 押される向きの逆へ足が残る
+footL += new Vector3(0.02f, 0.07f * stepL, dirZ * (0.10f * drag + 0.05f * stepL));
+footPitchL = Mathf.Max(footPitchL, 18f * stepL);   // 踏み直す足はつま先立ち
+```
+
+- 押される向きは**正面（Pin）は前、背面（Back）は後ろ**。足はその逆へ残る
+- `footPitch` を上げると、かかとが浮いて「踏ん張っている」に見える
+- 腰（`hipsOffset.y`）も少し落とすと重さが出る
 
 ### 7.4 抽選と派生
 
