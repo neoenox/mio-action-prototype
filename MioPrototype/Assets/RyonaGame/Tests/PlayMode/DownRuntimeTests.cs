@@ -137,6 +137,26 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator 腹を殴られて倒れると前へ崩れる()
+        {
+            yield return LoadPlayer();
+
+            var attackerState = new CombatState();
+            for (int i = 0; i < 30 && !_stats.State.IsDown; i++)
+            {
+                // 腹を殴られた扱いにする（前へ崩れるダウンの条件）
+                _stats.LastHitZone = PunchZone.Body;
+                _stats.ReceiveHit(attackerState, AttackLibrary.Light(), _attacker.transform);
+                yield return null;
+            }
+
+            Assert.IsTrue(_stats.State.IsDown, "ダウンしていない");
+            Assert.IsTrue(_stats.DownIsForward, "腹を殴られて倒れたのに「前へ崩れる」になっていない");
+            Assert.IsFalse(_motor.IsAirborne, "前へ崩れるときに飛ばしている（その場で膝が抜ける動きにする）");
+            Assert.AreEqual(CharacterAnimator.State.Down, _anim.Current, "倒れた姿勢になっていない");
+        }
+
+        [UnityTest]
         public IEnumerator ダウンから起き上がって構えに戻る()
         {
             yield return LoadPlayer();

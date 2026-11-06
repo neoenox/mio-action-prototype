@@ -98,6 +98,12 @@ namespace Ryona.Game
         public bool IsDown => State != null && State.IsDown;
 
         /// <summary>
+        /// 今のダウンが「前へ崩れる」か。
+        /// 腹を殴られて倒れたときは前へ（うつ伏せ）、それ以外は後ろへ倒れる。
+        /// </summary>
+        public bool DownIsForward { get; private set; }
+
+        /// <summary>
         /// ひるみを溜めてよいか。ダウン中・起き上がり直後・掴まれている最中は溜めない。
         /// ダウン中に溜めると「起き上がるそばからまた倒れる」になり、何もできなくなる。
         /// </summary>
@@ -121,19 +127,32 @@ namespace Ryona.Game
 
         /// <summary>
         /// 強制的にダウンさせる。攻撃してきた相手が分かれば、その反対側へ放物線で吹き飛ばす。
+        /// <para>
+        /// 腹を殴られて倒れたとき（<see cref="LastHitZone"/> が <see cref="PunchZone.Body"/>）は
+        /// **前へ崩れる**（うつ伏せ）。それ以外は後ろへ倒れる。
+        /// 前へ崩れるときは飛ばさない（腹を抱えて膝から落ちる動きになる）。
+        /// </para>
         /// </summary>
         public void ForceDown(float seconds, string reason, Transform attacker = null,
             float launchDistance = CombatConstants.DownLaunchDistance,
-            float launchHeight = CombatConstants.DownLaunchHeight)
+            float launchHeight = CombatConstants.DownLaunchHeight,
+            bool? forward = null)
         {
             if (State == null || IsDead)
                 return;
+
+            DownIsForward = forward ?? (LastHitZone == PunchZone.Body);
 
             float length = seconds > 0f ? seconds : CombatConstants.DownDuration;
             _downRemaining = Mathf.Max(_downRemaining, length);
             State.IsDown = true;
             State.ResetFlinch();
             _downImmuneUntil = Time.time + length + CombatConstants.DownImmunitySeconds;
+
+            // 前へ崩れるときは飛ばさない。腹を抱えたまま膝が抜ける動きなので、
+            // 放物線で飛ぶと「腹を殴られたのに吹き飛んだ」ように見える。
+            if (DownIsForward)
+                launchDistance = 0f;
 
             // 後ろへ放物線で飛ぶ。掴まれている最中（投げ）は掴み側が向きを決めるので、
             // ここでは相手の反対側＝飛ばされる向きを渡すだけでよい。
@@ -151,7 +170,8 @@ namespace Ryona.Game
             }
 
             Debug.Log($"[Down] {reason} {length:F2}s flinch={State.Flinch:F0}" +
-                      $" hp={State.Hp:F0} immune={CombatConstants.DownImmunitySeconds:F1}s");
+                      $" hp={State.Hp:F0} forward={(DownIsForward ? 1 : 0)}" +
+                      $" immune={CombatConstants.DownImmunitySeconds:F1}s");
         }
 
         /// <summary>掴まれ判定を見るためだけに持つ（無ければ 1 回だけ探す）。</summary>

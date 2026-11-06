@@ -74,10 +74,19 @@ namespace Ryona.Game
 
                 // 撮影中は AI に殴らせない（当てるのはこのドライバだけ）。
                 // 混ざると「どの一撃で倒れたか」が分からず、狙った絵も撮れない。
+                int away = 0;
                 foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
                 {
-                    if (enemy != null)
-                        enemy.HoldFire(9999f);
+                    if (enemy == null)
+                        continue;
+
+                    enemy.HoldFire(9999f);
+
+                    // 彼女の真横に立たれると絵が隠れるので、横へ離す
+                    Vector3 p = enemy.transform.position;
+                    p.x = _stats.transform.position.x + (away % 2 == 0 ? 3.2f : -3.2f) * (1 + away / 2);
+                    away++;
+                    enemy.transform.position = p;
                 }
             }
 
@@ -129,6 +138,10 @@ namespace Ryona.Game
                 from = enemy;
                 best = d;
             }
+
+            // 腹を殴られた扱いにする（前へ崩れるダウンの確認用）
+            if (Attack == "belly")
+                _stats.LastHitZone = PunchZone.Body;
 
             _stats.IsBlocking = Attack == "guard";
             _stats.ReceiveHit(from != null ? from.State : null, attack,
