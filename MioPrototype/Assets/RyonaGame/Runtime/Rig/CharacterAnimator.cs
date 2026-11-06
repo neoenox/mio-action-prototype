@@ -2389,6 +2389,52 @@ namespace Ryona.Game
                 Rig.SolveLeg(false, transform.TransformPoint(footR), pole);
             }
 
+            // うつ伏せ系の腕は、体を回した後に**世界の向き**で置き直す。
+            // 回す前に「上」で組むと、体が起きるにつれて腕が上を向き、バンザイで起き上がる（実測）。
+            // 手は地面（-Y）へ、肘は外へ。起き上がりの後半で構えの腕へ戻す。
+            if (_downForward && (_state == State.Down || _state == State.GetUp))
+            {
+                Vector3 fwd = transform.forward;
+                fwd.y = 0f;
+                fwd = fwd.sqrMagnitude < 1e-4f ? Vector3.forward : fwd.normalized;
+                Vector3 left = Vector3.Cross(Vector3.up, fwd);   // 彼女の左
+                Vector3 up = Vector3.up;
+
+                Vector3 upperL, foreL, upperR, foreR;
+                float toStanceArms = 0f;
+
+                if (_state == State.Down)
+                {
+                    // うつ伏せ: 左腕は頭の先へ伸ばし、右腕は肘を張って手を顔の横へ
+                    upperL = (fwd * 0.92f + left * 0.22f - up * 0.10f).normalized;
+                    foreL = (fwd * 0.96f + left * 0.10f - up * 0.04f).normalized;
+                    upperR = (fwd * 0.52f - left * 0.62f - up * 0.20f).normalized;
+                    foreR = (fwd * 0.58f + left * 0.52f - up * 0.26f).normalized;
+                }
+                else
+                {
+                    // 起き上がり: 両手を頭の横について床を押す → 立ち上がりで構えへ
+                    float gu = Mathf.Clamp01(_stateTime / Mathf.Max(0.01f, _stateDuration));
+                    toStanceArms = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.55f, 0.92f, gu));
+
+                    upperL = (fwd * 0.42f + left * 0.50f - up * 0.72f).normalized;
+                    foreL = (fwd * 0.46f - up * 0.88f).normalized;
+                    upperR = (fwd * 0.42f - left * 0.50f - up * 0.72f).normalized;
+                    foreR = (fwd * 0.46f - up * 0.88f).normalized;
+                }
+
+                if (toStanceArms > 0f)
+                {
+                    upperL = Vector3.Slerp(upperL, ArmDirection(true, StanceArmLUpper).normalized, toStanceArms);
+                    foreL = Vector3.Slerp(foreL, ArmDirection(true, StanceArmLFore).normalized, toStanceArms);
+                    upperR = Vector3.Slerp(upperR, ArmDirection(false, StanceArmRUpper).normalized, toStanceArms);
+                    foreR = Vector3.Slerp(foreR, ArmDirection(false, StanceArmRFore).normalized, toStanceArms);
+                }
+
+                Rig.SetArm(true, upperL, foreL, handRollL);
+                Rig.SetArm(false, upperR, foreR, handRollR);
+            }
+
             // 状態が切り替わった直後は、切り替え前の姿勢から寄せる（カクつき防止）
             if (_blend < 1f)
             {
