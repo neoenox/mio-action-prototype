@@ -1535,14 +1535,16 @@ namespace Ryona.Game
                     armLFore += new Vector3(0f, -0.12f * give, 0f);
                     armRFore += new Vector3(0f, -0.12f * give, 0f);
 
-                    // 膝蹴りを受けた瞬間、腹へ入る分だけ上体が折れて腰が落ちる。
-                    // 顔は下げない（前髪で顔が隠れる）。掴まれたままなので少しでよい。
+                    // 蹴り上げに合わせ、腹で折れながら腰と両足が跳ね上がる。
+                    // 足の IK 目標も上げ、接地したまま脚だけが伸びるのを防ぐ。
                     float knee = Grapple != null ? Grapple.KneePulse : 0f;
                     if (knee > 0f)
                     {
-                        torsoPitch += 10f * knee;
-                        hipsOffset.y -= 0.05f * knee;
+                        torsoPitch += 18f * knee;
+                        hipsOffset.y += 0.28f * knee;
                         hipsOffset.z += 0.03f * knee;
+                        footL += new Vector3(0f, 0.16f, -0.06f) * knee;
+                        footR += new Vector3(0f, 0.16f, -0.06f) * knee;
                         headPitch -= 12f * knee;   // 顎を上げて顔を残す（前髪で隠れない）
                     }
 

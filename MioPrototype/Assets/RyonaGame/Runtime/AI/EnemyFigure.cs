@@ -964,22 +964,22 @@ namespace Ryona.Game
                     }
 
                     torsoPitch += 8f * knee;
-                    hipsY -= 0.05f * knee;
+                    hipsY += 0.02f * knee;
                     hipsZ += 0.08f * knee;
                     if (leftKnee)
                     {
                         // 骨盤を右へずらして、左膝を彼女の腹の中心線へ入れる
                         // （そのまま上げると膝が彼女の脇腹の横を通って「当たっていない」画になる）
                         hipsX += 0.10f * knee;
-                        kneeL += 90f * knee;
-                        legLPitch -= 95f * knee;
+                        kneeL += 105f * knee;
+                        legLPitch -= 115f * knee;
                         kneeR += 8f * knee;
                     }
                     else
                     {
                         hipsX -= 0.10f * knee;
-                        kneeR += 90f * knee;
-                        legRPitch -= 95f * knee;
+                        kneeR += 105f * knee;
+                        legRPitch -= 115f * knee;
                         kneeL += 8f * knee;
                     }
                 }
