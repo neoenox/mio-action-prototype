@@ -205,14 +205,6 @@ namespace Ryona.Game
                 Debug.Log($"[Encounter] 押さえつけ担当: {pinner.name}");
             }
 
-            // 関節技は 2 体目に任せる（押さえつけ役と分けて、拘束の種類が偏らないようにする）。
-            if (_enemies.Count > 1 && _enemies[_enemies.Count - 2] != null)
-            {
-                var locker = _enemies[_enemies.Count - 2];
-                locker.CanArmLock = true;
-                Debug.Log($"[Encounter] 関節技担当: {locker.name}");
-            }
-
             Debug.Log($"[Encounter] 敵 {_enemies.Count} 体を登録 1画面={ScreenSpan:F1}m " +
                 $"（-screenspan=N で上書き可）");
         }

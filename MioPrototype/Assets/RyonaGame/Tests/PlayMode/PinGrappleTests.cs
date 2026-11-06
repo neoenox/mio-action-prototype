@@ -185,49 +185,6 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator 関節技は時間切れが無く極められている間ずっと腕が削られる()
-        {
-            yield return Load();
-
-            float armBefore = _player.State.Body[BodyPart.Arms];
-            float hpBefore = _player.State.Hp;
-
-            _grapple.Begin(_captor, GrappleKind.ArmLock);
-
-            Assert.AreEqual(GrappleKind.ArmLock, _grapple.Kind);
-            Assert.IsFalse(_grapple.HasTimeLimit, "関節技は時間切れが無い");
-            Assert.AreEqual(CombatConstants.MashBaseArmLock, _grapple.RequiredInputs, 0.01f,
-                "必要入力は 14 回");
-
-            // 時間が経っても解けないが、腕が削られ続ける
-            yield return new WaitForSeconds(CombatConstants.ArmLockTickSeconds * 2.5f);
-
-            Assert.IsTrue(_grapple.IsGrappled, "放っておいても解けない");
-            Assert.Greater(_player.State.Body[BodyPart.Arms], armBefore + 1f, "腕が削られる");
-            Assert.Less(_player.State.Hp, hpBefore - 1f, "HP も削られる");
-        }
-
-        [UnityTest]
-        public IEnumerator 関節技は14回もがくと逃げられる()
-        {
-            yield return Load();
-            _grapple.Begin(_captor, GrappleKind.ArmLock);
-
-            int need = Mathf.CeilToInt(_grapple.RequiredInputs);
-            for (int i = 0; i < need - 1; i++)
-            {
-                _grapple.Struggle();
-                Assert.IsTrue(_grapple.IsGrappled, $"{i + 1} 回目でもがききっていない");
-            }
-
-            _grapple.Struggle();
-            yield return null;
-
-            Assert.IsFalse(_grapple.IsGrappled, "14 回もがけば振りほどける");
-            Assert.AreEqual(EnemyPhase.Stagger, _captor.Phase, "振りほどかれた側はよろける");
-        }
-
-        [UnityTest]
         public IEnumerator 押さえつけ中は他の敵が殴らない()
         {
             yield return Load();

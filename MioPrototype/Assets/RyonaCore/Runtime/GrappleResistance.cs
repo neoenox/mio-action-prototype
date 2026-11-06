@@ -2,15 +2,12 @@ namespace Ryona
 {
     /// <summary>
     /// 掴まれ方。正面からの「腕を回す掴み」は作らない（はさみ込む形が取れないため、背後からのみ成立する）。
-    /// <see cref="Pin"/>（押さえつけ）は正面から肩を押さえる形。
-    /// <see cref="ArmLock"/>（関節技）は正面から手首を取って腕を極める。時間制限は無いが、
-    /// 押さえられている間ずっと腕にダメージが入る（逃げないと壊れる）。
+    /// <see cref="Pin"/>（押さえつけ）は仕様書 §4.3 の 3 種目。正面から肩を押さえる形なので成立する。
     /// </summary>
     public enum GrappleKind
     {
         Back = 0,
-        Pin = 1,
-        ArmLock = 2
+        Pin = 1
     }
 
     /// <summary>
@@ -57,20 +54,10 @@ namespace Ryona
         /// 値は種類ごとに直書きする（enum の番号に依存させると、種類を増減したときに
         /// 黙ってバランスが変わる。以前 Front=0 を消したときに実際に変わった）。
         /// </summary>
-        public float FailurePartDamage => Kind switch
-        {
-            GrappleKind.Pin => 30f,
-            GrappleKind.ArmLock => 26f,
-            _ => 24f
-        };
+        public float FailurePartDamage => Kind == GrappleKind.Pin ? 30f : 24f;
 
         /// <summary>失敗時に空になるスタミナ量。値は種類ごとに直書き（上と同じ理由）。</summary>
-        public float FailureStaminaCost => Kind switch
-        {
-            GrappleKind.Pin => 50f,
-            GrappleKind.ArmLock => 35f,
-            _ => 40f
-        };
+        public float FailureStaminaCost => Kind == GrappleKind.Pin ? 50f : 40f;
     }
 
     /// <summary>
@@ -83,7 +70,6 @@ namespace Ryona
             switch (kind)
             {
                 case GrappleKind.Pin: return CombatConstants.MashBasePin;
-                case GrappleKind.ArmLock: return CombatConstants.MashBaseArmLock;
                 default: return CombatConstants.MashBaseBack;
             }
         }

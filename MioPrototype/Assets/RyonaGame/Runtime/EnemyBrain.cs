@@ -445,19 +445,6 @@ namespace Ryona.Game
         [Tooltip("正面から押さえつける（巨躯用）。既定は false。テストは -pintest")]
         public bool CanPin;
 
-        [Header("関節技（ArmLock）")]
-        [Tooltip("正面から手首を取って腕を極める。既定は false")]
-        public bool CanArmLock;
-
-        /// <summary>次の予備動作を関節技にする（デバッグの指示用）。</summary>
-        bool _armLockOrder;
-
-        /// <summary>この一振りが関節技か。</summary>
-        bool _armLockPending;
-
-        /// <summary>前回の関節技が始まった時刻。</summary>
-        float _lastArmLockAt = -999f;
-
         // 間合い・クールダウン・膝蹴りの回数は CombatConstants に置いてある。
         // ここを public フィールドにすると、シーン（Prototype.unity）に保存された
         // 古い既定値が読み込まれてコードの値を上書きしてしまう（実測でそうなった）。
@@ -495,14 +482,6 @@ namespace Ryona.Game
         {
             _pinOrder = true;
             _lastPinAt = -999f;   // 指示されたときはクールダウンを無視する
-            _attackReadyAt = Time.time;
-        }
-
-        /// <summary>次の掴みを関節技にする。デバッグの駆動用（-armlocktest）。</summary>
-        public void QueueArmLock()
-        {
-            _armLockOrder = true;
-            _lastArmLockAt = -999f;
             _attackReadyAt = Time.time;
         }
 
@@ -1034,8 +1013,7 @@ namespace Ryona.Game
                 if (distance <= _run.Range + StrikeTolerance)
                 {
                     if (_run.Id == AttackId.Grab)
-                        grabbed = _armLockPending ? TryArmLock()
-                            : _pinPending ? TryPin() : TryGrab();
+                        grabbed = _pinPending ? TryPin() : TryGrab();
                     else if (PunchTouchesPlayer())
                     {
                         Player.LastHitZone = Zone;
@@ -1057,7 +1035,6 @@ namespace Ryona.Game
             _bellyPunchPendingHold = 0f;
             _tagPunchPending = false;
             _pinPending = false;
-            _armLockPending = false;
             if (!grabbed)
                 IsPinning = false;
 
@@ -1264,7 +1241,6 @@ namespace Ryona.Game
             AttackId id;
             bool force = _forceGrab;
             bool pin = false;
-            bool lockArm = false;
 
             bool fromBehind = Vector3.Dot(Player.transform.forward, transform.position - Player.transform.position) < -0.25f;
             if (_grapple != null && !_grapple.IsGrappled && fromBehind && distance <= RangeOf(AttackId.Grab)
@@ -1273,15 +1249,9 @@ namespace Ryona.Game
                 id = AttackId.Grab;
             else if (CanStartPin(distance))
             {
-                // 正面からの押さえつけ。当たると 4.2 秒 / 12 回のレバガチャになる。
+                // 正面からの押さえつけ。当たると 3 秒 / 12 回のレバガチャになる。
                 id = AttackId.Grab;
                 pin = true;
-            }
-            else if (CanStartArmLock(distance))
-            {
-                // 正面からの関節技。時間切れは無いが、極められている間ずっと腕が削られる。
-                id = AttackId.Grab;
-                lockArm = true;
             }
             else if (force && distance <= RangeOf(AttackId.Grab))
             {
@@ -1297,7 +1267,6 @@ namespace Ryona.Game
 
             BeginWindup(id);
             _pinPending = pin;
-            _armLockPending = lockArm;
 
             // 押さえつけが選ばれなかった理由を 1 秒に 1 回だけ出す（-pinlog）
             if (_pinLog && !pin && CanPin && Time.time >= _pinLogNextAt)
@@ -1316,61 +1285,6 @@ namespace Ryona.Game
 
         /// <summary>押さえつけが選ばれない理由をログに出す（-pinlog）。</summary>
         bool _pinLog;
-
-        /// <summary>
-        /// 関節技（腕ひしぎ）を始めてよいか。正面・近距離・クールダウン外。
-        /// 時間切れは無いが、極めている間ずっと腕が削られる。
-        /// </summary>
-        public bool CanStartArmLock(float distance)
-        {
-            if (!CanArmLock && !_armLockOrder)
-                return false;
-
-            if (Player == null || Player.IsDead)
-                return false;
-
-            if (distance < CombatConstants.ArmLockMinDistance ||
-                distance > CombatConstants.ArmLockMaxDistance)
-                return false;
-
-            if (_grapple == null)
-                _grapple = Player.GetComponent<PlayerGrapple>();
-
-            if (_grapple == null || _grapple.IsGrappled)
-                return false;
-
-            Vector3 to = Player.transform.position - transform.position;
-            to.y = 0f;
-            if (to.sqrMagnitude < 1e-4f)
-                return false;
-
-            if (Vector3.Dot(transform.forward, to.normalized) < 0.6f)
-                return false;
-
-            if (!_armLockOrder && Time.time < _lastArmLockAt + CombatConstants.ArmLockCooldown)
-                return false;
-
-            return true;
-        }
-
-        /// <summary>関節技が当たったとき。正面から手首を取って腕を極める。</summary>
-        bool TryArmLock()
-        {
-            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
-            if (grapple == null || grapple.IsGrappled)
-                return false;
-
-            Vector3 to = Player.transform.position - transform.position;
-            to.y = 0f;
-            if (to.magnitude > RangeOf(AttackId.Grab) + StrikeTolerance)
-                return false;
-
-            grapple.Begin(this, GrappleKind.ArmLock);
-            _lastArmLockAt = Time.time;
-            _armLockOrder = false;
-            Debug.Log($"[ArmLock] begin {name} dist={to.magnitude:F2}");
-            return true;
-        }
 
         /// <summary>
         /// 押さえつけ（Pin）を始めてよいか。正面・間合い・クールダウンを満たすときだけ true。
@@ -1626,7 +1540,6 @@ namespace Ryona.Game
             _tagPunchPending = false;
             _tagPunchSwing = false;
             _pinPending = false;
-            _armLockPending = false;
 
             AttackData data = DataOf(id);
             if (data != null)
