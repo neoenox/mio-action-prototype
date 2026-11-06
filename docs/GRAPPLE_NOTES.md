@@ -135,3 +135,8 @@ footPitchL = Mathf.Max(footPitchL, 18f * stepL);   // 踏み直す足はつま�
 - 正面（`Pin`）: そのまま押さえつけ → 膝蹴り 5 発まで続く（`TakeOverHold` が `IsPinning` を立てる）
 - 背面（`Back`）: 羽交い締め → 条件を満たせばタッグ腹パン
 - 抽選比は 50:50（`GrappleHandOff` 内）。腹パンを見せたいなら背面寄りにする
+- 渡す側（元の拘束者）は `LockForHandOff(0.9)` で `Recover` 固定、受け手は `TakeOverHold` で固定する。
+  この間は AI も `KeepSpacing` も動かさない
+- 彼女は 0.9m 突き飛ばしてから戻すのではなく、**掴み位置まで一続きに移動**する
+  （`0.12 + 距離 × 0.18` 秒、0.18〜0.65 秒）。向きは移動中に 0.25 秒で変える。
+  押し終わりの `SnapToCaptor` は無い（行き過ぎて戻る動きがワープに見えたため）

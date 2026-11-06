@@ -153,8 +153,11 @@ namespace Ryona.Game
                 StartCoroutine(BurstShots());
             }
 
+            // 渡す側は突き出した腕のまま、彼女が移り終えるまでロックする。
+            // 受け手も TakeOverHold でその場に固定され、届いた彼女をそのまま拘束する。
             _grapple.HandOff(best, kind, shove: true);
             best.TakeOverHold(CombatConstants.GrappleLimitSeconds + 4f);
+            captor.LockForHandOff(0.9f);
             Debug.Log($"[HandOff] {captor.name} → {best.name} kind={kind} dist={bestDistance:F2}");
             return true;
         }

@@ -466,6 +466,33 @@ namespace Ryona.Game
             _pushUntil = Time.time + 0.22f;
         }
 
+        /// <summary>引き渡しが終わるまで、渡す側をその場に固定する残り時刻。</summary>
+        float _handOffLockUntil;
+
+        /// <summary>引き渡しのロック中か（歩かない・殴らない）。</summary>
+        public bool IsHandOffLocked => Time.time < _handOffLockUntil;
+
+        /// <summary>
+        /// 引き渡しの間、渡す側をその場に固定する。腕を突き出したまま硬直（Recover）にし、
+        /// 彼女が受け手の拘束位置へ移り終えるまで追いかけさせない。
+        /// </summary>
+        public void LockForHandOff(float seconds)
+        {
+            float length = Mathf.Max(0.1f, seconds);
+
+            HideTelegraph();
+            IsHolding = false;
+            IsPinning = false;
+            _pinKneesLeft = 0;
+            ClearTransientAttackState();
+            ReleaseToken();
+
+            _timer = length;
+            Phase = EnemyPhase.Recover;
+            _handOffLockUntil = Time.time + length;
+            _attackReadyAt = Time.time + length + 0.2f;
+        }
+
         /// <summary>いま押し出している最中か（見た目側が腕を突き出すのに使う）。</summary>
         public bool IsPushing => Time.time < _pushUntil;
 
@@ -1229,6 +1256,16 @@ namespace Ryona.Game
             // 彼女が届くのは突き飛ばし 0.3 秒 + 向き変更 0.25 秒後なので、0.9 秒保つ。
             BeginCatch(0.9f);
 
+            // 受け手はその場を動かさず、届いた彼女をそのまま拘束する。
+            // 向きだけは彼女へ合わせる（後ろ拘束なら背中、正面拘束なら顔の正面）。
+            if (Player != null)
+            {
+                Vector3 look = Player.transform.position - transform.position;
+                look.y = 0f;
+                if (look.sqrMagnitude > 1e-4f)
+                    transform.rotation = Quaternion.LookRotation(look.normalized, Vector3.up);
+            }
+
             Debug.Log($"[HandOff] {name} が拘束を受け持つ {seconds:F1}s pin={pin}");
         }
 
@@ -1975,7 +2012,7 @@ namespace Ryona.Game
         /// </summary>
         void KeepSpacing()
         {
-            if (Phase == EnemyPhase.Dead || IsHolding)
+            if (Phase == EnemyPhase.Dead || IsHolding || IsHandOffLocked)
                 return;
 
             // タッグ腹パンは演出側（HeldBellyPunchDirector）が当たる位置を決めている。

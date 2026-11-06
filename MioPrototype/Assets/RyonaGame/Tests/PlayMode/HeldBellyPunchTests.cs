@@ -260,6 +260,8 @@ namespace Ryona.Tests
                 yield return null;
             Assert.IsTrue(_grapple.IsGrappled, "待った後は次の敵へ引き渡す");
             Assert.AreNotSame(_captor, _grapple.Captor);
+            Assert.IsTrue(_captor.IsHandOffLocked, "渡す側が引き渡し中にロックされていない");
+            Assert.IsTrue(_grapple.Captor.IsHolding, "受け手がその場で拘束していない");
 
             // 以前は 0.9m 突き飛ばしてから掴み位置へ瞬間移動していた。
             // 通常フレームで 1 フレームの移動が大きすぎないことを見る（ワープ防止）。
@@ -443,6 +445,10 @@ namespace Ryona.Tests
             _director.RestartCooldownSeconds = 0.5f;
             _director.PunchDelaySeconds = 0.3f;
 
+            // 4 コンボ分の被弾で HP が尽きると、拘束が解けてコンボが終わらなくなる。
+            // このテストが見るのは「当たるか」なので、死亡しないようにする。
+            _player.SetGodMode(true);
+
             foreach (var e in _enemies)
             {
                 if (e != _captor)
@@ -502,6 +508,8 @@ namespace Ryona.Tests
             {
                 // アサートで抜けても、ログ購読を後続テストへ残さない
                 Application.logMessageReceived -= cb;
+                if (_player != null)
+                    _player.SetGodMode(false);
             }
 
             Assert.GreaterOrEqual(combos, 4, $"コンボが終わらない combos={combos}");
