@@ -136,6 +136,16 @@ namespace Ryona.Game
         const float PushHoldSeconds = 0.12f;
         float _pushHold;
 
+        /// <summary>
+        /// 限界まで殴られてから手を離すまでの秒。腹パンの打ち間隔（0.55 秒）より長く取り、
+        /// 殴っている最中に離さない（コンボを途切れさせない）。
+        /// </summary>
+        const float PendingReleaseSeconds = 0.9f;
+        float _pendingReleaseAt;
+
+        /// <summary>腹パンのコンボ状態を見るためだけに持つ。</summary>
+        HeldBellyPunchDirector _belly;
+
         void Awake()
         {
             if (Stats == null)
@@ -208,6 +218,30 @@ namespace Ryona.Game
                 return;
             }
 
+            // 腹パンで限界まで殴られていたら、腹パンの区切りで手を離す（後ろ拘束は時間切れが無いため）。
+            // 押さえつけは時間切れの `Fail()` が投げずに離すので、ここでは扱わない。
+            // 腹パン中はタイマーを戻す（殴っている最中に離すと 5 発のコンボが途切れる）。
+            if (Kind == GrappleKind.Back && Stats.PendingDown && Captor != null)
+            {
+                if (_belly == null)
+                    _belly = FindFirstObjectByType<HeldBellyPunchDirector>();
+
+                // 腹パンのコンボ中はタイマーを戻す（殴っている途中で離さない）
+                if (_belly != null && _belly.IsPerforming)
+                    _pendingReleaseAt = 0f;
+                else if (_pendingReleaseAt <= 0f)
+                {
+                    _pendingReleaseAt = Time.time + PendingReleaseSeconds;
+                    Debug.Log($"[Grapple] 限界まで殴られたので {PendingReleaseSeconds:F2}s 後に離す");
+                }
+                else if (Time.time >= _pendingReleaseAt)
+                {
+                    Debug.Log("[Grapple] 手を離す（崩れ落ちる）");
+                    Release();
+                    return;
+                }
+            }
+
             // 後ろ拘束は時間切れで解けない。押さえつけ（Pin）だけが時間切れで投げる。
             if (HasTimeLimit)
             {
@@ -261,6 +295,7 @@ namespace Ryona.Game
                 : float.PositiveInfinity;
             _heldSeconds = 0f;
             _suppressRemaining = 0f;
+            _pendingReleaseAt = 0f;
             IsGrappled = true;
             StrugglePulse = 0f;
             KneePulse = 0f;
@@ -366,6 +401,7 @@ namespace Ryona.Game
             IsGrappled = false;
             _remaining = 0f;
             _suppressRemaining = 0f;
+            _pendingReleaseAt = 0f;
             Captor = null;
         }
 

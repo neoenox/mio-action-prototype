@@ -122,6 +122,13 @@ namespace Ryona
         /// <summary>ガード越しの被弾で加算されるひるみの倍率。ガードしていれば完全に防げるわけではない。</summary>
         public const float BlockedFlinchScale = 0.35f;
 
+        /// <summary>
+        /// 腹ヒットのひるみ倍率。腹は急所なので、同じ強さでも倒れやすい。
+        /// これが 1 だと押さえつけの膝 5 発（12×5=60）でも倒れず、実戦でうつ伏せにならない（実測）。
+        /// 2.0 で膝 5 発＝120 になり、1 回の押さえつけで崩れる。
+        /// </summary>
+        public const float BellyFlinchScale = 2.0f;
+
         /// <summary>起き上がり完了後、この秒数はダウンしない（無限ダウンの防止）。</summary>
         public const float DownImmunitySeconds = 1.0f;
 
