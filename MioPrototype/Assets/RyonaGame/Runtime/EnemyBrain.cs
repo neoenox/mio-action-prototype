@@ -476,6 +476,18 @@ namespace Ryona.Game
         /// <summary>いま押し出している最中か（見た目側が腕を突き出すのに使う）。</summary>
         public bool IsPushing => Time.time < _pushUntil;
 
+        /// <summary>受け止める構えの残り秒。</summary>
+        float _catchUntil;
+
+        /// <summary>引き渡しで彼女を受け止める瞬間、腕を開いて構える（0.35 秒）。</summary>
+        public void BeginCatch(float seconds = 0.35f)
+        {
+            _catchUntil = Time.time + Mathf.Max(0.1f, seconds);
+        }
+
+        /// <summary>いま受け止める構えの最中か（見た目側が腕を開くのに使う）。</summary>
+        public bool IsCatching => Time.time < _catchUntil;
+
         /// <summary>押さえつけ中の相手か（掴んでいる本人）。見た目側が姿勢を組むのに使う。</summary>
         public bool IsPinning { get; private set; }
 
@@ -1187,6 +1199,10 @@ namespace Ryona.Game
             IsPinning = pin;
             _pinKneesLeft = pin ? Mathf.Max(1, CombatConstants.PinKneeCount) : 0;
             _pinNextKneeAt = pin ? Time.time + Mathf.Max(0.1f, CombatConstants.PinKneeDelay) : 0f;
+
+            // 押し出されてくる彼女を受け止める構え（腕を開いて半歩かがむ）。
+            // 彼女が届くのは突き飛ばし 0.3 秒 + 向き変更 0.25 秒後なので、0.9 秒保つ。
+            BeginCatch(0.9f);
 
             Debug.Log($"[HandOff] {name} が拘束を受け持つ {seconds:F1}s pin={pin}");
         }

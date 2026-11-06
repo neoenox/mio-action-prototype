@@ -54,6 +54,7 @@
 | **O キー** | 関節技を指示（見送りに伴い、実装ごと削除） |
 | `-pinburst=<prefix>` | 拘束開始から 0.05 秒ごとに 80 枚（4 秒ぶん）を撮る |
 | `-handoffburst=<prefix>` | 引き渡しが起きた瞬間から 0.05 秒ごとに 40 枚（2 秒ぶん）を撮る（1 回だけ） |
+| `-handoffkind=pin` / `-handoffkind=back` | 引き渡しの抽選を固定する（撮り比べ用。既定は 50:50） |
 
 `PinHotkey` は「すでに掴まれている」と失敗するので、**0.6 秒おきに再試行**する実装にしてある。
 
@@ -102,7 +103,7 @@ if (Grapple != null && Grapple.PushPulse > 0f && Rig.Ready)
 |---|---|---|
 | 押す側 | 両腕を前へ突き出す 0.22 秒 | `EnemyBrain.PushAway()` / `IsPushing` → `EnemyFigure` が腕を組む |
 | 彼女 | 上体 +20°、腕を後ろへ 45°、顔だけ起こす 0.35 秒 | `PlayerGrapple.PushPulse` |
-| 受け取る側 | 立ったまま受け止める（構えは未実装） | `EnemyBrain.TakeOverHold` |
+| 受け取る側 | 両腕を開いて胸の高さに構え、半歩かがんで受け止める（0.9 秒） | `EnemyBrain.BeginCatch()` / `IsCatching` → `EnemyFigure` が構えを組む |
 
 押す側が棒立ちのままだと、**彼女が自分から 2 人目へ歩いて行った＝「2 人目が掴みに来た」**に見える（ユーザー評）。
 押す側の腕だけで印象が変わる。
