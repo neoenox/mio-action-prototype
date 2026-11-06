@@ -114,6 +114,8 @@ namespace Ryona.Game
                 gameObject.AddComponent<BackHoldPose>();
             if (GetComponent<PinHoldPose>() == null)
                 gameObject.AddComponent<PinHoldPose>();
+            if (GetComponent<BearHugPose>() == null)
+                gameObject.AddComponent<BearHugPose>();
             // 最初のフレームから正しい立ち姿勢にしておく
             // （補間値が 0 のままだと 1 フレームだけ体が潰れて見える）
             Step(0f, true);
@@ -964,6 +966,17 @@ namespace Ryona.Game
                 torsoPitch -= 6f;      // 上体は少し起こして受け止める
                 hipsZ -= 0.04f;        // 半歩かがむ
                 hipsY -= 0.03f;
+                kneeR += 8f;
+                kneeL += 8f;
+            }
+            // ベアハッグ: 胴を抱え込むので上体を前へ寄せ、膝を落として締める。
+            if (Brain != null && Brain.IsBearHugging)
+            {
+                var hug = Brain.Player.GetComponent<PlayerGrapple>();
+                float progress = hug != null ? Mathf.Clamp01(hug.Progress) : 0f;
+                torsoPitch += Mathf.Lerp(8f, -4f, progress);
+                hipsZ += 0.05f;
+                hipsY -= 0.05f;
                 kneeR += 8f;
                 kneeL += 8f;
             }
@@ -1904,6 +1917,69 @@ namespace Ryona.Game
             Vector3 pole = grip
                 + transform.right * (side * 0.55f)
                 - Vector3.up * 0.30f;
+
+            ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);
+        }
+    }
+
+    /// <summary>
+    /// 彼女の姿勢更新後、正面から胴を抱え込む腕を実際の体格に合わせる。
+    /// 両腕を彼女の脇腹から背中へ回し、腰の高さで組む。
+    /// </summary>
+    [DefaultExecutionOrder(21000)]
+    public sealed class BearHugPose : MonoBehaviour
+    {
+        EnemyFigure _figure;
+        EnemyBrain _brain;
+        ProceduralRig _targetRig;
+
+        void LateUpdate()
+        {
+            if (_figure == null) _figure = GetComponent<EnemyFigure>();
+            if (_brain == null) _brain = GetComponent<EnemyBrain>();
+            if (_figure == null || _brain == null || _brain.Player == null)
+                return;
+            if (!_brain.IsBearHugging)
+                return;
+
+            var hold = _brain.Player.GetComponent<PlayerGrapple>();
+            if (hold == null || !hold.IsGrappled || hold.Captor != _brain
+                || hold.Kind != GrappleKind.BearHug)
+                return;
+
+            if (_targetRig == null)
+                _targetRig = _brain.Player.GetComponentInChildren<ProceduralRig>();
+            if (_targetRig == null || !_targetRig.Ready
+                || _targetRig.LUpperArm == null || _targetRig.RUpperArm == null)
+                return;
+
+            // 手は彼女の背中（腰の上）へ回す。プレイヤーの forward は彼を向いているので、
+            // その逆が背中側。左右で少しずらして手が重ならないようにする。
+            Transform player = _brain.Player.transform;
+            Vector3 center = _targetRig.Spine != null
+                ? Vector3.Lerp(_targetRig.Spine.position, _targetRig.Chest != null
+                    ? _targetRig.Chest.position : _targetRig.Spine.position, 0.35f)
+                : player.position + Vector3.up * 0.95f;
+            center -= player.forward * 0.09f;
+
+            Solve(false, center + player.right * 0.06f);
+            Solve(true, center - player.right * 0.06f);
+        }
+
+        void Solve(bool left, Vector3 goal)
+        {
+            var upper = _figure.ShoulderBone(left);
+            var elbow = _figure.ElbowBone(left);
+            var wrist = _figure.WristBone(left);
+            if (upper == null || elbow == null || wrist == null)
+                return;
+
+            // 肘は外へ開き、少し下へ。真横から見て「抱き込んでいる」形にする。
+            float side = left ? -1f : 1f;
+            Vector3 pole = upper.position
+                + transform.right * (side * 0.45f)
+                - transform.up * 0.30f
+                + transform.forward * 0.15f;
 
             ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);
         }

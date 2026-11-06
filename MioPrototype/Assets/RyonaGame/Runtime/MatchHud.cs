@@ -169,9 +169,13 @@ namespace Ryona.Game
 
             // 後ろから掴まれたときは振りほどきにくい（背中側は力が入らない）。
             // 見た目は同じ掴みなので、せめて文字で分かるようにする。
-            string where = _grapple.Kind == GrappleKind.Back ? "（後ろから）"
-                : _grapple.Kind == GrappleKind.Pin ? "（押さえつけ）"
-                : string.Empty;
+            string where = _grapple.Kind switch
+            {
+                GrappleKind.Back => "（後ろから）",
+                GrappleKind.Pin => "（押さえつけ）",
+                GrappleKind.BearHug => "（ベアハッグ）",
+                _ => string.Empty
+            };
 
             // 後ろ拘束は時間切れが無い。代わりに「次の腹パンまで」を出す。
             string tail;

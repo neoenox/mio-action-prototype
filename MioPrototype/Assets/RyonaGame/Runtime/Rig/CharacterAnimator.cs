@@ -1426,7 +1426,7 @@ namespace Ryona.Game
                     float strain = Mathf.Clamp01(ramp * 0.6f + pulse * 0.55f) * pull;
 
                     // 掴まれた向きで姿勢を作り替える。背後は羽交い締め（Back）、
-                    // それ以外は正面からの押さえつけ（Pin）。
+                    // 正面の押さえつけ（Pin）、正面から胴を抱えるベアハッグ。
                     if (Grapple != null && Grapple.Kind == GrappleKind.Back)
                     {
                         // 羽交い締め。相手の腕が首に回り、上体を後ろへ反らされる。
@@ -1512,6 +1512,46 @@ namespace Ryona.Game
                             headRoll = Mathf.Lerp(headRoll, -side * 9f, faceFlick);
                         }
 
+                        break;
+                    }
+
+                    // ベアハッグ（BearHug）。正面から胴を抱え込まれ、両腕を体側に封じられる。
+                    if (Grapple != null && Grapple.Kind == GrappleKind.BearHug)
+                    {
+                        // 相手の胸に引き寄せられ、腰が浮き気味。膝を曲げて踏ん張る。
+                        hipsOffset.y = StanceHipsY - 0.10f * pull;
+                        hipsOffset.z = StanceHipsZ + 0.03f * pull;
+
+                        torsoPitch = -6f * pull + 4f * strain;
+                        torsoYaw = Mathf.Sin(Time.time * 2.4f) * 3f;
+                        torsoRoll = 0f;
+
+                        headPitch = -12f * pull;
+                        headYaw = Mathf.Sin(Time.time * 3.2f) * 5f;
+                        headRoll = 0f;
+
+                        // 両腕は体側に封じられるが、もがくと肘が外へ開き、相手の腕を押し返す。
+                        var trappedUpper = new Vector3(0.92f, -0.34f, 0.06f);
+                        var trappedFore = new Vector3(0.12f, -0.82f, 0.30f);
+                        float push = 0.12f * pulse;
+                        armLUpper = trappedUpper + new Vector3(0f, -0.02f, push * 0.5f);
+                        armRUpper = trappedUpper + new Vector3(0f, 0f, push * 0.4f);
+                        armLFore = trappedFore + new Vector3(0.04f * push, 0f, 0f);
+                        armRFore = trappedFore + new Vector3(0.03f * push, 0f, 0f);
+
+                        // 締め付けに抗して体を反らす。
+                        torsoPitch -= 5f * strain;
+                        headPitch -= 3f * strain;
+                        hipsOffset.z -= 0.03f * strain;
+
+                        handRollL = StanceHandRollL;
+                        handRollR = StanceHandRollR;
+                        grip = 1f;
+
+                        footL += StanceFootL;
+                        footR += StanceFootR;
+                        footPitchL = 22f * pull;
+                        footPitchR = 22f * pull;
                         break;
                     }
 

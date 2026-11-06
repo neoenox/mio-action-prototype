@@ -137,6 +137,9 @@ footPitchL = Mathf.Max(footPitchL, 18f * stepL);   // 踏み直す足はつま�
 - 抽選比は 50:50（`GrappleHandOff` 内）。腹パンを見せたいなら背面寄りにする
 - 渡す側（元の拘束者）は `LockForHandOff(0.9)` で `Recover` 固定、受け手は `TakeOverHold` で固定する。
   この間は AI も `KeepSpacing` も動かさない
+- **ベアハッグ**（`BearHug`）は正面 0.80〜1.30m から全員が出せる。押さえつけと 50:50 で選び、
+  `BearHugPose` が両腕を彼女の背中へ回す。0.9 秒後から 1 秒ごとに HP −2 の締め付け。
+  彼女は腕を体側に封じられ、もがくと肘が開く（`CharacterAnimator` の `State.Grabbed`）
 - 彼女は 0.9m 突き飛ばしてから戻すのではなく、**掴み位置まで一続きに移動**する
   （`0.12 + 距離 × 0.18` 秒、0.18〜0.65 秒）。向きは移動中に 0.25 秒で変える。
   押し終わりの `SnapToCaptor` は無い（行き過ぎて戻る動きがワープに見えたため）

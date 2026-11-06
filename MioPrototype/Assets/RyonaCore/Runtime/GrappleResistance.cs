@@ -7,7 +7,8 @@ namespace Ryona
     public enum GrappleKind
     {
         Back = 0,
-        Pin = 1
+        Pin = 1,
+        BearHug = 2
     }
 
     /// <summary>
@@ -60,6 +61,7 @@ namespace Ryona
             switch (kind)
             {
                 case GrappleKind.Pin: return CombatConstants.MashBasePin;
+                case GrappleKind.BearHug: return CombatConstants.MashBaseBearHug;
                 default: return CombatConstants.MashBaseBack;
             }
         }

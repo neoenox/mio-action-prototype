@@ -35,8 +35,11 @@ namespace Ryona
         /// <summary>背後からの掴み（羽交い締め）を振りほどくのに必要な入力回数。</summary>
         public const int MashBaseBack = 10;
 
-        /// <summary>押さえつけ（仕様書 §4.3 の 3 種目。まだ実装していない）の入力回数。</summary>
+        /// <summary>押さえつけ（仕様書 §4.3 の 3 種目）の入力回数。</summary>
         public const int MashBasePin = 12;
+
+        /// <summary>ベアハッグを振りほどくのに必要な入力回数。</summary>
+        public const int MashBaseBearHug = 12;
 
         /// <summary>
         /// 押さえつけ（<see cref="GrappleKind.Pin"/>）で掴まれてから解放されるまでの猶予（秒）。
@@ -49,10 +52,10 @@ namespace Ryona
         public const float GrappleEscapeStun = 0.70f;
 
         // --- 押さえつけ（Pin）の入口と膝蹴り ---------------------------
-        /// <summary>押さえつけを始める間合いの下限（m）。これより近いと殴る。</summary>
+        /// <summary>正面の掴み（Pin / BearHug）を始める間合いの下限（m）。これより近いと殴る。</summary>
         public const float PinMinDistance = 0.80f;
 
-        /// <summary>押さえつけを始める間合いの上限（m）。</summary>
+        /// <summary>正面の掴み（Pin / BearHug）を始める間合いの上限（m）。</summary>
         public const float PinMaxDistance = 1.30f;
 
         /// <summary>前回の押さえつけから次を始めるまで空ける秒。連発で「何もできない時間」にしない。</summary>
@@ -69,6 +72,18 @@ namespace Ryona
 
         /// <summary>膝蹴り 1 発のダメージ。</summary>
         public const float PinKneeDamage = 4.0f;
+
+        // --- ベアハッグ（正面から胴を抱えて締める） ---------------------
+        /// <summary>正面の掴みのうち、ベアハッグを選ぶ割合。</summary>
+        public const float BearHugChance = 0.5f;
+
+        /// <summary>ベアハッグ中に締め付ける間隔・初回までの秒・1 回のダメージ。</summary>
+        public const float BearHugSqueezeDelay = 0.9f;
+        public const float BearHugSqueezeInterval = 1.0f;
+        public const float BearHugSqueezeDamage = 2.0f;
+
+        /// <summary>締め付けで加算するひるみ（ダウンはさせない程度）。</summary>
+        public const float BearHugSqueezeFlinch = 3.0f;
 
         /// <summary>
         /// 掴まれている最中に、掴んでいる相手以外から受けるダメージの倍率。

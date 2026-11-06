@@ -445,8 +445,20 @@ namespace Ryona.Game
         /// <summary>次の予備動作を押さえつけにする（デバッグの指示用）。</summary>
         bool _pinOrder;
 
+        /// <summary>次の予備動作をベアハッグにする（デバッグの指示用）。</summary>
+        bool _bearHugOrder;
+
         /// <summary>この一振りが押さえつけか。予備動作で決めて、当たった瞬間に使う。</summary>
         bool _pinPending;
+
+        /// <summary>この一振りがベアハッグか。</summary>
+        bool _bearHugPending;
+
+        /// <summary>いまベアハッグで締め付けているか。見た目と締め付けに使う。</summary>
+        public bool IsBearHugging { get; private set; }
+
+        /// <summary>次の締め付けまでの時刻。</summary>
+        float _squeezeNextAt;
 
         /// <summary>前回の押さえつけが始まった時刻。</summary>
         float _lastPinAt = -999f;
@@ -483,6 +495,7 @@ namespace Ryona.Game
             HideTelegraph();
             IsHolding = false;
             IsPinning = false;
+            IsBearHugging = false;
             _pinKneesLeft = 0;
             ClearTransientAttackState();
             ReleaseToken();
@@ -525,7 +538,17 @@ namespace Ryona.Game
         public void QueuePin()
         {
             _pinOrder = true;
+            _bearHugOrder = false;
             _lastPinAt = -999f;   // 指示されたときはクールダウンを無視する
+            _attackReadyAt = Time.time;
+        }
+
+        /// <summary>次の掴みをベアハッグにする。デバッグとテストの駆動用。</summary>
+        public void QueueBearHug()
+        {
+            _bearHugOrder = true;
+            _pinOrder = false;
+            _lastPinAt = -999f;
             _attackReadyAt = Time.time;
         }
 
@@ -850,6 +873,13 @@ namespace Ryona.Game
                         DoPinKnee();
                     }
 
+                    // ベアハッグの締め付け。HP を少しずつ削る。
+                    if (IsBearHugging && Time.time >= _squeezeNextAt)
+                    {
+                        _squeezeNextAt = Time.time + Mathf.Max(0.1f, CombatConstants.BearHugSqueezeInterval);
+                        DoBearHugSqueeze();
+                    }
+
                     if (IsHolding && Player != null)
                     {
                         var hold = Player.GetComponent<PlayerGrapple>();
@@ -1080,7 +1110,9 @@ namespace Ryona.Game
                 if (distance <= _run.Range + StrikeTolerance)
                 {
                     if (_run.Id == AttackId.Grab)
-                        grabbed = _pinPending ? TryPin() : TryGrab();
+                        grabbed = _pinPending ? TryPin()
+                            : _bearHugPending ? TryBearHug()
+                            : TryGrab();
                     else if (PunchTouchesPlayer())
                     {
                         Player.LastHitZone = Zone;
@@ -1111,8 +1143,12 @@ namespace Ryona.Game
             _bellyPunchPendingHold = 0f;
             _tagPunchPending = false;
             _pinPending = false;
+            _bearHugPending = false;
             if (!grabbed)
+            {
                 IsPinning = false;
+                IsBearHugging = false;
+            }
 
             _punchVisualTimer = _run.Id == AttackId.Grab ? 0f : 0.18f;
             Phase = EnemyPhase.Recover;
@@ -1278,6 +1314,7 @@ namespace Ryona.Game
             _riseTimer = 0f;
             IsHolding = false;
             IsPinning = false;
+            IsBearHugging = false;
             _pinKneesLeft = 0;
             ClearTransientAttackState();
             ReleaseToken();
@@ -1297,6 +1334,8 @@ namespace Ryona.Game
 
             _attackReadyAt = Time.time + Mathf.Max(0f, AttackCooldown);
             IsHolding = false;
+            IsPinning = false;
+            IsBearHugging = false;
             Phase = EnemyPhase.Chase;
         }
 
@@ -1334,6 +1373,7 @@ namespace Ryona.Game
             _bellyPunchPendingHold = 0f;
             _punchPoseHoldSeconds = 0f;
             _pinPending = false;
+            _bearHugPending = false;
         }
 
         // --- 攻撃の抽選 ----------------------------------------------------------
@@ -1362,12 +1402,26 @@ namespace Ryona.Game
             AttackId id;
             bool force = _forceGrab;
             bool pin = false;
+            bool bearHug = false;
 
             bool fromBehind = Vector3.Dot(Player.transform.forward, transform.position - Player.transform.position) < -0.25f;
             if (_grapple != null && !_grapple.IsGrappled && fromBehind && distance <= RangeOf(AttackId.Grab)
                 && Time.time >= _grabReadyAt && (!_hasLast || _lastAttack != AttackId.Grab)
                 && UnityEngine.Random.value < 0.65f)
                 id = AttackId.Grab;
+            else if (_pinOrder && CanStartPin(distance))
+            {
+                // 指示（-pintest）は必ず押さえつけにする。
+                id = AttackId.Grab;
+                pin = true;
+            }
+            else if (CanStartBearHug(distance)
+                && (_bearHugOrder || UnityEngine.Random.value < CombatConstants.BearHugChance))
+            {
+                // 正面から胴を抱えるベアハッグ。同じ正面の掴みでも Pin とは形が違う。
+                id = AttackId.Grab;
+                bearHug = true;
+            }
             else if (CanStartPin(distance))
             {
                 // 正面からの押さえつけ。当たると 4.2 秒 / 12 回のレバガチャになる。
@@ -1388,6 +1442,7 @@ namespace Ryona.Game
 
             BeginWindup(id);
             _pinPending = pin;
+            _bearHugPending = bearHug;
 
             // 押さえつけが選ばれなかった理由を 1 秒に 1 回だけ出す（-pinlog）
             if (_pinLog && !pin && CanPin && Time.time >= _pinLogNextAt)
@@ -1412,11 +1467,18 @@ namespace Ryona.Game
         /// 攻撃トークン（同時攻撃の上限）は呼び出し側の <see cref="TryBeginAttack"/> が見る。
         /// 背後からは羽交い締め（Back）になるので出さない。
         /// </summary>
-        public bool CanStartPin(float distance)
-        {
-            if (!CanPin && !_pinOrder)
-                return false;
+        public bool CanStartPin(float distance) =>
+            (CanPin || _pinOrder) && CanStartFrontGrapple(distance);
 
+        /// <summary>
+        /// ベアハッグを始めてよいか。正面・間合い・クールダウンは Pin と同じ。
+        /// Pin と違って敵ごとの許可（<see cref="CanPin"/>）は要らず、全員が使える。
+        /// </summary>
+        public bool CanStartBearHug(float distance) => CanStartFrontGrapple(distance);
+
+        /// <summary>正面から掴む技（Pin / BearHug）に共通の入口条件。</summary>
+        bool CanStartFrontGrapple(float distance)
+        {
             if (Player == null || Player.IsDead)
                 return false;
 
@@ -1429,7 +1491,7 @@ namespace Ryona.Game
             if (_grapple == null || _grapple.IsGrappled)
                 return false;
 
-            // 背後からは羽交い締め。押さえつけは正面からだけ。
+            // 背後からは羽交い締め。正面の掴みは正面からだけ。
             if (IsBehindPlayer())
                 return false;
 
@@ -1474,8 +1536,68 @@ namespace Ryona.Game
             // 押さえつけている間に膝を 5 発入れる（何もできない 4.2 秒にしない）
             _pinKneesLeft = Mathf.Max(1, CombatConstants.PinKneeCount);
             _pinNextKneeAt = Time.time + Mathf.Max(0.1f, CombatConstants.PinKneeDelay);
+            IsBearHugging = false;
             Debug.Log($"[Pin] begin {name} dist={to.magnitude:F2} knees={_pinKneesLeft}");
             return true;
+        }
+
+        /// <summary>
+        /// ベアハッグが当たったとき。正面から胴を抱えて 4.2 秒 / 12 回のレバガチャへ移す。
+        /// 押さえつけと違って膝は入らず、一定間隔で締め付けて HP を少し削る。
+        /// </summary>
+        bool TryBearHug()
+        {
+            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            if (grapple == null || grapple.IsGrappled)
+                return false;
+
+            if (IsBehindPlayer())
+                return false;
+
+            Vector3 to = Player.transform.position - transform.position;
+            to.y = 0f;
+            if (to.magnitude > RangeOf(AttackId.Grab) + StrikeTolerance)
+                return false;
+
+            grapple.Begin(this, GrappleKind.BearHug);
+            _lastPinAt = Time.time;
+            _pinOrder = false;
+            _bearHugOrder = false;
+            IsPinning = false;
+            IsBearHugging = true;
+            IsHolding = true;
+            _squeezeNextAt = Time.time + Mathf.Max(0.1f, CombatConstants.BearHugSqueezeDelay);
+            Debug.Log($"[BearHug] begin {name} dist={to.magnitude:F2}");
+            return true;
+        }
+
+        /// <summary>ベアハッグの締め付け。掴んだまま HP を少し削る（ダウンは狙わない）。</summary>
+        void DoBearHugSqueeze()
+        {
+            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            if (grapple == null || !grapple.IsGrappled || grapple.Captor != this
+                || grapple.Kind != GrappleKind.BearHug)
+                return;
+
+            if (Player.IsDead)
+                return;
+
+            var squeeze = new AttackData
+            {
+                id = "bearhug_squeeze",
+                kind = AttackKind.Grapple,
+                damage = Mathf.Max(0f, CombatConstants.BearHugSqueezeDamage),
+                partDamage = 0f,
+                targetPart = BodyPart.Torso,
+                flinch = CombatConstants.BearHugSqueezeFlinch,
+                startupSeconds = 0f,
+                activeSeconds = 0f,
+                recoverySeconds = 0f
+            };
+
+            Player.LastHitZone = PunchZone.Body;
+            Player.ReceiveHit(State, squeeze, transform);
+            PlaySfx(SfxId.Impact, 0.55f);
         }
 
         /// <summary>
@@ -1661,6 +1783,7 @@ namespace Ryona.Game
             _tagPunchPending = false;
             _tagPunchSwing = false;
             _pinPending = false;
+            _bearHugPending = false;
 
             AttackData data = DataOf(id);
             if (data != null)
@@ -1850,6 +1973,7 @@ namespace Ryona.Game
             // 進行中の攻撃はキャンセルする。トークンも返して他の敵に順番を渡す。
             HideTelegraph();
             IsPinning = false;
+            IsBearHugging = false;
             _pinKneesLeft = 0;
             ClearTransientAttackState();
             ReleaseToken();
@@ -1900,8 +2024,10 @@ namespace Ryona.Game
             HideTelegraph();
             IsHolding = false;
             IsPinning = false;
+            IsBearHugging = false;
             _pinKneesLeft = 0;
             _pinOrder = false;
+            _bearHugOrder = false;
             ClearTransientAttackState();
             ReleaseToken();
             UnregisterGroup();
@@ -1940,9 +2066,11 @@ namespace Ryona.Game
             // 重なり回避が効かない、という残り方を防ぐ）。
             IsHolding = false;
             IsPinning = false;
+            IsBearHugging = false;
             _pinKneesLeft = 0;
             _pinNextKneeAt = 0f;
             _pinOrder = false;
+            _bearHugOrder = false;
             ClearTransientAttackState();
             _riseTimer = RiseSeconds * UnityEngine.Random.Range(1f, 1.4f);   // 見た目はここから起き上がる（少しずつずらす）
 

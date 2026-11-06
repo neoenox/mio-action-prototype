@@ -1,0 +1,113 @@
+using System.Collections;
+using NUnit.Framework;
+using Ryona.Game;
+using UnityEngine;
+using UnityEngine.TestTools;
+
+namespace Ryona.Tests
+{
+    /// <summary>
+    /// ベアハッグ（<see cref="GrappleKind.BearHug"/>）の回帰テスト。
+    ///
+    /// 正面から胴を抱えて締める。4.2 秒の制限時間つきで、12 回もがけば脱出できる。
+    /// 押さえつけと違って膝は入らず、一定間隔で締め付けて HP を少し削る。
+    /// </summary>
+    public sealed class BearHugTests
+    {
+        PlayerStats _player;
+        PlayerGrapple _grapple;
+        EnemyBrain _captor;
+
+        [TearDown]
+        public void TearDown()
+        {
+            Time.timeScale = 1f;
+            if (_grapple != null && _grapple.IsGrappled)
+                _grapple.Release();
+        }
+
+        IEnumerator Load()
+        {
+            yield return TestScene.LoadPrototype();
+
+            _player = Object.FindFirstObjectByType<PlayerStats>();
+            Assert.IsNotNull(_player, "PlayerStats がシーンに無い");
+
+            _grapple = _player.GetComponent<PlayerGrapple>();
+            Assert.IsNotNull(_grapple, "PlayerGrapple が無い");
+
+            var enemies = Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None);
+            Assert.GreaterOrEqual(enemies.Length, 1);
+
+            _captor = enemies[0];
+            for (int i = 1; i < enemies.Length; i++)
+                enemies[i].enabled = false;
+
+            // プレイヤーは +X 向き。掴む側は正面（+X）。
+            _player.transform.rotation = Quaternion.LookRotation(Vector3.right);
+            _captor.transform.position = _player.transform.position + Vector3.right * 1.15f;
+            _captor.transform.rotation = Quaternion.LookRotation(Vector3.left);
+            _captor.enabled = false;
+
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator ベアハッグは制限時間つきで始まり相手の方を向く()
+        {
+            yield return Load();
+
+            _grapple.Begin(_captor, GrappleKind.BearHug);
+
+            Assert.IsTrue(_grapple.IsGrappled, "ベアハッグが始まらない");
+            Assert.AreEqual(GrappleKind.BearHug, _grapple.Kind);
+            Assert.IsTrue(_grapple.HasTimeLimit, "ベアハッグは時間切れがある");
+            Assert.AreEqual(CombatConstants.GrappleLimitSeconds, _grapple.Remaining, 0.05f);
+            Assert.AreEqual(CombatConstants.MashBaseBearHug, _grapple.RequiredInputs, 0.01f,
+                "必要入力は 12 回");
+
+            Vector3 toCaptor = _captor.transform.position - _player.transform.position;
+            toCaptor.y = 0f;
+            Assert.Greater(Vector3.Dot(_player.transform.forward, toCaptor.normalized), 0.9f,
+                "ベアハッグは正面からなので、彼女は相手を向く");
+            Assert.AreEqual(0.50f, toCaptor.magnitude, 0.05f, "掴んだ距離が 0.50m になっていない");
+        }
+
+        [UnityTest]
+        public IEnumerator 締め付けてHPを少し削りもがけば脱出できる()
+        {
+            yield return Load();
+
+            _captor.enabled = true;
+            _captor.QueueBearHug();
+
+            float deadline = Time.realtimeSinceStartup + 6f;
+            while ((_grapple.Kind != GrappleKind.BearHug || !_grapple.IsGrappled)
+                && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.IsTrue(_grapple.IsGrappled && _grapple.Kind == GrappleKind.BearHug,
+                "正面からベアハッグに入らない");
+            Assert.IsTrue(_captor.IsBearHugging, "締め付けの状態になっていない");
+
+            float hpBefore = _player.State.Hp;
+            yield return new WaitForSeconds(2.4f);
+            Assert.Less(_player.State.Hp, hpBefore - 2f, "締め付けで HP が削れていない");
+            Assert.IsFalse(_player.IsDead, "ベアハッグだけで死亡している");
+
+            // 12 回もがけば脱出できる。
+            int need = Mathf.CeilToInt(_grapple.RequiredInputs);
+            for (int i = 0; i < need; i++)
+                _grapple.Struggle();
+            yield return null;
+
+            Assert.IsFalse(_grapple.IsGrappled, "12 回もがけば振りほどける");
+            Assert.AreEqual(EnemyPhase.Stagger, _captor.Phase, "振りほどかれた側はよろける");
+
+            // 脱出後に締め付けが続かない。
+            float hpAfter = _player.State.Hp;
+            yield return new WaitForSeconds(1.2f);
+            Assert.AreEqual(hpAfter, _player.State.Hp, 0.01f, "脱出後も締め付けが続いている");
+        }
+    }
+}

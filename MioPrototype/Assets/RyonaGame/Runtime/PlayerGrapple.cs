@@ -37,13 +37,16 @@ namespace Ryona.Game
         float _heldSeconds;
         float _suppressRemaining;
 
-        /// <summary>押さえつけ（Pin）で掴まれている間の、相手との距離（m）。</summary>
+        /// <summary>押さえつけ（Pin）/ ベアハッグで掴まれている間の、相手との距離（m）。</summary>
         /// <remarks>
         /// 敵カプセル 0.40 + 彼女 0.30 = 0.70 が体の重ならない下限。
         /// 0.72 にすると敵が <see cref="EnemyBrain"/> 側の下限（0.95）まで押し戻され、
         /// 伸ばした腕（肩から 0.62m）が彼女の 50cm 手前で止まって「宙に手を出す」画になる。
         /// </remarks>
         const float GrabDistance = 0.60f;
+
+        /// <summary>ベアハッグは胸を合わせるので、押さえつけより少し近い。</summary>
+        const float BearHugDistance = 0.50f;
         // 羽交い締めは胸を相手の背中に付けて組む。離れていると腕が伸びきって
         // 「首へ手を伸ばしている」画になる（0.85m だった）。肘を畳んで脇の下へ入れる距離にする。
         const float BackGrabDistance = 0.34f;
@@ -58,8 +61,8 @@ namespace Ryona.Game
         public float Remaining =>
             HasTimeLimit ? Mathf.Max(0f, _remaining) : 0f;
 
-        /// <summary>時間切れで解ける拘束か。後ろ拘束は false。</summary>
-        public bool HasTimeLimit => Kind == GrappleKind.Pin;
+        /// <summary>時間切れで解ける拘束か。後ろ拘束（Back）だけが false。</summary>
+        public bool HasTimeLimit => Kind != GrappleKind.Back;
 
         /// <summary>掴まれてからの経過秒。ログとテスト用。</summary>
         public float HeldSeconds => _heldSeconds;
@@ -259,9 +262,9 @@ namespace Ryona.Game
             RequiredInputs = ResistanceMath.RequiredInputs(kind, 1f, armInjury);
 
             _resistance = new GrappleResistance(kind, RequiredInputs);
-            _remaining = kind == GrappleKind.Pin
-                ? CombatConstants.GrappleLimitSeconds
-                : float.PositiveInfinity;
+            _remaining = kind == GrappleKind.Back
+                ? float.PositiveInfinity
+                : CombatConstants.GrappleLimitSeconds;
             _heldSeconds = 0f;
             _suppressRemaining = 0f;
             IsGrappled = true;
@@ -306,9 +309,9 @@ namespace Ryona.Game
 
             RequiredInputs = ResistanceMath.RequiredInputs(kind, 1f, Stats.State.Body[BodyPart.Arms]);
             _resistance = new GrappleResistance(kind, RequiredInputs);
-            _remaining = kind == GrappleKind.Pin
-                ? CombatConstants.GrappleLimitSeconds
-                : float.PositiveInfinity;
+            _remaining = kind == GrappleKind.Back
+                ? float.PositiveInfinity
+                : CombatConstants.GrappleLimitSeconds;
             _suppressRemaining = 0f;
 
             Debug.Log($"[HandOff] {next.name} が拘束を引き継ぐ kind={kind} need={RequiredInputs:F1}");
@@ -330,7 +333,7 @@ namespace Ryona.Game
 
             Vector3 toNext = next.transform.position - toPos;
             toNext.y = 0f;
-            Vector3 lookDir = kind == GrappleKind.Pin ? toNext : -toNext;
+            Vector3 lookDir = kind == GrappleKind.Back ? -toNext : toNext;
 
             Quaternion fromRot = transform.rotation;
             Quaternion targetRot = lookDir.sqrMagnitude > 1e-4f
@@ -384,8 +387,8 @@ namespace Ryona.Game
             transform.position = spot;
 
             // 羽交い締めは背中を向けたまま掴まれる（向きは変えない）。
-            // 押さえつけは正面から掴まれるので、相手の方を向かせる。
-            if (kind == GrappleKind.Pin)
+            // 押さえつけ / ベアハッグは正面から掴まれるので、相手の方を向かせる。
+            if (kind != GrappleKind.Back)
             {
                 Vector3 look = captor.transform.position - spot;
                 look.y = 0f;
@@ -414,9 +417,15 @@ namespace Ryona.Game
 
             dir.Normalize();
 
-            // 羽交い締めは密着させる。押さえつけは腕を伸ばす余地を残す。
-            Vector3 spot = captor.transform.position +
-                dir * (kind == GrappleKind.Back ? BackGrabDistance : GrabDistance);
+            // 羽交い締めは密着させる。押さえつけは腕を伸ばす余地を残し、
+            // ベアハッグは胴を抱えるので少しだけ近い。
+            float distance = kind switch
+            {
+                GrappleKind.Back => BackGrabDistance,
+                GrappleKind.BearHug => BearHugDistance,
+                _ => GrabDistance
+            };
+            Vector3 spot = captor.transform.position + dir * distance;
             spot.y = transform.position.y;
             return spot;
         }
@@ -466,7 +475,7 @@ namespace Ryona.Game
                 enemy.HoldFire(CombatConstants.GrappleReleaseGraceSeconds);
             }
 
-            Debug.Log($"[Grapple] pin release inputs={inputs} need={RequiredInputs:F1}");
+            Debug.Log($"[Grapple] release kind={Kind} inputs={inputs} need={RequiredInputs:F1}");
 
             Failed?.Invoke();
         }
