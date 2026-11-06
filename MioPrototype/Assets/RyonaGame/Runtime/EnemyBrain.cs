@@ -1595,6 +1595,7 @@ namespace Ryona.Game
                 recoverySeconds = 0f
             };
 
+            grapple.Squeeze();
             Player.LastHitZone = PunchZone.Body;
             Player.ReceiveHit(State, squeeze, transform);
             PlaySfx(SfxId.Impact, 0.55f);

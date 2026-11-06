@@ -91,8 +91,14 @@ namespace Ryona.Tests
             Assert.IsTrue(_captor.IsBearHugging, "締め付けの状態になっていない");
 
             float hpBefore = _player.State.Hp;
+            float squeezeDeadline = Time.realtimeSinceStartup + 3f;
+            while (_grapple.SqueezePulse <= 0f && Time.realtimeSinceStartup < squeezeDeadline)
+                yield return null;
+            Assert.Greater(_grapple.SqueezePulse, 0f, "締め付けのパルスが来ない");
+
             yield return new WaitForSeconds(2.4f);
             Assert.Less(_player.State.Hp, hpBefore - 2f, "締め付けで HP が削れていない");
+            Assert.Greater(_grapple.LiftPulse, 0.5f, "抱え上げられていない");
             Assert.IsFalse(_player.IsDead, "ベアハッグだけで死亡している");
 
             // 12 回もがけば脱出できる。
@@ -108,6 +114,7 @@ namespace Ryona.Tests
             float hpAfter = _player.State.Hp;
             yield return new WaitForSeconds(1.2f);
             Assert.AreEqual(hpAfter, _player.State.Hp, 0.01f, "脱出後も締め付けが続いている");
+            Assert.Less(_grapple.LiftPulse, 0.1f, "脱出後も抱え上げられたまま");
         }
     }
 }

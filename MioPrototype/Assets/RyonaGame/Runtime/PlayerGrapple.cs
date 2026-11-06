@@ -127,6 +127,25 @@ namespace Ryona.Game
         float _kneeHold;
 
         /// <summary>
+        /// ベアハッグの締め付け 0..1。締まる瞬間に 1 になり、少し保ってから減衰する。
+        /// </summary>
+        public float SqueezePulse { get; private set; }
+
+        /// <summary>抱え上げられている度合い 0..1。ベアハッグ中に上がり、解放で下がる。</summary>
+        public float LiftPulse { get; private set; }
+
+        /// <summary>締め付けの瞬間を伝える（掴んでいる側から呼ぶ）。</summary>
+        public void Squeeze()
+        {
+            _squeezeHold = SqueezeHoldSeconds;
+            SqueezePulse = 1f;
+        }
+
+        /// <summary>締め付けの形を保つ秒。姿勢の補間が追いついてから減衰させる。</summary>
+        const float SqueezeHoldSeconds = 0.16f;
+        float _squeezeHold;
+
+        /// <summary>
         /// 突き飛ばされた瞬間の 0..1。押されて上体が前へ流れ、腕が後ろへ残る。
         /// 引き渡し（<see cref="HandOff"/>）で立てる。
         /// </summary>
@@ -185,6 +204,20 @@ namespace Ryona.Game
             }
             else if (PushPulse > 0f)
                 PushPulse = Mathf.Max(0f, PushPulse - Time.deltaTime * 4f);
+
+            // ベアハッグの締め付け。当たりの瞬間に 1 になり、少し保ってから抜ける。
+            if (_squeezeHold > 0f)
+            {
+                _squeezeHold -= Time.deltaTime;
+                SqueezePulse = 1f;
+            }
+            else if (SqueezePulse > 0f)
+                SqueezePulse = Mathf.Max(0f, SqueezePulse - Time.deltaTime * 3.5f);
+
+            // 抱え上げ。掴まれてベアハッグの間だけ上がり、解放されると下がる。
+            float liftTarget = IsGrappled && Kind == GrappleKind.BearHug ? 1f : 0f;
+            LiftPulse = Mathf.MoveTowards(LiftPulse, liftTarget,
+                Time.deltaTime * (liftTarget > LiftPulse ? 2.5f : 4.5f));
 
             if (!IsGrappled)
                 return;
