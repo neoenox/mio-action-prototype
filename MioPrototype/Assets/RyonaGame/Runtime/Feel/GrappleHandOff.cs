@@ -138,6 +138,10 @@ namespace Ryona.Game
             // 抽選: 正面拘束（膝蹴り派生）か背面拘束（羽交い締め→腹パン）か。
             GrappleKind kind = Random.value < 0.5f ? GrappleKind.Pin : GrappleKind.Back;
 
+            // 押し出す側（いま掴んでいる敵）に腕を突き出させる
+            var pusherFigure = captor.GetComponent<EnemyFigure>();
+            captor.PushAway();
+
             if (_burstPrefix != null && !_burstDone)
             {
                 _burstDone = true;

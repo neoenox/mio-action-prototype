@@ -907,14 +907,23 @@ namespace Ryona.Game
                 armLSpread = _tagSpreadL;
             }
             // 検証用の上書き（エディタで姿勢を撮り比べる）。実行中は null なので影響しない。
-            if (ForceLeftArm.HasValue)
-            {
+            if (ForceLeftArm.HasValue)            {
                 armLPitch = ForceLeftArm.Value.x;
                 elbowL = ForceLeftArm.Value.y;
                 armLSpread = ForceLeftArm.Value.z;
             }
-            // 押さえつけ（Pin）: 肩を押し込むので上体を前へ倒し、膝を落として踏ん張る。
-            // 腕は PinHoldPose が彼女の肩へ向けて毎フレーム引き直す。
+            // 引き渡しの突き飛ばし: 両腕を前へ突き出す（0.2 秒だけ）。
+            if (Brain != null && Brain.IsPushing)
+            {
+                armRPitch = -72f;
+                elbowR = 14f;
+                armLPitch = -72f;
+                elbowL = 14f;
+                armRSpread = -10f;
+                armLSpread = 10f;
+                torsoPitch += 8f;
+            }
+            // 押さえつけ（Pin）: 肩を押し込むので上体を前へ倒し、膝を落として踏ん張る。            // 腕は PinHoldPose が彼女の肩へ向けて毎フレーム引き直す。
             // もがかれるほど押し返されて上体が起こされる（振りほどきが効いているのが見える）。
             if (Brain != null && Brain.IsPinning)
             {

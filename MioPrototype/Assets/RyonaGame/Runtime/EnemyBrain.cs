@@ -464,6 +464,18 @@ namespace Ryona.Game
         /// <summary>次の膝蹴りを入れる時刻（0 = 予定なし）。</summary>
         float _pinNextKneeAt;
 
+        /// <summary>突き飛ばす側の腕を前に出す残り秒。</summary>
+        float _pushUntil;
+
+        /// <summary>引き渡しで彼女を押し出す瞬間、両腕を突き出す（0.2 秒）。</summary>
+        public void PushAway()
+        {
+            _pushUntil = Time.time + 0.22f;
+        }
+
+        /// <summary>いま押し出している最中か（見た目側が腕を突き出すのに使う）。</summary>
+        public bool IsPushing => Time.time < _pushUntil;
+
         /// <summary>押さえつけ中の相手か（掴んでいる本人）。見た目側が姿勢を組むのに使う。</summary>
         public bool IsPinning { get; private set; }
 
