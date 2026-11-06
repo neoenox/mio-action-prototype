@@ -1526,7 +1526,7 @@ namespace Ryona.Game
                         float crush = squeeze * (0.65f + 0.35f * tight);
 
                         // 相手の胸に引き寄せられ、腰ごと浮く。足は床を離れてぶら下がる。
-                        hipsOffset.y = StanceHipsY - 0.10f * pull + 0.13f * hugLift;
+                        hipsOffset.y = StanceHipsY - 0.10f * pull + 0.13f * hugLift + 0.02f * crush;
                         hipsOffset.z = StanceHipsZ + 0.03f * pull + 0.01f * crush;
                         hipsOffset.x = Mathf.Sin(Time.time * 2.7f) * 0.015f * hugLift;
 

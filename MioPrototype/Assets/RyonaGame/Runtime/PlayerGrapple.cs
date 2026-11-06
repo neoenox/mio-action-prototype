@@ -45,8 +45,10 @@ namespace Ryona.Game
         /// </remarks>
         const float GrabDistance = 0.60f;
 
-        /// <summary>ベアハッグは胸を合わせるので、押さえつけより少し近い。</summary>
-        const float BearHugDistance = 0.50f;
+        /// <summary>
+        /// ベアハッグの基準距離（離れ気味のとき）。締め付けでここから 0.12m 詰めて密着する。
+        /// </summary>
+        const float BearHugDistance = 0.56f;
         // 羽交い締めは胸を相手の背中に付けて組む。離れていると腕が伸びきって
         // 「首へ手を伸ばしている」画になる（0.85m だった）。肘を畳んで脇の下へ入れる距離にする。
         const float BackGrabDistance = 0.34f;
@@ -127,23 +129,42 @@ namespace Ryona.Game
         float _kneeHold;
 
         /// <summary>
-        /// ベアハッグの締め付け 0..1。締まる瞬間に 1 になり、少し保ってから減衰する。
+        /// ベアハッグの密着度 0..1。0 = 少し離れている / 1 = 体が密着している。
+        /// 締め付けのたびに 0 → 1 → 0 を繰り返す。
         /// </summary>
         public float SqueezePulse { get; private set; }
+
+        /// <summary>いま「密着して締め付けている」瞬間か（ダメージはこの瞬間に入れる）。</summary>
+        public bool IsBearHugContact => IsGrappled && Kind == GrappleKind.BearHug && _hugStage == 2;
 
         /// <summary>抱え上げられている度合い 0..1。ベアハッグ中に上がり、解放で下がる。</summary>
         public float LiftPulse { get; private set; }
 
-        /// <summary>締め付けの瞬間を伝える（掴んでいる側から呼ぶ）。</summary>
+        /// <summary>
+        /// 締め付けを始める（掴んでいる側から呼ぶ）。体を引き寄せ、密着した瞬間に
+        /// <see cref="IsBearHugContact"/> が true になる。
+        /// </summary>
         public void Squeeze()
         {
-            _squeezeHold = SqueezeHoldSeconds;
-            SqueezePulse = 1f;
+            if (!IsGrappled || Kind != GrappleKind.BearHug || _hugStage != 0)
+                return;
+
+            _hugStage = 1;    // 引き寄せ
+            _hugTime = 0f;
         }
 
-        /// <summary>締め付けの形を保つ秒。姿勢の補間が追いついてから減衰させる。</summary>
-        const float SqueezeHoldSeconds = 0.16f;
-        float _squeezeHold;
+        // 密着 → 少し離れる → 密着 の周期。
+        const float HugPullSeconds = 0.18f;
+        const float HugContactSeconds = 0.14f;
+        const float HugReleaseSeconds = 0.55f;
+
+        /// <summary>0 = 離れ気味 / 1 = 掴み位置の基準 / 2 = 密着。</summary>
+        int _hugStage;
+        float _hugTime;
+        float _hugPhase;
+
+        /// <summary>密着しているときの距離の詰め（m）。</summary>
+        const float HugTightInset = 0.12f;
 
         /// <summary>
         /// 突き飛ばされた瞬間の 0..1。押されて上体が前へ流れ、腕が後ろへ残る。
@@ -205,14 +226,9 @@ namespace Ryona.Game
             else if (PushPulse > 0f)
                 PushPulse = Mathf.Max(0f, PushPulse - Time.deltaTime * 4f);
 
-            // ベアハッグの締め付け。当たりの瞬間に 1 になり、少し保ってから抜ける。
-            if (_squeezeHold > 0f)
-            {
-                _squeezeHold -= Time.deltaTime;
-                SqueezePulse = 1f;
-            }
-            else if (SqueezePulse > 0f)
-                SqueezePulse = Mathf.Max(0f, SqueezePulse - Time.deltaTime * 3.5f);
+            // ベアハッグ以外では密着度を抜く（演出の取りこぼし防止）。
+            if (!IsGrappled || Kind != GrappleKind.BearHug)
+                SqueezePulse = Mathf.MoveTowards(SqueezePulse, 0f, Time.deltaTime * 4f);
 
             // 抱え上げ。掴まれてベアハッグの間だけ上がり、解放されると下がる。
             float liftTarget = IsGrappled && Kind == GrappleKind.BearHug ? 1f : 0f;
@@ -235,6 +251,10 @@ namespace Ryona.Game
                 Release();
                 return;
             }
+
+            // ベアハッグ: 体を引き寄せて密着させ、少し離してからまた締める。
+            if (Kind == GrappleKind.BearHug)
+                TickBearHugBody(Time.deltaTime);
 
             _heldSeconds += Time.deltaTime;
 
@@ -303,6 +323,13 @@ namespace Ryona.Game
             IsGrappled = true;
             StrugglePulse = 0f;
             KneePulse = 0f;
+            if (kind == GrappleKind.BearHug)
+            {
+                _hugStage = 0;
+                _hugTime = 0f;
+                _hugPhase = 0f;
+                SqueezePulse = 0f;
+            }
 
             // 掴まれている間は移動もガードもできない
             Stats.IsMoving = false;
@@ -405,6 +432,9 @@ namespace Ryona.Game
             _remaining = 0f;
             _suppressRemaining = 0f;
             Captor = null;
+            _hugStage = 0;
+            _hugTime = 0f;
+            _hugPhase = 0f;
         }
 
         /// <summary>
@@ -463,6 +493,69 @@ namespace Ryona.Game
             return spot;
         }
 
+        /// <summary>
+        /// ベアハッグ中、掴み位置を「密着 → 少し離れる → 密着」と動かす。
+        /// ダメージは密着した瞬間（<see cref="IsBearHugContact"/>）だけに入れる。
+        /// </summary>
+        void TickBearHugBody(float dt)
+        {
+            if (Captor == null)
+                return;
+
+            switch (_hugStage)
+            {
+                case 1: // 引き寄せ
+                    _hugTime += dt;
+                    _hugPhase = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_hugTime / HugPullSeconds));
+                    if (_hugTime >= HugPullSeconds)
+                    {
+                        _hugPhase = 1f;
+                        _hugStage = 2;
+                        _hugTime = 0f;
+                    }
+                    break;
+
+                case 2: // 密着（ここでダメージ）
+                    _hugTime += dt;
+                    if (_hugTime >= HugContactSeconds)
+                    {
+                        _hugStage = 3;
+                        _hugTime = 0f;
+                    }
+                    break;
+
+                case 3: // 少し離す
+                    _hugTime += dt;
+                    _hugPhase = 1f - Mathf.SmoothStep(0f, 1f,
+                        Mathf.Clamp01(_hugTime / HugReleaseSeconds));
+                    if (_hugTime >= HugReleaseSeconds)
+                    {
+                        _hugPhase = 0f;
+                        _hugStage = 0;
+                        _hugTime = 0f;
+                    }
+                    break;
+            }
+
+            SqueezePulse = _hugPhase;
+
+            // 掴み位置の基準（BearHugDistance）から、密着度に応じて前後させる。
+            // 方向は「相手から見た彼女」の向きを使い、横へは流れないようにする。
+            Vector3 dir = transform.position - Captor.transform.position;
+            dir.y = 0f;
+            if (dir.sqrMagnitude < 1e-4f)
+                dir = -Captor.transform.forward;
+            dir.y = 0f;
+            if (dir.sqrMagnitude < 1e-4f)
+                return;
+            dir.Normalize();
+
+            float distance = BearHugDistance - HugTightInset * _hugPhase;
+            Vector3 spot = Captor.transform.position + dir * distance;
+            spot.y = transform.position.y;
+            transform.position = spot;
+        }
+
         void Escape()
         {
             var captor = Captor;
@@ -473,6 +566,9 @@ namespace Ryona.Game
             _remaining = 0f;
             _suppressRemaining = 0f;
             Captor = null;
+            _hugStage = 0;
+            _hugTime = 0f;
+            _hugPhase = 0f;
 
             PlaySfx(SfxId.Guard, 0.9f);
 

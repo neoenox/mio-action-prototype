@@ -70,7 +70,7 @@ namespace Ryona.Tests
             toCaptor.y = 0f;
             Assert.Greater(Vector3.Dot(_player.transform.forward, toCaptor.normalized), 0.9f,
                 "ベアハッグは正面からなので、彼女は相手を向く");
-            Assert.AreEqual(0.50f, toCaptor.magnitude, 0.05f, "掴んだ距離が 0.50m になっていない");
+            Assert.AreEqual(0.56f, toCaptor.magnitude, 0.05f, "掴んだ距離が 0.56m になっていない");
         }
 
         [UnityTest]
@@ -96,8 +96,26 @@ namespace Ryona.Tests
                 yield return null;
             Assert.Greater(_grapple.SqueezePulse, 0f, "締め付けのパルスが来ない");
 
-            yield return new WaitForSeconds(2.4f);
-            Assert.Less(_player.State.Hp, hpBefore - 2f, "締め付けで HP が削れていない");
+            // 密着 → 少し離れる → 密着 を繰り返す。距離の振れ幅と、密着時のダメージを見る。
+            float minDistance = float.MaxValue;
+            float maxDistance = 0f;
+            bool sawContact = false;
+            float observeUntil = Time.realtimeSinceStartup + 2.4f;
+            while (Time.realtimeSinceStartup < observeUntil)
+            {
+                yield return null;
+                float distance = Vector3.Distance(
+                    _player.transform.position, _captor.transform.position);
+                minDistance = Mathf.Min(minDistance, distance);
+                maxDistance = Mathf.Max(maxDistance, distance);
+                if (_grapple.IsBearHugContact)
+                    sawContact = true;
+            }
+
+            Assert.IsTrue(sawContact, "密着した瞬間がない");
+            Assert.Greater(maxDistance - minDistance, 0.06f,
+                $"体が密着と離れを繰り返していない（{minDistance:F2}〜{maxDistance:F2}m）");
+            Assert.Less(_player.State.Hp, hpBefore - 2f, "密着時のダメージが入っていない");
             Assert.Greater(_grapple.LiftPulse, 0.5f, "抱え上げられていない");
             Assert.IsFalse(_player.IsDead, "ベアハッグだけで死亡している");
 

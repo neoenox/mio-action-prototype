@@ -460,6 +460,9 @@ namespace Ryona.Game
         /// <summary>次の締め付けまでの時刻。</summary>
         float _squeezeNextAt;
 
+        /// <summary>引き寄せ中で、まだ密着（ダメージ）していないか。</summary>
+        bool _squeezeActive;
+
         /// <summary>前回の押さえつけが始まった時刻。</summary>
         float _lastPinAt = -999f;
 
@@ -873,11 +876,25 @@ namespace Ryona.Game
                         DoPinKnee();
                     }
 
-                    // ベアハッグの締め付け。HP を少しずつ削る。
-                    if (IsBearHugging && Time.time >= _squeezeNextAt)
+                    // ベアハッグの締め付け。体を引き寄せ、密着した瞬間に HP を削る。
+                    if (IsBearHugging && !_squeezeActive && Time.time >= _squeezeNextAt)
                     {
-                        _squeezeNextAt = Time.time + Mathf.Max(0.1f, CombatConstants.BearHugSqueezeInterval);
-                        DoBearHugSqueeze();
+                        var hug = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+                        if (hug != null && hug.Kind == GrappleKind.BearHug)
+                        {
+                            _squeezeActive = true;
+                            hug.Squeeze();
+                        }
+                    }
+                    if (IsBearHugging && _squeezeActive)
+                    {
+                        var hug = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+                        if (hug != null && hug.IsBearHugContact)
+                        {
+                            _squeezeActive = false;
+                            _squeezeNextAt = Time.time + Mathf.Max(0.1f, CombatConstants.BearHugSqueezeInterval);
+                            DoBearHugSqueeze();
+                        }
                     }
 
                     if (IsHolding && Player != null)
@@ -1566,6 +1583,7 @@ namespace Ryona.Game
             IsPinning = false;
             IsBearHugging = true;
             IsHolding = true;
+            _squeezeActive = false;
             _squeezeNextAt = Time.time + Mathf.Max(0.1f, CombatConstants.BearHugSqueezeDelay);
             Debug.Log($"[BearHug] begin {name} dist={to.magnitude:F2}");
             return true;
@@ -1595,7 +1613,6 @@ namespace Ryona.Game
                 recoverySeconds = 0f
             };
 
-            grapple.Squeeze();
             Player.LastHitZone = PunchZone.Body;
             Player.ReceiveHit(State, squeeze, transform);
             PlaySfx(SfxId.Impact, 0.55f);
