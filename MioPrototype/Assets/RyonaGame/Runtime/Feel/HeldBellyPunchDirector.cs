@@ -555,7 +555,10 @@ namespace Ryona.Game
             }
 
             RefreshCamera(1.6f);
-            _grapple.SuppressStruggle(1.6f);
+            // 殴られている間も、当たった瞬間の数十ミリ秒だけ入力を止める。
+            // ここを長く取ると「5 発食らい終わるまで抜けられない」拘束になる（実測で 1.6 秒止めていた）。
+            // 彼女は痛みに耐えながらも、合間を縫って抜けられるようにする。
+            _grapple.SuppressStruggle(0.12f);
 
             if (_hits >= ComboHitsTotal)
             {
@@ -633,9 +636,9 @@ namespace Ryona.Game
             if (_anim == null)
                 _anim = _stats.GetComponentInChildren<CharacterAnimator>();
 
-            // コンボ中はもがきを受け付けない。最後の一発の後に解放される。
-            float suppress = ComboHitsTotal * (ComboIntervalSeconds + 0.5f) + ComboTailSeconds + 0.5f;
-            _grapple.SuppressStruggle(suppress);
+            // コンボ中ももがける。殴られている最中でも合間を縫って抜けられるようにする
+            // （逃げたら演出はそこで終わる）。当たりの瞬間だけ 0.12 秒止める。
+            _grapple.SuppressStruggle(0.12f);
 
             if (_anim != null)
             {

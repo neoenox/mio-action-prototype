@@ -301,6 +301,41 @@ namespace Ryona.Tests
         /// 打たない腕は腰の横へ下ろさず、脇を締めて拳を胸の前に構える。
         /// 下ろすと上体を前へ倒す腹パンの姿勢と重なって「腕がだらりと下がった」画になる。
         /// </summary>
+        /// <summary>
+        /// 殴られている最中でも、合間を縫って抜けられる。
+        /// 「5 発食らい終わるまで何もできない」拘束にしない（リョナの核は抵抗）。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 腹パンを受けている最中でももがけば抜けられる()
+        {
+            yield return LoadAndGrab(waitForAnimator: true);
+            _director.FacePunchChance = 0f;
+            PlaceAttackerInFront();
+
+            Hit(_attacker, PunchZone.Body);
+            _attacker.HoldFire(10f);
+            _attacker.enabled = true;
+            yield return null;
+
+            Assert.IsTrue(_director.IsPerforming, "コンボが始まる");
+            Assert.IsTrue(_grapple.IsGrappled, "掴まれている");
+
+            // 演出中にもがき続ける（当たりの瞬間の 0.12 秒だけ止まる）
+            float t = 0f;
+            while (_grapple.IsGrappled && t < 3f)
+            {
+                _grapple.Struggle();
+                yield return new WaitForSeconds(0.12f);
+                t += 0.12f;
+            }
+
+            Assert.IsFalse(_grapple.IsGrappled, "腹パン中でももがけば抜けられる");
+
+            // 抜けたら演出も止まる
+            yield return new WaitForSeconds(0.2f);
+            Assert.IsFalse(_director.IsPerforming, "抜けたらコンボは終わる");
+        }
+
         [UnityTest]
         public IEnumerator 打たない腕は脇を締めて胸の前に構える()
         {
