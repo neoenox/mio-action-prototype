@@ -303,17 +303,6 @@ namespace Ryona.Game
 #endif
         }
 
-        /// <summary>関節技の確認用（O キー）。新 Input System 専用。</summary>
-        public static bool ArmLockTestPressed()
-        {
-#if ENABLE_INPUT_SYSTEM
-            var kb = UnityEngine.InputSystem.Keyboard.current;
-            return kb != null && kb.oKey.wasPressedThisFrame;
-#else
-            return false;
-#endif
-        }
-
         static bool KeyDown(KeyCode key)
         {
 #if ENABLE_INPUT_SYSTEM

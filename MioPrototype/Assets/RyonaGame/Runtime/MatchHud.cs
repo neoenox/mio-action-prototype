@@ -156,7 +156,6 @@ namespace Ryona.Game
             // 見た目は同じ掴みなので、せめて文字で分かるようにする。
             string where = _grapple.Kind == GrappleKind.Back ? "（後ろから）"
                 : _grapple.Kind == GrappleKind.Pin ? "（押さえつけ）"
-                : _grapple.Kind == GrappleKind.ArmLock ? "（関節）"
                 : string.Empty;
 
             // 後ろ拘束は時間切れが無い。代わりに「次の腹パンまで」を出す。
@@ -168,13 +167,6 @@ namespace Ryona.Game
                 tail = $"あと {_grapple.Remaining:F1}s";
                 // 残り 1 秒を切ったら赤字にして、投げられる直前だと分かるようにする
                 danger = _grapple.Remaining <= 1f;
-            }
-            else if (_grapple.Kind == GrappleKind.ArmLock)
-            {
-                // 時間切れは無いが、極められている間ずっと腕が削られる
-                float arm = Player != null ? Player.State.Body[BodyPart.Arms] : 0f;
-                tail = $"腕 残り {Mathf.Max(0f, 100f - arm):F0}%";
-                danger = arm >= 70f;
             }
             else if (_bellyPunch == null)
             {

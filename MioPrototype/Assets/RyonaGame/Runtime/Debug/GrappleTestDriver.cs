@@ -182,9 +182,9 @@ namespace Ryona.Game
                     {
                         _grabbedOnce = true;
                         Debug.Log($"[GrappleTest] 掴まれた kind={kind}");
-                        if (kind != GrappleKind.Back && _pinShotPath != null)
+                        if (kind == GrappleKind.Pin && _pinShotPath != null)
                             _pinShotDelay = Mathf.Max(0f, _pinShotDelaySeconds);
-                        if (kind != GrappleKind.Back && _pinBurstPrefix != null && !_pinBurstDone)
+                        if (kind == GrappleKind.Pin && _pinBurstPrefix != null && !_pinBurstDone)
                         {
                             _pinBurstDone = true;
                             StartCoroutine(PinBurstShots());
