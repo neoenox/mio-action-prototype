@@ -42,9 +42,23 @@ namespace Ryona.Game
 
         static readonly int ColorId = Shader.PropertyToID("_Color");
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        static void InstallSceneHook()
+        {
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnSceneLoaded;
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnSceneLoaded;
+        }
+
+        static void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene,
+            UnityEngine.SceneManagement.LoadSceneMode mode) => Boot();
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
         {
+            // シーン再読み込みで二重に作らない
+            if (Object.FindFirstObjectByType<ContactShadow>() != null)
+                return;
+
             var go = new GameObject("Contact Shadow");
             go.AddComponent<ContactShadow>();
         }

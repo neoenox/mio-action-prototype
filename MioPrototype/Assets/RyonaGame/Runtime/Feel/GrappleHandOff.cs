@@ -14,19 +14,19 @@ namespace Ryona.Game
     [AddComponentMenu("Ryona/Grapple Hand Off")]
     public sealed class GrappleHandOff : MonoBehaviour
     {
-        /// <summary>掴まれてから引き渡すまでの秒数。</summary>
-        public float DelaySeconds = 2.6f;
+        /// <summary>
+        /// 引き渡せる距離（これより遠い敵には渡さない）。
+        /// 遠すぎると掴み位置までの移動が長くなり、押し出しではなく滑って見える。
+        /// </summary>
+        public float Range = 2.5f;
 
-        /// <summary>引き渡しの間隔（これ以上あける）。</summary>
-        public float IntervalSeconds = 3.5f;
-
-        /// <summary>引き渡せる距離（これより遠い敵には渡さない）。</summary>
-        public float Range = 4.0f;
+        /// <summary>
+        /// 腹ダメージが上限未満でコンボを食らい終えたときに、次の敵へ引き渡す確率。
+        /// 時間で渡していたころは、腹パンも膝蹴りも出ないうちに渡って「たらい回し」になった。
+        /// </summary>
+        [Range(0f, 1f)] public float Chance = 0.7f;
 
         PlayerGrapple _grapple;
-        HeldBellyPunchDirector _belly;
-        float _elapsed;
-        float _nextAt;
 
         /// <summary>引き渡しの動きを撮る（<c>-handoffburst=&lt;prefix&gt;</c>）。1 回だけ。</summary>
         string _burstPrefix;
@@ -34,6 +34,18 @@ namespace Ryona.Game
 
         /// <summary>抽選を固定する（<c>-handoffkind=pin</c> / <c>-handoffkind=back</c>）。検証用。</summary>
         static string _forceKind;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        static void InstallSceneHook()
+        {
+            // AfterSceneLoad は最初のシーンだけ。"R ではじめから" の再読み込みでも
+            // 引き渡しが戻るように、毎回確認する。
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnSceneLoaded;
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnSceneLoaded;
+        }
+
+        static void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene,
+            UnityEngine.SceneManagement.LoadSceneMode mode) => Boot();
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
@@ -76,42 +88,22 @@ namespace Ryona.Game
             Debug.Log($"[HandOff] burst {count} 枚 {_burstPrefix}_XX.png");
         }
 
-        void Update()
+        /// <summary>
+        /// コンボ後に通常の構図へ戻ってから、次の敵へ渡すか抽選する。
+        /// 渡せた場合は true。渡せない場合は元の拘束が続く。
+        /// </summary>
+        public bool TryChain()
         {
             if (_grapple == null)
                 _grapple = FindFirstObjectByType<PlayerGrapple>();
             if (_grapple == null || !_grapple.IsGrappled)
-            {
-                _elapsed = 0f;
-                return;
-            }
+                return false;
 
-            if (_belly == null)
-                _belly = FindFirstObjectByType<HeldBellyPunchDirector>();
-
-            // タッグ腹パンの最中は渡さない（殴っている敵が変わると演出が崩れる）
-            if (_belly != null && _belly.IsPerforming)
-            {
-                _elapsed = 0f;
-                return;
-            }
-
-            if (_grapple.Kind == GrappleKind.Pin)
-            {
-                // 押さえつけは時間制限つきの短い技なので渡さない
-                _elapsed = 0f;
-                return;
-            }
-
-            _elapsed += Time.deltaTime;
-            if (_elapsed < DelaySeconds || Time.time < _nextAt)
-                return;
-
-            if (TryHandOff())
-            {
-                _nextAt = Time.time + IntervalSeconds;
-                _elapsed = 0f;
-            }
+            bool roll = Random.value < Mathf.Clamp01(Chance);
+            bool handed = roll && TryHandOff();
+            Debug.Log($"[HandOff] roll chance={Chance:F2} → " +
+                      (handed ? "渡した" : roll ? "渡し先なし（拘束継続）" : "渡さない（拘束継続）"));
+            return handed;
         }
 
         bool TryHandOff()

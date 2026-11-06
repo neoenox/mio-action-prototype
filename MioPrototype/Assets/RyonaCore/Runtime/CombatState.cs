@@ -1,14 +1,12 @@
 namespace Ryona
 {
     /// <summary>
-    /// 1人の戦闘リソース。HP / スタミナ / 体勢 / 部位ダメージをまとめて持つ。
-    /// 仕様書 §4.1・§4.2 の三層リソース。
+    /// 1人の戦闘リソース。HP / 部位ダメージ / ひるみ（ダウンゲージ）をまとめて持つ。
+    /// 仕様書 §4.1・§4.2。
     /// </summary>
     public sealed class CombatState
     {
         public float Hp { get; private set; }
-        public float Stamina { get; private set; }
-        public float Posture { get; private set; }
         public BodyDamage Body { get; } = new BodyDamage();
 
         /// <summary>
@@ -37,41 +35,18 @@ namespace Ryona
         public CombatState()
         {
             Hp = MaxHp;
-            Stamina = CombatConstants.MaxStamina;
-            Posture = CombatConstants.MaxPosture;
         }
 
         public bool IsAlive => Hp > 0f;
 
-        /// <summary>スタミナ切れ = ガードブレイク状態。</summary>
-        public bool IsGuardBroken => Stamina <= 0f;
-
         /// <summary>移動速度倍率（脚の損傷）。</summary>
         public float MoveSpeedMultiplier => Body.MoveSpeedMultiplier;
 
-        /// <summary>時間経過でのスタミナ・体勢の回復。</summary>
-        public void Tick(float deltaSeconds, bool moving, bool blocking = false)
+        /// <summary>時間経過でのひるみの減衰。</summary>
+        public void Tick(float deltaSeconds)
         {
             if (deltaSeconds <= 0f)
                 return;
-
-            float baseRegen = moving
-                ? CombatConstants.StaminaRegenMoving
-                : CombatConstants.StaminaRegenIdle;
-
-            // 構えている間は回復しない。握り得を消して、ガードブレイクを成立させる
-            if (blocking)
-                baseRegen *= CombatConstants.GuardRegenScale;
-
-            Stamina = Clamp(
-                Stamina + baseRegen * Body.StaminaRegenMultiplier * deltaSeconds,
-                0f,
-                CombatConstants.MaxStamina);
-
-            Posture = Clamp(
-                Posture + CombatConstants.PostureRegenPerSecond * deltaSeconds,
-                0f,
-                CombatConstants.MaxPosture);
 
             // ひるみは最後の被弾からしばらく減らない。殴られ続けている間は溜まり続け、
             // 手が止まると抜けていく（＝「一方的に殴られ続けると倒れる」）。
@@ -111,29 +86,25 @@ namespace Ryona
             Hp = Clamp(Hp - amount, 0f, MaxHp);
         }
 
-        public void ConsumeStamina(float amount)
+        /// <summary>HP を回復する。</summary>
+        public void HealHp(float amount)
         {
             if (amount <= 0f)
                 return;
-            Stamina = Clamp(Stamina - amount, 0f, CombatConstants.MaxStamina);
+            Hp = Clamp(Hp + amount, 0f, MaxHp);
         }
 
-        public void ReducePosture(float amount)
+        /// <summary>HP をこの値未満にしない（ゴッドモードの死亡防止）。</summary>
+        public void EnsureHpAtLeast(float value)
         {
-            if (amount <= 0f)
-                return;
-            Posture = Clamp(Posture - amount, 0f, CombatConstants.MaxPosture);
+            if (Hp < value)
+                Hp = Clamp(value, 0f, MaxHp);
         }
-
-        public void SetPosture(float value) =>
-            Posture = Clamp(value, 0f, CombatConstants.MaxPosture);
 
         /// <summary>チェックポイント復帰用。部位ダメージは仕様上リセットする。</summary>
         public void RestoreAll()
         {
             Hp = MaxHp;
-            Stamina = CombatConstants.MaxStamina;
-            Posture = CombatConstants.MaxPosture;
             Body.Reset();
             IsDown = false;
             ResetFlinch();

@@ -4,7 +4,7 @@ using UnityEngine.UI;
 namespace Ryona.Game
 {
     /// <summary>
-    /// 画面 HUD。仕様書 §9 の情報（HP・スタミナ・姿勢・部位）を表示する。
+    /// 画面 HUD。体力と、ダウン・腹ダメージの蓄積を表示する。
     ///
     /// IMGUI から uGUI に置き換えた。Canvas を実行時に組み立てるので、
     /// シーンの参照（Player / Enemy）はそのまま使える。
@@ -17,18 +17,20 @@ namespace Ryona.Game
         public EnemyBrain Enemy;
 
         static readonly Color HpColor = new Color(0.78f, 0.28f, 0.28f);
-        static readonly Color StaminaColor = new Color(0.85f, 0.80f, 0.45f);
-        static readonly Color PostureColor = new Color(0.55f, 0.70f, 0.90f);
-        static readonly Color PartColor = new Color(0.90f, 0.55f, 0.35f);
+        static readonly Color DownColor = new Color(0.76f, 0.65f, 1f);
+        static readonly Color BellyColor = new Color(1f, 0.63f, 0.33f);
         static readonly Color BackColor = new Color(0f, 0f, 0f, 0.32f);
         static readonly Color TextColor = new Color(1f, 1f, 1f, 0.80f);
+        static readonly float LightFlinch = AttackLibrary.Light().Flinch;
+        static readonly float HeavyFlinch = AttackLibrary.Heavy().Flinch;
 
         const float BlockWidth = 320f;
 
         // 実行時に組み立てる部品
-        readonly Image[] _partFills = new Image[3];
-        Image _hpFill, _staminaFill, _postureFill, _enemyHpFill;
+        Image _hpFill, _enemyHpFill;
+        Image _downFill, _bellyFill;
         Text _statusText, _enemyText;
+        Text _downHitsText, _bellyHitsText;
         Text _encounterText;
         EncounterDirector _encounter;
 
@@ -49,6 +51,15 @@ namespace Ryona.Game
         HeldBellyPunchDirector _bellyPunch;
 
         bool _built;
+        bool _grappleSubscribed;
+
+        void OnDestroy()
+        {
+            if (_grapple != null && _grappleSubscribed)
+                _grapple.Failed -= OnGrappleReleased;
+
+            _grappleSubscribed = false;
+        }
 
         void Awake()
         {
@@ -66,12 +77,8 @@ namespace Ryona.Game
             var state = Player.State;
 
             SetFill(_hpFill, state.Hp / state.MaxHp);
-            SetFill(_staminaFill, state.Stamina / CombatConstants.MaxStamina);
-            SetFill(_postureFill, state.Posture / CombatConstants.MaxPosture);
 
-            _partFills[0].fillAmount = Health(state.Body[BodyPart.Arms]);
-            _partFills[1].fillAmount = Health(state.Body[BodyPart.Legs]);
-            _partFills[2].fillAmount = Health(state.Body[BodyPart.Torso]);
+            UpdateDownGauges(state);
 
             if (Enemy != null && Enemy.State != null)
             {
@@ -89,6 +96,11 @@ namespace Ryona.Game
 
                 if (InputReader.RestartPressed())
                     Player.RestoreAll();
+            }
+            else if (Player.GodMode)
+            {
+                _statusText.text = "GOD MODE ─ 体力自動回復";
+                _statusText.color = new Color(1f, 0.92f, 0.55f, 0.98f);
             }
             else if (Player.IsStunned)
             {
@@ -109,8 +121,8 @@ namespace Ryona.Game
         /// 掴まれている間だけ、画面下中央に「連打しろ」とバーを出す。
         /// 数値は PlayerGrapple が持っているので、ここは見た目だけ。
         /// </summary>
-        /// <summary>押さえつけの時間切れで投げられた直後、「振りほどけなかった」を出す残り秒。</summary>
-        float _failedRemaining;
+        /// <summary>押さえつけが時間切れで解放された直後、そのことを 1.5 秒だけ出す残り秒。</summary>
+        float _releasedRemaining;
 
         void UpdateGrapple()
         {
@@ -120,18 +132,21 @@ namespace Ryona.Game
             if (_grapple == null)
             {
                 _grapple = FindFirstObjectByType<PlayerGrapple>();
-                if (_grapple != null)
-                    _grapple.Failed += OnGrappleFailed;
+                if (_grapple != null && !_grappleSubscribed)
+                {
+                    _grapple.Failed += OnGrappleReleased;
+                    _grappleSubscribed = true;
+                }
             }
 
             if (_bellyPunch == null)
                 _bellyPunch = FindFirstObjectByType<HeldBellyPunchDirector>();
 
-            if (_failedRemaining > 0f)
-                _failedRemaining = Mathf.Max(0f, _failedRemaining - Time.unscaledDeltaTime);
+            if (_releasedRemaining > 0f)
+                _releasedRemaining = Mathf.Max(0f, _releasedRemaining - Time.unscaledDeltaTime);
 
             bool grappled = _grapple != null && _grapple.IsGrappled && !Player.IsDead;
-            bool show = grappled || _failedRemaining > 0f;
+            bool show = grappled || _releasedRemaining > 0f;
 
             if (_grappleRoot.gameObject.activeSelf != show)
                 _grappleRoot.gameObject.SetActive(show);
@@ -141,9 +156,9 @@ namespace Ryona.Game
 
             if (!grappled)
             {
-                // 時間切れで投げられた直後
-                _grappleText.text = "振りほどけなかった";
-                _grappleText.color = new Color(1f, 0.40f, 0.32f, 0.98f);
+                // 時間切れで解放された直後
+                _grappleText.text = "押さえつけから解放された";
+                _grappleText.color = new Color(0.72f, 1f, 0.70f, 0.98f);
                 _grappleFill.fillAmount = 0f;
                 _grappleFill.color = new Color(0.95f, 0.45f, 0.35f, 0.95f);
                 return;
@@ -164,9 +179,8 @@ namespace Ryona.Game
 
             if (_grapple.HasTimeLimit)
             {
-                tail = $"あと {_grapple.Remaining:F1}s";
-                // 残り 1 秒を切ったら赤字にして、投げられる直前だと分かるようにする
-                danger = _grapple.Remaining <= 1f;
+                tail = $"あと {_grapple.Remaining:F1}s で解放";
+                // 時間切れは解放なので、危険色にはしない
             }
             else if (_bellyPunch == null)
             {
@@ -212,10 +226,10 @@ namespace Ryona.Game
                 progress);
         }
 
-        /// <summary>押さえつけで時間切れになった。投げられたことを 1.5 秒だけ出す。</summary>
-        void OnGrappleFailed()
+        /// <summary>押さえつけが時間切れで解放された。そのことを 1.5 秒だけ出す。</summary>
+        void OnGrappleReleased()
         {
-            _failedRemaining = 1.5f;
+            _releasedRemaining = 1.5f;
         }
 
         /// <summary>
@@ -305,7 +319,21 @@ namespace Ryona.Game
             return $"{minutes}:{seconds - minutes * 60f:00.0}";
         }
 
-        static float Health(float damage) => 1f - Mathf.Clamp01(damage / CombatConstants.PartMax);
+        void UpdateDownGauges(CombatState state)
+        {
+            SetFill(_downFill, state.Flinch / CombatConstants.MaxFlinch);
+            SetFill(_bellyFill, Player.HeldBellyDamage / CombatConstants.MaxHeldBellyDamage);
+
+            float downLeft = Mathf.Max(0f, CombatConstants.MaxFlinch - state.Flinch);
+            _downHitsText.text = Player.IsDown ? "ダウン中"
+                : downLeft <= 0f ? "上限到達"
+                : $"弱あと{Mathf.CeilToInt(downLeft / LightFlinch)}発 / 強あと{Mathf.CeilToInt(downLeft / HeavyFlinch)}発";
+
+            float bellyLeft = Mathf.Max(0f, CombatConstants.MaxHeldBellyDamage - Player.HeldBellyDamage);
+            _bellyHitsText.text = Player.HasHeldBellyDown ? "上限到達"
+                : $"腹パンあと{Mathf.CeilToInt(bellyLeft / CombatConstants.HeldBellyPunchDamage)}発 / " +
+                  $"膝あと{Mathf.CeilToInt(bellyLeft / CombatConstants.HeldKneeBellyDamage)}発";
+        }
 
         static void SetFill(Image image, float normalized)
         {
@@ -387,7 +415,7 @@ namespace Ryona.Game
             help.raycastTarget = false;
             help.horizontalOverflow = HorizontalWrapMode.Overflow;
             help.verticalOverflow = VerticalWrapMode.Overflow;
-            help.text = "A / D　移動\nJ 弱　K 強　L 崩し\nShift ガード\n掴まれたら J / K / L 連打\nEsc 一時停止";
+            help.text = "A / D　移動\nJ 弱　K 強　L 崩し\nShift ガード\nG ゴッドモード\n掴まれたら J / K / L 連打\nEsc 一時停止";
 
             // 画面ロック中の案内（右端）。通常は非表示
             var lockRect = NewRect("LockHint", root, 26f, 0f, 460f, 36f,
@@ -403,29 +431,23 @@ namespace Ryona.Game
             lockRect.gameObject.SetActive(false);
 
             // 自キャラのブロック（左下）
-            var playerBlock = NewRect("PlayerBlock", root, 26f, 22f, BlockWidth, 150f,
+            var playerBlock = NewRect("PlayerBlock", root, 26f, 22f, BlockWidth, 132f,
                 new Vector2(0f, 0f), new Vector2(0f, 0f));
 
             _statusText = NewText(playerBlock, 0f, 0f, BlockWidth, 22f, string.Empty, 16, TextAnchor.UpperLeft);
 
             NewText(playerBlock, 0f, 25f, 95f, 20f, "体力", 16, TextAnchor.UpperLeft);
             _hpFill = NewBar(playerBlock, 100f, 29f, BlockWidth - 100f, 12f, HpColor);
-            NewText(playerBlock, 0f, 52f, 95f, 20f, "スタミナ", 16, TextAnchor.UpperLeft);
-            _staminaFill = NewBar(playerBlock, 100f, 56f, BlockWidth - 100f, 10f, StaminaColor);
-            NewText(playerBlock, 0f, 79f, 95f, 20f, "体勢", 16, TextAnchor.UpperLeft);
-            _postureFill = NewBar(playerBlock, 100f, 83f, BlockWidth - 100f, 10f, PostureColor);
 
-            float y = 110f;
-            float labelWidth = 24f;
-            float gap = 6f;
-            float barWidth = (BlockWidth - labelWidth * 3f - gap * 2f) / 3f;
-            string[] names = { "腕", "脚", "胴" };
-            for (int i = 0; i < 3; i++)
-            {
-                float x = (labelWidth + barWidth + gap) * i;
-                NewText(playerBlock, x, y, labelWidth, 20f, names[i], 16, TextAnchor.UpperLeft);
-                _partFills[i] = NewBar(playerBlock, x + labelWidth, y + 5f, barWidth - 2f, 9f, PartColor);
-            }
+            NewText(playerBlock, 0f, 52f, 100f, 20f, "ダウンゲージ", 16, TextAnchor.UpperLeft);
+            _downHitsText = NewText(playerBlock, 105f, 52f, BlockWidth - 105f, 20f,
+                string.Empty, 15, TextAnchor.UpperRight);
+            _downFill = NewBar(playerBlock, 0f, 72f, BlockWidth, 7f, DownColor);
+
+            NewText(playerBlock, 0f, 85f, 100f, 20f, "腹ダメージ", 16, TextAnchor.UpperLeft);
+            _bellyHitsText = NewText(playerBlock, 105f, 85f, BlockWidth - 105f, 20f,
+                string.Empty, 15, TextAnchor.UpperRight);
+            _bellyFill = NewBar(playerBlock, 0f, 105f, BlockWidth, 7f, BellyColor);
 
             Debug.Log($"[Hud] uGUI 構築完了 font={(JapaneseFont != null ? JapaneseFont.name : "none")} " +
                       $"あ={JapaneseFont != null && JapaneseFont.HasCharacter('あ')} " +

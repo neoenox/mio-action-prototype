@@ -190,8 +190,7 @@ namespace Ryona.Game
             if (InputReader.LightPressed())
             {
                 AttackData light = ResolveLight(out int step);
-                _bufferedStep = step;
-                Begin(light);
+                Begin(light, step);
             }
             else if (InputReader.HeavyPressed())
                 Begin(AttackLibrary.Heavy());
@@ -227,7 +226,12 @@ namespace Ryona.Game
             {
                 _bufferedAge += Time.deltaTime;
                 if (_bufferedAge > InputBufferSeconds)
+                {
+                    // 段数も一緒に捨てる。残すと、次に強 / 崩しを出したときに
+                    // 古い段数（＝左腕）が当たり判定と姿勢へ漏れる。
                     _buffered = null;
+                    _bufferedStep = 0;
+                }
             }
 
             AttackData pressed = null;
@@ -254,7 +258,7 @@ namespace Ryona.Game
             _bufferedStep = step;
             _bufferedAge = 0f;
 
-            Debug.Log($"[Combat] buffer {pressed.id} step={step} " +
+            Log($"[Combat] buffer {pressed.id} step={step} " +
                 $"wait={(IsAttacking ? _attack.TotalSeconds - _elapsed : 0f):F2}");
         }
 
@@ -266,23 +270,27 @@ namespace Ryona.Game
             AttackData attack = _buffered;
             _buffered = null;
 
-            Debug.Log($"[Combat] buffer fire {attack.id} step={_bufferedStep}");
-            Begin(attack);
+            int step = _bufferedStep;
+            _bufferedStep = 0;
+
+            Log($"[Combat] buffer fire {attack.id} step={step}");
+            Begin(attack, step);
             return true;
         }
 
-        void Begin(AttackData attack)
+        /// <param name="step">
+        /// 弱の段数（0=右, 1=左, 2=強）。強 / 崩しは必ず 0。
+        /// 先行入力の段数をここで受け取らないと、時間切れした段数が残って
+        /// 強攻撃の当たり判定が左拳の位置で取られる（実測）。
+        /// </param>
+        void Begin(AttackData attack, int step = 0)
         {
-            // スタミナが半分未満だと踏み込めない（理不尽な空振りを防ぐ）
-            if (Stats.State.Stamina < attack.staminaCost * 0.5f)
-                return;
-
             _attack = attack;
             _elapsed = 0f;
             _hitDone = false;
 
             // 何段目かは姿勢の左右反転に使う。攻撃の種類が違えば必ず 1 段目扱い。
-            _comboStep = _bufferedStep;
+            _comboStep = Mathf.Clamp(step, 0, 2);
             _bufferedStep = 0;
             _comboUntil = Time.time + attack.TotalSeconds + ComboWindowSeconds;
 
@@ -292,7 +300,6 @@ namespace Ryona.Game
                 _anim.ComboStep = _comboStep;
 
             Stats.IsBlocking = false;
-            Stats.State.ConsumeStamina(attack.staminaCost);
 
             if (_motor != null && _motor.BeltFacing)
             {
@@ -312,7 +319,7 @@ namespace Ryona.Game
                 _motor.Lunge(lunge, attack.startupSeconds, attack.id);
             }
 
-            Debug.Log($"[Combat] attack {attack.id} step={_comboStep} stamina={Stats.State.Stamina:F0}");
+            Log($"[Combat] attack {attack.id} step={_comboStep}");
 
             AttackStarted?.Invoke(attack);
         }
@@ -380,6 +387,8 @@ namespace Ryona.Game
             _elapsed = 0f;
             _hitDone = false;
             _buffered = null;
+            _bufferedStep = 0;
+            _bufferedAge = 0f;
         }
 
         void TickAttack()
@@ -433,15 +442,15 @@ namespace Ryona.Game
 
                 var result = target.TakeHit(Stats.State, attack);
 
-                Debug.Log($"[Combat] hit {attack.id} dmg={result.Damage:F0} " +
-                    $"stagger={result.Stagger} blocked={result.Blocked} " +
-                    $"guardBreak={result.GuardBroken} postureBreak={result.PostureBroken}");
+                Log($"[Combat] hit {attack.id} dmg={result.Damage:F0} " +
+                    $"stagger={result.Stagger} blocked={result.Blocked}");
 
                 hitEnemy = enemy;
                 HitLanded?.Invoke(result, target);
             }
 
-            LogGeometry(attack, fist, hitEnemy);
+            if (TraceFist)
+                LogGeometry(attack, fist, hitEnemy);
         }
 
         /// <summary>
@@ -563,6 +572,21 @@ namespace Ryona.Game
                     $"angle={Vector3.Angle(transform.forward, to):F0} " +
                     $"phase={enemy.Phase} reach={FistRadius + BodyRadius:F2}");
             }
+        }
+
+        /// <summary>
+        /// 戦闘ログ。毎攻撃・毎ヒットで文字列を作ると GC とログ I/O が無視できないので、
+        /// リリースビルドでは <c>-hitlog</c>（<see cref="TraceFist"/>）のときだけ出す。
+        /// Editor / Development Build では従来どおり常に出す。
+        /// </summary>
+        void Log(string message)
+        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log(message);
+#else
+            if (TraceFist)
+                Debug.Log(message);
+#endif
         }
 
         EnemyBrain FindNearestEnemy(out Vector3 center, out float distance)

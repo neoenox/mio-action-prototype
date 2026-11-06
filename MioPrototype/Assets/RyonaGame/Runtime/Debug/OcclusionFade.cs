@@ -80,6 +80,9 @@ namespace Ryona.Game
         /// <summary>描画対象を取り直す。VRM が後から差し込まれた場合にも追従する。</summary>
         void Refresh()
         {
+            // 再スキャン（VRM 差し替え）で古いフェード用マテリアルを漏らさない
+            DestroyFadedMaterials();
+
             _renderers = GetComponentsInChildren<Renderer>(true);
             _originals = new Material[_renderers.Length][];
             _faded = new Material[_renderers.Length][];
@@ -325,6 +328,11 @@ namespace Ryona.Game
 
         void OnDestroy()
         {
+            DestroyFadedMaterials();
+        }
+
+        void DestroyFadedMaterials()
+        {
             if (_faded == null)
                 return;
 
@@ -339,12 +347,24 @@ namespace Ryona.Game
                         Destroy(_faded[i][m]);
                 }
             }
+
+            _faded = null;
         }
     }
 
     /// <summary>シーンに OcclusionFade を足す。シーンを作り直さなくても効くようにしてある。</summary>
     static class OcclusionFadeBootstrap
     {
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        static void InstallSceneHook()
+        {
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnSceneLoaded;
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnSceneLoaded;
+        }
+
+        static void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene,
+            UnityEngine.SceneManagement.LoadSceneMode mode) => Boot();
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
         {

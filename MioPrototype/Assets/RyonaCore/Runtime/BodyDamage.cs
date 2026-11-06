@@ -42,14 +42,6 @@ namespace Ryona
         public float AttackDamageMultiplier =>
             Lerp(1f, CombatConstants.ArmsDamageFloor, this[BodyPart.Arms] / CombatConstants.PartMax);
 
-        /// <summary>腕の損傷によるガード耐久倍率（1.0 → 0.50）。</summary>
-        public float GuardDurabilityMultiplier =>
-            Lerp(1f, CombatConstants.ArmsGuardFloor, this[BodyPart.Arms] / CombatConstants.PartMax);
-
-        /// <summary>胴の損傷によるスタミナ回復倍率（1.0 → 0.60）。</summary>
-        public float StaminaRegenMultiplier =>
-            Lerp(1f, CombatConstants.TorsoRegenFloor, this[BodyPart.Torso] / CombatConstants.PartMax);
-
         static float Lerp(float a, float b, float t) => a + (b - a) * Clamp01(t);
 
         static float Clamp01(float v) => v < 0f ? 0f : (v > 1f ? 1f : v);

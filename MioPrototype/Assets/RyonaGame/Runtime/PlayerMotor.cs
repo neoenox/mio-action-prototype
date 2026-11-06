@@ -169,7 +169,9 @@ namespace Ryona.Game
                 return;
             }
 
-            // 掴まれている間は動けない（レバガチャだけ受け付ける）
+            // 掴まれている間は動けない（レバガチャだけ受け付ける）。
+            // 踏み込み・ノックバック・吹き飛びの残り時間はここで切る。
+            // 減らさずに抱えていると、解放直後に不意に滑り出す。
             if (_grapple == null)
                 _grapple = GetComponent<PlayerGrapple>();
             if (_grapple != null && _grapple.IsGrappled)
@@ -177,6 +179,10 @@ namespace Ryona.Game
                 IsMoving = false;
                 Stats.IsMoving = false;
                 _velocity = Vector3.zero;
+                _lungeLeft = 0f;
+                _lungeTravel = 0f;
+                _knockLeft = 0f;
+                _launchLeft = 0f;
                 return;
             }
 

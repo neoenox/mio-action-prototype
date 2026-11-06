@@ -19,10 +19,7 @@ namespace Ryona
         public string id = "light";
         public AttackKind kind = AttackKind.Light;
         public float damage = 8f;
-        public float postureDamage = 12f;
         public float partDamage = 6f;
-        public float staminaCost = 8f;
-        public float guardStaminaDamage = 10f;
         public BodyPart targetPart = BodyPart.Torso;
         public float startupSeconds = 0.05f;
         public float activeSeconds = 0.08f;
@@ -72,10 +69,7 @@ namespace Ryona
             id = "light",
             kind = AttackKind.Light,
             damage = 8f,
-            postureDamage = 12f,
             partDamage = 6f,
-            staminaCost = 8f,
-            guardStaminaDamage = 10f,
             targetPart = BodyPart.Torso,
             startupSeconds = 6f / 60f,
             activeSeconds = 4f / 60f,
@@ -88,10 +82,7 @@ namespace Ryona
             id = "heavy",
             kind = AttackKind.Heavy,
             damage = 18f,
-            postureDamage = 30f,
             partDamage = 14f,
-            staminaCost = 18f,
-            guardStaminaDamage = 22f,
             targetPart = BodyPart.Torso,
             startupSeconds = 12f / 60f,
             activeSeconds = 5f / 60f,
@@ -104,10 +95,7 @@ namespace Ryona
             id = "break",
             kind = AttackKind.Break,
             damage = 14f,
-            postureDamage = 40f,
             partDamage = 10f,
-            staminaCost = 24f,
-            guardStaminaDamage = 0f,
             targetPart = BodyPart.Legs,
             startupSeconds = 18f / 60f,
             activeSeconds = 5f / 60f,
@@ -124,10 +112,7 @@ namespace Ryona
             id = "grapple",
             kind = AttackKind.Grapple,
             damage = 3f,
-            postureDamage = 10f,
             partDamage = 0f,
-            staminaCost = 6f,
-            guardStaminaDamage = 6f,
             targetPart = BodyPart.Arms,
             startupSeconds = 33f / 60f,
             activeSeconds = 5f / 60f,

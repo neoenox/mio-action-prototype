@@ -147,32 +147,46 @@ namespace Ryona.Game
             _flashRoutine = null;
         }
 
+        /// <summary>見た目が入れ替わったので、次のフラッシュで描画対象を取り直す。</summary>
+        public void InvalidateParts()
+        {
+            _parts = null;
+            _emissionReady = false;
+        }
+
         /// <summary>
-        /// 光らせる対象。敵の見た目は EnemyFigure が実行時に組み立てるので、
-        /// ここで子の Renderer をまとめて拾っておく（予備動作の目印だけは除く）。
+        /// 光らせる対象。敵の見た目は EnemyFigure が実行時に組み立て、VRM は後から載る。
+        /// 一度だけ拾って固定すると、VRM のメッシュが発光しないままになるので、
+        /// 見た目が入れ替わったら <see cref="RefreshParts"/> で取り直す。
         /// </summary>
         Renderer[] Parts
         {
             get
             {
-                if (_parts != null && _parts.Length > 0)
-                    return _parts;
+                if (_parts == null || _parts.Length == 0)
+                    RefreshParts();
 
-                var list = new System.Collections.Generic.List<Renderer>();
-                if (Body != null)
-                    list.Add(Body);
-
-                foreach (var renderer in GetComponentsInChildren<Renderer>(true))
-                {
-                    if (renderer.name == "Telegraph")
-                        continue;
-                    if (!list.Contains(renderer))
-                        list.Add(renderer);
-                }
-
-                _parts = list.ToArray();
                 return _parts;
             }
+        }
+
+        /// <summary>描画対象を取り直す（VRM 差し替え後など）。</summary>
+        void RefreshParts()
+        {
+            var list = new System.Collections.Generic.List<Renderer>();
+            if (Body != null)
+                list.Add(Body);
+
+            foreach (var renderer in GetComponentsInChildren<Renderer>(true))
+            {
+                if (renderer.name == "Telegraph")
+                    continue;
+                if (!list.Contains(renderer))
+                    list.Add(renderer);
+            }
+
+            _parts = list.ToArray();
+            _emissionReady = false;   // 新しいマテリアルにも _EMISSION を入れ直す
         }
 
         void EnsureEmission()

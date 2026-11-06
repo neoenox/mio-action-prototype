@@ -118,7 +118,10 @@ namespace Ryona.Game
                     LoadingScreen.Hide();
 
                 // タイトル・一時停止が止めているなら、そちらに任せる
-                if (held && Time.timeScale == 0f && FindFirstObjectByType<TitleGate>() == null)
+                // （ここで 1 に戻すと、メニューを開いたままゲームが再開する）
+                if (held && Time.timeScale == 0f
+                    && FindFirstObjectByType<TitleGate>() == null
+                    && !PauseMenu.IsPaused)
                     Time.timeScale = 1f;
             }
 

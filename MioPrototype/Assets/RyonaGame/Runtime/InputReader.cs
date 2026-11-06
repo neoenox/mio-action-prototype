@@ -209,6 +209,9 @@ namespace Ryona.Game
 
         public static bool RestartPressed() => KeyDown(KeyCode.R) || PadDown(3);
 
+        /// <summary>ゴッドモードの切り替え（G）。</summary>
+        public static bool GodPressed() => KeyDown(KeyCode.G);
+
         /// <summary>
         /// パッドのボタン。0=下(A) 1=左(X) 2=上(Y) 3=スタート。
         /// 直接 Gamepad.current を見るので、キーボードが繋がっていなくても動く。
@@ -317,6 +320,7 @@ namespace Ryona.Game
                 case KeyCode.K: control = kb.kKey; break;
                 case KeyCode.L: control = kb.lKey; break;
                 case KeyCode.R: control = kb.rKey; break;
+                case KeyCode.G: control = kb.gKey; break;
                 case KeyCode.Space: control = kb.spaceKey; break;
             }
             return control != null && control.wasPressedThisFrame;

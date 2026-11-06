@@ -57,7 +57,7 @@ namespace Ryona.Game
             /// <summary>速い単発。予備動作が短く、間合いも短い。</summary>
             Jab = 0,
 
-            /// <summary>遅いが重い。体勢値を大きく削る。</summary>
+            /// <summary>遅いが重い。ひるみが大きい。</summary>
             Heavy = 1,
 
             /// <summary>ガード不能の崩し。予備動作は中くらい。</summary>
@@ -121,7 +121,7 @@ namespace Ryona.Game
         [Tooltip("Heavy が届く距離 m")]
         public float HeavyRange = 1.70f;
 
-        [Tooltip("Heavy のダメージ。体勢削りは AttackLibrary.Heavy の値を使う")]
+        [Tooltip("Heavy のダメージ。ひるみは AttackLibrary.Heavy の値を使う")]
         [System.NonSerialized] public float HeavyDamage = 7f;
 
         [Header("Attack: Break")]
@@ -185,9 +185,6 @@ namespace Ryona.Game
         [Tooltip("怯み 大 の秒数（0 以下なら CombatConstants.StunLarge）")]
         public float StaggerSecondsLarge = 0.80f;
 
-        [Tooltip("ガードブレイク怯みの秒数（0 以下なら CombatConstants.StunGuardBreak）")]
-        public float StaggerSecondsGuardBreak = 1.20f;
-
         [Header("Telegraph")]
         [Tooltip("予備動作開始時の球の倍率（元の localScale に対する倍率）")]
         public float TelegraphStartScale = 0.35f;
@@ -204,7 +201,7 @@ namespace Ryona.Game
         [Tooltip("予備動作完了時の球の色。ここまで変化すれば「来る」と分かる")]
         public Color TelegraphColor = new Color(1f, 0.28f, 0.18f, 1f);
 
-        /// <summary>HP / スタミナ / 体勢を持つ戦闘状態。攻撃側としても渡す。</summary>
+        /// <summary>HP / 部位ダメージ / ひるみを持つ戦闘状態。攻撃側としても渡す。</summary>
         public CombatState State { get; } = new CombatState();
 
         /// <summary>この個体の最大 HP。3 体 × 100 では倒しきれないため、雑魚は低めに。</summary>
@@ -301,9 +298,6 @@ namespace Ryona.Game
 
         [Tooltip("重い一撃（Heavy）が顔を狙う確率。残りは腹")]
         [Range(0f, 1f)] public float HeavyFaceChance = 0.35f;
-
-        [Tooltip("ボディーブロー（腹）が当たったときに追加で削るスタミナ")]
-        public float BodyBlowStaminaDamage = 12f;
 
         /// <summary>検証用。設定すると、狙いを抽選せずこの場所に固定する。</summary>
         [System.NonSerialized] public PunchZone? ForceZone;
@@ -435,7 +429,6 @@ namespace Ryona.Game
         float _attackReadyAt;
         float _grabReadyAt;
         float _ringJitter = 1f;
-        int _swingsWithToken;
 
         /// <summary>デバッグ用: 次の攻撃を掴みに固定する（-grappletest）。</summary>
         bool _forceGrab;
@@ -516,19 +509,20 @@ namespace Ryona.Game
         public void HoldFire(float seconds)
         {
             _attackReadyAt = Mathf.Max(_attackReadyAt, Time.time + Mathf.Max(0f, seconds));
+            if (seconds > 0f && (Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe))
+                ReleaseToken();
         }
 
-        /// <summary>横回りの向き（+1 / -1）。</summary>
-        float _strafeSign = 1f;
-        float _flankSide;
+        float _flankOffset;
+        float _blockedFlankSeconds;
         Collider _bodyCollider;
         readonly System.Collections.Generic.List<Collider> _flankIgnored = new System.Collections.Generic.List<Collider>();
-        public bool IsFlanking => _flankSide != 0f;
+        public bool IsFlanking => _flankOffset != 0f;
 
         void StopFlanking()
         {
             if (!IsFlanking) return;
-            _flankSide = 0f;
+            _flankOffset = 0f;
             if (_bodyCollider != null)
                 foreach (var other in _flankIgnored)
                     if (other != null) Physics.IgnoreCollision(_bodyCollider, other, false);
@@ -554,35 +548,44 @@ namespace Ryona.Game
         {
             if (Group == null || Target == null || Player == null || Player.IsDead)
                 return false;
-            var grapple = Player.GetComponent<PlayerGrapple>();
-            if (grapple != null && grapple.IsGrappled)
-            {
-                StopFlanking();
-                return false;
-            }
             if (!IsFlanking)
             {
-                float facing = Mathf.Sign(Target.forward.x);
-                float own = (transform.position.x - Target.position.x) * facing;
-                if (own < 1f || HasAttackToken) return false;
+                float own = transform.position.x - Target.position.x;
+                if (Mathf.Abs(own) < 1f || HasAttackToken || AttackCooldownRemaining > 0f)
+                {
+                    _blockedFlankSeconds = 0f;
+                    return false;
+                }
+
+                float side = Mathf.Sign(own);
                 EnemyBrain lead = null, candidate = null;
                 float leadDistance = float.PositiveInfinity, candidateDistance = float.PositiveInfinity;
+                bool oppositeOccupied = false;
                 foreach (var other in Group.Members)
                 {
                     if (other == null || !other.IsAlive) continue;
                     if (other != this && other.IsFlanking) return false;
-                    float offset = (other.transform.position.x - Target.position.x) * facing;
+                    float offset = (other.transform.position.x - Target.position.x) * side;
+                    if (offset < 0f && offset >= -2.2f)
+                        oppositeOccupied = true;
                     if (offset > 0f && offset < leadDistance)
                     {
                         lead = other;
                         leadDistance = offset;
                     }
                 }
-                if (lead == null || lead == this || leadDistance > 2.2f) return false;
+                if (lead == null || lead == this || leadDistance > 2.2f)
+                {
+                    _blockedFlankSeconds = 0f;
+                    return false;
+                }
                 foreach (var other in Group.Members)
                 {
-                    if (other == null || other == lead || !other.IsAlive || other.HasAttackToken) continue;
-                    float offset = (other.transform.position.x - Target.position.x) * facing;
+                    if (other == null || other == lead || !other.IsAlive || other.HasAttackToken
+                        || other.IsRising || other.AttackCooldownRemaining > 0f
+                        || (other.Phase != EnemyPhase.Chase && other.Phase != EnemyPhase.Strafe))
+                        continue;
+                    float offset = (other.transform.position.x - Target.position.x) * side;
                     if (offset > leadDistance + 0.1f && offset < candidateDistance)
                     {
                         candidate = other;
@@ -590,7 +593,17 @@ namespace Ryona.Game
                     }
                 }
                 if (candidate != this) return false;
-                _flankSide = -facing;
+
+                // 両側が埋まり、しばらく進めないときだけ同じ側の空きに入る。
+                _blockedFlankSeconds = oppositeOccupied ? _blockedFlankSeconds + dt : 0f;
+                float engage = Mathf.Max(MinPlayerGap, EngageDistance * 0.92f);
+                if (oppositeOccupied && (_blockedFlankSeconds < 1.25f || lead.IsHolding
+                    || lead.AttackCooldownRemaining < 0.3f
+                    || leadDistance <= engage + 0.05f || !Group.HasFreeSlot))
+                    return false;
+
+                _blockedFlankSeconds = 0f;
+                _flankOffset = oppositeOccupied ? side * engage : -side * 1.5f;
                 _bodyCollider = GetComponent<Collider>();
                 if (_bodyCollider != null)
                 {
@@ -611,7 +624,7 @@ namespace Ryona.Game
                 }
                 ReleaseToken();
             }
-            float destination = Target.position.x + _flankSide * 1.5f;
+            float destination = Target.position.x + _flankOffset;
             Vector3 position = transform.position;
             position.x = Mathf.MoveTowards(position.x, destination, MoveSpeed * dt);
             transform.position = position;
@@ -725,7 +738,7 @@ namespace Ryona.Game
             float dt = Time.deltaTime;
             _punchPoseHoldSeconds = Mathf.Max(0f, _punchPoseHoldSeconds - dt);
 
-            State.Tick(dt, moving: Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe);
+            State.Tick(dt);
 
             if (!State.IsAlive)
             {
@@ -754,12 +767,15 @@ namespace Ryona.Game
             if (Target == null || Player == null)
                 return;
 
-            if ((Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe) && TryApproachForPin())
+            if ((Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe) && !IsFlanking && TryApproachForPin())
                 return;
             if ((Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe) && TryFlank(dt))
                 return;
             if (Phase != EnemyPhase.Chase && Phase != EnemyPhase.Strafe)
+            {
+                _blockedFlankSeconds = 0f;
                 StopFlanking();
+            }
 
             Vector3 toTarget = Target.position - transform.position;
             toTarget.y = 0f;
@@ -786,7 +802,7 @@ namespace Ryona.Game
                     break;
 
                 case EnemyPhase.Windup:
-                    if (playerDown)
+                    if (playerDown || IsRedundantGrab())
                         CancelWindup();
                     else
                         TickWindup(dt);
@@ -959,13 +975,11 @@ namespace Ryona.Game
 
             Vector3 radial = distance > 0.001f ? toTarget / distance : transform.forward;
             // 1 ラインでは回り込まず、前後の間合いだけ調整する。
-            Vector3 tangent = Vector3.zero;
-
             float error = distance - desired;
             Vector3 correction = radial * Mathf.Clamp(error * 2.5f, -1f, 1f);
 
-            Vector3 direction = tangent + correction + Separation();
-            if (direction.sqrMagnitude > 0.0001f)
+            Vector3 direction = correction + Separation();
+            if (Mathf.Abs(direction.x) > 0.06f)
                 Move(direction.normalized, MoveSpeed * StrafeSpeedScale);
 
             if (_timer <= 0f)
@@ -975,13 +989,6 @@ namespace Ryona.Game
         void EnterStrafe()
         {
             Phase = EnemyPhase.Strafe;
-
-            // 待機中は左右に分かれて立つ（全員が同じ側に固まらないように）
-            int index = Group != null ? Group.IndexOf(this) : -1;
-            if (index >= 0)
-                _strafeSign = index % 2 == 0 ? 1f : -1f;
-            else
-                _strafeSign = UnityEngine.Random.value < 0.5f ? -1f : 1f;
 
             _timer = Mathf.Max(0.1f, StrafeSeconds) * UnityEngine.Random.Range(0.75f, 1.25f);
             _strafeCloseIn = UnityEngine.Random.value < StrafeCloseInChance;
@@ -1003,12 +1010,14 @@ namespace Ryona.Game
             {
                 // フェイント: 予備動作まで見せてから振らずに引く。
                 // ガードを張らせて空振りさせるための揺さぶり。1 回の接近につき 1 度だけ。
-                if (!_feinted && FeintChance > 0f && UnityEngine.Random.value < FeintChance)
+                // タッグ技（拘束中の腹 / 顔）は必ず振る。引くと演出が空振りで止まる。
+                if (!_tagPunchPending && !_feinted && FeintChance > 0f && UnityEngine.Random.value < FeintChance)
                 {
                     _feinted = true;
                     HideTelegraph();
                     WindupProgress = 0f;
                     _attackReadyAt = Time.time + Mathf.Max(0.1f, FeintDelaySeconds);
+                    ReleaseToken();
                     Phase = EnemyPhase.Chase;
                     Debug.Log($"[Enemy] feint {name}");
                     return;
@@ -1021,6 +1030,13 @@ namespace Ryona.Game
         /// <summary>判定を出す瞬間。1 フレームだけ <see cref="EnemyPhase.Attack"/> に滞在する。</summary>
         void Strike(float distance)
         {
+            // 予備動作の最終フレームで別の敵が先に掴んだ場合も、二重に掴まない。
+            if (IsRedundantGrab())
+            {
+                CancelWindup();
+                return;
+            }
+
             HideTelegraph();
 
             // ここで実際に振ったので、次の接近ではまたフェイントを選べる
@@ -1041,17 +1057,26 @@ namespace Ryona.Game
                     else if (PunchTouchesPlayer())
                     {
                         Player.LastHitZone = Zone;
-                        var hit = Player.ReceiveHit(State, _run.Data, transform);
-
-                        // 腹を殴られると息が詰まる。ガードされなかったときだけスタミナを削る。
-                        if (Zone == PunchZone.Body && !hit.Blocked)
-                            Player.State.ConsumeStamina(BodyBlowStaminaDamage);
+                        float bellyDamage = _tagPunchPending && Zone == PunchZone.Body
+                            ? CombatConstants.HeldBellyPunchDamage : 0f;
+                        Player.ReceiveHit(State, _run.Data, transform, bellyDamage,
+                            isTagPunch: _tagPunchPending);
 
                         // タッグ腹パンは、当たった瞬間から拳を腹に押し込む。
                         // 外れた／別の部位なら押し込まない（空振りで腕だけ残ると不自然）。
                         if (_bellyPunchPendingHold > 0f && Zone == PunchZone.Body)
                             _punchPoseHoldSeconds = _bellyPunchPendingHold;
                     }
+                    else if (_hitLog || (_grapple != null && _grapple.IsGrappled))
+                    {
+                        Debug.Log($"[StrikeMiss] {name} tag={_tagPunchPending} zone={Zone} " +
+                                  $"dist={distance:F2} range={_run.Range:F2}");
+                    }
+                }
+                else if (_hitLog || (_grapple != null && _grapple.IsGrappled))
+                {
+                    Debug.Log($"[StrikeMiss] {name} out-of-range tag={_tagPunchPending} " +
+                              $"dist={distance:F2} range={_run.Range:F2}+{StrikeTolerance:F2}");
                 }
             }
 
@@ -1092,7 +1117,7 @@ namespace Ryona.Game
             if (Vector3.Dot(transform.forward, toPlayer) <= 0f) return false;
             float gap = Vector3.Distance(fist.position, target);
             // 腹パンの距離は -hitlog のときだけ出す（常時出すとログが埋まる）。
-            if (_hitLog && (_punchPoseHoldSeconds > 0f || _bellyPunchPendingHold > 0f))
+            if (_hitLog && (_punchPoseHoldSeconds > 0f || _bellyPunchPendingHold > 0f || _tagPunchPending))
             {
                 Transform wrist = figure.WristBone(false);
                 float wristGap = wrist != null ? Vector3.Distance(wrist.position, target) : -1f;
@@ -1108,7 +1133,7 @@ namespace Ryona.Game
 
         /// <summary>
         /// 掴みが当たったとき。プレイヤーを掴んだまま硬直を伸ばし、
-        /// 振りほどかれる（=こちらがよろける）か投げる（=相手が怯む）まで待つ。
+        /// 振りほどかれる（=こちらがよろける）か時間切れで解放されるまで待つ。
         /// 掴めるのは背後に回れているときだけ（正面掴みは廃止した）。
         /// </summary>
         bool TryGrab()
@@ -1214,10 +1239,11 @@ namespace Ryona.Game
 
             HideTelegraph();
             _riseTimer = 0f;
-            _swingsWithToken = 0;
             IsHolding = false;
-            _punchPoseHoldSeconds = 0f;
-            _bellyPunchPendingHold = 0f;
+            IsPinning = false;
+            _pinKneesLeft = 0;
+            ClearTransientAttackState();
+            ReleaseToken();
             _timer = Mathf.Max(0.05f, seconds);
             _staggerTotal = _timer;
             StaggerProgress = 1f;
@@ -1230,28 +1256,47 @@ namespace Ryona.Game
 
         void EndRecover()
         {
-            // 1回殴っただけで番を離れると、毎回「下がって出直す」動きになって落ち着かない。
-            // 2回続けて振ってから交代する。
-            _swingsWithToken++;
-            if (_swingsWithToken >= 2)
-            {
-                _swingsWithToken = 0;
-                ReleaseToken();
-            }
+            ReleaseToken();
 
             _attackReadyAt = Time.time + Mathf.Max(0f, AttackCooldown);
             IsHolding = false;
             Phase = EnemyPhase.Chase;
         }
 
+        bool IsRedundantGrab()
+        {
+            if (_run.Id != AttackId.Grab || Player == null)
+                return false;
+
+            if (_grapple == null)
+                _grapple = Player.GetComponent<PlayerGrapple>();
+
+            return _grapple != null && _grapple.IsGrappled;
+        }
+
         /// <summary>プレイヤーが倒れた等で予備動作を中断する。硬直は挟まない。</summary>
         void CancelWindup()
         {
             HideTelegraph();
-            _swingsWithToken = 0;
+            ClearTransientAttackState();
             ReleaseToken();
             _attackReadyAt = Time.time + Mathf.Max(0f, AttackCooldown);
             Phase = EnemyPhase.Chase;
+        }
+
+        /// <summary>
+        /// 進行中の一振りに付随するフラグを落とす。
+        /// 予備動作を中断したり怯んだりしたときに残すと、次の攻撃を始めるまで
+        /// KeepSpacing（重なり回避）・フェイント・片手打ちの姿勢が効き続ける。
+        /// 振り抜き（Strike）と硬直（Recover）では落とさないこと。
+        /// </summary>
+        void ClearTransientAttackState()
+        {
+            _tagPunchPending = false;
+            _tagPunchSwing = false;
+            _bellyPunchPendingHold = 0f;
+            _punchPoseHoldSeconds = 0f;
+            _pinPending = false;
         }
 
         // --- 攻撃の抽選 ----------------------------------------------------------
@@ -1264,11 +1309,6 @@ namespace Ryona.Game
             if (_grapple == null)
                 _grapple = Player.GetComponent<PlayerGrapple>();
 
-            // 押さえつけ中は、押さえている本人以外は殴らない。
-            // 3 秒のあいだ袋叩きにされると、読ませる演出にならない。
-            if (_grapple != null && _grapple.IsGrappled && _grapple.Kind == GrappleKind.Pin)
-                return false;
-
             // 回り込み直後は反対を向いていることがある。予備動作中は旋回を
             // 固定するため、向き直る前に攻撃を始めると必ず空振りになる。
             Vector3 facingTarget = Player.transform.position - transform.position;
@@ -1278,12 +1318,6 @@ namespace Ryona.Game
             if (facingTarget.sqrMagnitude < 0.0001f || facing.sqrMagnitude < 0.0001f ||
                 Vector3.Dot(facing.normalized, facingTarget.normalized) < 0.9f)
                 return false;
-
-            // 掴まれている間は、掴んでいる本人以外は新しい攻撃を始めない。
-            // 3 秒間で 3 人に袋叩きにされると、1 回の掴みで HP が半分飛んでしまう。
-            if (_grapple == null)
-                _grapple = Player.GetComponent<PlayerGrapple>();
-
 
             if (Time.time < _attackReadyAt)
                 return false;
@@ -1299,11 +1333,11 @@ namespace Ryona.Game
                 id = AttackId.Grab;
             else if (CanStartPin(distance))
             {
-                // 正面からの押さえつけ。当たると 3 秒 / 12 回のレバガチャになる。
+                // 正面からの押さえつけ。当たると 4.2 秒 / 12 回のレバガチャになる。
                 id = AttackId.Grab;
                 pin = true;
             }
-            else if (force && distance <= RangeOf(AttackId.Grab))
+            else if (force && (_grapple == null || !_grapple.IsGrappled) && distance <= RangeOf(AttackId.Grab))
             {
                 _forceGrab = false;
                 id = AttackId.Grab;
@@ -1378,7 +1412,7 @@ namespace Ryona.Game
         }
 
         /// <summary>
-        /// 押さえつけが当たったとき。正面から掴んで 3 秒 / 12 回のレバガチャへ移す。
+        /// 押さえつけが当たったとき。正面から掴んで 4.2 秒 / 12 回のレバガチャへ移す。
         /// </summary>
         bool TryPin()
         {
@@ -1400,7 +1434,7 @@ namespace Ryona.Game
             _lastPinAt = Time.time;
             _pinOrder = false;
             IsPinning = true;
-            // 押さえつけている間に膝を 5 発入れる（何もできない 3 秒にしない）
+            // 押さえつけている間に膝を 5 発入れる（何もできない 4.2 秒にしない）
             _pinKneesLeft = Mathf.Max(1, CombatConstants.PinKneeCount);
             _pinNextKneeAt = Time.time + Mathf.Max(0.1f, CombatConstants.PinKneeDelay);
             Debug.Log($"[Pin] begin {name} dist={to.magnitude:F2} knees={_pinKneesLeft}");
@@ -1422,21 +1456,17 @@ namespace Ryona.Game
                 id = "pin_knee",
                 kind = AttackKind.Light,
                 damage = Mathf.Max(0f, CombatConstants.PinKneeDamage),
-                postureDamage = 4f,   // 5 発でも体勢を折り切らない（投げと二重にしない）
                 partDamage = 0f,
                 targetPart = BodyPart.Torso,
-                // ひるみ。腹ヒット倍率（×2）が掛かるので実質 12/発。
-                // 5 発で 60。押さえつけ 1 回では限界まで届かせない
-                // （届かせると毎回うつ伏せになり、投げ＝仰向けが出なくなる）。
                 flinch = 6f,
                 startupSeconds = 0f,
                 activeSeconds = 0f,
                 recoverySeconds = 0f
             };
 
-            // 腹への一撃。表情も腹ヒット用に切り替える（投げの直前で消す必要はない）。
+            // 腹への一撃。表情も腹ヒット用に切り替える（解放の直前で消す必要はない）。
             Player.LastHitZone = PunchZone.Body;
-            Player.ReceiveHit(State, knee, transform);
+            Player.ReceiveHit(State, knee, transform, CombatConstants.HeldKneeBellyDamage);
             grapple.KickKnee();
             PlaySfx(SfxId.Impact, 0.85f);
 
@@ -1782,9 +1812,9 @@ namespace Ryona.Game
             }
             // 進行中の攻撃はキャンセルする。トークンも返して他の敵に順番を渡す。
             HideTelegraph();
-            _swingsWithToken = 0;
-            _punchPoseHoldSeconds = 0f;
-            _bellyPunchPendingHold = 0f;
+            IsPinning = false;
+            _pinKneesLeft = 0;
+            ClearTransientAttackState();
             ReleaseToken();
 
             Phase = EnemyPhase.Stagger;
@@ -1796,7 +1826,6 @@ namespace Ryona.Game
             StaggerWeight = tier switch
             {
                 StaggerTier.Large => 1.8f,
-                StaggerTier.GuardBreak => 2.2f,
                 StaggerTier.Medium => 1.4f,
                 _ => 1f
             };
@@ -1820,8 +1849,6 @@ namespace Ryona.Game
                     return StaggerSecondsMedium > 0f ? StaggerSecondsMedium : CombatConstants.StunMedium;
                 case StaggerTier.Large:
                     return StaggerSecondsLarge > 0f ? StaggerSecondsLarge : CombatConstants.StunLarge;
-                case StaggerTier.GuardBreak:
-                    return StaggerSecondsGuardBreak > 0f ? StaggerSecondsGuardBreak : CombatConstants.StunGuardBreak;
                 default:
                     return 0f;
             }
@@ -1835,8 +1862,10 @@ namespace Ryona.Game
             Phase = EnemyPhase.Dead;
             HideTelegraph();
             IsHolding = false;
-            _punchPoseHoldSeconds = 0f;
-            _bellyPunchPendingHold = 0f;
+            IsPinning = false;
+            _pinKneesLeft = 0;
+            _pinOrder = false;
+            ClearTransientAttackState();
             ReleaseToken();
             UnregisterGroup();
             enabled = false;
@@ -1866,10 +1895,18 @@ namespace Ryona.Game
             State.RestoreAll();
             _timer = 0f;
             _attackReadyAt = Time.time + Mathf.Max(0f, AttackCooldown);
-            _swingsWithToken = 0;
             _run = default;
             _feinted = false;
             WindupProgress = 0f;
+
+            // 死亡時に取りこぼした遷移状態を必ず戻す（再出現後に正面回り込みや
+            // 重なり回避が効かない、という残り方を防ぐ）。
+            IsHolding = false;
+            IsPinning = false;
+            _pinKneesLeft = 0;
+            _pinNextKneeAt = 0f;
+            _pinOrder = false;
+            ClearTransientAttackState();
             _riseTimer = RiseSeconds * UnityEngine.Random.Range(1f, 1.4f);   // 見た目はここから起き上がる（少しずつずらす）
 
             Phase = EnemyPhase.Chase;
@@ -1944,7 +1981,9 @@ namespace Ryona.Game
             // タッグ腹パンは演出側（HeldBellyPunchDirector）が当たる位置を決めている。
             // ここで仲間と押し分けると、置いた位置から横へずれて拳が届かなくなる
             // （実測: 0.33m ずれて gap 0.33 の空振りが続いた）。
-            if (_bellyPunchPendingHold > 0f || _punchPoseHoldSeconds > 0f)
+            // 顔パンは _bellyPunchPendingHold が 0 なので、発注から当たるまでの
+            // _tagPunchPending でも除外する（でないと顔パンだけ位置がずらされて外れる）。
+            if (_bellyPunchPendingHold > 0f || _punchPoseHoldSeconds > 0f || _tagPunchPending)
                 return;
 
             KeepOutOfPlayer();

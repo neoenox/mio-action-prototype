@@ -8,7 +8,6 @@ namespace Ryona.Game
     /// <c>-downburst=&lt;prefix&gt;</c> を付けて起動すると、1.5 秒後から一定間隔で
     /// 彼女に攻撃を当て続け、ダウンした瞬間から 0.05 秒ごとに 40 枚（2 秒ぶん）撮る。
     /// <c>-downhits=heavy</c> で重い攻撃に切り替え（4 発でダウン）。
-    /// <c>-downhits=guard</c> でガードさせたまま殴る（ガードブレイクの確認）。
     /// </summary>
     [AddComponentMenu("Ryona/Down Test Driver")]
     public sealed class DownTestDriver : MonoBehaviour
@@ -16,7 +15,7 @@ namespace Ryona.Game
         /// <summary>撮影先（<c>.../d.png</c> なら d_00.png 〜 d_39.png）。</summary>
         public string BurstPrefix;
 
-        /// <summary>当てる攻撃（light / heavy / break / guard）。</summary>
+        /// <summary>当てる攻撃（light / heavy / break / belly）。</summary>
         public string Attack = "light";
 
         /// <summary>攻撃の間隔（秒）。</summary>
@@ -147,10 +146,8 @@ namespace Ryona.Game
             if (Attack == "belly")
                 _stats.LastHitZone = PunchZone.Body;
 
-            _stats.IsBlocking = Attack == "guard";
             _stats.ReceiveHit(from != null ? from.State : null, attack,
                 from != null ? from.transform : null);
-            _stats.IsBlocking = false;
 
             _hits++;
             Debug.Log($"[Down] hit #{_hits} attack={Attack} flinch={_stats.State.Flinch:F0}");

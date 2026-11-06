@@ -232,6 +232,9 @@ namespace Ryona.Game
             // 固定カメラ（ベルト）: マウスでは回さない。
             if (BeltMode)
             {
+                // 倒れている度合いはベルトでも進める。TickBelt が距離・高さに
+                // _downBlend を使うため、ここで更新しないとダウン演出が一度も効かない。
+                TickDown(Time.deltaTime);
                 TickBelt();
                 Framed = true;
                 return;

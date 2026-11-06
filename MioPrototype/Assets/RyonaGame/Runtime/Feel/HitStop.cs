@@ -63,6 +63,16 @@ namespace Ryona.Game
         internal static void RestoreNow()
         {
             _remaining = 0f;
+
+            // ポーズ／タイトルが timeScale を握っている間は触らない。
+            // ここで保存値（通常 1）を書き戻すと、ヒットストップ中に Esc を押したときに
+            // メニューを開いたままゲームが再開してしまう。
+            if (PauseMenu.IsPaused)
+                return;
+
+            if (UnityEngine.Object.FindFirstObjectByType<TitleGate>() != null)
+                return;
+
             Time.timeScale = _restoreScale;
         }
 

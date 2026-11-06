@@ -333,6 +333,34 @@ namespace Ryona.Game
         // --- VRM へのリターゲット用（EnemyVrm から読む） -------------------
         public Transform HipsBone => _hips;
 
+        // PinHoldPose から主人公の姿勢更新後に呼ぶ。腿の長さを変えず腹へ膝を合わせる。
+        public void AlignPinKnee(bool left, Vector3 belly, float weight)
+        {
+            Transform hip = left ? _hipL : _hipR;
+            Transform knee = left ? _kneeL : _kneeR;
+            Transform supportHip = left ? _hipR : _hipL;
+            Transform supportKnee = left ? _kneeR : _kneeL;
+            Transform supportFoot = left ? _ankleR : _ankleL;
+            if (hip == null || knee == null || supportFoot == null) return;
+
+            Vector3 planted = supportFoot.position;
+            Quaternion plantedRotation = supportFoot.rotation;
+            float thighLength = Vector3.Distance(hip.position, knee.position);
+            Vector3 toBelly = belly - hip.position;
+            if (toBelly.sqrMagnitude < 0.0001f) return;
+
+            // 腹が腿の届く球面より外なら、骨盤も踏み込ませる。
+            // 固定角度を深くするだけでは、膝は高くなっても腹から後ろへ離れてしまう。
+            Vector3 shift = toBelly.normalized * Mathf.Max(0f, toBelly.magnitude - thighLength);
+            _hips.position += shift * weight;
+            Quaternion aimed = Quaternion.FromToRotation(knee.position - hip.position, belly - hip.position) * hip.rotation;
+            hip.rotation = Quaternion.Slerp(hip.rotation, aimed, weight);
+
+            ProceduralRig.SolveTwoBone(supportHip, supportKnee, supportFoot, planted,
+                supportHip.position + transform.forward * 0.5f + Vector3.up * 0.15f);
+            supportFoot.rotation = plantedRotation;
+        }
+
         public Transform ChestBone => _chest;
 
         public Transform HeadBone => _head;
@@ -1767,6 +1795,16 @@ namespace Ryona.Game
             if (_targetRig == null || !_targetRig.Ready ||
                 _targetRig.LUpperArm == null || _targetRig.RUpperArm == null)
                 return;
+
+            // 主人公の跳ね上がりを反映した後の腹を狙う。角度だけでは腰の下へ外れる。
+            if (hold.KneePulse > 0f && _targetRig.Spine != null && _targetRig.Chest != null)
+            {
+                Vector3 belly = Vector3.Lerp(_targetRig.Spine.position, _targetRig.Chest.position, 0.45f)
+                    + _brain.Player.transform.forward * 0.12f;
+                var cam = Camera.main;
+                bool left = cam != null && Vector3.Dot(cam.transform.position - transform.position, transform.right) < 0f;
+                _figure.AlignPinKnee(left, belly, Mathf.SmoothStep(0f, 1f, hold.KneePulse));
+            }
 
             // 彼は彼女と正面で向かい合っている。彼の右手は彼女の左腕、左手は右腕を掴む。
             // 同じ側（右→右）にすると腕が交差して「左右が逆」に見える（実測）。

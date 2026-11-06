@@ -161,6 +161,9 @@ namespace Ryona.Game
         bool _eyesShut;           // ログ用
         float _eyeCheckAt = -1f;  // 反映後のブレンドシェイプを読む時刻
 
+        /// <summary>実際に購読している Stats。差し替え時に古い購読を確実に外すために持つ。</summary>
+        PlayerStats _subscribed;
+
         /// <summary>
         /// 0 以上にすると、その濃さで固定する（撮影・確認用）。負で通常動作。
         /// </summary>
@@ -179,27 +182,40 @@ namespace Ryona.Game
 
         void OnEnable()
         {
-            if (Stats != null)
-                Stats.HitReceived += OnHitReceived;
+            Subscribe();
         }
 
         void OnDisable()
         {
-            if (Stats != null)
-                Stats.HitReceived -= OnHitReceived;
+            Unsubscribe();
         }
 
         void Start()
         {
             // Start で購読すると VrmCharacterSlot が実行時に足した場合に
             // OnEnable より後に来ることがあるので、二重購読を避けてここで張り直す。
-            if (Stats != null)
-            {
-                Stats.HitReceived -= OnHitReceived;
-                Stats.HitReceived += OnHitReceived;
-            }
+            Subscribe();
 
             Debug.Log($"[Face] start stats={(Stats != null)} vrm={(Vrm != null)} anim={(Anim != null)}");
+        }
+
+        /// <summary>Stats の被弾イベントを購読する（二重購読しない）。</summary>
+        void Subscribe()
+        {
+            if (Stats == null || _subscribed == Stats)
+                return;
+
+            Unsubscribe();
+            Stats.HitReceived += OnHitReceived;
+            _subscribed = Stats;
+        }
+
+        void Unsubscribe()
+        {
+            if (_subscribed != null)
+                _subscribed.HitReceived -= OnHitReceived;
+
+            _subscribed = null;
         }
 
         void OnHitReceived(HitResult result)
@@ -212,7 +228,7 @@ namespace Ryona.Game
             // ガードで受け止めただけなら、痛みはほぼ無い（少しだけ顔を歪める）
             float peak;
             float hold;
-            if (result.Blocked && !result.GuardBroken)
+            if (result.Blocked)
             {
                 peak = 0.34f;
                 hold = 0.10f;
@@ -224,7 +240,6 @@ namespace Ryona.Game
                     StaggerTier.Small => 0.66f,
                     StaggerTier.Medium => 0.88f,
                     StaggerTier.Large => 1f,
-                    StaggerTier.GuardBreak => 1f,
                     _ => 0.45f
                 };
                 hold = result.StunSeconds + HoldExtraSeconds;
@@ -334,7 +349,7 @@ namespace Ryona.Game
                 return;
 
             Stats = found;
-            Stats.HitReceived += OnHitReceived;
+            Subscribe();
             Debug.Log($"[Face] stats linked: {found.name}");
         }
 

@@ -8,39 +8,25 @@ namespace Ryona
     {
         // --- リソース -------------------------------------------------
         public const float MaxHp = 100f;
-        public const float MaxStamina = 100f;
-        public const float MaxPosture = 100f;
         public const float PartMax = 100f;
-
-        public const float StaminaRegenIdle = 7.0f;
-        public const float StaminaRegenMoving = 4.5f;
-
-        /// <summary>
-        /// ガード中のスタミナ回復倍率。構えている間は回復をほぼ止める。
-        /// これが 1 だと「ガードを握り続けるほど得」になり、ガードブレイク
-        /// （＝ダウン）が実戦でまず起きない。
-        /// </summary>
-        public const float GuardRegenScale = 0.15f;
-        public const float PostureRegenPerSecond = 9.0f;
 
         // --- 部位ダメージの劣化下限（0=無傷, 100=限界） ----------------
         public const float LegsSpeedFloor = 0.70f;
         public const float ArmsDamageFloor = 0.75f;
-        public const float ArmsGuardFloor = 0.50f;
-        public const float TorsoRegenFloor = 0.60f;
 
         // --- ガード ---------------------------------------------------
         public const float GuardDamageScale = 0.25f;
-        public const float GuardPostureScale = 1.5f;
         public const float GuardPartDamageScale = 0.25f;
-
-        // --- 体勢ブレイク ---------------------------------------------
-        public const float PostureBreakRecoverRatio = 0.5f;
 
         // --- 怯み・ダウン（秒） ---------------------------------------
         public const float StunSmall = 0.20f;
         public const float StunMedium = 0.40f;
         public const float StunLarge = 0.80f;
+
+        /// <summary>
+        /// 旧・ガードブレイク用の怯み秒。スタミナ廃止に伴いゲームプレイでは発生しないが、
+        /// Editor のプレビューが「大きめの怯み」として使うため値だけ残している。
+        /// </summary>
         public const float StunGuardBreak = 1.20f;
         public const float DownDuration = 2.00f;
         public const float GetUpVulnerable = 0.60f;
@@ -53,7 +39,7 @@ namespace Ryona
         public const int MashBasePin = 12;
 
         /// <summary>
-        /// 押さえつけ（<see cref="GrappleKind.Pin"/>）で掴まれてから投げられるまでの猶予（秒）。
+        /// 押さえつけ（<see cref="GrappleKind.Pin"/>）で掴まれてから解放されるまでの猶予（秒）。
         /// 掴まれてすぐ膝蹴りを始めず、しばらくそのまま押さえる（脱出する猶予）。
         /// 後ろ拘束（<see cref="GrappleKind.Back"/>）は時間切れで解けないので、この値は使わない。
         /// </summary>
@@ -78,7 +64,7 @@ namespace Ryona
         /// <summary>押さえつけ開始から 1 発目の膝蹴りまでの秒。しばらく押さえたままにして脱出の猶予を作る。</summary>
         public const float PinKneeDelay = 1.1f;
 
-        /// <summary>膝蹴りの間隔（秒）。一発ずつ間を取り、5 発目の後にも投げまでの余白を残す。</summary>
+        /// <summary>膝蹴りの間隔（秒）。一発ずつ間を取り、5 発目が制限時間内に収まるようにする。</summary>
         public const float PinKneeInterval = 0.65f;
 
         /// <summary>膝蹴り 1 発のダメージ。</summary>
@@ -91,17 +77,10 @@ namespace Ryona
         public const float GrabbedDamageFromOthers = 0.5f;
 
         /// <summary>
-        /// 押さえつけの時間切れで投げられたとき、突き飛ばされて下がる距離（m）と時間（秒）。
-        /// その場に残すと、怯んでいる 0.7 秒のあいだに包囲側から袋叩きにされる。
+        /// 押さえつけが時間切れで解放された直後、他の敵が攻撃を控える時間（秒）。
+        /// 解放された瞬間に包囲側から袋叩きにされないための余白。
         /// </summary>
-        public const float GrappleThrowKnockback = 1.5f;
-        public const float GrappleThrowKnockbackSeconds = 0.30f;
-
-        /// <summary>
-        /// 押さえつけの時間切れで投げた直後、他の敵が攻撃を控える時間（秒）。
-        /// 怯み（<see cref="StunLarge"/>）と同じ長さにして、起き上がるまでに間合いを離す。
-        /// </summary>
-        public const float GrappleThrowGraceSeconds = 0.70f;
+        public const float GrappleReleaseGraceSeconds = 0.70f;
 
         /// <summary>
         /// 怯んだ直後この秒数は、次の怯みで怯み時間を上書きしない（ダメージは受ける）。
@@ -122,17 +101,14 @@ namespace Ryona
         /// <summary>ガード越しの被弾で加算されるひるみの倍率。ガードしていれば完全に防げるわけではない。</summary>
         public const float BlockedFlinchScale = 0.35f;
 
-        /// <summary>
-        /// 腹ヒットのひるみ倍率。腹は急所なので、同じ強さでも倒れやすい。
-        /// これが 1 だと押さえつけの膝 5 発（12×5=60）でも倒れず、実戦でうつ伏せにならない（実測）。
-        /// 2.0 で膝 5 発＝120 になり、1 回の押さえつけで崩れる。
-        /// </summary>
-        public const float BellyFlinchScale = 2.0f;
+        /// <summary>通常のひるみとは別に、拘束中の腹パンと膝蹴りだけで溜まる値の上限。</summary>
+        public const float MaxHeldBellyDamage = 100f;
+        public const float HeldBellyPunchDamage = 16f;
+        public const float HeldKneeBellyDamage = 12f;
 
         /// <summary>起き上がり完了後、この秒数はダウンしない（無限ダウンの防止）。</summary>
         public const float DownImmunitySeconds = 1.0f;
 
-        // --- ダウンの吹き飛ばし（後ろへ放物線） ---------------------
         // --- ダウンの吹き飛ばし（後ろへ放物線） ---------------------
         /// <summary>
         /// ダウン時に後ろへ下がる水平距離（m）。
@@ -147,13 +123,6 @@ namespace Ryona
         /// 後ろへ倒れ込む高さで、着地してから背中をつける（滞空は約 0.24 秒）。
         /// </summary>
         public const float DownLaunchHeight = 0.16f;
-
-        /// <summary>拘束の投げで飛ぶ水平距離（m）。ダウンより少しだけ大きい。</summary>
-        public const float ThrowLaunchDistance = 0.60f;
-
-        /// <summary>拘束の投げで浮く高さ（m）。</summary>
-        public const float ThrowLaunchHeight = 0.24f;
-
 
         public static float StunSeconds(StaggerTier tier)
         {

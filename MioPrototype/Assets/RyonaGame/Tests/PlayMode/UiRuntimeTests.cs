@@ -37,6 +37,46 @@ namespace Ryona.Tests
         // --- タイトル -----------------------------------------------------------
 
         [UnityTest]
+        public IEnumerator HUDはダウンと腹ダメージの蓄積と残り打数を表示する()
+        {
+            yield return TestScene.LoadPrototype();
+
+            var hud = Object.FindFirstObjectByType<MatchHud>();
+            var player = hud.Player;
+            var enemies = Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None);
+            foreach (var enemy in enemies)
+                enemy.enabled = false;
+
+            var downFill = Field<Image>(hud, "_downFill");
+            var bellyFill = Field<Image>(hud, "_bellyFill");
+            var downText = Field<Text>(hud, "_downHitsText");
+            var bellyText = Field<Text>(hud, "_bellyHitsText");
+            Assert.AreEqual(0f, downFill.fillAmount);
+            Assert.AreEqual(0f, bellyFill.fillAmount);
+            Assert.AreEqual("弱あと9発 / 強あと4発", downText.text);
+            Assert.AreEqual("腹パンあと7発 / 膝あと9発", bellyText.text);
+
+            player.State.AddFlinch(48f);
+            player.GetComponent<PlayerGrapple>().Begin(enemies[0], GrappleKind.Back);
+            player.LastHitZone = PunchZone.Body;
+            player.ReceiveHit(enemies[1].State, AttackLibrary.Light(), enemies[1].transform,
+                CombatConstants.HeldBellyPunchDamage);
+            yield return null;
+            yield return null;
+
+            Assert.AreEqual(0.60f, downFill.fillAmount, 0.001f);
+            Assert.AreEqual(0.16f, bellyFill.fillAmount, 0.001f);
+            Assert.AreEqual("弱あと4発 / 強あと2発", downText.text);
+            Assert.AreEqual("腹パンあと6発 / 膝あと7発", bellyText.text);
+            Assert.LessOrEqual(downText.preferredWidth, downText.rectTransform.rect.width);
+            Assert.LessOrEqual(bellyText.preferredWidth, bellyText.rectTransform.rect.width);
+            Assert.IsFalse(System.Array.Exists(hud.GetComponentsInChildren<Text>(),
+                label => label.text == "腕" || label.text == "脚" || label.text == "胴"));
+            Assert.IsFalse(System.Array.Exists(hud.GetComponentsInChildren<Text>(),
+                label => label.text.Contains("スタミナ") || label.text.Contains("体勢")));
+        }
+
+        [UnityTest]
         public IEnumerator タイトルは時間を止めて開始で必ず戻る()
         {
             yield return TestScene.LoadPrototype();
@@ -247,7 +287,6 @@ namespace Ryona.Tests
             id = "test_lethal",
             kind = AttackKind.Heavy,
             damage = 9999f,
-            postureDamage = 9999f,
             partDamage = 0f,
             targetPart = BodyPart.Torso
         };

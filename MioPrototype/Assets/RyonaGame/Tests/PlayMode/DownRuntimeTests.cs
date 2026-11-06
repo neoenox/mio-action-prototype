@@ -62,6 +62,57 @@ namespace Ryona.Tests
             _attacker.transform.position = _stats.transform.position + _stats.transform.forward * 0.8f;
         }
 
+        [UnityTest]
+        public IEnumerator HPゼロから復帰すると起き上がって操作に戻れる()
+        {
+            yield return LoadPlayer();
+
+            var lethal = AttackLibrary.Light();
+            lethal.damage = _stats.State.MaxHp * 10f;
+            _stats.ReceiveHit(new CombatState(), lethal, _attacker.transform);
+            Assert.IsTrue(_stats.IsDead, "HP が 0 になっていない");
+
+            float deadline = Time.realtimeSinceStartup + 2f;
+            while (_anim.Current != CharacterAnimator.State.Down && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.AreEqual(CharacterAnimator.State.Down, _anim.Current);
+
+            // HP が 0 のとき、HUD が R キーで呼ぶ復帰処理。
+            _stats.RestoreAll();
+            yield return null;
+            yield return null;
+
+            Assert.AreEqual(_stats.State.MaxHp, _stats.State.Hp);
+            Assert.AreEqual(CharacterAnimator.State.GetUp, _anim.Current);
+            Assert.IsTrue(_stats.IsStunned, "起き上がり中は操作を受け付けない");
+
+            yield return new WaitForSeconds(_anim.GetUpSeconds + 0.1f);
+            Assert.IsFalse(_anim.IsDowned);
+            Assert.IsFalse(_stats.IsDown);
+            Assert.IsFalse(_stats.IsStunned);
+        }
+
+        [UnityTest]
+        public IEnumerator ゴッドモード中は致死ダメージでも死なず体力が回復する()
+        {
+            yield return LoadPlayer();
+
+            _stats.SetGodMode(true);
+
+            var lethal = AttackLibrary.Heavy();
+            lethal.damage = _stats.State.MaxHp * 10f;
+            _stats.ReceiveHit(new CombatState(), lethal, _attacker.transform);
+
+            Assert.IsFalse(_stats.IsDead, "ゴッドモード中に死んでいる");
+            Assert.GreaterOrEqual(_stats.State.Hp, 1f, "HP が 0 になっている");
+
+            float before = _stats.State.Hp;
+            yield return new WaitForSeconds(0.25f);
+            Assert.Greater(_stats.State.Hp, before, "体力が自動回復していない");
+
+            _stats.SetGodMode(false);
+        }
+
         /// <summary>軽い攻撃を、ダウンするまで当てる。当てた回数を返す。</summary>
         IEnumerator HitUntilDown(System.Action<int> onHit = null)
         {
@@ -85,6 +136,7 @@ namespace Ryona.Tests
             Assert.IsTrue(_stats.State.IsDown,
                 $"{hits} 発当ててもダウンしない（ひるみ={_stats.State.Flinch:F0}）");
             Assert.AreEqual(9, hits, "軽い攻撃は 9 発でダウンする想定");
+            Assert.IsFalse(_stats.DownIsForward, "正面からの一撃で仰向けに倒れる");
         }
 
         [UnityTest]
@@ -137,21 +189,22 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator 腹を殴られて倒れると前へ崩れる()
+        public IEnumerator 正面からの蓄積でも最後が背後からなら前へ崩れる()
         {
             yield return LoadPlayer();
 
             var attackerState = new CombatState();
-            for (int i = 0; i < 30 && !_stats.State.IsDown; i++)
-            {
-                // 腹を殴られた扱いにする（前へ崩れるダウンの条件）
-                _stats.LastHitZone = PunchZone.Body;
+            for (int i = 0; i < 8; i++)
                 _stats.ReceiveHit(attackerState, AttackLibrary.Light(), _attacker.transform);
-                yield return null;
-            }
+            Assert.IsFalse(_stats.IsDown);
+
+            _attacker.transform.position = _stats.transform.position - _stats.transform.forward;
+            _stats.ReceiveHit(attackerState, AttackLibrary.Light(), _attacker.transform);
+            yield return null;
+            yield return null;
 
             Assert.IsTrue(_stats.State.IsDown, "ダウンしていない");
-            Assert.IsTrue(_stats.DownIsForward, "腹を殴られて倒れたのに「前へ崩れる」になっていない");
+            Assert.IsTrue(_stats.DownIsForward, "最後の一撃が背後なのに前へ崩れていない");
             Assert.IsFalse(_motor.IsAirborne, "前へ崩れるときに飛ばしている（その場で膝が抜ける動きにする）");
             Assert.AreEqual(CharacterAnimator.State.Down, _anim.Current, "倒れた姿勢になっていない");
         }
@@ -161,15 +214,12 @@ namespace Ryona.Tests
         {
             yield return LoadPlayer();
 
-            var attackerState = new CombatState();
-            for (int i = 0; i < 30 && !_stats.State.IsDown; i++)
-            {
-                _stats.LastHitZone = PunchZone.Body;
-                _stats.ReceiveHit(attackerState, AttackLibrary.Light(), _attacker.transform);
-                yield return null;
-            }
+            _stats.State.AddFlinch(CombatConstants.MaxFlinch - 1f);
+            _attacker.transform.position = _stats.transform.position - _stats.transform.forward;
+            _stats.LastHitZone = PunchZone.Face;
+            _stats.ReceiveHit(new CombatState(), AttackLibrary.Light(), _attacker.transform);
 
-            Assert.IsTrue(_stats.DownIsForward, "うつ伏せになっていない");
+            Assert.IsTrue(_stats.IsDown && _stats.DownIsForward, "背後からの一撃でうつ伏せに倒れる");
 
             // 倒れきるまで待つ（0.78 秒 + 余裕）
             yield return new WaitForSeconds(1.0f);

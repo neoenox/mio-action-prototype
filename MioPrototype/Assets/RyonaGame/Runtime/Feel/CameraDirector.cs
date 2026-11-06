@@ -30,12 +30,6 @@ namespace Ryona.Game
         [Tooltip("通常ヒットで寄せておく秒数")]
         public float PushInSeconds = 0.20f;
 
-        [Tooltip("ガードブレイクで寄る倍率（より強く）")]
-        public float GuardBreakPushInScale = 0.82f;
-
-        [Tooltip("ガードブレイクで寄せておく秒数")]
-        public float GuardBreakPushInSeconds = 0.30f;
-
         [Tooltip("ガードされたときに寄る倍率（ごく僅か）")]
         public float BlockedPushInScale = 0.96f;
 
@@ -171,13 +165,6 @@ namespace Ryona.Game
         {
             if (Rig == null)
                 return;
-
-            // ガードブレイクは Blocked も立つので、必ず先に判定する（CombatFeel と同じ順序）
-            if (result.GuardBroken)
-            {
-                Rig.PushDistance(GuardBreakPushInScale, GuardBreakPushInSeconds);
-                return;
-            }
 
             if (result.Blocked)
             {

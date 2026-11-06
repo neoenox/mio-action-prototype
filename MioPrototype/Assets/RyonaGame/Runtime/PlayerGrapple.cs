@@ -7,13 +7,16 @@ namespace Ryona.Game
     /// 掴まれた状態（仕様書 §4.3 の抵抗システム）。
     ///
     /// 数値の本体はエンジン非依存の <see cref="GrappleResistance"/> が持っていて、
-    /// ここは「入力を受け取る・時間で失敗させる・演出に知らせる」だけを担当する。
+    /// ここは「入力を受け取る・時間切れで解放する・演出に知らせる」だけを担当する。
     /// 掴まれたら J / K / L / Space の連打で必要回数ぶんもがくと振りほどける。
     ///
     /// 後ろ拘束（<see cref="GrappleKind.Back"/>）は時間切れで解けない。
-    /// 連打で振りほどくか、別の敵の腹パンを受けて解放されるかの二択にする。
-    /// 押さえつけ（<see cref="GrappleKind.Pin"/>）は 3 秒の制限時間つきで、
-    /// 時間切れになると投げられる（<see cref="Fail"/>）。
+    /// 連打で振りほどくか、タッグ腹パンを 5 発食らうかになる。
+    /// 食らい切ったときに腹ダメージが上限ならうつ伏せにダウンし、
+    /// 未満なら引き渡しを抽選する（<see cref="GrappleHandOff.TryChain"/>）。
+    /// 押さえつけ（<see cref="GrappleKind.Pin"/>）は
+    /// <see cref="CombatConstants.GrappleLimitSeconds"/> 秒の制限時間つきで、
+    /// 時間切れになると解放される（<see cref="Fail"/>）。
     /// </summary>
     [AddComponentMenu("Ryona/Player Grapple")]
     public sealed class PlayerGrapple : MonoBehaviour
@@ -26,7 +29,7 @@ namespace Ryona.Game
         /// <summary>振りほどけた瞬間。</summary>
         public event Action Escaped;
 
-        /// <summary>押さえつけの時間切れで投げられた瞬間（後ろ拘束では起きない）。</summary>
+        /// <summary>押さえつけが時間切れになった瞬間（後ろ拘束では起きない）。</summary>
         public event Action Failed;
 
         GrappleResistance _resistance;
@@ -55,7 +58,7 @@ namespace Ryona.Game
         public float Remaining =>
             HasTimeLimit ? Mathf.Max(0f, _remaining) : 0f;
 
-        /// <summary>時間切れで投げられる拘束か。後ろ拘束は false（連打か腹パンでだけ終わる）。</summary>
+        /// <summary>時間切れで解ける拘束か。後ろ拘束は false。</summary>
         public bool HasTimeLimit => Kind == GrappleKind.Pin;
 
         /// <summary>掴まれてからの経過秒。ログとテスト用。</summary>
@@ -161,7 +164,7 @@ namespace Ryona.Game
             if (StrugglePulse > 0f)
                 StrugglePulse = Mathf.Max(0f, StrugglePulse - Time.deltaTime * 4f);
 
-            // 膝蹴りの見た目は掴まれていなくても抜けきるまで減衰させる（投げられた直後に残らない）
+            // 膝蹴りの見た目は掴まれていなくても抜けきるまで減衰させる（解放された直後に残らない）
             if (_kneeHold > 0f)
             {
                 // 姿勢の補間が追いつくまで形を保つ。すぐ減衰させると腿が上がりきらない。
@@ -208,11 +211,7 @@ namespace Ryona.Game
                 return;
             }
 
-            // 後ろ拘束は時間切れが無いので、限界まで殴られていても手を離すのは
-            // もがきで逃げたときだけ（`PlayerStats` が離れた瞬間にうつ伏せで倒す）。
-            // 腹パンの途中で勝手に離すと、5 発のコンボが途切れて「殴り終える前に崩れた」画になる。
-
-            // 後ろ拘束は時間切れで解けない。押さえつけ（Pin）だけが時間切れで投げる。
+            // 後ろ拘束は時間切れで解けない。
             if (HasTimeLimit)
             {
                 _remaining -= Time.deltaTime;
@@ -295,18 +294,10 @@ namespace Ryona.Game
 
             if (shove)
             {
-                // 突き飛ばし: 相手の正面（Pin）か背面（Back）へ押し出し、
-                // 背面向きのときは 180° 回す。押し終わりに必ず掴み位置へ合わせる
-                // （合わせないと「2 人目が遠い」距離で拘束が始まる）。
-                Vector3 toNext = next.transform.position - transform.position;
-                toNext.y = 0f;
-                Vector3 dirTo = toNext.sqrMagnitude > 1e-4f ? toNext.normalized : transform.forward;
-
-                bool faceTarget = kind == GrappleKind.Pin;
-                Vector3 facing = faceTarget ? dirTo : -dirTo;
-                Vector3 pushDir = dirTo;
-
-                StartCoroutine(Shove(next, kind, pushDir, facing, faceTarget));
+                // 突き飛ばし: 相手の正面（Pin）か背面（Back）へ、掴み位置まで
+                // 一続きに押し出す。以前は 0.9m 突き飛ばしてから掴み位置へ
+                // SnapToCaptor で戻していたため、行き過ぎてから瞬間移動して見えた。
+                StartCoroutine(Shove(next, kind));
             }
             else
             {
@@ -325,41 +316,48 @@ namespace Ryona.Game
         }
 
         /// <summary>
-        /// 突き飛ばし → 向き直し → 掴み位置へ合わせる。
-        /// 押し出しただけで終わると、相手との距離が 1m 以上開いて「遠い拘束」になる（実測）。
+        /// 掴み位置まで一続きに移動する。突き飛ばしの距離と掴み位置を別々に扱うと、
+        /// 行き過ぎた後に戻る動きが「ワープ」に見えるので、最初から終点へ運ぶ。
         /// </summary>
-        System.Collections.IEnumerator Shove(EnemyBrain next, GrappleKind kind,
-            Vector3 pushDir, Vector3 facing, bool faceTarget)
+        System.Collections.IEnumerator Shove(EnemyBrain next, GrappleKind kind)
         {
-            var motor = GetComponent<PlayerMotor>();
-            if (motor != null)
-                motor.Knockback(0.9f, 0.30f, pushDir);
-
             // 押された瞬間の姿勢（上体が前へ、腕が後ろへ残る）
             _pushHold = PushHoldSeconds;
             PushPulse = 1f;
 
-            Quaternion target = Quaternion.LookRotation(facing, Vector3.up);
-            Quaternion from = transform.rotation;
-            float t = 0f;
+            Vector3 fromPos = transform.position;
+            Vector3 toPos = GrabSpot(next, kind);
+
+            Vector3 toNext = next.transform.position - toPos;
+            toNext.y = 0f;
+            Vector3 lookDir = kind == GrappleKind.Pin ? toNext : -toNext;
+
+            Quaternion fromRot = transform.rotation;
+            Quaternion targetRot = lookDir.sqrMagnitude > 1e-4f
+                ? Quaternion.LookRotation(lookDir.normalized, Vector3.up)
+                : fromRot;
+
+            float distance = Vector3.Distance(fromPos, toPos);
+            float moveSeconds = Mathf.Clamp(0.12f + distance * 0.18f, 0.18f, 0.65f);
             const float turnSeconds = 0.25f;
-            while (t < turnSeconds)
+
+            float t = 0f;
+            while (t < moveSeconds)
             {
                 t += Time.deltaTime;
-                transform.rotation = Quaternion.Slerp(from, target, Mathf.Clamp01(t / turnSeconds));
+                float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / moveSeconds));
+                transform.position = Vector3.Lerp(fromPos, toPos, k);
+                transform.rotation = Quaternion.Slerp(fromRot, targetRot,
+                    Mathf.Clamp01(t / turnSeconds));
                 yield return null;
             }
-            transform.rotation = target;
 
-            // 押し出しの残りが抜けてから、掴み位置ぴったりに寄せる
-            yield return new WaitForSeconds(0.05f);
-            if (IsGrappled && Captor == next)
-            {
-                SnapToCaptor(next, kind);
-                Vector3 gap = next.transform.position - transform.position;
-                gap.y = 0f;
-                Debug.Log($"[HandOff] snap kind={kind} gap={gap.magnitude:F2}");
-            }
+            if (!IsGrappled || Captor != next)
+                yield break;
+
+            transform.position = toPos;
+            transform.rotation = targetRot;
+            Debug.Log($"[HandOff] shove kind={kind} dist={distance:F2} t={moveSeconds:F2}s");
         }
 
         /// <summary>
@@ -382,23 +380,7 @@ namespace Ryona.Game
             if (captor == null)
                 return;
 
-            Vector3 dir = transform.position - captor.transform.position;
-            dir.y = 0f;
-
-            if (dir.sqrMagnitude < 1e-4f)
-            {
-                dir = -captor.transform.forward;
-                dir.y = 0f;
-            }
-
-            if (dir.sqrMagnitude < 1e-4f)
-                return;
-
-            dir.Normalize();
-
-            // 羽交い締めは密着させる。押さえつけは腕を伸ばす余地を残す。
-            Vector3 spot = captor.transform.position + dir * (kind == GrappleKind.Back ? BackGrabDistance : GrabDistance);
-            spot.y = transform.position.y;
+            Vector3 spot = GrabSpot(captor, kind);
             transform.position = spot;
 
             // 羽交い締めは背中を向けたまま掴まれる（向きは変えない）。
@@ -410,6 +392,33 @@ namespace Ryona.Game
                 if (look.sqrMagnitude > 1e-4f)
                     transform.rotation = Quaternion.LookRotation(look.normalized, Vector3.up);
             }
+        }
+
+        /// <summary>
+        /// 掴まれる位置（相手から見て、掴み方に応じた距離）。
+        /// 突き飛ばしと瞬間的な寄せの両方で同じ計算を使う。
+        /// </summary>
+        Vector3 GrabSpot(EnemyBrain captor, GrappleKind kind)
+        {
+            Vector3 dir = transform.position - captor.transform.position;
+            dir.y = 0f;
+
+            if (dir.sqrMagnitude < 1e-4f)
+            {
+                dir = -captor.transform.forward;
+                dir.y = 0f;
+            }
+
+            if (dir.sqrMagnitude < 1e-4f)
+                return transform.position;
+
+            dir.Normalize();
+
+            // 羽交い締めは密着させる。押さえつけは腕を伸ばす余地を残す。
+            Vector3 spot = captor.transform.position +
+                dir * (kind == GrappleKind.Back ? BackGrabDistance : GrabDistance);
+            spot.y = transform.position.y;
+            return spot;
         }
 
         void Escape()
@@ -433,58 +442,19 @@ namespace Ryona.Game
             Escaped?.Invoke();
         }
 
-        /// <summary>押さえつけ（Pin）の時間切れ。後ろ拘束では呼ばない。</summary>
+        /// <summary>
+        /// 押さえつけ（Pin）の時間切れ。後ろ拘束では呼ばない。
+        /// 投げや追加ダメージは無く、腹ダメージが上限に達していればうつ伏せに倒れる。
+        /// </summary>
         void Fail()
         {
             var captor = Captor;
 
             int inputs = InputCount;
-            float stamina = _resistance.FailureStaminaCost;
-            float part = _resistance.FailurePartDamage;
+            Release();
+            Stats.ResolveHeldBellyDown();
 
-            IsGrappled = false;
-            _remaining = 0f;
-            _suppressRemaining = 0f;
-            Captor = null;
-
-            Stats.State.ConsumeStamina(stamina);
-
-            // 押さえつけを逃げられなかったら必ず投げる（後ろへ飛んで仰向けになる）。
-            // 以前は「ひるみが満タンなら投げずに崩す」にしていたが、膝 5 発で毎回満タンになり
-            // 投げ（仰向け）が消えた。うつ伏せになるのは、もがいて抜けたときに限界だった場合だけ。
-
-            // 体勢を必ず折って、大きく怯ませる（腕にも傷害が残る）
-            var throwAttack = new AttackData
-            {
-                id = "grapple_throw",
-                kind = AttackKind.Grapple,
-                damage = 6f,
-                postureDamage = CombatConstants.MaxPosture,
-                partDamage = part,
-                targetPart = BodyPart.Arms,
-                startupSeconds = 0f,
-                activeSeconds = 0f,
-                recoverySeconds = 0f
-            };
-
-            // 投げは「殴られた場所」ではない。直前のパンチの顔 / 腹が残っていると、
-            // 投げなのに腹打ちの折れ方（上体 57〜71°）をするので、ここで消す。
-            Stats.LastHitZone = null;
-
-            // 投げられたらダウン（後ろへ放物線で飛んで倒れる）。
-            // 怯みだけで済ませていた頃は「投げられたのに立っている」ように見えた。
-            // ダウンを先に立ててからダメージを渡す（受け手の姿勢が「倒れる」で始まるように）。
-            Stats.ForceDown(CombatConstants.DownDuration, "throw", captor != null ? captor.transform : null,
-                CombatConstants.ThrowLaunchDistance, CombatConstants.ThrowLaunchHeight);
-
-            var result = Stats.ReceiveHit(captor != null ? captor.State : null, throwAttack,
-                captor != null ? captor.transform : null);
-
-            PlaySfx(SfxId.Break, 1f);
-
-            // 投げた直後、他の敵は一拍だけ様子を見る。
-            // 怯んでいる 0.7 秒のあいだに殺到されると、1 回の失敗で HP が 3 割飛ぶ。
-            int held = 0;
+            // 拘束を解いた直後に、別の敵から即座に追撃されないようにする。
             foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
             {
                 if (enemy == null || enemy == captor || !enemy.IsAlive)
@@ -493,16 +463,10 @@ namespace Ryona.Game
                 if (Vector3.Distance(enemy.transform.position, transform.position) > 6f)
                     continue;
 
-                enemy.HoldFire(CombatConstants.GrappleThrowGraceSeconds);
-                held++;
+                enemy.HoldFire(CombatConstants.GrappleReleaseGraceSeconds);
             }
 
-            if (held > 0)
-                Debug.Log($"[Grapple] others hold fire {CombatConstants.GrappleThrowGraceSeconds:F2}s x{held}");
-
-            Debug.Log($"[Grapple] fail inputs={inputs} need={RequiredInputs:F1} " +
-                      $"staminaCost={stamina:F0} partDamage={part:F0} " +
-                      $"hp={Stats.State.Hp:F0} stagger={result.Stagger}");
+            Debug.Log($"[Grapple] pin release inputs={inputs} need={RequiredInputs:F1}");
 
             Failed?.Invoke();
         }

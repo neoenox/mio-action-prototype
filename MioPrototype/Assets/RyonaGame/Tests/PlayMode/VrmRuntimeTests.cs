@@ -79,26 +79,17 @@ namespace Ryona.Tests
             yield return new WaitForSeconds(0.2f);
             float hipsIdle = rig.Hips.position.y;
 
-            // ガードを続けてスタミナを削り切る → ガードブレイク → 膝つき
-            stats.IsBlocking = true;
-            for (int i = 0; i < 10 && !stats.State.IsGuardBroken; i++)
-            {
-                stats.ReceiveHit(stats.State, new AttackData
-                {
-                    kind = AttackKind.Heavy,
-                    damage = 4f,
-                    postureDamage = 4f,
-                    guardStaminaDamage = 45f,
-                    targetPart = BodyPart.Torso
-                });
-            }
-            stats.IsBlocking = false;
+            // ひるみ（ダウンゲージ）が上限に届くと倒れる。
+            var hit = AttackLibrary.Heavy();
+            hit.damage = 1f;
+            for (int i = 0; i < 4 && !stats.IsDown; i++)
+                stats.ReceiveHit(new CombatState(), hit);
 
             yield return null;
             yield return new WaitForSeconds(0.55f);
 
             Assert.AreEqual(CharacterAnimator.State.Down, animator.Current,
-                "ガードブレイクでダウン状態になっていない");
+                "ひるみが蓄積してもダウン状態になっていない");
             Assert.Less(rig.Hips.position.y, hipsIdle - 0.1f,
                 $"腰が落ちていない: idle={hipsIdle:F3} now={rig.Hips.position.y:F3}");
         }

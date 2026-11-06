@@ -1,7 +1,10 @@
 # 押さえつけ（GrappleKind.Pin）— 設計
 
 日付: 2026-11-03
-状態: 実装済み（段階 1・2。巨躯の VRM と波への混入は段階 3 で別タスク）
+状態: 実装済み。**ただし時間切れの扱いは当時から変更された**（2026-11-06）:
+制限時間は 4.2 秒（`CombatConstants.GrappleLimitSeconds`）、時間切れは「投げ」ではなく
+**追加ダメージなしの解放**（`PlayerGrapple.Fail`）。失敗時の部位ダメージ・スタミナ消費・
+投げ・「振りほどけなかった」表示は現行実装には無い。以下の本文は当時の設計記録。
 
 ## 目的
 
@@ -17,7 +20,7 @@
 |---|---|
 | `GrappleKind.Pin` | 定義済み（`GrappleResistance.cs`） |
 | 必要入力 12 | `CombatConstants.MashBasePin` と `ResistanceMath` は実装済み |
-| 制限時間 3.0 秒 | `GrappleLimitSeconds` / `PlayerGrapple.HasTimeLimit` は実装済み |
+| 制限時間 3.0 秒（現行 4.2 秒） | `GrappleLimitSeconds` / `PlayerGrapple.HasTimeLimit` は実装済み |
 | 失敗（投げ） | `PlayerGrapple.Fail()` が実装済み。腕に部位 +30、スタミナ −50、1.5m ノックバック、他の敵 0.7 秒待機 |
 | HUD | `HasTimeLimit` のとき「あと X.Xs」を出す分岐が実装済み |
 | **開始する攻撃** | **無い**（敵は `TryGrab` = Back しか出さない） |

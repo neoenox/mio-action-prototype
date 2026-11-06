@@ -191,7 +191,7 @@ namespace Ryona.Game
                         }
                     };
                     _grapple.Escaped += () => { _holdFinished = true; Debug.Log("[GrappleTest] 振りほどけた"); };
-                    _grapple.Failed += () => { _holdFinished = true; Debug.Log("[GrappleTest] 振りほどけなかった"); };
+                    _grapple.Failed += () => { _holdFinished = true; Debug.Log("[GrappleTest] 押さえつけが時間切れで解放"); };
                 }
 
                 var belly = FindFirstObjectByType<HeldBellyPunchDirector>();

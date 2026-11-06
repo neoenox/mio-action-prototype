@@ -19,15 +19,12 @@ namespace Ryona.Game
 
         [Header("Hit Stop (seconds)")]
         public float BlockedHitStop = 0.03f;
-        public float GuardBreakHitStop = 0.11f;
         public float HitHitStop = 0.065f;
         public float ReceivedHitStop = 0.07f;
 
         [Header("Camera Shake (meter, seconds)")]
         public float BlockedShake = 0.03f;
         public float BlockedShakeSeconds = 0.10f;
-        public float GuardBreakShake = 0.11f;
-        public float GuardBreakShakeSeconds = 0.24f;
         public float HitShake = 0.06f;
         public float HitShakeSeconds = 0.16f;
         public float ReceivedShake = 0.12f;
@@ -95,15 +92,6 @@ namespace Ryona.Game
 
         void OnHitLanded(HitResult result, IDamageable target)
         {
-            // ガードブレイクは Blocked も true になるので、必ず先に判定する
-            if (result.GuardBroken)
-            {
-                PlaySfx(SfxId.Break);
-                Shake(GuardBreakShake, GuardBreakShakeSeconds);
-                HitStop.Play(GuardBreakHitStop);
-                return;
-            }
-
             if (result.Blocked)
             {
                 PlaySfx(SfxId.Guard);
@@ -122,15 +110,6 @@ namespace Ryona.Game
         void OnHitReceived(HitResult result)
         {
             // ガードできたかどうかで、揺れ・硬直・音を変える
-            if (result.GuardBroken)
-            {
-                Shake(GuardBreakShake, GuardBreakShakeSeconds);
-                HitStop.Play(GuardBreakHitStop);
-                PlaySfx(SfxId.Break);
-                PlayHurtVoice(SfxId.HurtLarge);
-                return;
-            }
-
             if (result.Blocked)
             {
                 Shake(BlockedShake, BlockedShakeSeconds);
@@ -144,7 +123,6 @@ namespace Ryona.Game
             {
                 StaggerTier.Small => 0.75f,
                 StaggerTier.Large => 1.35f,
-                StaggerTier.GuardBreak => 1.35f,
                 _ => 1f
             };
 
@@ -155,11 +133,12 @@ namespace Ryona.Game
             PlaySfx(SfxId.Impact, weight > 1.1f ? 1f : 0.8f);
             PlaySfx(SfxId.Stagger, 0.7f);
 
-            // 腹への一撃は専用の声（hurt_belly）。「息が詰まる」音でないと、
-            // 軽く払われたように聞こえる。
+            // 拘束中の腹パン・膝蹴りは、腹用と強い被弾用の声を半々で鳴らす。
             if (Stats != null && Stats.LastHitZone == PunchZone.Body)
             {
-                PlayHurtVoice(SfxId.HurtBelly);
+                SfxId bellyVoice = Stats.LastHitWasHeldBelly && Random.value < 0.5f
+                    ? SfxId.HurtLarge : SfxId.HurtBelly;
+                PlayHurtVoice(bellyVoice);
                 return;
             }
 

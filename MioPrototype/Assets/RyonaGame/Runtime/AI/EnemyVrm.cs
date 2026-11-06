@@ -294,6 +294,11 @@ namespace Ryona.Game
             Figure.ShowWeapon();
             AttachWeaponToHand();
 
+            // 敵の被弾フラッシュが、差し替え前のプリミティブを掴んだままにならないようにする
+            var reaction = GetComponent<EnemyReaction>();
+            if (reaction != null)
+                reaction.InvalidateParts();
+
             _ready = true;
             Debug.Log($"[Ryona] 敵 VRM を差し込みました: {FileName}  " +
                       $"scale={_instance.transform.localScale.x:0.000} root={transform.position} " +
@@ -454,6 +459,16 @@ namespace Ryona.Game
     /// </summary>
     static class EnemyVrmBootstrap
     {
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        static void InstallSceneHook()
+        {
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnSceneLoaded;
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnSceneLoaded;
+        }
+
+        static void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene,
+            UnityEngine.SceneManagement.LoadSceneMode mode) => Boot();
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
         {

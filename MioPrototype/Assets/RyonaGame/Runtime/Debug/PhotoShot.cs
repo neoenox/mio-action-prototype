@@ -387,7 +387,7 @@ namespace Ryona.Game
                 // 敵の状態（間合い・攻撃の可否）を確認する
                 var stats = anims[0].transform.root.GetComponent<PlayerStats>();
                 if (stats != null && stats.State != null)
-                    Debug.Log($"[Ai] hp={stats.State.Hp:F1} stamina={stats.State.Stamina:F1} " +
+                    Debug.Log($"[Ai] hp={stats.State.Hp:F1} " +
                               $"down={stats.State.IsDown} dead={stats.IsDead} t={Time.time:F1}");
 
                 foreach (var brain in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))

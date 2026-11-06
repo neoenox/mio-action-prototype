@@ -185,6 +185,11 @@ namespace Ryona.Game
         // この振れについて、効き始めの角度をまだログっていないか（1 回だけ測る）。
         bool _faceFlickLogged = true;
 
+        // 怯み姿勢を出し終えたスタンは、もう一度怯みに入れない。
+        // ヒットストップ中はコア側のスタン残りが止まり、姿勢だけ先に終わる。
+        // 残りスタンでフォールバックが再突入すると、1 回の被弾で 2 回のけぞって見える。
+        bool _stunPlayed;
+
         // 疲労度（0=平気, 1=息が上がりきっている）。待機の呼吸と構えに効く。
         float _tired;
 
@@ -412,6 +417,7 @@ namespace Ryona.Game
             {
                 Stats.Staggered -= OnStaggered;
                 Stats.HitReceived -= OnHitReceived;
+                Stats.Revived -= OnRevived;
 
                 if (Grapple != null)
                     Grapple.Escaped -= OnGrappleEscaped;
@@ -438,11 +444,19 @@ namespace Ryona.Game
 
             Stats.Staggered += OnStaggered;
             Stats.HitReceived += OnHitReceived;
+            Stats.Revived += OnRevived;
 
             if (Grapple != null)
                 Grapple.Escaped += OnGrappleEscaped;
 
             _bound = true;
+        }
+
+        void OnRevived()
+        {
+            // HP 0 の倒れ姿勢を切り上げ、次のフレームで通常の起き上がりに入る。
+            if (_state == State.Down)
+                _stateDuration = 0f;
         }
 
         /// <summary>
@@ -470,6 +484,7 @@ namespace Ryona.Game
             if (Grapple != null && Grapple.IsGrappled && Stats != null && !Stats.IsDead)
                 return;
             _tier = result.Stagger;
+            _stunPlayed = true;
             CaptureFaceYaw();
             CaptureHurtSide();
 
@@ -488,7 +503,7 @@ namespace Ryona.Game
                     $"side={_hurtSide} t={Time.time:F2}");
             }
 
-            // ガードブレイク・ひるみの蓄積はダウン（倒れる）。
+            // ひるみの蓄積はダウン（倒れる）。
             // 倒れている時間は「ダウンの合計 − 起き上がり」で、合計が DownDuration と揃う。
             if (Stats != null && Stats.State != null && Stats.IsDown)
             {
@@ -741,6 +756,9 @@ namespace Ryona.Game
 
             State before = _state;
 
+            if (_stunPlayed && Stats != null && !Stats.IsStunned)
+                _stunPlayed = false;
+
             // 被弾イベント以外から倒れる経路（掴みが解けて崩れる等）でもダウンに入る。
             // `Stats.IsDown` は立つのに、姿勢が Idle のままという取りこぼしを防ぐ。
             // 残りが起き上がり時間ぶんしか無いときは入らない（GetUp 後にまた Down へ戻るのを防ぐ）。
@@ -812,7 +830,7 @@ namespace Ryona.Game
                     {
                         SetState(State.Attack, 0f);
                     }
-                    else if (Stats != null && Stats.IsStunned)
+                    else if (Stats != null && Stats.IsStunned && !_stunPlayed)
                     {
                         // イベントを取りこぼしても怯み姿勢は出す
                         SetState(State.Stagger, Mathf.Max(0.1f, Stats.StunRemaining));
@@ -1000,13 +1018,10 @@ namespace Ryona.Game
                     float shift = Mathf.Sin(t * 0.62f);
                     float bounce = Mathf.Sin(t * 3.4f) * 0.004f;
 
-                    // スタミナが減るほど呼吸が荒く、構えが下がる。
-                    // 「疲れている」を数値ではなく姿勢で見せる（HP バーだけでは伝わらない）。
-                    float tiredTarget = Stats != null
-                        ? Mathf.Clamp01((45f - Stats.State.Stamina) / 45f)
-                        : 0f;
+                    // スタミナ廃止に伴い、自動で疲労姿勢になることはない。
+                    // _tired は Editor の撮り比べ（PreviewTired）専用に残している。
                     if (!_tiredHold)
-                        _tired = Mathf.MoveTowards(_tired, tiredTarget, Time.deltaTime * 0.8f);
+                        _tired = Mathf.MoveTowards(_tired, 0f, Time.deltaTime * 0.8f);
 
                     float breathAmp = 1f + 2.2f * _tired;
                     float breathRate = 1.7f + 1.3f * _tired;

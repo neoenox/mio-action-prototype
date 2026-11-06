@@ -222,6 +222,71 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator 奥の敵は手前の敵の休み中に前へ出て攻撃する()
+        {
+            yield return LoadPrototype();
+            var player = Object.FindFirstObjectByType<PlayerStats>();
+            var enemies = Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None);
+            Assert.GreaterOrEqual(enemies.Length, 3);
+
+            var lead = enemies[0];
+            var waiting = enemies[1];
+            var opposite = enemies[2];
+            player.transform.rotation = Quaternion.LookRotation(Vector3.right);
+            lead.transform.position = player.transform.position + Vector3.left * 1.25f;
+            waiting.transform.position = player.transform.position + Vector3.left * 2.1f;
+            opposite.transform.position = player.transform.position + Vector3.right * 1.25f;
+            lead.HoldFire(6f);
+            opposite.HoldFire(6f);
+            // 反対側が空いた場合の回り込みと区別するため、味方の配置を保つ。
+            opposite.MoveSpeed = 0f;
+            waiting.FeintChance = 0f;
+            waiting.CanPin = false;
+
+            yield return new WaitForSeconds(0.65f);
+            Assert.IsFalse(waiting.IsFlanking, "味方が休むたびに入れ替わらない");
+
+            float deadline = Time.realtimeSinceStartup + 3f;
+            while (waiting.Phase != EnemyPhase.Windup && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.AreEqual(EnemyPhase.Windup, waiting.Phase, "手前の味方を待ち続けず攻撃する");
+            Assert.Greater(waiting.transform.position.x, lead.transform.position.x);
+            Assert.Less(waiting.transform.position.x, player.transform.position.x);
+        }
+
+        [UnityTest]
+        public IEnumerator 両側の敵はそれぞれ間合いに入れば同時に攻撃を始める()
+        {
+            yield return LoadPrototype();
+            var player = Object.FindFirstObjectByType<PlayerStats>();
+            var enemies = Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None);
+            Assert.GreaterOrEqual(enemies.Length, 2);
+
+            player.transform.rotation = Quaternion.LookRotation(Vector3.right);
+            for (int i = 0; i < 2; i++)
+            {
+                Vector3 side = i == 0 ? Vector3.right : Vector3.left;
+                enemies[i].transform.position = player.transform.position + side;
+                enemies[i].transform.rotation = Quaternion.LookRotation(-side);
+                enemies[i].FeintChance = 0f;
+                enemies[i].CanPin = false;
+            }
+            for (int i = 2; i < enemies.Length; i++)
+                enemies[i].enabled = false;
+
+            float deadline = Time.realtimeSinceStartup + 3f;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                if (enemies[0].Phase == EnemyPhase.Windup && enemies[1].Phase == EnemyPhase.Windup)
+                    yield break;
+                yield return null;
+            }
+
+            Assert.Fail("両側の敵が同時に予備動作に入れない");
+        }
+
+        [UnityTest]
         public IEnumerator 同時に攻撃してくる敵は上限まで()
         {
             yield return LoadPrototype();
@@ -276,7 +341,6 @@ namespace Ryona.Tests
                 {
                     kind = AttackKind.Heavy,
                     damage = 30f,
-                    postureDamage = 50f,
                     targetPart = BodyPart.Torso
                 });
             }

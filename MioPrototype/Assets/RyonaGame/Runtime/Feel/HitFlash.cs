@@ -25,9 +25,6 @@ namespace Ryona.Game
         [Tooltip("ガードで受け止めたとき")]
         public float GuardedAlpha = 0.14f;
 
-        [Tooltip("ガードブレイク")]
-        public float GuardBreakAlpha = 0.58f;
-
         [Header("時間")]
         [Tooltip("消えるまでの秒数")]
         public float FadeSeconds = 0.40f;
@@ -104,11 +101,7 @@ namespace Ryona.Game
 
         void OnHitReceived(HitResult result)
         {
-            float amount = HitAlpha;
-            if (result.GuardBroken)
-                amount = GuardBreakAlpha;
-            else if (result.Blocked)
-                amount = GuardedAlpha;
+            float amount = result.Blocked ? GuardedAlpha : HitAlpha;
 
             // 連続で殴られるときは「濃い方」を採用する（足し算にすると真っ赤になる）
             float live = _remaining > 0f ? _peak * Mathf.Clamp01(_remaining / FadeSeconds) : 0f;
@@ -183,6 +176,16 @@ namespace Ryona.Game
     /// <summary>シーンを作り直さなくても効くように、起動時に被弾フラッシュを差し込む。</summary>
     static class HitFlashBootstrap
     {
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        static void InstallSceneHook()
+        {
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnSceneLoaded;
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnSceneLoaded;
+        }
+
+        static void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene,
+            UnityEngine.SceneManagement.LoadSceneMode mode) => Boot();
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
         {

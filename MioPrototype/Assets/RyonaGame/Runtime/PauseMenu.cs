@@ -10,9 +10,31 @@ namespace Ryona.Game
     /// </summary>
     public sealed class PauseMenu : MonoBehaviour
     {
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-        static void Install()
+        static PauseMenu _instance;
+
+        /// <summary>いま一時停止中か（他のシステムが timeScale を触る前の判定に使う）。</summary>
+        public static bool IsPaused => _instance != null && _instance._paused;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        static void InstallSceneHook()
         {
+            // AfterSceneLoad は最初のシーンでしか走らない。"R ではじめから" の
+            // シーン再読み込みでもポーズメニューが戻るように、毎回確認する。
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnSceneLoaded;
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnSceneLoaded;
+        }
+
+        static void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene,
+            UnityEngine.SceneManagement.LoadSceneMode mode) => Ensure();
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        static void Install() => Ensure();
+
+        static void Ensure()
+        {
+            if (FindFirstObjectByType<PauseMenu>() != null)
+                return;
+
             var go = new GameObject("Pause Menu");
             go.AddComponent<PauseMenu>();
         }
@@ -32,6 +54,8 @@ namespace Ryona.Game
 
         void Awake()
         {
+            _instance = this;
+
             foreach (string a in System.Environment.GetCommandLineArgs())
             {
                 const string key = "-pauseshot=";
@@ -42,6 +66,12 @@ namespace Ryona.Game
 
             Build();
             SetVisible(false);
+        }
+
+        void OnDestroy()
+        {
+            if (_instance == this)
+                _instance = null;
         }
 
         void Update()
@@ -118,7 +148,9 @@ namespace Ryona.Game
         void Resume()
         {
             _paused = false;
-            Time.timeScale = 1f;
+            // ヒットストップが残っているなら、そちらの復帰に任せる（ここで 1 にすると
+            // 止めている途中の打撃が、止まったまま動き出す）。
+            Time.timeScale = HitStop.IsActive ? 0f : 1f;
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
             SetVisible(false);

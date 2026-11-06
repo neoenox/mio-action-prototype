@@ -66,11 +66,11 @@ namespace Ryona.Tests
             c.AddFlinch(50f);
 
             // 待ち時間（1.5 秒）の間は減らない
-            c.Tick(CombatConstants.FlinchDecayDelay - 0.1f, moving: false);
+            c.Tick(CombatConstants.FlinchDecayDelay - 0.1f);
             Assert.AreEqual(50f, c.Flinch, 0.001f);
 
             // 過ぎたら 10/秒で抜ける
-            c.Tick(1f, moving: false);
+            c.Tick(1f);
             Assert.AreEqual(50f - CombatConstants.FlinchDecayPerSecond, c.Flinch, 0.01f);
         }
 
@@ -83,7 +83,7 @@ namespace Ryona.Tests
             for (int i = 0; i < 5; i++)
             {
                 c.AddFlinch(12f);
-                c.Tick(0.5f, moving: false);
+                c.Tick(0.5f);
             }
 
             Assert.AreEqual(60f, c.Flinch, 0.001f, "殴られ続けている間は抜けない");

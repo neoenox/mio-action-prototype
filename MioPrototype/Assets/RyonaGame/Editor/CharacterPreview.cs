@@ -4263,7 +4263,7 @@ namespace Ryona.EditorTools
                 Debug.Log($"[Hurt] {sideNames[row]} を撮影");
             }
 
-            // 5 行目: 疲労（スタミナが減ったときの構え）
+            // 5 行目: 疲労（撮り比べ用。スタミナ廃止後はゲーム中に自動では出ない）
             float[] tiredLevels = { 0f, 0.4f, 0.7f, 1f };
             for (int col = 0; col < tiredLevels.Length; col++)
             {

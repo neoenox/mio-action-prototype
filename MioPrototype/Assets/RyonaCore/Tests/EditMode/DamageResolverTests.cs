@@ -23,7 +23,6 @@ namespace Ryona.Tests
 
             Assert.AreEqual(8f, result.Damage, 0.001f);
             Assert.AreEqual(92f, defender.Hp, 0.001f);
-            Assert.AreEqual(88f, defender.Posture, 0.001f);
             Assert.AreEqual(StaggerTier.Small, result.Stagger);
             Assert.IsFalse(result.Blocked);
         }
@@ -40,20 +39,6 @@ namespace Ryona.Tests
             var result = DamageResolver.Resolve(attacker, AttackLibrary.Light(), defender, false);
 
             Assert.AreEqual(6f, result.Damage, 0.001f);
-        }
-
-        [Test]
-        public void 腕が傷むとガードが削られやすくなる()
-        {
-            var attacker = NewCombatant();
-            var defender = NewCombatant();
-            defender.Body.Apply(BodyPart.Arms, 100f);
-
-            var result = DamageResolver.Resolve(attacker, AttackLibrary.Light(), defender, true);
-
-            // 基礎 10 / ガード耐久 0.5 = 20
-            Assert.AreEqual(20f, result.GuardStaminaDamage, 0.001f);
-            Assert.AreEqual(80f, defender.Stamina, 0.001f);
         }
 
         [Test]
@@ -78,7 +63,7 @@ namespace Ryona.Tests
         // --- ガード ---------------------------------------------------
 
         [Test]
-        public void ガードするとダメージは四分の一だが体勢は削られる()
+        public void ガードするとダメージは四分の一になる()
         {
             var attacker = NewCombatant();
             var defender = NewCombatant();
@@ -87,7 +72,6 @@ namespace Ryona.Tests
 
             Assert.IsTrue(result.Blocked);
             Assert.AreEqual(2f, result.Damage, 0.001f);
-            Assert.AreEqual(18f, result.PostureDamage, 0.001f);
             Assert.AreEqual(98f, defender.Hp, 0.001f);
         }
 
@@ -107,92 +91,11 @@ namespace Ryona.Tests
         // --- 怯み -----------------------------------------------------
 
         [Test]
-        public void 体勢がゼロになると大怯みになり体勢が半分戻る()
-        {
-            var attacker = NewCombatant();
-            var defender = NewCombatant();
-            defender.SetPosture(20f);
-
-            var result = DamageResolver.Resolve(attacker, AttackLibrary.Heavy(), defender, false);
-
-            Assert.IsTrue(result.PostureBroken);
-            Assert.AreEqual(StaggerTier.Large, result.Stagger);
-            Assert.AreEqual(50f, defender.Posture, 0.001f);
-        }
-
-        [Test]
-        public void スタミナ切れの被弾はガードブレイクになる()
-        {
-            var attacker = NewCombatant();
-            var defender = NewCombatant();
-            defender.ConsumeStamina(95f); // 残り 5
-
-            var result = DamageResolver.Resolve(attacker, AttackLibrary.Light(), defender, true);
-
-            Assert.IsTrue(result.GuardBroken);
-            Assert.AreEqual(StaggerTier.GuardBreak, result.Stagger);
-            Assert.AreEqual(0f, defender.Stamina, 0.001f);
-        }
-
-        [Test]
         public void 怯み時間は仕様どおり()
         {
             Assert.AreEqual(0.20f, CombatConstants.StunSeconds(StaggerTier.Small), 0.001f);
             Assert.AreEqual(0.40f, CombatConstants.StunSeconds(StaggerTier.Medium), 0.001f);
             Assert.AreEqual(0.80f, CombatConstants.StunSeconds(StaggerTier.Large), 0.001f);
-            Assert.AreEqual(1.20f, CombatConstants.StunSeconds(StaggerTier.GuardBreak), 0.001f);
-        }
-
-        // --- 回復 -----------------------------------------------------
-
-        [Test]
-        public void 胴が傷むとスタミナ回復が鈍る()
-        {
-            var c = NewCombatant();
-            c.Body.Apply(BodyPart.Torso, 100f);
-            c.ConsumeStamina(100f);
-
-            c.Tick(1f, moving: false);
-
-            // StaminaRegenIdle * TorsoRegenFloor
-            Assert.AreEqual(
-                CombatConstants.StaminaRegenIdle * CombatConstants.TorsoRegenFloor,
-                c.Stamina, 0.001f);
-        }
-
-        // --- ガード ---------------------------------------------------
-
-        [Test]
-        public void ガード中はスタミナ回復が鈍る()
-        {
-            var guarding = NewCombatant();
-            var idle = NewCombatant();
-            guarding.ConsumeStamina(60f);
-            idle.ConsumeStamina(60f);
-
-            for (int i = 0; i < 10; i++)
-            {
-                guarding.Tick(1f, moving: false, blocking: true);
-                idle.Tick(1f, moving: false);
-            }
-
-            Assert.Less(guarding.Stamina, idle.Stamina - 20f,
-                "構えている間も素早く回復すると、握り得になってガードブレイクが起きない");
-        }
-
-        [Test]
-        public void ガードを続けるとガードブレイクでダウンする()
-        {
-            var attacker = NewCombatant();
-            var defender = NewCombatant();
-            var attack = AttackLibrary.Light();
-
-            StaggerTier last = StaggerTier.None;
-            for (int i = 0; i < 20 && last != StaggerTier.GuardBreak; i++)
-                last = DamageResolver.Resolve(attacker, attack, defender, true).Stagger;
-
-            Assert.AreEqual(StaggerTier.GuardBreak, last,
-                "ガードし続けてもブレイクしないと、ダウン・立ち上がりの出番が無い");
         }
 
         // --- 難易度まわり（2026-10 の調整で追加） ------------------------

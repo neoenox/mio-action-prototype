@@ -10,7 +10,7 @@ namespace Ryona.Tests
     /// 押さえつけ（<see cref="GrappleKind.Pin"/>）の回帰テスト。
     ///
     /// 後ろ拘束（Back）は時間切れで解けないが、押さえつけは
-    /// 4.2 秒の制限時間内に 12 回もがけば逃げられ、時間切れなら投げられる。
+    /// 4.2 秒の制限時間内に 12 回もがけば逃げられ、時間切れなら解放される。
     /// 入口は正面 0.90〜1.30m・攻撃トークンあり・クールダウン外だけ。
     /// </summary>
     public sealed class PinGrappleTests
@@ -40,7 +40,7 @@ namespace Ryona.Tests
             Assert.IsNotNull(_grapple, "PlayerGrapple が無い");
 
             var enemies = Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None);
-            Assert.GreaterOrEqual(enemies.Length, 2, "押さえる側と、殴らないことを確かめる側で 2 体必要");
+            Assert.GreaterOrEqual(enemies.Length, 2, "押さえ役と追撃役で 2 体必要");
 
             _captor = enemies[0];
             _other = enemies[1];
@@ -106,25 +106,46 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator 時間切れで投げられ腕に傷害とスタミナ消費が残る()
+        public IEnumerator 時間切れで追加ダメージやダウンなしに解放される()
         {
             yield return Load();
 
             bool failed = false;
             _grapple.Failed += () => failed = true;
 
-            float staminaBefore = _player.State.Stamina;
             float armDamageBefore = _player.State.Body[BodyPart.Arms];
+            float hpBefore = _player.State.Hp;
 
             _grapple.Begin(_captor, GrappleKind.Pin);
             yield return new WaitForSeconds(CombatConstants.GrappleLimitSeconds + 0.4f);
 
             Assert.IsTrue(failed, "時間切れで Failed が飛んでいない");
-            Assert.IsFalse(_grapple.IsGrappled, "投げられたら掴みは解ける");
-            Assert.Less(_player.State.Stamina, staminaBefore - 1f, "スタミナが削られる");
-            // Body は「損傷量」（0 = 無傷）。投げで腕に +30 入る。
-            Assert.Greater(_player.State.Body[BodyPart.Arms], armDamageBefore + 20f,
-                "腕に傷害が残る");
+            Assert.IsFalse(_grapple.IsGrappled);
+            Assert.IsFalse(_player.IsDown);
+            Assert.AreEqual(hpBefore, _player.State.Hp);
+            Assert.AreEqual(armDamageBefore, _player.State.Body[BodyPart.Arms]);
+        }
+
+        [UnityTest]
+        public IEnumerator 膝蹴りが蓄積すると次の解放でうつ伏せに倒れる()
+        {
+            yield return Load();
+            _captor.enabled = true;
+
+            for (int round = 0; round < 2; round++)
+            {
+                _grapple.Begin(_captor, GrappleKind.Pin);
+                _captor.TakeOverHold(CombatConstants.GrappleLimitSeconds + 1f);
+
+                float deadline = Time.realtimeSinceStartup + 8f;
+                while (_grapple.IsGrappled && Time.realtimeSinceStartup < deadline)
+                    yield return null;
+                Assert.IsFalse(_grapple.IsGrappled);
+                Assert.AreEqual(round == 1, _player.IsDown);
+            }
+
+            Assert.IsTrue(_player.DownIsForward);
+            Assert.IsFalse(_player.HasHeldBellyDown, "腹ダウンで蓄積を消化する");
         }
 
         [UnityTest]
@@ -179,9 +200,40 @@ namespace Ryona.Tests
             Assert.AreEqual(CombatConstants.PinKneeCount, hits, "押さえつけ中に膝蹴りが 5 発入る");
             Assert.Less(_player.State.Hp, hpBefore - 10f, "膝蹴り 5 発ぶん HP が減る");
 
-            // 時間切れの投げ（4.2 秒）より前に撃ち終わっている
+            // 時間切れ（4.2 秒）より前に蹴り終わっている
             yield return new WaitForSeconds(0.1f);
             Assert.AreEqual(CombatConstants.PinKneeCount, hits, "制限時間内に 5 発で収まる");
+        }
+
+        [UnityTest]
+        public IEnumerator 蹴り上げ中の膝が跳ねた腹へ届く()
+        {
+            yield return Load();
+            _captor.enabled = true;
+            _captor.QueuePin();
+            float deadline = Time.realtimeSinceStartup + 6f;
+            while (_grapple.KneePulse < 0.99f && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.GreaterOrEqual(_grapple.KneePulse, 0.99f, "膝蹴りが始まらない");
+            var figure = _captor.GetComponent<EnemyFigure>();
+            var rig = _player.GetComponentInChildren<ProceduralRig>();
+            Assert.IsNotNull(figure);
+            Assert.IsNotNull(rig);
+            int samples = 0;
+            while (_grapple.KneePulse >= 0.99f && samples < 6)
+            {
+                // yield null の再開時には直前フレームの LateUpdate の骨位置が読める。
+                yield return null;
+                Vector3 belly = Vector3.Lerp(rig.Spine.position, rig.Chest.position, 0.45f)
+                    + _player.transform.forward * 0.12f;
+                float gap = Mathf.Min(Vector3.Distance(figure.KneeBone(true).position, belly),
+                    Vector3.Distance(figure.KneeBone(false).position, belly));
+                // 骨位置は「前フレームの LateUpdate」なので 1 フレームぶんの遅れを含む。
+                // 1cm 未満を求めるとフレームレートで落ちるので、見た目で分からない 12cm を上限にする。
+                Assert.Less(gap, 0.12f, "跳ね上がった腹から膝が離れている");
+                samples++;
+            }
+            Assert.Greater(samples, 0);
         }
 
         [UnityTest]
@@ -204,24 +256,36 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator 押さえつけ中は他の敵が殴らない()
+        public IEnumerator 膝蹴りの連撃中に別の敵の通常パンチも当たる()
         {
             yield return Load();
 
-            // もう 1 体を正面 0.75m に置いて、殴れる間合いに入れておく
-            _other.transform.position = _player.transform.position + Vector3.right * 0.75f;
-            _other.transform.rotation = Quaternion.LookRotation(Vector3.left);
-            _other.enabled = true;
-
             _grapple.Begin(_captor, GrappleKind.Pin);
+            _captor.enabled = true;
+            _captor.TakeOverHold(CombatConstants.GrappleLimitSeconds + 1f);
 
-            float end = Time.realtimeSinceStartup + 1.2f;
-            while (Time.realtimeSinceStartup < end)
-            {
-                Assert.AreNotEqual(EnemyPhase.Windup, _other.Phase, "押さえつけ中に殴りかかってきた");
-                Assert.AreNotEqual(EnemyPhase.Attack, _other.Phase, "押さえつけ中に殴ってきた");
+            float deadline = Time.realtimeSinceStartup + 3f;
+            while (_grapple.KneePulse <= 0f && Time.realtimeSinceStartup < deadline)
                 yield return null;
-            }
+            Assert.Greater(_grapple.KneePulse, 0f);
+
+            // 押さえ役と反対側から、別の敵が通常の AI で攻撃する。
+            _other.transform.position = _player.transform.position - _player.transform.forward * 0.74f;
+            _other.transform.rotation = Quaternion.LookRotation(_player.transform.forward);
+            _other.FeintChance = 0f;
+            bool punchLanded = false;
+            _player.HitReceived += _ =>
+            {
+                if (_grapple.IsGrappled && _player.LastAttacker == _other.transform)
+                    punchLanded = true;
+            };
+            _other.enabled = true;
+            deadline = Time.realtimeSinceStartup + 4f;
+            while (_grapple.IsGrappled && !punchLanded && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.IsTrue(punchLanded, "押さえつけの膝蹴り中に別の敵のパンチが当たる");
+            Assert.AreSame(_captor, _grapple.Captor);
         }
     }
 }

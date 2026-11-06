@@ -12,7 +12,8 @@ namespace Ryona.Tests
     ///
     /// 後ろ拘束は時間切れで解けない。別の敵のパンチが当たると
     /// 「く」の字（腹）または首振り（顔）＋カメラ寄せが始まる。
-    /// 5 発を撃ち終えても拘束は続き、抜けるには連打（もがき）が必要。
+    /// 5 発食らい切ると、腹の蓄積でダウンするか、引き渡しまたは拘束継続になる。
+    /// 途中で諦めた場合だけ拘束が続く。
     /// 拘束者自身の攻撃では発動しない。
     /// </summary>
     public sealed class HeldBellyPunchTests
@@ -48,6 +49,11 @@ namespace Ryona.Tests
             _director = Object.FindFirstObjectByType<HeldBellyPunchDirector>();
             Assert.IsNotNull(_director, "HeldBellyPunchDirector が自動で付いていない");
             _director.enabled = directorEnabled;
+
+            // 個別のテストで指定する場合を除き、受け渡しの抽選を止める。
+            var handOff = Object.FindFirstObjectByType<GrappleHandOff>();
+            if (handOff != null)
+                handOff.Chance = 0f;
 
             _camera = Object.FindFirstObjectByType<ThirdPersonCamera>();
             Assert.IsNotNull(_camera, "ThirdPersonCamera が無い");
@@ -97,14 +103,13 @@ namespace Ryona.Tests
             _attacker.transform.rotation = Quaternion.LookRotation(-forward, Vector3.up);
         }
 
-        HitResult Hit(EnemyBrain source, PunchZone zone)
+        HitResult Hit(EnemyBrain source, PunchZone zone, bool isTagPunch = true)
         {
             var attack = new AttackData
             {
                 id = "test_body",
                 kind = AttackKind.Light,
                 damage = 1f,
-                postureDamage = 0f,
                 partDamage = 1f,
                 targetPart = BodyPart.Torso,
                 startupSeconds = 0f,
@@ -114,7 +119,23 @@ namespace Ryona.Tests
 
             // 実機では EnemyBrain.Strike が LastHitZone を立ててから ReceiveHit を呼ぶ。
             _player.LastHitZone = zone;
-            return _player.ReceiveHit(source.State, attack, source.transform);
+            return _player.ReceiveHit(source.State, attack, source.transform, isTagPunch: isTagPunch);
+        }
+
+        [UnityTest]
+        public IEnumerator 通常パンチはタッグ連撃を開始せず途中の打数にも入らない()
+        {
+            yield return LoadAndGrab();
+            PlaceAttackerInFront();
+
+            Hit(_attacker, PunchZone.Body, isTagPunch: false);
+            Assert.IsFalse(_director.IsPerforming);
+            Assert.AreEqual(0f, _player.HeldBellyDamage);
+
+            Hit(_attacker, PunchZone.Body);
+            Assert.IsTrue(_director.IsPerforming);
+            Hit(_attacker, PunchZone.Face, isTagPunch: false);
+            Assert.AreEqual(1, _director.ComboHitsLanded);
         }
 
         [UnityTest]
@@ -131,7 +152,7 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator 腹パンでくの字とカメラ寄せが始まり5発後も拘束が続く()
+        public IEnumerator 腹パンでくの字とカメラ寄せが始まり抽選に外れると拘束が続く()
         {
             yield return LoadAndGrab(waitForAnimator: true);
 
@@ -160,30 +181,103 @@ namespace Ryona.Tests
 
             // 5 発を食らっても拘束は続く
             float deadline = Time.realtimeSinceStartup + 10f;
-            while (_director.IsPerforming && Time.realtimeSinceStartup < deadline)
+            while ((_director.IsPerforming || _director.NextPunchRemaining <= 0f)
+                && Time.realtimeSinceStartup < deadline)
                 yield return null;
 
             Assert.IsFalse(_director.IsPerforming, "The combo must end");
             Assert.AreEqual(5, _director.ComboHitsLanded, "The player must take 5 belly punches");
-            Assert.IsTrue(_grapple.IsGrappled, "The hold must continue after the combo");
-            Assert.IsFalse(_grapple.IsStruggleSuppressed, "Mashing must work right after the combo");
+            Assert.IsTrue(_grapple.IsGrappled, "The original hold must continue");
+            Assert.AreSame(_captor, _grapple.Captor);
+            Assert.Greater(_director.NextPunchRemaining, 0f, "Schedule the next combo");
+            Assert.IsFalse(_player.IsDown, "One combo is below the belly threshold");
+        }
 
-            // 数秒のクールタイム後に、また 5 発が始まる（拘束は続いたまま）
-            float secondDeadline = Time.realtimeSinceStartup + 6f;
-            while (!_director.IsPerforming && Time.realtimeSinceStartup < secondDeadline)
+        [UnityTest]
+        public IEnumerator カメラが元に戻ってから間を置いて拘束を引き渡す()
+        {
+            yield return LoadAndGrab(waitForAnimator: true);
+
+            var handOff = Object.FindFirstObjectByType<GrappleHandOff>();
+            Assert.IsNotNull(handOff);
+            handOff.Chance = 1f;
+            _director.FacePunchChance = 0f;
+            PlaceAttackerInFront();
+            _attacker.HoldFire(10f);
+            _attacker.enabled = true;
+            Hit(_attacker, PunchZone.Body);
+
+            float deadline = Time.realtimeSinceStartup + 10f;
+            while (_director.ComboHitsLanded < _director.ComboHitsTotal
+                && Time.realtimeSinceStartup < deadline)
                 yield return null;
+            Assert.AreEqual(_director.ComboHitsTotal, _director.ComboHitsLanded);
 
-            Assert.IsTrue(_director.IsPerforming, "A second combo must start after the cooldown");
-            Assert.IsTrue(_grapple.IsGrappled, "The hold must stay during the second combo");
+            // 引き渡し先が攻撃中・硬直中だと抽選に落ちる（仕様）。
+            // テストでは抽選を決定的にするため、他の敵を構えに戻してから待つ。
+            foreach (var enemy in _enemies)
+                if (enemy != _captor)
+                    enemy.HoldFire(30f);
 
-            // 連打で抜けられる（抜けたら拘束終了）
-            var escape = typeof(PlayerGrapple).GetMethod("Escape",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.IsNotNull(escape, "Escape not found");
-            escape.Invoke(_grapple, null);
-            yield return null;
+            float quiet = Time.realtimeSinceStartup + 5f;
+            while (Time.realtimeSinceStartup < quiet)
+            {
+                bool busy = false;
+                foreach (var enemy in _enemies)
+                {
+                    if (enemy == _captor)
+                        continue;
+                    if (enemy.Phase == EnemyPhase.Windup || enemy.Phase == EnemyPhase.Attack ||
+                        enemy.Phase == EnemyPhase.Recover)
+                        busy = true;
+                }
 
-            Assert.IsFalse(_grapple.IsGrappled, "Mashing must free the player after the combo");
+                if (!busy)
+                    break;
+                yield return null;
+            }
+
+            // EndRecover が _attackReadyAt を上書きするので、構えに戻ってからもう一度止める。
+            foreach (var enemy in _enemies)
+                if (enemy != _captor)
+                    enemy.HoldFire(30f);
+
+            deadline = Time.realtimeSinceStartup + 5f;
+            while ((_camera.IsFocusing || !Mathf.Approximately(_camera.EffectDistanceScale, 1f)
+                || !Mathf.Approximately(_camera.EffectPivotOffset, 0f))
+                && Time.realtimeSinceStartup < deadline)
+            {
+                Assert.AreSame(_captor, _grapple.Captor, "カメラの演出中は元の拘束を保つ");
+                yield return null;
+            }
+            Assert.Less(Time.realtimeSinceStartup, deadline, "カメラが通常の構図に戻る");
+            yield return new WaitForSeconds(0.7f);
+            Assert.AreSame(_captor, _grapple.Captor, "構図が戻った直後も元の拘束を保つ");
+            Assert.IsFalse(_grapple.IsStruggleSuppressed, "受け渡しを待つ間ももがける");
+
+            deadline = Time.realtimeSinceStartup + 3f;
+            while (_grapple.Captor == _captor && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.IsTrue(_grapple.IsGrappled, "待った後は次の敵へ引き渡す");
+            Assert.AreNotSame(_captor, _grapple.Captor);
+
+            // 以前は 0.9m 突き飛ばしてから掴み位置へ瞬間移動していた。
+            // 通常フレームで 1 フレームの移動が大きすぎないことを見る（ワープ防止）。
+            Vector3 prev = _player.transform.position;
+            float maxStep = 0f;
+            float observeUntil = Time.realtimeSinceStartup + 0.9f;
+            while (Time.realtimeSinceStartup < observeUntil)
+            {
+                yield return null;
+                Vector3 now = _player.transform.position;
+                if (Time.deltaTime < 0.05f)
+                    maxStep = Mathf.Max(maxStep, Vector3.Distance(prev, now));
+                prev = now;
+            }
+
+            Assert.Less(maxStep, 0.25f, $"受け渡しで瞬間移動している（1 フレーム {maxStep:F2}m）");
+            float gap = Vector3.Distance(_player.transform.position, _grapple.Captor.transform.position);
+            Assert.Less(gap, 0.8f, $"受け渡し後の距離が離れすぎている（{gap:F2}m）");
         }
 
         [UnityTest]
@@ -334,6 +428,84 @@ namespace Ryona.Tests
             // 抜けたら演出も止まる
             yield return new WaitForSeconds(0.2f);
             Assert.IsFalse(_director.IsPerforming, "抜けたらコンボは終わる");
+        }
+
+        /// <summary>
+        /// 演出に任せて腹・顔を混ぜて打たせ、外れ（retry）が出ないこと。
+        /// 敵 AI は実機どおり有効（フェイントも抽選される）。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 拘束中の腹パンと顔面パンチは外れずに5発当たる()
+        {
+            yield return LoadAndGrab(waitForAnimator: true);
+
+            _director.FacePunchChance = 0.5f;
+            _director.RestartCooldownSeconds = 0.5f;
+            _director.PunchDelaySeconds = 0.3f;
+
+            foreach (var e in _enemies)
+            {
+                if (e != _captor)
+                    e.enabled = true;
+            }
+
+            int retries = 0;
+            int combos = 0;
+            var misses = new System.Collections.Generic.List<string>();
+            Application.LogCallback cb = (msg, stack, type) =>
+            {
+                // retry = 演出が「当たらなかった」と判断した回数。
+                // 通常攻撃の空振りとタッグ技の失敗を区別する。
+                if (msg.StartsWith("[HeldPunch] retry")
+                    || msg.StartsWith("[StrikeMiss]") && msg.Contains("tag=True"))
+                {
+                    retries++;
+                    misses.Add(msg);
+                }
+                else if (msg.StartsWith("[HeldPunch] combo end"))
+                    combos++;
+            };
+            Application.logMessageReceived += cb;
+
+            try
+            {
+                // コンボが終わったら掴み直し、4 回繰り返す。
+                float deadline = Time.realtimeSinceStartup + 180f;
+                int rounds = 0;
+                while (rounds < 4 && Time.realtimeSinceStartup < deadline)
+                {
+                    int before = combos;
+                    while (combos == before && Time.realtimeSinceStartup < deadline)
+                        yield return null;
+
+                    rounds++;
+                    // 倒れて、自然に起き上がるのを待つ（強制復帰すると敵の状態とずれる）
+                    if (rounds == 4)
+                        break;
+
+                    // 試行ごとに掴み直す。腹ダウンが起きていなければ拘束は続いている。
+                    _grapple.Release();
+                    // 掴み直し用の待機中に、通常攻撃で新たに倒されないようにする。
+                    foreach (var enemy in _enemies)
+                        enemy.HoldFire(0.75f);
+                    yield return new WaitForSeconds(0.5f);
+                    float up = Time.realtimeSinceStartup + 8f;
+                    while ((_player.IsDown || _anim.IsDowned) && Time.realtimeSinceStartup < up)
+                        yield return null;
+                    Assert.IsFalse(_player.IsDown || _anim.IsDowned, "掴み直す前に起き上がる");
+                    _captor.transform.position = _player.transform.position + Vector3.left;
+                    _grapple.Begin(_captor, GrappleKind.Back);
+                    yield return null;
+                }
+            }
+            finally
+            {
+                // アサートで抜けても、ログ購読を後続テストへ残さない
+                Application.logMessageReceived -= cb;
+            }
+
+            Assert.GreaterOrEqual(combos, 4, $"コンボが終わらない combos={combos}");
+            Assert.AreEqual(0, retries, "外れた回数: " + string.Join(" / ", misses));
         }
 
         [UnityTest]

@@ -95,8 +95,11 @@ namespace Ryona.Game
 
                 float inner = Mathf.Max(0.2f, half - Mathf.Max(0f, EdgeMargin));
 
-                Motor.ForwardLimitX = center + inner;
-                Motor.BackLimitX = center - inner;
+                if (Motor != null)
+                {
+                    Motor.ForwardLimitX = center + inner;
+                    Motor.BackLimitX = center - inner;
+                }
 
                 if (Camera != null)
                 {
@@ -112,8 +115,11 @@ namespace Ryona.Game
             }
             else
             {
-                Motor.ForwardLimitX = float.PositiveInfinity;
-                Motor.BackLimitX = float.NegativeInfinity;
+                if (Motor != null)
+                {
+                    Motor.ForwardLimitX = float.PositiveInfinity;
+                    Motor.BackLimitX = float.NegativeInfinity;
+                }
 
                 if (Camera != null)
                 {

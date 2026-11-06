@@ -11,13 +11,38 @@ namespace Ryona.Game
     {
         public CombatState State { get; private set; }
 
-        /// <summary>移動入力があるか。スタミナ回復速度に効く。</summary>
+        /// <summary>移動入力があるか。歩き / 待機の姿勢切替に使う。</summary>
         public bool IsMoving { get; set; }
 
         /// <summary>ガード入力中か。被弾解決に効く。</summary>
         public bool IsBlocking { get; set; }
 
         public float StunRemaining { get; private set; }
+
+        /// <summary>ゴッドモード中は HP が減り切らず、毎秒自動で回復する（G で切り替え）。</summary>
+        public bool GodMode { get; private set; }
+
+        /// <summary>ゴッドモードの回復速度（HP/秒）。</summary>
+        const float GodHealPerSecond = 40f;
+
+        /// <summary>ゴッドモードを切り替える。死亡中に有効化したら、その場で復帰する。</summary>
+        public void SetGodMode(bool enabled)
+        {
+            if (GodMode == enabled)
+                return;
+
+            GodMode = enabled;
+
+            if (enabled && State != null)
+            {
+                bool wasDead = IsDead;
+                State.EnsureHpAtLeast(1f);
+                if (wasDead)
+                    RestoreAll();
+            }
+
+            Debug.Log($"[God] {(enabled ? "ON（体力自動回復）" : "OFF")}");
+        }
 
         /// <summary>怯み時間を延長する。起き上がり中は動けないようにするために使う。</summary>
         public void AddStun(float seconds)
@@ -36,6 +61,9 @@ namespace Ryona.Game
         /// <summary>怯みが発生したときに発火。</summary>
         public event Action<HitResult> Staggered;
 
+        /// <summary>HP 0 から復帰したときに発火。</summary>
+        public event Action Revived;
+
         void Awake()
         {
             State = new CombatState();
@@ -46,6 +74,15 @@ namespace Ryona.Game
             if (State == null)
                 return;
 
+            if (!PauseMenu.IsPaused && InputReader.GodPressed())
+                SetGodMode(!GodMode);
+
+            if (GodMode)
+            {
+                State.EnsureHpAtLeast(1f);
+                State.HealHp(GodHealPerSecond * Time.deltaTime);
+            }
+
             if (StunRemaining > 0f)
                 StunRemaining = Mathf.Max(0f, StunRemaining - Time.deltaTime);
 
@@ -55,7 +92,7 @@ namespace Ryona.Game
                 State.IsDown = _downRemaining > 0f;
             }
 
-            State.Tick(Time.deltaTime, moving: IsMoving && !IsBlocking, blocking: IsBlocking);
+            State.Tick(Time.deltaTime);
 
             // 難易度調整用の状態ログ（1 秒ごと）。-holdattack の通しで
             // 「怯みで何もできない時間」を数字で見るために出している。
@@ -64,8 +101,8 @@ namespace Ryona.Game
             {
                 _statTimer = StatLogSeconds;
 
-                Debug.Log($"[Stat] hp={State.Hp:F0} stamina={State.Stamina:F0} posture={State.Posture:F0}" +
-                          $" flinch={State.Flinch:F0} stun={StunRemaining:F2} arms={State.Body[BodyPart.Arms]:F0}" +
+                Debug.Log($"[Stat] hp={State.Hp:F0} flinch={State.Flinch:F0} stun={StunRemaining:F2}" +
+                          $" arms={State.Body[BodyPart.Arms]:F0}" +
                           $" legs={State.Body[BodyPart.Legs]:F0} down={(State.IsDown ? 1 : 0)}" +
                           $" block={(IsBlocking ? 1 : 0)}");
             }
@@ -73,6 +110,8 @@ namespace Ryona.Game
 
         /// <summary>最後に殴ってきた相手。被弾したときにその方向へ向き直るために使う。</summary>
         public Transform LastAttacker { get; private set; }
+        public bool LastHitWasTagPunch { get; private set; }
+        public bool LastHitWasHeldBelly { get; private set; }
 
         /// <summary>
         /// 最後に殴られた場所（顔 / 腹）。被弾の見た目が使う。
@@ -99,9 +138,24 @@ namespace Ryona.Game
 
         /// <summary>
         /// 今のダウンが「前へ崩れる」か。
-        /// 腹を殴られて倒れたときは前へ（うつ伏せ）、それ以外は後ろへ倒れる。
+        /// 背後からの一撃か腹ダメージの蓄積で倒れたときは前へ倒れる。
         /// </summary>
         public bool DownIsForward { get; private set; }
+
+        float _heldBellyDamage;
+
+        public float HeldBellyDamage => _heldBellyDamage;
+        public bool HasHeldBellyDown => _heldBellyDamage >= CombatConstants.MaxHeldBellyDamage;
+
+        // コンボを途中で切らず、自然に拘束が解けるときだけ腹ダウンを消化する。
+        public void ResolveHeldBellyDown()
+        {
+            if (!HasHeldBellyDown || IsDead || IsGrappledNow)
+                return;
+
+            _heldBellyDamage = 0f;
+            ForceDown(CombatConstants.DownDuration, "held-belly", forward: true);
+        }
 
         /// <summary>
         /// ひるみを溜めてよいか。ダウン中と起き上がり直後は溜めない。
@@ -140,8 +194,7 @@ namespace Ryona.Game
         /// <summary>
         /// 強制的にダウンさせる。攻撃してきた相手が分かれば、その反対側へ放物線で吹き飛ばす。
         /// <para>
-        /// 腹を殴られて倒れたとき（<see cref="LastHitZone"/> が <see cref="PunchZone.Body"/>）は
-        /// **前へ崩れる**（うつ伏せ）。それ以外は後ろへ倒れる。
+        /// 攻撃者が背後なら前へ、正面なら後ろへ倒れる。腹ダウンでは前を指定する。
         /// 前へ崩れるときは飛ばさない（腹を抱えて膝から落ちる動きになる）。
         /// </para>
         /// </summary>
@@ -153,7 +206,8 @@ namespace Ryona.Game
             if (State == null || IsDead)
                 return;
 
-            DownIsForward = forward ?? (LastHitZone == PunchZone.Body);
+            DownIsForward = forward ?? (attacker != null &&
+                Vector3.Dot(transform.forward, attacker.position - transform.position) < 0f);
 
             float length = seconds > 0f ? seconds : CombatConstants.DownDuration;
             _downRemaining = Mathf.Max(_downRemaining, length);
@@ -166,8 +220,8 @@ namespace Ryona.Game
             if (DownIsForward)
                 launchDistance = 0f;
 
-            // 後ろへ放物線で飛ぶ。掴まれている最中（投げ）は掴み側が向きを決めるので、
-            // ここでは相手の反対側＝飛ばされる向きを渡すだけでよい。
+            // 後ろへ放物線で飛ぶ。攻撃してきた相手が分かれば、その反対側へ飛ばす。
+            // 前へ崩れるときは launchDistance を 0 にしているのでここは通らない。
             launchDistance *= _launchScale;
             launchHeight *= _launchScale;
 
@@ -229,14 +283,21 @@ namespace Ryona.Game
         }
 
         /// <summary>攻撃を受ける。プレイヤー側の被弾はすべてここを通る。</summary>
-        public HitResult ReceiveHit(CombatState attacker, AttackData attack, Transform attackerTransform = null)
+        public HitResult ReceiveHit(CombatState attacker, AttackData attack,
+            Transform attackerTransform = null, float heldBellyDamage = 0f, bool isTagPunch = false)
         {
             float scale = DamageScaleAgainst(attackerTransform);
 
             var result = DamageResolver.Resolve(attacker, attack, State, IsBlocking, scale);
 
+            // ゴッドモードでは致死ダメージでも HP を 1 で踏みとどめる（Update で回復する）。
+            if (GodMode)
+                State.EnsureHpAtLeast(1f);
+
             if (attackerTransform != null)
                 LastAttacker = attackerTransform;
+            LastHitWasTagPunch = isTagPunch;
+            LastHitWasHeldBelly = heldBellyDamage > 0f;
 
             if (result.Stagger != StaggerTier.None)
             {
@@ -248,33 +309,17 @@ namespace Ryona.Game
                 _lastStaggerAt = Time.time;
             }
 
-            // ガードブレイク = ダウン。演出は「倒れ 1.2s + 起き上がり 0.8s」で、
-            // 合計は DownDuration（2.0s）と揃えてある。コア側でも同じ長さだけ
-            // 倒れている扱いにしないと、倒れている間も立ち扱いになる
-            // （足音が鳴る、倒れる音が出ない、など）。
-            //
-            // ひるみ（ダウンゲージ）が上限に達したときも同じダウンにする。
-            // こちらは「殴られ続けた結果」なので、攻撃してきた相手の反対側へ吹き飛ぶ。
-            if (result.Stagger == StaggerTier.GuardBreak)
-            {
-                ForceDown(CombatConstants.DownDuration, "guardbreak", attackerTransform);
-            }
-            else if (CanTakeFlinch)
+            if (CanTakeFlinch)
             {
                 float add = attack.Flinch * (result.Blocked ? CombatConstants.BlockedFlinchScale : 1f);
+                bool grappled = IsGrappledNow;
 
-                // 腹ヒットは急所。同じ強さでも倒れやすい（腹パン・膝蹴りの蓄積で崩れる）。
-                if (LastHitZone == PunchZone.Body)
-                    add *= CombatConstants.BellyFlinchScale;
+                if (grappled && heldBellyDamage > 0f && !result.Blocked && result.Damage > 0f)
+                    _heldBellyDamage = Mathf.Min(CombatConstants.MaxHeldBellyDamage,
+                        _heldBellyDamage + heldBellyDamage);
 
-                if (State.AddFlinch(add))
-                {
-                    // 掴まれている間は倒さない（姿勢が壊れる）。溜めたまま解け、
-                    // 次の一撃（掴みが解けた後の）で崩れる。逃げ切った直後に
-                    // 問答無用で倒れると、もがいた意味が無くなる。
-                    if (!IsGrappledNow)
-                        ForceDown(CombatConstants.DownDuration, "flinch", attackerTransform);
-                }
+                if (State.AddFlinch(add) && !grappled)
+                    ForceDown(CombatConstants.DownDuration, "flinch", attackerTransform);
             }
 
             HitReceived?.Invoke(result);
@@ -286,17 +331,22 @@ namespace Ryona.Game
 
         public void RestoreAll()
         {
+            bool wasDead = IsDead;
             State.RestoreAll();
             StunRemaining = 0f;
             _downRemaining = 0f;
             _downImmuneUntil = 0f;
+            _heldBellyDamage = 0f;
             State.IsDown = false;
+
+            if (wasDead)
+                Revived?.Invoke();
         }
 
         /// <summary>
         /// 掴まれている最中は、掴んでいる本人以外からの一撃を弱める。
-        /// 3 秒間で包囲側に袋叩きにされると 1 回の掴みで HP が半分飛ぶため。
-        /// 掴んでいる本人の「投げ」は等倍のまま。
+        /// 短時間で包囲側に袋叩きにされると 1 回の掴みで HP が半分飛ぶため。
+        /// 掴んでいる本人の一撃は等倍のまま。
         /// </summary>
         float DamageScaleAgainst(Transform attacker)
         {

@@ -336,7 +336,7 @@ namespace Ryona.Tests
             Assert.IsTrue(slot != null && slot.Loaded);
             player.transform.rotation = Quaternion.LookRotation(Vector3.right);
             typeof(PlayerCombat).GetMethod("Begin", BindingFlags.Instance | BindingFlags.NonPublic)
-                .Invoke(combat, new object[] { AttackLibrary.Light() });
+                .Invoke(combat, new object[] { AttackLibrary.Light(), 0 });
             Assert.IsTrue(combat.IsAttacking);
             while (combat.IsAttacking)
             {
@@ -365,7 +365,7 @@ namespace Ryona.Tests
             Assert.IsTrue(slot != null && slot.Loaded);
             player.transform.rotation = Quaternion.LookRotation(Vector3.right);
             typeof(PlayerCombat).GetMethod("Begin", BindingFlags.Instance | BindingFlags.NonPublic)
-                .Invoke(combat, new object[] { AttackLibrary.Light() });
+                .Invoke(combat, new object[] { AttackLibrary.Light(), 0 });
             Assert.That(combat.AimDistance, Is.EqualTo(1.5f).Within(0.05f));
             while (combat.IsAttacking)
             {

@@ -48,16 +48,6 @@ namespace Ryona
 
             return IsEscaped;
         }
-
-        /// <summary>
-        /// 失敗（振りほどけなかった）ときに与える部位ダメージ量。
-        /// 値は種類ごとに直書きする（enum の番号に依存させると、種類を増減したときに
-        /// 黙ってバランスが変わる。以前 Front=0 を消したときに実際に変わった）。
-        /// </summary>
-        public float FailurePartDamage => Kind == GrappleKind.Pin ? 30f : 24f;
-
-        /// <summary>失敗時に空になるスタミナ量。値は種類ごとに直書き（上と同じ理由）。</summary>
-        public float FailureStaminaCost => Kind == GrappleKind.Pin ? 50f : 40f;
     }
 
     /// <summary>

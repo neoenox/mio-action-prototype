@@ -42,8 +42,11 @@ namespace Ryona.Game
         [Tooltip("当たった瞬間から拳を腹に押し込んでおく秒数。彼女の折れ（HitPoseSeconds）より十分短くする。長いと次の一発まで拳が伸びたままになり、打つ動作に見えない")]
         public float FistHoldSeconds = 0.28f;
 
-        [Tooltip("最後の一発から拘束を解放するまでの余韻")]
-        public float ComboTailSeconds = 0.55f;
+        [Tooltip("最後の一発のあと、カメラの寄りを保つ秒数")]
+        public float ComboTailSeconds = 1.4f;
+
+        [Tooltip("カメラが通常に戻ってから引き渡しを試すまでの秒数")]
+        public float HandOffDelaySeconds = 1f;
 
         [Tooltip("演出後に他の敵が追撃を控える秒数")]
         public float ReleaseGraceSeconds = 0.6f;
@@ -118,6 +121,8 @@ namespace Ryona.Game
         int _hits;
         float _nextPunchTimer;
         float _comboEndTimer;
+        bool _waitingForHandOff;
+        float _handOffTimer;
 
         bool _waitingForHit;
         float _hitTimeout;
@@ -269,7 +274,7 @@ namespace Ryona.Game
 
         void OnGrappleEnded()
         {
-            // 連打で逃げた／投げられた。コンボ中なら中止する
+            // 連打で逃げた／時間切れで解放された。コンボ中なら中止する
             if (IsPerforming)
                 Debug.Log("[HeldPunch] cancel (hold ended)");
 
@@ -287,6 +292,8 @@ namespace Ryona.Game
             _comboActive = false;
             _nextPunchTimer = 0f;
             _comboEndTimer = 0f;
+            _waitingForHandOff = false;
+            _handOffTimer = 0f;
             _waitingForHit = false;
             _hitTimeout = 0f;
             _attempts = 0;
@@ -307,7 +314,7 @@ namespace Ryona.Game
 
             if (!_grapple.IsGrappled || _grapple.Kind != GrappleKind.Back)
             {
-                if (IsPerforming || _waitingForFirst || _comboActive || _waitingForHit)
+                if (IsPerforming || _waitingForFirst || _comboActive || _waitingForHit || _waitingForHandOff)
                     ResetHold();
                 return;
             }
@@ -315,6 +322,12 @@ namespace Ryona.Game
             // ポーズ・タイトル中は進めない
             if (Time.timeScale <= 0f)
                 return;
+
+            if (_waitingForHandOff)
+            {
+                UpdateHandOff();
+                return;
+            }
 
             if (_cooldown > 0f)
                 _cooldown = Mathf.Max(0f, _cooldown - Time.deltaTime);
@@ -383,7 +396,7 @@ namespace Ryona.Game
             {
                 _comboEndTimer -= Time.deltaTime;
                 if (_comboEndTimer <= 0f)
-                    FinishCombo();
+                    FinishCombo(completed: true);
 
                 return;
             }
@@ -441,7 +454,7 @@ namespace Ryona.Game
 
             foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
             {
-                if (enemy == null || !enemy.IsAlive || enemy.IsRising || enemy == captor)
+                if (enemy == null || !enemy.IsAlive || enemy.IsRising || enemy.IsFlanking || enemy == captor)
                     continue;
 
                 // 予備動作・攻撃・怯みの途中なら、位置を動かすと攻撃が壊れる。次の機会を待つ。
@@ -580,7 +593,7 @@ namespace Ryona.Game
             if (!_grapple.IsGrappled || _grapple.Kind != GrappleKind.Back)
                 return false;
 
-            if (_comboActive || _cooldown > 0f)
+            if (_comboActive || _waitingForHandOff || _cooldown > 0f)
                 return false;
 
             if (_stats.IsDead)
@@ -592,7 +605,7 @@ namespace Ryona.Game
         /// <summary>「別の敵のパンチ（腹 / 顔）」として演出を始めてよいか。</summary>
         bool IsTagPunchHit(HitResult result)
         {
-            if (result.Damage <= 0f || result.Blocked)
+            if (!_stats.LastHitWasTagPunch || result.Damage <= 0f || result.Blocked)
                 return false;
 
             PunchZone? zone = _stats.LastHitZone;
@@ -649,8 +662,6 @@ namespace Ryona.Game
             }
 
             RefreshCamera(2.0f);
-            HoldOthers(ComboHitsTotal * 0.7f + 1f);
-
             Debug.Log($"[HeldPunch] combo start 1/{ComboHitsTotal} " +
                       $"captor={(_grapple.Captor != null ? _grapple.Captor.name : "none")} " +
                       $"attacker={(_stats.LastAttacker != null ? _stats.LastAttacker.name : "none")} " +
@@ -659,7 +670,7 @@ namespace Ryona.Game
             Performed?.Invoke();
         }
 
-        void FinishCombo()
+        void FinishCombo(bool completed = false)
         {
             int hits = _hits;
 
@@ -670,13 +681,63 @@ namespace Ryona.Game
             _waitingForHit = false;
             _hitTimeout = 0f;
 
-            // 5 発を撃ち終えても拘束は続ける。ここで解放すると「5 発で自動的に助かる」
-            // ことになり、後ろ拘束の圧が消える。抜けるにはもがき（連打）が必要。
-            // 撃ち終わりと同時に連打を受けるよう、抑制も切る。
+            if (completed && _grapple != null && _grapple.IsGrappled
+                && _stats != null && !_stats.IsDead)
+            {
+                if (_stats.HasHeldBellyDown)
+                {
+                    _grapple.Release();
+                    _camera?.PushFocus(0f, 0f);
+                    _stats.ResolveHeldBellyDown();
+                    Debug.Log($"[HeldPunch] combo end {hits}/{ComboHitsTotal} → down (prone)");
+                    HoldOthers(ReleaseGraceSeconds);
+                    HasAttacker = false;
+                    return;
+                }
+
+                _grapple.ClearStruggleSuppression();
+                _waitingForHandOff = true;
+                _handOffTimer = Mathf.Max(0f, HandOffDelaySeconds);
+                HasAttacker = false;
+                return;
+            }
+
+            ContinueHold();
+        }
+
+        void UpdateHandOff()
+        {
+            if (ResolveCamera() && (_camera.IsFocusing ||
+                !Mathf.Approximately(_camera.EffectDistanceScale, 1f) ||
+                !Mathf.Approximately(_camera.EffectPivotOffset, 0f)))
+            {
+                _handOffTimer = Mathf.Max(0f, HandOffDelaySeconds);
+                return;
+            }
+
+            _handOffTimer -= Time.deltaTime;
+            if (_handOffTimer > 0f)
+                return;
+
+            _waitingForHandOff = false;
+            int hits = _hits;
+            var chain = FindFirstObjectByType<GrappleHandOff>();
+            if (chain != null && chain.TryChain())
+            {
+                Debug.Log($"[HeldPunch] combo end {hits}/{ComboHitsTotal} → hand off");
+                HoldOthers(ReleaseGraceSeconds);
+                return;
+            }
+
+            ContinueHold();
+        }
+
+        void ContinueHold()
+        {
             if (_grapple != null && _grapple.IsGrappled)
             {
                 _grapple.ClearStruggleSuppression();
-                Debug.Log($"[HeldPunch] combo end {hits}/{ComboHitsTotal} → hold continues");
+                Debug.Log($"[HeldPunch] combo end {_hits}/{ComboHitsTotal} → hold continues");
             }
 
             HoldOthers(ReleaseGraceSeconds);

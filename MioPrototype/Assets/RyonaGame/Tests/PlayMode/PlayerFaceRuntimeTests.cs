@@ -55,7 +55,6 @@ namespace Ryona.Tests
                 id = "face_test",
                 kind = AttackKind.Light,
                 damage = 1f,
-                postureDamage = 0f,
                 partDamage = 1f,
                 targetPart = BodyPart.Torso,
                 startupSeconds = 0f,
