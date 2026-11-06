@@ -1768,8 +1768,10 @@ namespace Ryona.Game
                 _targetRig.LUpperArm == null || _targetRig.RUpperArm == null)
                 return;
 
-            Solve(false, _targetRig.RLowerArm, _targetRig.RHand);
-            Solve(true, _targetRig.LLowerArm, _targetRig.LHand);
+            // 彼は彼女と正面で向かい合っている。彼の右手は彼女の左腕、左手は右腕を掴む。
+            // 同じ側（右→右）にすると腕が交差して「左右が逆」に見える（実測）。
+            Solve(false, _targetRig.LLowerArm, _targetRig.LHand);
+            Solve(true, _targetRig.RLowerArm, _targetRig.RHand);
 
             // もがかれるほど彼女の肩が浮く（押し返されている）。手は毎フレーム腕を追う。
             _lift = 0.12f * Mathf.Clamp01(hold.Progress);
