@@ -923,6 +923,22 @@ namespace Ryona.Game
                 armLSpread = 10f;
                 torsoPitch += 8f;
             }
+            // 引き渡しの受け取り: 押し出されてくる彼女を受け止める。
+            // 両腕を開いて胸の高さに構え、半歩かがんで衝撃を受ける（0.35 秒）。
+            if (Brain != null && Brain.IsCatching)
+            {
+                armRPitch = -42f;
+                elbowR = 52f;
+                armRSpread = -30f;
+                armLPitch = -42f;
+                elbowL = 52f;
+                armLSpread = 30f;
+                torsoPitch -= 6f;      // 上体は少し起こして受け止める
+                hipsZ -= 0.04f;        // 半歩かがむ
+                hipsY -= 0.03f;
+                kneeR += 8f;
+                kneeL += 8f;
+            }
             // 押さえつけ（Pin）: 肩を押し込むので上体を前へ倒し、膝を落として踏ん張る。            // 腕は PinHoldPose が彼女の肩へ向けて毎フレーム引き直す。
             // もがかれるほど押し返されて上体が起こされる（振りほどきが効いているのが見える）。
             if (Brain != null && Brain.IsPinning)

@@ -32,6 +32,9 @@ namespace Ryona.Game
         string _burstPrefix;
         bool _burstDone;
 
+        /// <summary>抽選を固定する（<c>-handoffkind=pin</c> / <c>-handoffkind=back</c>）。検証用。</summary>
+        static string _forceKind;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
         {
@@ -39,12 +42,16 @@ namespace Ryona.Game
                 return;
 
             string burst = null;
+            string kind = null;
             foreach (string a in System.Environment.GetCommandLineArgs())
             {
                 if (a.StartsWith("-handoffburst=", System.StringComparison.OrdinalIgnoreCase))
                     burst = a.Substring("-handoffburst=".Length);
+                else if (a.StartsWith("-handoffkind=", System.StringComparison.OrdinalIgnoreCase))
+                    kind = a.Substring("-handoffkind=".Length).Trim().ToLowerInvariant();
             }
 
+            _forceKind = kind;
             var go = new GameObject("Grapple Hand Off");
             var comp = go.AddComponent<GrappleHandOff>();
             comp._burstPrefix = burst;
@@ -136,10 +143,16 @@ namespace Ryona.Game
                 return false;
 
             // 抽選: 正面拘束（膝蹴り派生）か背面拘束（羽交い締め→腹パン）か。
-            GrappleKind kind = Random.value < 0.5f ? GrappleKind.Pin : GrappleKind.Back;
+            // 検証時は -handoffkind で固定できる（撮り比べ用）。
+            GrappleKind kind;
+            if (_forceKind == "pin")
+                kind = GrappleKind.Pin;
+            else if (_forceKind == "back")
+                kind = GrappleKind.Back;
+            else
+                kind = Random.value < 0.5f ? GrappleKind.Pin : GrappleKind.Back;
 
             // 押し出す側（いま掴んでいる敵）に腕を突き出させる
-            var pusherFigure = captor.GetComponent<EnemyFigure>();
             captor.PushAway();
 
             if (_burstPrefix != null && !_burstDone)
