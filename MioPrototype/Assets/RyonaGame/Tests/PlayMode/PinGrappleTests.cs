@@ -173,14 +173,14 @@ namespace Ryona.Tests
 
             Assert.AreEqual(0, hits, "掴んだ瞬間はまだ膝蹴りは入らない");
 
-            // 膝蹴りは 1.1 秒後から 0.55 秒間隔で 5 発（最後は 3.3 秒）。
-            yield return new WaitForSeconds(3.6f);
+            // 膝蹴りは 1.1 秒後から 0.65 秒間隔で 5 発（最後は 3.7 秒）。
+            yield return new WaitForSeconds(3.9f);
 
             Assert.AreEqual(CombatConstants.PinKneeCount, hits, "押さえつけ中に膝蹴りが 5 発入る");
             Assert.Less(_player.State.Hp, hpBefore - 10f, "膝蹴り 5 発ぶん HP が減る");
 
             // 時間切れの投げ（4.2 秒）より前に撃ち終わっている
-            yield return new WaitForSeconds(0.3f);
+            yield return new WaitForSeconds(0.1f);
             Assert.AreEqual(CombatConstants.PinKneeCount, hits, "制限時間内に 5 発で収まる");
         }
 

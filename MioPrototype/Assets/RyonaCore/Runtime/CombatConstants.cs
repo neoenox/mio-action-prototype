@@ -78,8 +78,8 @@ namespace Ryona
         /// <summary>押さえつけ開始から 1 発目の膝蹴りまでの秒。しばらく押さえたままにして脱出の猶予を作る。</summary>
         public const float PinKneeDelay = 1.1f;
 
-        /// <summary>膝蹴りの間隔（秒）。タッグ腹パンと同じテンポ。</summary>
-        public const float PinKneeInterval = 0.55f;
+        /// <summary>膝蹴りの間隔（秒）。一発ずつ間を取り、5 発目の後にも投げまでの余白を残す。</summary>
+        public const float PinKneeInterval = 0.65f;
 
         /// <summary>膝蹴り 1 発のダメージ。</summary>
         public const float PinKneeDamage = 4.0f;

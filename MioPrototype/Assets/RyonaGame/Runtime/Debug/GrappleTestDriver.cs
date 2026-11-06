@@ -291,7 +291,7 @@ namespace Ryona.Game
         /// </summary>
         IEnumerator PinBurstShots()
         {
-            const int count = 80;   // 4.0 秒（1.1 秒の猶予 + 0.55 秒×5 発 + 余白）
+            const int count = 80;   // 4.0 秒（1.1 秒の猶予 + 0.65 秒×4 間隔 + 余白）
             const float interval = 0.05f;
 
             string dir = System.IO.Path.GetDirectoryName(_pinBurstPrefix);
