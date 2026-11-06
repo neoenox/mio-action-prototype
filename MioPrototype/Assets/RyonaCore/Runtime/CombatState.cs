@@ -11,6 +11,16 @@ namespace Ryona
         public float Posture { get; private set; }
         public BodyDamage Body { get; } = new BodyDamage();
 
+        /// <summary>
+        /// ひるみ（ダウンゲージ）0〜<see cref="CombatConstants.MaxFlinch"/>。
+        /// 被弾で溜まり、<see cref="CombatConstants.FlinchDecayDelay"/> 秒攻撃を受けないと減る。
+        /// 上限に達するとダウンする（ゲーム側の状態機械が <see cref="PlayerStats"/> で倒す）。
+        /// </summary>
+        public float Flinch { get; private set; }
+
+        /// <summary>最後にひるみが増えてからの経過秒（減衰の待ち時間に使う）。</summary>
+        float _flinchIdle;
+
         /// <summary>この個体の最大 HP。既定は <see cref="CombatConstants.MaxHp"/>。</summary>
         public float MaxHp { get; private set; } = CombatConstants.MaxHp;
 
@@ -62,6 +72,36 @@ namespace Ryona
                 Posture + CombatConstants.PostureRegenPerSecond * deltaSeconds,
                 0f,
                 CombatConstants.MaxPosture);
+
+            // ひるみは最後の被弾からしばらく減らない。殴られ続けている間は溜まり続け、
+            // 手が止まると抜けていく（＝「一方的に殴られ続けると倒れる」）。
+            _flinchIdle += deltaSeconds;
+            if (_flinchIdle >= CombatConstants.FlinchDecayDelay && Flinch > 0f)
+            {
+                Flinch = Clamp(
+                    Flinch - CombatConstants.FlinchDecayPerSecond * deltaSeconds,
+                    0f, CombatConstants.MaxFlinch);
+            }
+        }
+
+        /// <summary>
+        /// ひるみを加算する。上限に達したら true（＝ダウンさせる）。
+        /// </summary>
+        public bool AddFlinch(float amount)
+        {
+            if (amount <= 0f)
+                return false;
+
+            _flinchIdle = 0f;
+            Flinch = Clamp(Flinch + amount, 0f, CombatConstants.MaxFlinch);
+            return Flinch >= CombatConstants.MaxFlinch;
+        }
+
+        /// <summary>ひるみを 0 に戻す（ダウンしたとき）。</summary>
+        public void ResetFlinch()
+        {
+            Flinch = 0f;
+            _flinchIdle = 0f;
         }
 
         public void ApplyHpDamage(float amount)
@@ -96,6 +136,7 @@ namespace Ryona
             Posture = CombatConstants.MaxPosture;
             Body.Reset();
             IsDown = false;
+            ResetFlinch();
         }
 
         static float Clamp(float v, float min, float max) =>

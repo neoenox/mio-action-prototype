@@ -129,6 +129,31 @@ namespace Ryona.Game
 
             Debug.Log($"[Knockback] {distance:F2}m / {seconds:F2}s");
         }
+
+        // ダウンの放物線（吹き飛ばされ）
+        float _launchUp;
+        float _launchLeft;
+
+        /// <summary>空中にいるか（演出側が「飛ばされている」姿勢を選ぶのに使う）。</summary>
+        public bool IsAirborne => _launchLeft > 0f;
+
+        /// <summary>
+        /// 後ろへ放物線を描いて吹き飛ばす。`height` は最高到達点（m）。
+        /// 滞空時間は重力から決まるので、`distance` の水平移動をその時間で割って飛ばす。
+        /// </summary>
+        public void LaunchBack(float distance, float height, Vector3? direction = null)
+        {
+            float g = Mathf.Abs(Gravity) > 0.01f ? Mathf.Abs(Gravity) : 22f;
+            _launchUp = Mathf.Sqrt(2f * g * Mathf.Max(0.05f, height));
+            float air = 2f * _launchUp / g;
+            _launchLeft = air;
+
+            // 上向きの初速を渡す（以降は Update の重力が放物線を作る）
+            _verticalVelocity = _launchUp;
+
+            Knockback(distance, air, direction);
+            Debug.Log($"[Launch] {distance:F2}m h={height:F2} air={air:F2}s");
+        }
         void LateUpdate()
         {
             var position = transform.position;
@@ -155,7 +180,7 @@ namespace Ryona.Game
                 return;
             }
 
-            Vector2 input = Stats.IsStunned ? Vector2.zero : InputReader.Move();
+            Vector2 input = Stats.IsStunned || Stats.State.IsDown ? Vector2.zero : InputReader.Move();
 
             // 横一列の戦闘: 上下入力とカメラの奥行きには移動しない。
             Vector3 wish = Vector3.right * input.x;
@@ -273,6 +298,14 @@ namespace Ryona.Game
                     moved.y = 0f;
                     Debug.Log($"[Knockback] moved={moved.magnitude:F2}m");
                 }
+            }
+
+            // 着地したら空中扱いを終える（次フレームからは普通の接地）
+            if (_launchLeft > 0f)
+            {
+                _launchLeft = Mathf.Max(0f, _launchLeft - Time.deltaTime);
+                if (_launchLeft <= 0f)
+                    Debug.Log($"[Launch] landed y={transform.position.y:F2}");
             }
 
             IsMoving = _velocity.sqrMagnitude > 0.05f;

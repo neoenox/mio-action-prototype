@@ -65,7 +65,7 @@ namespace Ryona.Game
                 _statTimer = StatLogSeconds;
 
                 Debug.Log($"[Stat] hp={State.Hp:F0} stamina={State.Stamina:F0} posture={State.Posture:F0}" +
-                          $" stun={StunRemaining:F2} arms={State.Body[BodyPart.Arms]:F0}" +
+                          $" flinch={State.Flinch:F0} stun={StunRemaining:F2} arms={State.Body[BodyPart.Arms]:F0}" +
                           $" legs={State.Body[BodyPart.Legs]:F0} down={(State.IsDown ? 1 : 0)}" +
                           $" block={(IsBlocking ? 1 : 0)}");
             }
@@ -87,6 +87,69 @@ namespace Ryona.Game
 
         /// <summary>ダウン（倒れている）残り時間。コア状態の IsDown をここで立てる。</summary>
         float _downRemaining;
+
+        /// <summary>この時刻まではダウンしない（起き上がり直後の猶予）。</summary>
+        float _downImmuneUntil;
+
+        /// <summary>ダウンが明けるまでの残り秒（演出側が「倒れ」の長さを決めるのに使う）。</summary>
+        public float DownRemaining => _downRemaining;
+
+        /// <summary>ダウン中か（コア状態と同じ）。</summary>
+        public bool IsDown => State != null && State.IsDown;
+
+        /// <summary>
+        /// ひるみを溜めてよいか。ダウン中・起き上がり直後・掴まれている最中は溜めない。
+        /// ダウン中に溜めると「起き上がるそばからまた倒れる」になり、何もできなくなる。
+        /// </summary>
+        bool CanTakeFlinch
+        {
+            get
+            {
+                if (State == null || State.IsDown || IsDead)
+                    return false;
+                if (Time.time < _downImmuneUntil)
+                    return false;
+
+                if (_grapple == null)
+                    _grapple = GetComponent<PlayerGrapple>();
+                if (_grapple != null && _grapple.IsGrappled)
+                    return false;
+
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// 強制的にダウンさせる。攻撃してきた相手が分かれば、その反対側へ放物線で吹き飛ばす。
+        /// </summary>
+        public void ForceDown(float seconds, string reason, Transform attacker = null,
+            float launchDistance = CombatConstants.DownLaunchDistance,
+            float launchHeight = CombatConstants.DownLaunchHeight)
+        {
+            if (State == null || IsDead)
+                return;
+
+            float length = seconds > 0f ? seconds : CombatConstants.DownDuration;
+            _downRemaining = Mathf.Max(_downRemaining, length);
+            State.IsDown = true;
+            State.ResetFlinch();
+            _downImmuneUntil = Time.time + length + CombatConstants.DownImmunitySeconds;
+
+            // 後ろへ放物線で飛ぶ。掴まれている最中（投げ）は掴み側が向きを決めるので、
+            // ここでは相手の反対側＝飛ばされる向きを渡すだけでよい。
+            if (launchDistance > 0f)
+            {
+                Vector3 dir = attacker != null
+                    ? transform.position - attacker.position
+                    : -transform.forward;
+                var motor = GetComponent<PlayerMotor>();
+                if (motor != null)
+                    motor.LaunchBack(launchDistance, launchHeight, dir);
+            }
+
+            Debug.Log($"[Down] {reason} {length:F2}s flinch={State.Flinch:F0}" +
+                      $" hp={State.Hp:F0} immune={CombatConstants.DownImmunitySeconds:F1}s");
+        }
 
         /// <summary>掴まれ判定を見るためだけに持つ（無ければ 1 回だけ探す）。</summary>
         PlayerGrapple _grapple;
@@ -142,8 +205,19 @@ namespace Ryona.Game
             // 合計は DownDuration（2.0s）と揃えてある。コア側でも同じ長さだけ
             // 倒れている扱いにしないと、倒れている間も立ち扱いになる
             // （足音が鳴る、倒れる音が出ない、など）。
+            //
+            // ひるみ（ダウンゲージ）が上限に達したときも同じダウンにする。
+            // こちらは「殴られ続けた結果」なので、攻撃してきた相手の反対側へ吹き飛ぶ。
             if (result.Stagger == StaggerTier.GuardBreak)
-                _downRemaining = CombatConstants.DownDuration;
+            {
+                ForceDown(CombatConstants.DownDuration, "guardbreak", attackerTransform);
+            }
+            else if (CanTakeFlinch)
+            {
+                float add = attack.Flinch * (result.Blocked ? CombatConstants.BlockedFlinchScale : 1f);
+                if (State.AddFlinch(add))
+                    ForceDown(CombatConstants.DownDuration, "flinch", attackerTransform);
+            }
 
             HitReceived?.Invoke(result);
             if (result.Stagger != StaggerTier.None)
@@ -157,6 +231,7 @@ namespace Ryona.Game
             State.RestoreAll();
             StunRemaining = 0f;
             _downRemaining = 0f;
+            _downImmuneUntil = 0f;
             State.IsDown = false;
         }
 

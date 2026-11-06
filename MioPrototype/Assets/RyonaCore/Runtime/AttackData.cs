@@ -37,6 +37,28 @@ namespace Ryona
         /// <summary>崩し攻撃はガードを無視する（仕様書 §4.5）。</summary>
         public bool IsUnblockable => kind == AttackKind.Break;
 
+        /// <summary>
+        /// ひるみ値。プレイヤーのダウンゲージ（<see cref="CombatState.Flinch"/>）に加算される。
+        /// 0 のままなら <see cref="Flinch"/> が <see cref="AttackKind"/> から既定値を出す
+        /// （押さえつけの膝のように、その場で組む攻撃を書き漏らさないため）。
+        /// </summary>
+        public float flinch = 0f;
+
+        /// <summary>この攻撃が与えるひるみ値。100 でダウン（<see cref="CombatConstants.MaxFlinch"/>）。</summary>
+        public float Flinch => flinch > 0f ? flinch : DefaultFlinch(kind);
+
+        static float DefaultFlinch(AttackKind kind)
+        {
+            switch (kind)
+            {
+                case AttackKind.Light: return 12f;
+                case AttackKind.Heavy: return 26f;
+                case AttackKind.Break: return 34f;
+                case AttackKind.Grapple: return 6f;
+                default: return 0f;
+            }
+        }
+
         public float TotalSeconds => startupSeconds + activeSeconds + recoverySeconds;
     }
 

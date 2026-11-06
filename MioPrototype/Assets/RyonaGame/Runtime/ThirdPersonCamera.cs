@@ -42,6 +42,9 @@ namespace Ryona.Game
         [Tooltip("追従の速さ。小さいほどゆったり構える")]
         public float BeltFollowSharpness = 5f;
 
+        [Tooltip("倒れている間の追従の速さ。吹き飛ばされても画面から切れないようにする")]
+        public float DownFollowSharpness = 16f;
+
         [Tooltip("カメラが動ける X の範囲（ステージの端）")]
         public float BeltMinX = -12f;
         public float BeltMaxX = 28f;
@@ -375,7 +378,11 @@ namespace Ryona.Game
                 0f);
 
             // 寄せる間は追従を速くして、演出の 0.1 秒で彼女を中央へ寄せる。
-            float follow = focusing ? 26f : BeltFollowSharpness;
+            // 倒れる（吹き飛ばされる）ときも速くする。既定の 5 のままだと、
+            // 1.6m を 0.45 秒で飛ぶ彼女にカメラが負けて、倒れた姿が画面の端で切れる（実測）。
+            float follow = focusing
+                ? 26f
+                : Mathf.Lerp(BeltFollowSharpness, DownFollowSharpness, _downBlend);
             float followDt = focusing ? Time.unscaledDeltaTime : Time.deltaTime;
 
             _smoothPivot = Vector3.Lerp(_smoothPivot, pivot,

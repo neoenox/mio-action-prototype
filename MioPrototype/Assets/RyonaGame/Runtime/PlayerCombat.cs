@@ -118,6 +118,15 @@ namespace Ryona.Game
                 return;
             }
 
+            // 倒れている間は何もできない（起き上がりは状態機械が戻す）。
+            // スタンだけを見ていると、短い怯みのダウン中に入力が通ってしまう。
+            if (Stats.State != null && Stats.State.IsDown)
+            {
+                Stats.IsBlocking = false;
+                CancelAttack();
+                return;
+            }
+
             // 掴まれている間は攻撃できない。入力はレバガチャに回る（PlayerGrapple 側）
             if (_grapple == null)
                 _grapple = GetComponent<PlayerGrapple>();
