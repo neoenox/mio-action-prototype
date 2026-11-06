@@ -28,14 +28,45 @@ namespace Ryona.Game
         float _elapsed;
         float _nextAt;
 
+        /// <summary>引き渡しの動きを撮る（<c>-handoffburst=&lt;prefix&gt;</c>）。1 回だけ。</summary>
+        string _burstPrefix;
+        bool _burstDone;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
         {
             if (FindFirstObjectByType<GrappleHandOff>() != null)
                 return;
 
+            string burst = null;
+            foreach (string a in System.Environment.GetCommandLineArgs())
+            {
+                if (a.StartsWith("-handoffburst=", System.StringComparison.OrdinalIgnoreCase))
+                    burst = a.Substring("-handoffburst=".Length);
+            }
+
             var go = new GameObject("Grapple Hand Off");
-            go.AddComponent<GrappleHandOff>();
+            var comp = go.AddComponent<GrappleHandOff>();
+            comp._burstPrefix = burst;
+        }
+
+        System.Collections.IEnumerator BurstShots()
+        {
+            const int count = 40;      // 2.0 秒
+            const float interval = 0.05f;
+            string dir = System.IO.Path.GetDirectoryName(_burstPrefix);
+            string name = System.IO.Path.GetFileNameWithoutExtension(_burstPrefix);
+
+            float next = Time.unscaledTime;
+            for (int i = 0; i < count; i++)
+            {
+                while (Time.unscaledTime < next)
+                    yield return null;
+
+                ScreenCapture.CaptureScreenshot(System.IO.Path.Combine(dir, $"{name}_{i:00}.png"));
+                next += interval;
+            }
+            Debug.Log($"[HandOff] burst {count} 枚 {_burstPrefix}_XX.png");
         }
 
         void Update()
@@ -106,6 +137,13 @@ namespace Ryona.Game
 
             // 抽選: 正面拘束（膝蹴り派生）か背面拘束（羽交い締め→腹パン）か。
             GrappleKind kind = Random.value < 0.5f ? GrappleKind.Pin : GrappleKind.Back;
+
+            if (_burstPrefix != null && !_burstDone)
+            {
+                _burstDone = true;
+                StartCoroutine(BurstShots());
+            }
+
             _grapple.HandOff(best, kind, shove: true);
             best.TakeOverHold(CombatConstants.GrappleLimitSeconds + 4f);
             Debug.Log($"[HandOff] {captor.name} → {best.name} kind={kind} dist={bestDistance:F2}");
