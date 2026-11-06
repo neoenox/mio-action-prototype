@@ -254,6 +254,29 @@ namespace Ryona.Game
         }
 
         /// <summary>
+        /// 拘束を別の敵へ引き渡す（たらい回し）。掴まれたまま相手だけが入れ替わる。
+        /// もがきの進捗と制限時間はやり直し（抜けても次の敵に捕まる）。
+        /// </summary>
+        public void HandOff(EnemyBrain next, GrappleKind kind = GrappleKind.Back)
+        {
+            if (!IsGrappled || next == null || next == Captor || Stats == null || Stats.IsDead)
+                return;
+
+            Captor = next;
+            SnapToCaptor(next, kind);
+
+            RequiredInputs = ResistanceMath.RequiredInputs(kind, 1f, Stats.State.Body[BodyPart.Arms]);
+            _resistance = new GrappleResistance(kind, RequiredInputs);
+            _remaining = kind == GrappleKind.Pin
+                ? CombatConstants.GrappleLimitSeconds
+                : float.PositiveInfinity;
+            _suppressRemaining = 0f;
+
+            Debug.Log($"[HandOff] {next.name} が拘束を引き継ぐ need={RequiredInputs:F1}");
+            Started?.Invoke(kind);
+        }
+
+        /// <summary>
         /// 罰なしで解放する（相手が倒れた・プレイヤーが倒れた・腹パン演出が終わった）。
         /// </summary>
         public void Release()

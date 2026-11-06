@@ -1156,9 +1156,26 @@ namespace Ryona.Game
             return true;
         }
 
-        /// <summary>外部から怯ませる（振りほどかれた時など）。</summary>
-        public void ForceStagger(float seconds)
+        /// <summary>
+        /// 引き渡しで拘束を受け持つ。掴んだまま硬直（Recover）を維持し、
+        /// 相手がもがき終えるまで離さない。
+        /// </summary>
+        public void TakeOverHold(float seconds)
         {
+            IsHolding = true;
+            IsPinning = false;
+            _pinKneesLeft = 0;
+            _pinNextKneeAt = 0f;
+            HideTelegraph();
+            _currentAttack = AttackId.Grab;
+            _timer = Mathf.Max(0.5f, seconds);
+            Phase = EnemyPhase.Recover;
+            ReleaseToken();
+            Debug.Log($"[HandOff] {name} が拘束を受け持つ {seconds:F1}s");
+        }
+
+        /// <summary>外部から怯ませる（振りほどかれた時など）。</summary>
+        public void ForceStagger(float seconds)        {
             if (Phase == EnemyPhase.Dead)
                 return;
 

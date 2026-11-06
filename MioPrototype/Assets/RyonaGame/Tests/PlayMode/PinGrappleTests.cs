@@ -185,6 +185,25 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator 拘束は別の敵へ引き渡せる()
+        {
+            yield return Load();
+            _grapple.Begin(_captor, GrappleKind.Back);
+
+            int started = 0;
+            _grapple.Started += _ => started++;
+
+            float before = _grapple.RequiredInputs;
+            _grapple.HandOff(_other, GrappleKind.Back);
+            yield return null;
+
+            Assert.IsTrue(_grapple.IsGrappled, "引き渡しても掴まれたまま");
+            Assert.AreEqual(_other, _grapple.Captor, "掴んでいる相手が入れ替わる");
+            Assert.AreEqual(1, started, "掴み直しとして Started が飛ぶ");
+            Assert.AreEqual(before, _grapple.RequiredInputs, 0.01f, "必要入力は同じ");
+        }
+
+        [UnityTest]
         public IEnumerator 押さえつけ中は他の敵が殴らない()
         {
             yield return Load();
