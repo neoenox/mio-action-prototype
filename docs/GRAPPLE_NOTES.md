@@ -139,7 +139,7 @@ footPitchL = Mathf.Max(footPitchL, 18f * stepL);   // 踏み直す足はつま�
   この間は AI も `KeepSpacing` も動かさない
 - **ベアハッグ**（`BearHug`）は正面 0.80〜1.30m から全員が出せる。押さえつけと 50:50 で選び、
   `BearHugPose` が両腕を彼女の背中へ回す。0.9 秒後から 1 秒ごとに HP −2 の締め付け。
-  締め付けは `PlayerGrapple.Squeeze()` で体を引き寄せ、0.56m → 0.44m まで詰めて密着させる。
+  締め付けは `PlayerGrapple.Squeeze()` で体を引き寄せ、0.54m → 0.38m まで詰めて胸が触れる距離まで密着させる。
   密着した瞬間（`IsBearHugContact`）だけ HP −2 が入り、0.10 秒保ってから 0.30 秒かけて離す。
   これを 0.65 秒周期で繰り返す（引き寄せ 0.10 秒）。密着中は `SqueezePulse` で体が内側へ潰れ、
   拘束中は `LiftPulse` が上がり、腰が浮いて両足が床から離れる（ぶら下がる）。

@@ -46,9 +46,9 @@ namespace Ryona.Game
         const float GrabDistance = 0.60f;
 
         /// <summary>
-        /// ベアハッグの基準距離（離れ気味のとき）。締め付けでここから 0.12m 詰めて密着する。
+        /// ベアハッグの基準距離（離れ気味のとき）。締め付けでここから 0.16m 詰めて密着する。
         /// </summary>
-        const float BearHugDistance = 0.56f;
+        const float BearHugDistance = 0.54f;
         // 羽交い締めは胸を相手の背中に付けて組む。離れていると腕が伸びきって
         // 「首へ手を伸ばしている」画になる（0.85m だった）。肘を畳んで脇の下へ入れる距離にする。
         const float BackGrabDistance = 0.34f;
@@ -163,8 +163,8 @@ namespace Ryona.Game
         float _hugTime;
         float _hugPhase;
 
-        /// <summary>密着しているときの距離の詰め（m）。</summary>
-        const float HugTightInset = 0.12f;
+        /// <summary>密着しているときの距離の詰め（m）。胸が触れる距離まで寄せる。</summary>
+        const float HugTightInset = 0.16f;
 
         /// <summary>
         /// 突き飛ばされた瞬間の 0..1。押されて上体が前へ流れ、腕が後ろへ残る。

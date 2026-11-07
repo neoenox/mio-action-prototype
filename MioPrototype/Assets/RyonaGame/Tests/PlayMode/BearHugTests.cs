@@ -70,7 +70,7 @@ namespace Ryona.Tests
             toCaptor.y = 0f;
             Assert.Greater(Vector3.Dot(_player.transform.forward, toCaptor.normalized), 0.9f,
                 "ベアハッグは正面からなので、彼女は相手を向く");
-            Assert.AreEqual(0.56f, toCaptor.magnitude, 0.05f, "掴んだ距離が 0.56m になっていない");
+            Assert.AreEqual(0.54f, toCaptor.magnitude, 0.05f, "掴んだ距離が 0.54m になっていない");
         }
 
         [UnityTest]

@@ -246,6 +246,14 @@ namespace Ryona.Game
         /// <summary>攻撃を始めてよい距離（<see cref="AttackRange"/> の 85%）。</summary>
         public float EngageDistance => Mathf.Clamp(AttackRange * 0.85f, 0.1f, 1.03f);
 
+        /// <summary>
+        /// 拳が実際に届く上限（m）。実測で Jab 1.25 / Heavy 1.45 / Break 1.25 まで。
+        /// これより遠いと拳が狙いから外れて空振りするので、その距離では攻撃を始めない。
+        /// </summary>
+        const float MaxJabReach = 1.25f;
+        const float MaxHeavyReach = 1.45f;
+        const float MaxBreakReach = 1.25f;
+
         /// <summary>攻撃トークンを保持しているか。<see cref="Group"/> が無ければ常に false。</summary>
         public bool HasAttackToken => Group != null && Group.HasAttackToken(this);
 
@@ -1894,9 +1902,14 @@ namespace Ryona.Game
         {
             switch (id)
             {
-                case AttackId.Jab: return JabRange > 0f ? JabRange : AttackRange;
-                case AttackId.Heavy: return HeavyRange > 0f ? HeavyRange : AttackRange;
-                case AttackId.Break: return BreakRange > 0f ? BreakRange : AttackRange;
+                // 見た目の拳が届く距離に合わせる。シーンに保存された値（1.45 / 1.70 / 1.55）を
+                // そのまま使うと、届かない距離から振って空振りする（実測: Jab は 1.25m まで）。
+                case AttackId.Jab: return Mathf.Min(
+                    JabRange > 0f ? JabRange : AttackRange, MaxJabReach);
+                case AttackId.Heavy: return Mathf.Min(
+                    HeavyRange > 0f ? HeavyRange : AttackRange, MaxHeavyReach);
+                case AttackId.Break: return Mathf.Min(
+                    BreakRange > 0f ? BreakRange : AttackRange, MaxBreakReach);
                 case AttackId.Grab:
                     // 掴みは「攻撃を始める間合い（EngageDistance）」で必ず選べるようにする。
                     // GrabRange が EngageDistance より狭いと、敵が間合いに入った瞬間に
