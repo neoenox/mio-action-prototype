@@ -421,6 +421,7 @@ namespace Ryona.Game
 
                 if (Grapple != null)
                     Grapple.Escaped -= OnGrappleEscaped;
+                Grapple.Released -= OnGrappleReleased;
             }
         }
 
@@ -448,6 +449,7 @@ namespace Ryona.Game
 
             if (Grapple != null)
                 Grapple.Escaped += OnGrappleEscaped;
+                Grapple.Released += OnGrappleReleased;
 
             _bound = true;
         }
@@ -467,6 +469,18 @@ namespace Ryona.Game
         {
             _shoveTime = ShoveSeconds;
         }
+
+        /// <summary>
+        /// 時間切れなどで拘束が解けた瞬間、両手で押し返してから構えへ戻る。
+        /// いきなり Idle へ戻すと「するりと抜けた」ように見える。
+        /// </summary>
+        void OnGrappleReleased()
+        {
+            _shoveTime = ShoveSeconds;
+        }
+
+        /// <summary>直前フレームの拘束の種類。引き渡しで姿勢が切り替わった瞬間を検出する。</summary>
+        GrappleKind? _lastGrappleKind;
 
         /// <summary>
         /// ガード中に殴られたら、腕ごと押し戻される。
@@ -835,10 +849,6 @@ namespace Ryona.Game
                         // イベントを取りこぼしても怯み姿勢は出す
                         SetState(State.Stagger, Mathf.Max(0.1f, Stats.StunRemaining));
                     }
-                    else if (Stats != null && Stats.IsBlocking)
-                    {
-                        _state = State.Guard;
-                    }
                     else
                     {
                         _state = Stats != null && Stats.IsMoving ? State.Walk : State.Idle;
@@ -861,6 +871,23 @@ namespace Ryona.Game
                     State.Grabbed => 0.08f,
                     _ => IdleBlendSeconds
                 };
+            }
+
+            // 引き渡しで拘束の種類（Back / Pin / BearHug）が変わると、姿勢が一瞬で
+            // 切り替わって見える。今の姿勢から 0.14 秒かけて新しい形へ寄せる。
+            if (_state == State.Grabbed && Grapple != null)
+            {
+                if (_lastGrappleKind.HasValue && _lastGrappleKind.Value != Grapple.Kind)
+                {
+                    Rig.SnapshotPose();
+                    _blend = 0f;
+                    _blendSeconds = 0.14f;
+                }
+                _lastGrappleKind = Grapple.Kind;
+            }
+            else
+            {
+                _lastGrappleKind = null;
             }
 
             if (_state == State.Walk)

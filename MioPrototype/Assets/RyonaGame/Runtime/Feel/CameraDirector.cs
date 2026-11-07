@@ -30,12 +30,6 @@ namespace Ryona.Game
         [Tooltip("通常ヒットで寄せておく秒数")]
         public float PushInSeconds = 0.20f;
 
-        [Tooltip("ガードされたときに寄る倍率（ごく僅か）")]
-        public float BlockedPushInScale = 0.96f;
-
-        [Tooltip("ガードされたときに寄せておく秒数")]
-        public float BlockedPushInSeconds = 0.10f;
-
         [Header("Hit Pull (自分が殴られた)")]
         [Tooltip("被弾で引く倍率（ノックバック感）")]
         public float HitPullScale = 1.10f;
@@ -165,12 +159,6 @@ namespace Ryona.Game
         {
             if (Rig == null)
                 return;
-
-            if (result.Blocked)
-            {
-                Rig.PushDistance(BlockedPushInScale, BlockedPushInSeconds);
-                return;
-            }
 
             Rig.PushDistance(PushInScale, PushInSeconds);
         }

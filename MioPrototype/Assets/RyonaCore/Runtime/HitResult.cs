@@ -7,16 +7,11 @@ namespace Ryona
     {
         public readonly float Damage;
         public readonly StaggerTier Stagger;
-        public readonly bool Blocked;
 
-        public HitResult(
-            float damage,
-            StaggerTier stagger,
-            bool blocked)
+        public HitResult(float damage, StaggerTier stagger)
         {
             Damage = damage;
             Stagger = stagger;
-            Blocked = blocked;
         }
 
         public float StunSeconds => CombatConstants.StunSeconds(Stagger);

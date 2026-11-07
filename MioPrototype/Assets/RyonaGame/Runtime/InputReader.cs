@@ -10,13 +10,12 @@ namespace Ryona.Game
     {
         /// <summary>
         /// 自動検証用の入力注入。キーを押せない環境（バッチ起動・自動撮影）で
-        /// 「歩き」「ガード」「攻撃」を再現する。-holdmove / -holdguard / -holdattack で立つ。
+        /// 「歩き」「攻撃」を再現する。-holdmove / -holdattack で立つ。
         /// </summary>
         public static bool ForceMove { get; private set; }
 
         /// <summary>ベルト（横スクロール）の確認用に、右（+X）へ歩き続ける（<c>-holdright</c>）。</summary>
         public static bool ForceRight { get; private set; }
-        public static bool ForceGuard { get; private set; }
 
         /// <summary>弱 → 強 → 崩し を順番に自動で振る（攻撃の通し確認用）。</summary>
         public static bool ForceAttack { get; private set; }
@@ -66,8 +65,6 @@ namespace Ryona.Game
                     ForceMove = true;
                 else if (string.Equals(a, "-holdright", System.StringComparison.OrdinalIgnoreCase))
                     ForceRight = true;
-                else if (string.Equals(a, "-holdguard", System.StringComparison.OrdinalIgnoreCase))
-                    ForceGuard = true;
                 else if (string.Equals(a, "-holdlight", System.StringComparison.OrdinalIgnoreCase))
                     ForceLightOnly = true;
                 else if (string.Equals(a, "-leftpunch", System.StringComparison.OrdinalIgnoreCase))
@@ -87,8 +84,8 @@ namespace Ryona.Game
                 }
             }
 
-            if (ForceMove || ForceRight || ForceGuard || ForceAttack || ForceLightOnly)
-                Debug.Log($"[Input] 強制入力 move={ForceMove} right={ForceRight} guard={ForceGuard} attack={ForceAttack} " +
+            if (ForceMove || ForceRight || ForceAttack || ForceLightOnly)
+                Debug.Log($"[Input] 強制入力 move={ForceMove} right={ForceRight} attack={ForceAttack} " +
                     $"interval={_autoAttackInterval:F2}");
         }
 
@@ -166,30 +163,6 @@ namespace Ryona.Game
 #endif
 
             return v;
-        }
-
-        public static bool BlockHeld()
-        {
-            if (ForceGuard)
-                return true;
-
-#if ENABLE_INPUT_SYSTEM
-            var kb = UnityEngine.InputSystem.Keyboard.current;
-            if (kb != null && kb.leftShiftKey.isPressed)
-                return true;
-
-            var pad = UnityEngine.InputSystem.Gamepad.current;
-            if (pad != null && (pad.leftTrigger.ReadValue() > 0.4f || pad.leftShoulder.isPressed))
-                return true;
-
-            if (kb != null || pad != null)
-                return false;
-#endif
-#if ENABLE_LEGACY_INPUT_MANAGER
-            return Input.GetKey(KeyCode.LeftShift);
-#else
-            return false;
-#endif
         }
 
         public static bool LightPressed()

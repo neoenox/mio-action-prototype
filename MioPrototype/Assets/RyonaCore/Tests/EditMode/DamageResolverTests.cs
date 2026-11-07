@@ -19,12 +19,11 @@ namespace Ryona.Tests
             var defender = NewCombatant();
             var attack = AttackLibrary.Light();
 
-            var result = DamageResolver.Resolve(attacker, attack, defender, false);
+            var result = DamageResolver.Resolve(attacker, attack, defender);
 
             Assert.AreEqual(8f, result.Damage, 0.001f);
             Assert.AreEqual(92f, defender.Hp, 0.001f);
             Assert.AreEqual(StaggerTier.Small, result.Stagger);
-            Assert.IsFalse(result.Blocked);
         }
 
         // --- 部位ダメージの影響 ---------------------------------------
@@ -36,7 +35,7 @@ namespace Ryona.Tests
             attacker.Body.Apply(BodyPart.Arms, 100f);
             var defender = NewCombatant();
 
-            var result = DamageResolver.Resolve(attacker, AttackLibrary.Light(), defender, false);
+            var result = DamageResolver.Resolve(attacker, AttackLibrary.Light(), defender);
 
             Assert.AreEqual(6f, result.Damage, 0.001f);
         }
@@ -58,34 +57,6 @@ namespace Ryona.Tests
             c.Body.Apply(BodyPart.Legs, 60f);
 
             Assert.AreEqual(100f, c.Body[BodyPart.Legs], 0.001f);
-        }
-
-        // --- ガード ---------------------------------------------------
-
-        [Test]
-        public void ガードするとダメージは四分の一になる()
-        {
-            var attacker = NewCombatant();
-            var defender = NewCombatant();
-
-            var result = DamageResolver.Resolve(attacker, AttackLibrary.Light(), defender, true);
-
-            Assert.IsTrue(result.Blocked);
-            Assert.AreEqual(2f, result.Damage, 0.001f);
-            Assert.AreEqual(98f, defender.Hp, 0.001f);
-        }
-
-        [Test]
-        public void 崩し攻撃はガードを無視する()
-        {
-            var attacker = NewCombatant();
-            var defender = NewCombatant();
-
-            var result = DamageResolver.Resolve(attacker, AttackLibrary.BreakAttack(), defender, true);
-
-            Assert.IsFalse(result.Blocked);
-            Assert.AreEqual(14f, result.Damage, 0.001f);
-            Assert.AreEqual(86f, defender.Hp, 0.001f);
         }
 
         // --- 怯み -----------------------------------------------------
@@ -129,8 +100,8 @@ namespace Ryona.Tests
 
             float startHp = damped.Hp;
 
-            var a = DamageResolver.Resolve(attacker, attack, full, false);
-            var b = DamageResolver.Resolve(attacker, attack, damped, false, 0.5f);
+            var a = DamageResolver.Resolve(attacker, attack, full);
+            var b = DamageResolver.Resolve(attacker, attack, damped, 0.5f);
 
             Assert.AreEqual(a.Damage * 0.5f, b.Damage, 0.001f);
             Assert.AreEqual(startHp - b.Damage, damped.Hp, 0.001f);

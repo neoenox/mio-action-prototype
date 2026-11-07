@@ -225,39 +225,28 @@ namespace Ryona.Game
             bool belly = Stats != null && Stats.LastHitZone == PunchZone.Body;
             _bellyTarget = belly ? 1f : 0f;
 
-            // ガードで受け止めただけなら、痛みはほぼ無い（少しだけ顔を歪める）
-            float peak;
-            float hold;
-            if (result.Blocked)
+            float peak = result.Stagger switch
             {
-                peak = 0.34f;
-                hold = 0.10f;
-            }
-            else
-            {
-                peak = result.Stagger switch
-                {
-                    StaggerTier.Small => 0.66f,
-                    StaggerTier.Medium => 0.88f,
-                    StaggerTier.Large => 1f,
-                    _ => 0.45f
-                };
-                hold = result.StunSeconds + HoldExtraSeconds;
+                StaggerTier.Small => 0.66f,
+                StaggerTier.Medium => 0.88f,
+                StaggerTier.Large => 1f,
+                _ => 0.45f
+            };
+            float hold = result.StunSeconds + HoldExtraSeconds;
 
-                // 腹パンは同じ段でも重く見せる。弱い一撃で表情が薄いと、
-                // 5 連続の腹パンが「軽く小突かれている」ように見える。
-                if (belly)
-                {
-                    peak += BellyPeakBonus;
-                    hold += BellyHoldExtraSeconds;
-                }
+            // 腹パンは同じ段でも重く見せる。弱い一撃で表情が薄いと、
+            // 5 連続の腹パンが「軽く小突かれている」ように見える。
+            if (belly)
+            {
+                peak += BellyPeakBonus;
+                hold += BellyHoldExtraSeconds;
             }
 
             // 連続で殴られたときは、強いほうを残す（弱い一撃で上書きしない）
             _peak = Mathf.Max(_peak, Mathf.Clamp01(peak));
             _holdUntil = Mathf.Max(_holdUntil, Time.unscaledTime + hold);
 
-            Debug.Log($"[Face] hit tier={result.Stagger} blocked={result.Blocked} " +
+            Debug.Log($"[Face] hit tier={result.Stagger} " +
                       $"zone={(belly ? "belly" : "face")} peak={peak:F2} hold={hold:F2}");
         }
 

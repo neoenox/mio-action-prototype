@@ -113,7 +113,6 @@ namespace Ryona.Game
 
             if (Stats.IsDead)
             {
-                Stats.IsBlocking = false;
                 _buffered = null;
                 return;
             }
@@ -122,7 +121,6 @@ namespace Ryona.Game
             // スタンだけを見ていると、短い怯みのダウン中に入力が通ってしまう。
             if (Stats.State != null && Stats.State.IsDown)
             {
-                Stats.IsBlocking = false;
                 CancelAttack();
                 return;
             }
@@ -132,7 +130,6 @@ namespace Ryona.Game
                 _grapple = GetComponent<PlayerGrapple>();
             if (_grapple != null && _grapple.IsGrappled)
             {
-                Stats.IsBlocking = false;
                 // 殴っている最中に掴まれたら、拳を突き出したまま固まるので打ち切る。
                 CancelAttack();
                 return;
@@ -153,7 +150,6 @@ namespace Ryona.Game
             // 攻撃は終わったが踏み込みの足が戻り切っていない間も、次は撃たせない。
             if (FeetNotSettled)
             {
-                Stats.IsBlocking = false;
 
                 if (!_settleLogged)
                 {
@@ -169,19 +165,9 @@ namespace Ryona.Game
 
             if (Stats.IsStunned)
             {
-                Stats.IsBlocking = false;
                 _buffered = null;
                 return;
             }
-
-            if (InputReader.BlockHeld())
-            {
-                Stats.IsBlocking = true;
-                _buffered = null;
-                return;
-            }
-
-            Stats.IsBlocking = false;
 
             // 硬直中に押されていた分を、空いたこのフレームで撃つ。
             if (TryConsumeBuffered())
@@ -299,7 +285,6 @@ namespace Ryona.Game
             if (_anim != null)
                 _anim.ComboStep = _comboStep;
 
-            Stats.IsBlocking = false;
 
             if (_motor != null && _motor.BeltFacing)
             {
@@ -393,7 +378,6 @@ namespace Ryona.Game
 
         void TickAttack()
         {
-            Stats.IsBlocking = false;
 
             // 殴られてひるんだら振りは中断する。中断しないと、姿勢は「ひるみ」のまま
             // 判定だけが発生の時刻に来て、拳が伸びていないのに当たる（＝見た目とズレる）。
@@ -443,7 +427,7 @@ namespace Ryona.Game
                 var result = target.TakeHit(Stats.State, attack);
 
                 Log($"[Combat] hit {attack.id} dmg={result.Damage:F0} " +
-                    $"stagger={result.Stagger} blocked={result.Blocked}");
+                    $"stagger={result.Stagger}");
 
                 hitEnemy = enemy;
                 HitLanded?.Invoke(result, target);

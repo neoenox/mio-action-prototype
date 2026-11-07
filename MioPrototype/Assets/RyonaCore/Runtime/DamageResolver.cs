@@ -10,7 +10,6 @@ namespace Ryona
             CombatState attacker,
             AttackData attack,
             CombatState defender,
-            bool defenderBlocking,
             float scale = 1f)
         {
             if (attacker == null || attack == null || defender == null)
@@ -23,24 +22,12 @@ namespace Ryona
             float damage = attack.damage * attacker.Body.AttackDamageMultiplier * scale;
             float partDamage = attack.partDamage * scale;
 
-            // 崩し攻撃はガードを無視する
-            bool blocked = defenderBlocking && !attack.IsUnblockable;
-
-            if (blocked)
-            {
-                damage *= CombatConstants.GuardDamageScale;
-                partDamage *= CombatConstants.GuardPartDamageScale;
-            }
-
             // --- 適用 -------------------------------------------------
             defender.ApplyHpDamage(damage);
             if (partDamage > 0f)
                 defender.Body.Apply(attack.targetPart, partDamage);
 
-            return new HitResult(
-                damage,
-                TierFromKind(attack.kind),
-                blocked);
+            return new HitResult(damage, TierFromKind(attack.kind));
         }
 
         static StaggerTier TierFromKind(AttackKind kind)

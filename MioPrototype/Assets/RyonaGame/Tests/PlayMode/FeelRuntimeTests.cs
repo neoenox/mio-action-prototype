@@ -82,7 +82,7 @@ namespace Ryona.Tests
             try
             {
                 var method = typeof(CombatFeel).GetMethod("OnHitReceived", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-                method.Invoke(feel, new object[] { new HitResult(10f, StaggerTier.Large, false) });
+                method.Invoke(feel, new object[] { new HitResult(10f, StaggerTier.Large) });
                 Assert.IsTrue(played.Exists(message => message.StartsWith("[Sfx] play Impact ")));
                 Assert.IsFalse(played.Exists(message => message.StartsWith("[Sfx] play Pipe ")));
             }
@@ -119,7 +119,6 @@ namespace Ryona.Tests
 
             try
             {
-                stats.IsBlocking = false;
                 stats.ReceiveHit(stats.State, new AttackData
                 {
                     kind = AttackKind.Light,

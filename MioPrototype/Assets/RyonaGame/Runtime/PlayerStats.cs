@@ -14,9 +14,6 @@ namespace Ryona.Game
         /// <summary>移動入力があるか。歩き / 待機の姿勢切替に使う。</summary>
         public bool IsMoving { get; set; }
 
-        /// <summary>ガード入力中か。被弾解決に効く。</summary>
-        public bool IsBlocking { get; set; }
-
         public float StunRemaining { get; private set; }
 
         /// <summary>ゴッドモード中は HP が減り切らず、毎秒自動で回復する（G で切り替え）。</summary>
@@ -103,8 +100,7 @@ namespace Ryona.Game
 
                 Debug.Log($"[Stat] hp={State.Hp:F0} flinch={State.Flinch:F0} stun={StunRemaining:F2}" +
                           $" arms={State.Body[BodyPart.Arms]:F0}" +
-                          $" legs={State.Body[BodyPart.Legs]:F0} down={(State.IsDown ? 1 : 0)}" +
-                          $" block={(IsBlocking ? 1 : 0)}");
+                          $" legs={State.Body[BodyPart.Legs]:F0} down={(State.IsDown ? 1 : 0)}");
             }
         }
 
@@ -288,7 +284,7 @@ namespace Ryona.Game
         {
             float scale = DamageScaleAgainst(attackerTransform);
 
-            var result = DamageResolver.Resolve(attacker, attack, State, IsBlocking, scale);
+            var result = DamageResolver.Resolve(attacker, attack, State, scale);
 
             // ゴッドモードでは致死ダメージでも HP を 1 で踏みとどめる（Update で回復する）。
             if (GodMode)
@@ -311,10 +307,10 @@ namespace Ryona.Game
 
             if (CanTakeFlinch)
             {
-                float add = attack.Flinch * (result.Blocked ? CombatConstants.BlockedFlinchScale : 1f);
+                float add = attack.Flinch;
                 bool grappled = IsGrappledNow;
 
-                if (grappled && heldBellyDamage > 0f && !result.Blocked && result.Damage > 0f)
+                if (grappled && heldBellyDamage > 0f && result.Damage > 0f)
                     _heldBellyDamage = Mathf.Min(CombatConstants.MaxHeldBellyDamage,
                         _heldBellyDamage + heldBellyDamage);
 

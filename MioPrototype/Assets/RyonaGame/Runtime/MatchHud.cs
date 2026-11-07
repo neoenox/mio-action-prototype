@@ -419,7 +419,7 @@ namespace Ryona.Game
             help.raycastTarget = false;
             help.horizontalOverflow = HorizontalWrapMode.Overflow;
             help.verticalOverflow = VerticalWrapMode.Overflow;
-            help.text = "A / D　移動\nJ 弱　K 強　L 崩し\nShift ガード\nG ゴッドモード\n掴まれたら J / K / L 連打\nEsc 一時停止";
+            help.text = "A / D　移動\nJ 弱　K 強　L 崩し\nG ゴッドモード\n掴まれたら J / K / L 連打\nEsc 一時停止";
 
             // 画面ロック中の案内（右端）。通常は非表示
             var lockRect = NewRect("LockHint", root, 26f, 0f, 460f, 36f,

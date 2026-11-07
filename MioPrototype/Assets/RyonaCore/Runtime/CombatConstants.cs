@@ -14,10 +14,6 @@ namespace Ryona
         public const float LegsSpeedFloor = 0.70f;
         public const float ArmsDamageFloor = 0.75f;
 
-        // --- ガード ---------------------------------------------------
-        public const float GuardDamageScale = 0.25f;
-        public const float GuardPartDamageScale = 0.25f;
-
         // --- 怯み・ダウン（秒） ---------------------------------------
         public const float StunSmall = 0.20f;
         public const float StunMedium = 0.40f;
@@ -112,9 +108,6 @@ namespace Ryona
 
         /// <summary>減衰の速さ（1 秒あたり）。</summary>
         public const float FlinchDecayPerSecond = 10f;
-
-        /// <summary>ガード越しの被弾で加算されるひるみの倍率。ガードしていれば完全に防げるわけではない。</summary>
-        public const float BlockedFlinchScale = 0.35f;
 
         /// <summary>通常のひるみとは別に、拘束中の腹パンと膝蹴りだけで溜まる値の上限。</summary>
         public const float MaxHeldBellyDamage = 100f;

@@ -21,7 +21,7 @@
 | Capture Enemy Fall | `enemy_fall.png` | 敵が倒れる瞬間 8 コマ（立ち → 崩れ → 仰向け）＋倒れ角・頭/胸/足首の高さログ |
 | Capture Attack Sheet | `attack_sheet.png` | 3段コンボの各段の姿勢（横・正面）。引き手が顎前に残るか、後ろ足のかかとが上がるか |
 | Capture Grabbed | `grabbed_sheet.png` | 掴まれて もがく姿勢を正面・真横 × 5 時刻。2・4 列目はもがきの脈 1（肘が開く）。手の高さ・腰高をログ出力 |
-| Capture Guard Strip | `guard_strip.png` | ガードの姿勢と押し戻され方 |
+| Capture Guard Strip | `guard_strip.png` | ガード姿勢のプレビュー（ゲーム中はガードなし） |
 | Capture Down Sheet | `down_sheet.png` | ダウンの倒れ方と着地 |
 | Scan Sfx | （波形ログ） | 効果音の長さ・ピークの確認 |
 

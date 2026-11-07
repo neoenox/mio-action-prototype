@@ -80,8 +80,8 @@ namespace Ryona.Game
         [Tooltip("（未使用）ベルトでは敵の z が毎フレーム彼女に合わせられるため、側方オフセットは効かない")]
         public float AttackerSideOffset = 0.68f;
 
-        [Tooltip("この距離より遠い敵は腹パン役に選ばない（m）")]
-        public float AttackerSearchRange = 8f;
+        [Tooltip("この距離より遠い敵は腹パン役に選ばない（m）。遠すぎると位置合わせがワープに見える")]
+        public float AttackerSearchRange = 2.5f;
 
         /// <summary>腹パンのコンボ中か。</summary>
         public bool IsPerforming { get; private set; }
@@ -466,6 +466,13 @@ namespace Ryona.Game
                 if (distance >= bestDistance)
                     continue;
 
+                // 彼女の背後側から回り込むと、前へ出す移動が体を突き抜ける。
+                // 正面寄りにいる敵だけを腹パン役にする。
+                Vector3 fromPlayer = enemy.transform.position - _stats.transform.position;
+                fromPlayer.y = 0f;
+                if (Vector3.Dot(_stats.transform.forward, fromPlayer.normalized) < -0.2f)
+                    continue;
+
                 best = enemy;
                 bestDistance = distance;
             }
@@ -497,15 +504,55 @@ namespace Ryona.Game
 
             Vector3 toPlayer = anchor - spot;
             toPlayer.y = 0f;
+            Quaternion face = toPlayer.sqrMagnitude > 1e-4f
+                ? Quaternion.LookRotation(toPlayer.normalized, Vector3.up)
+                : best.transform.rotation;
 
-            best.transform.position = spot;
-            if (toPlayer.sqrMagnitude > 1e-4f)
-                best.transform.rotation = Quaternion.LookRotation(toPlayer.normalized, Vector3.up);
+            PunchZone zone = NextZone();
+            float moveDistance = Vector3.Distance(best.transform.position, spot);
+            if (moveDistance <= 0.05f)
+            {
+                best.transform.position = spot;
+                best.transform.rotation = face;
+                return best.TryStartTagPunch(zone, allowRecover: true,
+                    holdPoseSeconds: FistHoldSeconds);
+            }
 
-            if (!best.TryStartTagPunch(NextZone(), allowRecover: true, holdPoseSeconds: FistHoldSeconds))
-                return false;
-
+            // 遠くから瞬間移動させず、短く歩かせてから打たせる。
+            // 位置合わせの間は AI を止め、体が勝手に動いて拳の位置がずれないようにする。
+            best.LockForHandOff(0.8f);
+            StartCoroutine(PlaceThenPunch(best, spot, face, zone, moveDistance));
             return true;
+        }
+
+        /// <summary>腹パン役を短く歩かせて位置へ置き、そこから打たせる。</summary>
+        System.Collections.IEnumerator PlaceThenPunch(EnemyBrain enemy, Vector3 spot,
+            Quaternion face, PunchZone zone, float distance)
+        {
+            Vector3 from = enemy.transform.position;
+            Quaternion fromRot = enemy.transform.rotation;
+            float seconds = Mathf.Clamp(0.08f + distance * 0.10f, 0.10f, 0.30f);
+            float t = 0f;
+
+            while (t < seconds)
+            {
+                t += Time.deltaTime;
+                if (enemy == null || _grapple == null || !_grapple.IsGrappled)
+                    yield break;
+
+                float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / seconds));
+                enemy.transform.position = Vector3.Lerp(from, spot, k);
+                enemy.transform.rotation = Quaternion.Slerp(fromRot, face, k);
+                yield return null;
+            }
+
+            if (enemy == null || !enemy.IsAlive || _grapple == null || !_grapple.IsGrappled)
+                yield break;
+
+            enemy.transform.position = spot;
+            enemy.transform.rotation = face;
+            if (enemy.TryStartTagPunch(zone, allowRecover: true, holdPoseSeconds: FistHoldSeconds))
+                Debug.Log($"[HeldPunch] placed {enemy.name} dist={distance:F2}m t={seconds:F2}s");
         }
 
         /// <summary>次の一発の狙い。腹パンと顔面パンチを毎回ランダムに選ぶ。</summary>
@@ -605,7 +652,7 @@ namespace Ryona.Game
         /// <summary>「別の敵のパンチ（腹 / 顔）」として演出を始めてよいか。</summary>
         bool IsTagPunchHit(HitResult result)
         {
-            if (!_stats.LastHitWasTagPunch || result.Damage <= 0f || result.Blocked)
+            if (!_stats.LastHitWasTagPunch || result.Damage <= 0f)
                 return false;
 
             PunchZone? zone = _stats.LastHitZone;

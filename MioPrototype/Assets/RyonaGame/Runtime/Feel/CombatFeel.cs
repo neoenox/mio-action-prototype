@@ -18,13 +18,10 @@ namespace Ryona.Game
         public ThirdPersonCamera CameraRig;
 
         [Header("Hit Stop (seconds)")]
-        public float BlockedHitStop = 0.03f;
         public float HitHitStop = 0.065f;
         public float ReceivedHitStop = 0.07f;
 
         [Header("Camera Shake (meter, seconds)")]
-        public float BlockedShake = 0.03f;
-        public float BlockedShakeSeconds = 0.10f;
         public float HitShake = 0.06f;
         public float HitShakeSeconds = 0.16f;
         public float ReceivedShake = 0.12f;
@@ -92,14 +89,6 @@ namespace Ryona.Game
 
         void OnHitLanded(HitResult result, IDamageable target)
         {
-            if (result.Blocked)
-            {
-                PlaySfx(SfxId.Guard);
-                Shake(BlockedShake, BlockedShakeSeconds);
-                HitStop.Play(BlockedHitStop);
-                return;
-            }
-
             // 重い一撃は少しだけ強くする
             bool heavy = _lastKind == AttackKind.Heavy;
             PlaySfx(SfxId.Impact);
@@ -109,15 +98,6 @@ namespace Ryona.Game
 
         void OnHitReceived(HitResult result)
         {
-            // ガードできたかどうかで、揺れ・硬直・音を変える
-            if (result.Blocked)
-            {
-                Shake(BlockedShake, BlockedShakeSeconds);
-                HitStop.Play(BlockedHitStop);
-                PlaySfx(SfxId.Guard);
-                return;
-            }
-
             // 強い一撃ほど重く止める。弱い一撃まで長く止めると、殴られるたびに操作が重くなる。
             float weight = result.Stagger switch
             {

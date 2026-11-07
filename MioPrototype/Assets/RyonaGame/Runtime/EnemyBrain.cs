@@ -60,7 +60,7 @@ namespace Ryona.Game
             /// <summary>遅いが重い。ひるみが大きい。</summary>
             Heavy = 1,
 
-            /// <summary>ガード不能の崩し。予備動作は中くらい。</summary>
+            /// <summary>崩し。予備動作は中くらい。</summary>
             Break = 2,
 
             /// <summary>掴み。至近距離でだけ出て、当たるとレバガチャになる。</summary>
@@ -131,7 +131,7 @@ namespace Ryona.Game
         [Tooltip("Break が届く距離 m")]
         public float BreakRange = 1.55f;
 
-        [Tooltip("Break のダメージ。AttackKind.Break なのでガード不能")]
+        [Tooltip("Break のダメージ")]
         [System.NonSerialized] public float BreakDamage = 5f;
 
         [Header("Attack: Grab")]
@@ -503,6 +503,7 @@ namespace Ryona.Game
         {
             float length = Mathf.Max(0.1f, seconds);
 
+            AbsorbLungeOffset();
             HideTelegraph();
             IsHolding = false;
             IsPinning = false;
@@ -848,7 +849,7 @@ namespace Ryona.Game
                 Face(toTarget / distance, dt);
 
             // 倒れた相手には攻撃を出さない（フェアネス規定）。
-            bool playerDown = Player.IsDead;
+            bool playerDown = Player.IsDead || Player.IsDown;
 
             switch (Phase)
             {
@@ -1091,7 +1092,7 @@ namespace Ryona.Game
             if (_timer <= 0f)
             {
                 // フェイント: 予備動作まで見せてから振らずに引く。
-                // ガードを張らせて空振りさせるための揺さぶり。1 回の接近につき 1 度だけ。
+                // 踏み込ませて空振りさせるための揺さぶり。1 回の接近につき 1 度だけ。
                 // タッグ技（拘束中の腹 / 顔）は必ず振る。引くと演出が空振りで止まる。
                 if (!_tagPunchPending && !_feinted && FeintChance > 0f && UnityEngine.Random.value < FeintChance)
                 {
@@ -1299,6 +1300,7 @@ namespace Ryona.Game
         /// </summary>
         public void TakeOverHold(float seconds)
         {
+            AbsorbLungeOffset();
             IsHolding = true;
             HideTelegraph();
             _currentAttack = AttackId.Grab;
@@ -1335,6 +1337,7 @@ namespace Ryona.Game
             if (Phase == EnemyPhase.Dead)
                 return;
 
+            AbsorbLungeOffset();
             HideTelegraph();
             _riseTimer = 0f;
             IsHolding = false;
@@ -1353,8 +1356,27 @@ namespace Ryona.Game
             Debug.Log($"[Enemy] force stagger {name} {seconds:F2}s");
         }
 
+        /// <summary>
+        /// 攻撃中の見た目の踏み込み（root の前進）を、攻撃終了時に実際の位置へ移す。
+        /// そのまま root を戻すと、振り終わりに 0.4m 後ろへ滑って見える。
+        /// 体の位置を同じだけ進めて root を 0 に戻すので、画は動かない。
+        /// </summary>
+        void AbsorbLungeOffset()
+        {
+            var figure = GetComponent<EnemyFigure>();
+            float lunge = figure != null ? figure.LungeOffset : 0f;
+            if (lunge <= 0.001f)
+                return;
+
+            Vector3 position = transform.position;
+            position.x += (transform.forward.x >= 0f ? 1f : -1f) * lunge;
+            transform.position = position;
+            figure.ClearLungeOffset();
+        }
+
         void EndRecover()
         {
+            AbsorbLungeOffset();
             ReleaseToken();
 
             _attackReadyAt = Time.time + Mathf.Max(0f, AttackCooldown);
@@ -1378,6 +1400,7 @@ namespace Ryona.Game
         /// <summary>プレイヤーが倒れた等で予備動作を中断する。硬直は挟まない。</summary>
         void CancelWindup()
         {
+            AbsorbLungeOffset();
             HideTelegraph();
             ClearTransientAttackState();
             ReleaseToken();
@@ -1975,7 +1998,7 @@ namespace Ryona.Game
             if (Phase == EnemyPhase.Dead)
                 return default;
 
-            var result = DamageResolver.Resolve(attacker, attack, State, defenderBlocking: false);
+            var result = DamageResolver.Resolve(attacker, attack, State);
 
             // 演出側（EnemyReaction）はこのイベントだけを見ているので必ず呼ぶ
             Hit?.Invoke(result);
@@ -2002,6 +2025,7 @@ namespace Ryona.Game
                 IsHolding = false;
             }
             // 進行中の攻撃はキャンセルする。トークンも返して他の敵に順番を渡す。
+            AbsorbLungeOffset();
             HideTelegraph();
             IsPinning = false;
             IsBearHugging = false;

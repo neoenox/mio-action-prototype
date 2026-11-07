@@ -31,9 +31,6 @@ namespace Ryona
         /// </summary>
         public float lungeDistance = 0.05f;
 
-        /// <summary>崩し攻撃はガードを無視する（仕様書 §4.5）。</summary>
-        public bool IsUnblockable => kind == AttackKind.Break;
-
         /// <summary>
         /// ひるみ値。プレイヤーのダウンゲージ（<see cref="CombatState.Flinch"/>）に加算される。
         /// 0 のままなら <see cref="Flinch"/> が <see cref="AttackKind"/> から既定値を出す

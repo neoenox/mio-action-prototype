@@ -76,6 +76,13 @@ namespace Ryona.Game
 
         /// <summary>腰の関節から見た足首の目標位置（左右）。</summary>
         Vector3 _legTargetR, _legTargetL;
+
+        /// <summary>攻撃の踏み込みで root を前へ出している量（m）。</summary>
+        float _lungeOffset;
+
+        /// <summary>いま見た目で前へ出ている量。攻撃終了時に実際の位置へ移す。</summary>
+        public float LungeOffset => _lungeOffset;
+        public void ClearLungeOffset() => _lungeOffset = 0f;
         float _swingTime = -1f;
         // なめらかに寄せるための現在値
         float _hipsY;
@@ -1213,7 +1220,8 @@ namespace Ryona.Game
                 else if (phase == EnemyPhase.Recover && _swingTime >= 0f)
                     drive = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((_swingTime - 0.24f) / 0.18f));
             }
-            _root.localPosition += Vector3.forward * (0.40f * drive);
+            _lungeOffset = 0.40f * drive;
+            _root.localPosition += Vector3.forward * _lungeOffset;
             var holdState = Brain != null && Brain.Player != null ? Brain.Player.GetComponent<PlayerGrapple>() : null;
             if (Brain != null && Brain.IsHolding && holdState != null && holdState.IsGrappled
                 && holdState.Captor == Brain && holdState.Kind == GrappleKind.Back)
@@ -1939,6 +1947,7 @@ namespace Ryona.Game
         EnemyFigure _figure;
         EnemyBrain _brain;
         ProceduralRig _targetRig;
+        ThirdPersonCamera _camera;
 
         void LateUpdate()
         {
@@ -1983,6 +1992,21 @@ namespace Ryona.Game
 
             Solve(false, center + player.right * spread + pull);
             Solve(true, center - player.right * spread + pull);
+
+            // ベアハッグだけ専用の寄り。密着した瞬間に少しだけ近づけ、
+            // 体が触れていることと顔・腕が画面に残ることを両立する。
+            if (_camera == null)
+                _camera = FindFirstObjectByType<ThirdPersonCamera>();
+            if (_camera != null)
+            {
+                float sign = player.forward.x >= 0f ? 1f : -1f;
+                float close = Mathf.Clamp01(hold.SqueezePulse);
+                float x = player.position.x + sign * 0.16f;
+                _camera.HoldFocus(
+                    Mathf.Lerp(0.82f, 0.76f, close),
+                    Mathf.Lerp(0.06f, 0.10f, close),
+                    x, 0.2f, 3f, -22f * sign);
+            }
         }
 
         void Solve(bool left, Vector3 goal)

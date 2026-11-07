@@ -22,9 +22,6 @@ namespace Ryona.Game
         [Tooltip("通常被弾")]
         public float HitAlpha = 0.40f;
 
-        [Tooltip("ガードで受け止めたとき")]
-        public float GuardedAlpha = 0.14f;
-
         [Header("時間")]
         [Tooltip("消えるまでの秒数")]
         public float FadeSeconds = 0.40f;
@@ -101,7 +98,7 @@ namespace Ryona.Game
 
         void OnHitReceived(HitResult result)
         {
-            float amount = result.Blocked ? GuardedAlpha : HitAlpha;
+            float amount = HitAlpha;
 
             // 連続で殴られるときは「濃い方」を採用する（足し算にすると真っ赤になる）
             float live = _remaining > 0f ? _peak * Mathf.Clamp01(_remaining / FadeSeconds) : 0f;

@@ -14,7 +14,7 @@ namespace Ryona.Game
         static readonly string[] SkipFlags =
         {
             "-sfxaudition", "-encountertest", "-grappletest",
-            "-holdlight", "-holdright", "-holdattack", "-holdmove", "-holdguard", "-holdmash",
+            "-holdlight", "-holdright", "-holdattack", "-holdmove", "-holdmash",
             "-hudshot", "-statlog", "-occlog", "-camlog", "-vrmlog"
         };
 
@@ -205,7 +205,7 @@ namespace Ryona.Game
 
             NewLabel(canvasGo.transform, "MIO", 132, 150f, new Color(1f, 0.95f, 0.86f, 1f), FontStyle.Normal);
             NewLabel(canvasGo.transform, "何かキーを押して開始", 30, 10f, new Color(0.92f, 0.92f, 0.95f, 0.88f), FontStyle.Normal);
-            NewLabel(canvasGo.transform, "A / D または ← / →：移動　J 弱　K 強　L 崩し　Shift ガード",
+            NewLabel(canvasGo.transform, "A / D または ← / →：移動　J 弱　K 強　L 崩し",
                 19, -70f, new Color(0.78f, 0.79f, 0.85f, 0.75f), FontStyle.Normal);
 
             // クリア記録があれば出す（PlayerPrefs に保存済み）

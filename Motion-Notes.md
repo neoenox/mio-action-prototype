@@ -225,6 +225,13 @@
       0.3 秒周期の攻撃と位相が合って「構え」ばかり写り、伸び切った画が撮れなかった。
       ログ `[FistShot]` に両手・両肘のローカル座標と `StateTime` を出す。
 
+16. **攻撃後の後ろ滑り**（`EnemyFigure.LungeOffset` / `EnemyBrain.AbsorbLungeOffset`）。
+    - 攻撃中は root を 0.40m 前へ出していたが、Recover で root を戻すため
+      **振り終わりに 0.4m 後ろへ滑って**見えていた。
+    - 攻撃が終わる瞬間に、見た目の前進分を `transform.position` へ移し、root を 0 に戻す。
+      画は動かさず、敵の実位置だけ前へ進む。
+    - キャンセル・怯み・引き渡しでも同じ移譲を行う（体が飛ばない）。
+
 ## 検証手段
 
 - `Ryona/Diagnostics/Capture Motion Strip` … 歩行 8 コマ＋攻撃 6 コマ（単体・背景なし）

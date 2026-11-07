@@ -32,6 +32,9 @@ namespace Ryona.Game
         /// <summary>押さえつけが時間切れになった瞬間（後ろ拘束では起きない）。</summary>
         public event Action Failed;
 
+        /// <summary>拘束が解けた瞬間（もがいて逃げた場合を除く）。姿勢の突き放しに使う。</summary>
+        public event Action Released;
+
         GrappleResistance _resistance;
         float _remaining;
         float _heldSeconds;
@@ -341,9 +344,8 @@ namespace Ryona.Game
                 PullPulse = 0f;
             }
 
-            // 掴まれている間は移動もガードもできない
+            // 掴まれている間は移動できない
             Stats.IsMoving = false;
-            Stats.IsBlocking = false;
 
             PlaySfx(SfxId.Impact, 0.9f);
 
@@ -438,6 +440,8 @@ namespace Ryona.Game
         /// </summary>
         public void Release()
         {
+            bool wasGrappled = IsGrappled;
+
             IsGrappled = false;
             _remaining = 0f;
             _suppressRemaining = 0f;
@@ -446,6 +450,9 @@ namespace Ryona.Game
             _hugTime = 0f;
             _hugPhase = 0f;
             PullPulse = 0f;
+
+            if (wasGrappled)
+                Released?.Invoke();
         }
 
         /// <summary>
