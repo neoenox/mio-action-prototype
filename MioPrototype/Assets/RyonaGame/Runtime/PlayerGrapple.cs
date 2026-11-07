@@ -137,6 +137,12 @@ namespace Ryona.Game
         /// <summary>いま「密着して締め付けている」瞬間か（ダメージはこの瞬間に入れる）。</summary>
         public bool IsBearHugContact => IsGrappled && Kind == GrappleKind.BearHug && _hugStage == 2;
 
+        /// <summary>
+        /// 引き寄せられている勢い 0..1。引き寄せの中盤で最大になり、密着で 0 に戻る。
+        /// 彼女の上体が前へ持っていかれ、腕と足が遅れて残る表現に使う。
+        /// </summary>
+        public float PullPulse { get; private set; }
+
         /// <summary>抱え上げられている度合い 0..1。ベアハッグ中に上がり、解放で下がる。</summary>
         public float LiftPulse { get; private set; }
 
@@ -154,7 +160,7 @@ namespace Ryona.Game
         }
 
         // 密着 → 少し離れる → 密着 の周期。
-        const float HugPullSeconds = 0.10f;
+        const float HugPullSeconds = 0.12f;
         const float HugContactSeconds = 0.10f;
         const float HugReleaseSeconds = 0.30f;
 
@@ -226,9 +232,12 @@ namespace Ryona.Game
             else if (PushPulse > 0f)
                 PushPulse = Mathf.Max(0f, PushPulse - Time.deltaTime * 4f);
 
-            // ベアハッグ以外では密着度を抜く（演出の取りこぼし防止）。
+            // ベアハッグ以外では密着度・引き寄せを抜く（演出の取りこぼし防止）。
             if (!IsGrappled || Kind != GrappleKind.BearHug)
+            {
                 SqueezePulse = Mathf.MoveTowards(SqueezePulse, 0f, Time.deltaTime * 4f);
+                PullPulse = Mathf.MoveTowards(PullPulse, 0f, Time.deltaTime * 10f);
+            }
 
             // 抱え上げ。掴まれてベアハッグの間だけ上がり、解放されると下がる。
             float liftTarget = IsGrappled && Kind == GrappleKind.BearHug ? 1f : 0f;
@@ -329,6 +338,7 @@ namespace Ryona.Game
                 _hugTime = 0f;
                 _hugPhase = 0f;
                 SqueezePulse = 0f;
+                PullPulse = 0f;
             }
 
             // 掴まれている間は移動もガードもできない
@@ -435,6 +445,7 @@ namespace Ryona.Game
             _hugStage = 0;
             _hugTime = 0f;
             _hugPhase = 0f;
+            PullPulse = 0f;
         }
 
         /// <summary>
@@ -506,17 +517,34 @@ namespace Ryona.Game
             {
                 case 1: // 引き寄せ
                     _hugTime += dt;
-                    _hugPhase = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_hugTime / HugPullSeconds));
-                    if (_hugTime >= HugPullSeconds)
                     {
-                        _hugPhase = 1f;
-                        _hugStage = 2;
-                        _hugTime = 0f;
+                        float x = Mathf.Clamp01(_hugTime / HugPullSeconds);
+
+                        // 最初の 35% はほとんど動かず（相手が体重を預けて粘る）、
+                        // 残りで一気に引き込む。等速で寄せると「滑っている」ように見える。
+                        _hugPhase = x < 0.35f
+                            ? 0.05f * (x / 0.35f)
+                            : 0.05f + 0.95f * Mathf.SmoothStep(
+                                0f, 1f, (x - 0.35f) / 0.65f);
+
+                        // 引き寄せの勢いは中盤で最大。密着の瞬間には 0 へ戻る。
+                        PullPulse = Mathf.Sin(Mathf.PI * x);
+
+                        if (_hugTime >= HugPullSeconds)
+                        {
+                            // 引き込みの勢いで少し行き過ぎてから戻る（ぶつかる感じ）。
+                            _hugPhase = 1.08f;
+                            PullPulse = 0f;
+                            _hugStage = 2;
+                            _hugTime = 0f;
+                        }
                     }
                     break;
 
                 case 2: // 密着（ここでダメージ）
                     _hugTime += dt;
+                    _hugPhase = Mathf.MoveTowards(_hugPhase, 1f, dt * 0.8f);
+                    PullPulse = Mathf.MoveTowards(PullPulse, 0f, dt * 12f);
                     if (_hugTime >= HugContactSeconds)
                     {
                         _hugStage = 3;
@@ -528,6 +556,7 @@ namespace Ryona.Game
                     _hugTime += dt;
                     _hugPhase = 1f - Mathf.SmoothStep(0f, 1f,
                         Mathf.Clamp01(_hugTime / HugReleaseSeconds));
+                    PullPulse = Mathf.MoveTowards(PullPulse, 0f, dt * 10f);
                     if (_hugTime >= HugReleaseSeconds)
                     {
                         _hugPhase = 0f;
@@ -537,7 +566,7 @@ namespace Ryona.Game
                     break;
             }
 
-            SqueezePulse = _hugPhase;
+            SqueezePulse = Mathf.Clamp01(_hugPhase);
 
             // 掴み位置の基準（BearHugDistance）から、密着度に応じて前後させる。
             // 方向は「相手から見た彼女」の向きを使い、横へは流れないようにする。

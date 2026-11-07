@@ -100,6 +100,7 @@ namespace Ryona.Tests
             float minDistance = float.MaxValue;
             float maxDistance = 0f;
             bool sawContact = false;
+            bool sawPull = false;
             float observeUntil = Time.realtimeSinceStartup + 2.4f;
             while (Time.realtimeSinceStartup < observeUntil)
             {
@@ -110,9 +111,13 @@ namespace Ryona.Tests
                 maxDistance = Mathf.Max(maxDistance, distance);
                 if (_grapple.IsBearHugContact)
                     sawContact = true;
+                if (_grapple.PullPulse > 0.3f)
+                    sawPull = true;
             }
 
             Assert.IsTrue(sawContact, "密着した瞬間がない");
+            Assert.IsTrue(sawPull, "引き寄せられている感じ（PullPulse）がない");
+            Assert.Less(minDistance, 0.42f, "密着しきっていない");
             Assert.Greater(maxDistance - minDistance, 0.06f,
                 $"体が密着と離れを繰り返していない（{minDistance:F2}〜{maxDistance:F2}m）");
             Assert.Less(_player.State.Hp, hpBefore - 2f, "密着時のダメージが入っていない");

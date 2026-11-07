@@ -976,13 +976,16 @@ namespace Ryona.Game
                 float progress = hug != null ? Mathf.Clamp01(hug.Progress) : 0f;
                 float lift = hug != null ? hug.LiftPulse : 0f;
                 float squeeze = hug != null ? hug.SqueezePulse : 0f;
+                float yank = hug != null ? hug.PullPulse : 0f;
 
                 // 抱え上げるほど上体を起こし、腰を彼女へ寄せる。締め付けでは少し沈む。
-                torsoPitch += Mathf.Lerp(8f, -4f, progress) - 4f * lift + 2f * squeeze;
-                hipsZ += 0.05f + 0.02f * squeeze;
-                hipsY += 0.03f * lift - 0.03f;
-                kneeR += 8f - 4f * lift;
-                kneeL += 8f - 4f * lift;
+                // 引き寄せでは体重を後ろへ預けて、腕で彼女を引きずり込む。
+                torsoPitch += Mathf.Lerp(8f, -4f, progress)
+                    - 4f * lift + 2f * squeeze - 7f * yank;
+                hipsZ += 0.05f + 0.02f * squeeze - 0.03f * yank;
+                hipsY += 0.03f * lift - 0.03f + 0.02f * yank;
+                kneeR += 8f - 4f * lift + 5f * yank;
+                kneeL += 8f - 4f * lift + 5f * yank;
             }
             // 押さえつけ（Pin）: 肩を押し込むので上体を前へ倒し、膝を落として踏ん張る。            // 腕は PinHoldPose が彼女の肩へ向けて毎フレーム引き直す。
             // もがかれるほど押し返されて上体が起こされる（振りほどきが効いているのが見える）。
@@ -1970,8 +1973,12 @@ namespace Ryona.Game
             // 締め付け中は細かく震わせて、力を込めているのを見せる。
             float lift = hold.LiftPulse;
             float squeeze = hold.SqueezePulse;
+            float yank = hold.PullPulse;
             float tremor = Mathf.Sin(Time.time * 31f) * 0.008f * squeeze;
-            Vector3 pull = Vector3.up * (0.08f * lift + 0.05f * squeeze + tremor);
+
+            // 引き寄せでは手を自分の胸元へ引き込み、彼女を抱き寄せる。
+            Vector3 pull = Vector3.up * (0.08f * lift + 0.05f * squeeze + tremor)
+                - transform.forward * (0.04f * yank);
             float spread = 0.06f * (1f - 0.35f * squeeze);
 
             Solve(false, center + player.right * spread + pull);
@@ -1988,14 +1995,15 @@ namespace Ryona.Game
 
             var hold = _brain.Player.GetComponent<PlayerGrapple>();
             float squeeze = hold != null ? hold.SqueezePulse : 0f;
+            float yank = hold != null ? hold.PullPulse : 0f;
 
             // 肘は外へ開き、少し下へ。真横から見て「抱き込んでいる」形にする。
-            // 締め付け中は肘を内側へ寄せて、腕が彼女の背中に食い込むようにする。
+            // 締め付け中は肘を内側へ寄せ、引き寄せでは肘を後ろへ引いて腕を折る。
             float side = left ? -1f : 1f;
             Vector3 pole = upper.position
                 + transform.right * (side * (0.45f - 0.12f * squeeze))
-                - transform.up * 0.30f
-                + transform.forward * (0.15f + 0.08f * squeeze);
+                - transform.up * (0.30f - 0.06f * yank)
+                + transform.forward * (0.15f + 0.08f * squeeze - 0.10f * yank);
 
             ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);
         }

@@ -1522,19 +1522,23 @@ namespace Ryona.Game
                         // 締め付けは一定の脈で「ぎゅっ」と来るようにし、単発の衝撃だけにしない。
                         float hugLift = Grapple.LiftPulse;
                         float squeeze = Grapple.SqueezePulse;
+                        float yank = Grapple.PullPulse;
                         float tight = 0.5f + 0.5f * Mathf.Sin(Time.time * 5.0f);
                         float crush = squeeze * (0.65f + 0.35f * tight);
 
                         // 相手の胸に引き寄せられ、腰ごと浮く。足は床を離れてぶら下がる。
                         hipsOffset.y = StanceHipsY - 0.10f * pull + 0.13f * hugLift + 0.02f * crush;
-                        hipsOffset.z = StanceHipsZ + 0.03f * pull + 0.01f * crush;
+                        hipsOffset.z = StanceHipsZ + 0.03f * pull + 0.01f * crush
+                            + 0.045f * yank;
                         hipsOffset.x = Mathf.Sin(Time.time * 2.7f) * 0.015f * hugLift;
 
-                        torsoPitch = -8f * pull + 4f * strain + 2f * crush;
+                        // 引き寄せ: 上体だけ先に持っていかれ、頭は一瞬残ってから付いてくる。
+                        torsoPitch = -8f * pull + 4f * strain + 2f * crush + 12f * yank;
                         torsoYaw = Mathf.Sin(Time.time * 2.4f) * 3f;
-                        torsoRoll = Mathf.Sin(Time.time * 2.1f) * 1.5f * hugLift;
+                        torsoRoll = Mathf.Sin(Time.time * 2.1f) * 1.5f * hugLift
+                            - 2.5f * yank;
 
-                        headPitch = -14f * pull - 5f * crush;
+                        headPitch = -14f * pull - 5f * crush - 11f * yank;
                         headYaw = Mathf.Sin(Time.time * 3.2f) * 5f;
                         headRoll = 0f;
 
@@ -1544,10 +1548,12 @@ namespace Ryona.Game
                         float press = 0.05f * crush;
                         var trappedUpper = new Vector3(0.92f - press, -0.34f, 0.06f);
                         var trappedFore = new Vector3(0.12f - press * 0.5f, -0.82f + press, 0.30f);
-                        armLUpper = trappedUpper + new Vector3(0f, -0.02f, push * 0.5f);
-                        armRUpper = trappedUpper + new Vector3(0f, 0f, push * 0.4f);
-                        armLFore = trappedFore + new Vector3(0.04f * push, 0f, 0f);
-                        armRFore = trappedFore + new Vector3(0.03f * push, 0f, 0f);
+                        // 引き寄せられると腕が遅れて後ろへ残る（引っ張られている感じ）。
+                        Vector3 trail = new Vector3(0f, -0.03f, -0.13f) * yank;
+                        armLUpper = trappedUpper + trail + new Vector3(0f, -0.02f, push * 0.5f);
+                        armRUpper = trappedUpper + trail + new Vector3(0f, 0f, push * 0.4f);
+                        armLFore = trappedFore + trail * 0.7f + new Vector3(0.04f * push, 0f, 0f);
+                        armRFore = trappedFore + trail * 0.7f + new Vector3(0.03f * push, 0f, 0f);
 
                         // 締め付けに抗して体を反らす。
                         torsoPitch -= 5f * strain;
@@ -1559,10 +1565,14 @@ namespace Ryona.Game
                         grip = 1f;
 
                         // 抱え上げられている間は両足が浮く。つま先は下へ垂れる。
-                        footL += StanceFootL + new Vector3(0f, 0.10f * hugLift, -0.02f * hugLift);
-                        footR += StanceFootR + new Vector3(0f, 0.10f * hugLift, -0.02f * hugLift);
-                        footPitchL = 22f * pull + 28f * hugLift;
-                        footPitchR = 22f * pull + 28f * hugLift;
+                        // 引き寄せでは足が床に残ろうとして、体より後ろへ遅れる。
+                        Vector3 drag = new Vector3(0f, 0.01f, -0.06f) * yank;
+                        footL += StanceFootL + drag
+                            + new Vector3(0f, 0.10f * hugLift, -0.02f * hugLift);
+                        footR += StanceFootR + drag
+                            + new Vector3(0f, 0.10f * hugLift, -0.02f * hugLift);
+                        footPitchL = 22f * pull + 28f * hugLift + 12f * yank;
+                        footPitchR = 22f * pull + 28f * hugLift + 12f * yank;
                         break;
                     }
 
