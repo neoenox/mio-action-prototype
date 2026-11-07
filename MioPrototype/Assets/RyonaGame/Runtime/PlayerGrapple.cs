@@ -154,9 +154,9 @@ namespace Ryona.Game
         }
 
         // 密着 → 少し離れる → 密着 の周期。
-        const float HugPullSeconds = 0.18f;
-        const float HugContactSeconds = 0.14f;
-        const float HugReleaseSeconds = 0.55f;
+        const float HugPullSeconds = 0.10f;
+        const float HugContactSeconds = 0.10f;
+        const float HugReleaseSeconds = 0.30f;
 
         /// <summary>0 = 離れ気味 / 1 = 掴み位置の基準 / 2 = 密着。</summary>
         int _hugStage;

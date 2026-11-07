@@ -78,8 +78,8 @@ namespace Ryona
         public const float BearHugChance = 0.5f;
 
         /// <summary>ベアハッグ中に締め付ける間隔・初回までの秒・1 回のダメージ。</summary>
-        public const float BearHugSqueezeDelay = 0.9f;
-        public const float BearHugSqueezeInterval = 1.0f;
+        public const float BearHugSqueezeDelay = 0.6f;
+        public const float BearHugSqueezeInterval = 0.65f;
         public const float BearHugSqueezeDamage = 2.0f;
 
         /// <summary>締め付けで加算するひるみ（ダウンはさせない程度）。</summary>
