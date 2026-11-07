@@ -98,11 +98,25 @@ namespace Ryona.Game
         float _heldFacePunchRemaining;
         float _heldFacePunchTotal;
 
+        // 投げられて、正面の敵に腹を差し出す体勢への移行（0..1）。
+        // パンチの「く」の字とは別物で、折れはしない。コンボのあいだ保持する。
+        bool _heldThrowLeadOn;
+        float _heldThrowLead;
+
         /// <summary>いま腹パンの「く」の字オーバーレイ中か。</summary>
         public bool IsHeldBellyPunch => _heldBellyPunchRemaining > 0f;
 
         /// <summary>いま拘束中の顔面パンチ（首が手前へ振れる）オーバーレイ中か。</summary>
         public bool IsHeldFacePunch => _heldFacePunchRemaining > 0f;
+
+        /// <summary>
+        /// 投げられて、腹を差し出す体勢に入っている最中か（コンボのあいだ保持）。
+        /// 食らいの姿勢ではないので、折れ・怯み・痛み表情・ヒットストップを伴わない。
+        /// </summary>
+        public bool IsHeldThrowLead => _heldThrowLeadOn || _heldThrowLead > 0.001f;
+
+        /// <summary>いま投げの体勢移行がどこまで入っているか（0..1）。</summary>
+        public float HeldThrowLead => _heldThrowLead;
 
         /// <summary>
         /// 拘束中に顔面を殴られたときの首の振れ（0..1）。入り 0.05 秒、保持、戻り 0.22 秒。
@@ -134,6 +148,22 @@ namespace Ryona.Game
 
             _heldFacePunchTotal = seconds;
             _heldFacePunchRemaining = seconds;
+        }
+
+        /// <summary>
+        /// 正面の敵に投げられ、腹を差し出す体勢へ移る。上体は折らず、腰を引いて腹を前へ出す。
+        /// <see cref="EndHeldThrowLead"/> を呼ぶまで保持する。
+        /// ダメージの反応ではないので、表情は <see cref="PlayerFace"/> に任せる。
+        /// </summary>
+        public void PlayHeldThrowLead()
+        {
+            _heldThrowLeadOn = true;
+        }
+
+        /// <summary>投げの体勢移行を解除する（コンボ終了／拘束が解けた）。</summary>
+        public void EndHeldThrowLead()
+        {
+            _heldThrowLeadOn = false;
         }
 
         /// <summary>
@@ -485,6 +515,7 @@ namespace Ryona.Game
 
         /// <summary>直前フレームの拘束の種類。引き渡しで姿勢が切り替わった瞬間を検出する。</summary>
         GrappleKind? _lastGrappleKind;
+        bool _wasHandingOff;
 
         /// <summary>
         /// ガード中に殴られたら、腕ごと押し戻される。
@@ -722,6 +753,12 @@ namespace Ryona.Game
             _heldBellyPunchRemaining = Mathf.Max(0f, _heldBellyPunchRemaining - dt);
             _heldFacePunchRemaining = Mathf.Max(0f, _heldFacePunchRemaining - dt);
 
+            // 投げの崩れ。引き込まれる動きなので、パンチの折れ（0.07 秒）よりゆっくり入れる。
+            if (Grapple == null || !Grapple.IsGrappled)
+                _heldThrowLeadOn = false;
+            _heldThrowLead = Mathf.MoveTowards(_heldThrowLead, _heldThrowLeadOn ? 1f : 0f,
+                dt / (_heldThrowLeadOn ? 0.10f : 0.16f));
+
             // 実際の移動速度。足を地面に固定する（滑らせない）ために使う。
             Vector3 move = transform.position - _lastPosition;
             _lastPosition = transform.position;
@@ -859,17 +896,20 @@ namespace Ryona.Game
             // 切り替わって見える。今の姿勢から 0.14 秒かけて新しい形へ寄せる。
             if (_state == State.Grabbed && Grapple != null)
             {
-                if (_lastGrappleKind.HasValue && _lastGrappleKind.Value != Grapple.Kind)
+                if (_wasHandingOff != Grapple.IsHandingOff ||
+                    (_lastGrappleKind.HasValue && _lastGrappleKind.Value != Grapple.Kind))
                 {
                     Rig.SnapshotPose();
                     _blend = 0f;
                     _blendSeconds = 0.14f;
                 }
                 _lastGrappleKind = Grapple.Kind;
+                _wasHandingOff = Grapple.IsHandingOff;
             }
             else
             {
                 _lastGrappleKind = null;
+                _wasHandingOff = false;
             }
 
             if (_state == State.Walk)
@@ -939,7 +979,7 @@ namespace Ryona.Game
 
             // 突き飛ばされた瞬間: 姿勢を組んだ後に足す（上体が前へ・腕が後ろへ・顔は起こす）。
             // ApplyPose より前に書くと上書きされるので、必ずこの位置で。
-            if (Grapple != null && Grapple.PushPulse > 0f && Rig.Ready)
+            if (Grapple != null && !Grapple.IsHandingOff && Grapple.PushPulse > 0f && Rig.Ready)
             {
                 float p = Mathf.Clamp01(Grapple.PushPulse);
                 Rig.Chest.localRotation *= Quaternion.Euler(20f * p, 0f, 0f);

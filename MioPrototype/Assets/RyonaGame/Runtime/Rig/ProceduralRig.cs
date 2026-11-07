@@ -599,6 +599,29 @@ namespace Ryona.Game
             return hand.TransformDirection(local);
         }
 
+        public void AlignPalm(bool left, Vector3 normal, Vector3 fingers)
+        {
+            var hand = left ? LHand : RHand;
+            if (hand == null || _animator == null || !_animator.isHuman)
+                return;
+
+            var knuckle = _animator.GetBoneTransform(
+                left ? HumanBodyBones.LeftMiddleProximal : HumanBodyBones.RightMiddleProximal);
+            Vector3 palm = PalmNormalWorld(left);
+            if (knuckle == null || palm.sqrMagnitude < 1e-6f)
+                return;
+
+            Vector3 fingerDirection = knuckle.position - hand.position;
+            if (fingerDirection.sqrMagnitude < 1e-6f)
+                return;
+
+            // 先に掌を面へ向け、面の法線まわりで指の向きだけを整える。
+            Quaternion faceSurface = Quaternion.FromToRotation(palm, normal);
+            Vector3 alongSurface = Vector3.ProjectOnPlane(faceSurface * fingerDirection, normal);
+            float twist = Vector3.SignedAngle(alongSurface, fingers, normal);
+            hand.rotation = Quaternion.AngleAxis(twist, normal) * faceSurface * hand.rotation;
+        }
+
         void CaptureFingers()
         {
             _fingerRest.Clear();

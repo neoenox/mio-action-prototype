@@ -9,10 +9,10 @@ namespace Ryona.Game
     ///
     /// 流れ:
     /// <list type="number">
-    /// <item>後ろ拘束が始まったら <see cref="PunchDelaySeconds"/> 秒待つ</item>
-    /// <item>拘束者以外の敵をプレイヤーの斜め前へ置き、Body 狙いのジャブを指示する</item>
-    /// <item>最初の一発が当たったら、<see cref="ComboHits"/> 発まで連続で腹パン</item>
-    /// <item>「く」の字・もがき停止・斜め前カメラをコンボ中ずっと維持し、終わったら拘束を解放</item>
+    /// <item>後ろ拘束が始まったら <see cref="ThrowDelaySeconds"/> 秒待つ</item>
+    /// <item>正面にいる別の敵が投げを仕掛け、成功したら連撃を開始する</item>
+    /// <item>投げはダメージではなく、彼女を腹パン体勢（腹を差し出す）へ移す演出として見せる</item>
+    /// <item>投げは打数に含めず、<see cref="ComboHits"/> 発のパンチを数える</item>
     /// </list>
     ///
     /// 後ろ拘束は時間切れで解けないので、プレイヤーは
@@ -23,8 +23,8 @@ namespace Ryona.Game
     public sealed partial class HeldBellyPunchDirector : MonoBehaviour
     {
         [Header("Timing")]
-        [Tooltip("後ろ拘束が始まってから、最初の腹パンを指示するまでの秒数")]
-        public float PunchDelaySeconds = 1.6f;
+        [Tooltip("後ろ拘束が始まってから、正面の敵に投げを指示するまでの秒数")]
+        public float ThrowDelaySeconds = 1.6f;
 
         [Tooltip("1 回の拘束で食らう腹パンの回数")]
         public int ComboHits = 5;
@@ -86,8 +86,8 @@ namespace Ryona.Game
         /// <summary>腹パンのコンボ中か。</summary>
         public bool IsPerforming { get; private set; }
 
-        /// <summary>次の腹パンを指示して、当たるのを待っているか。</summary>
-        public bool IsPunchIncoming => _waitingForHit;
+        public bool IsThrowIncoming => !_comboActive && _thrower != null && _thrower.isActiveAndEnabled &&
+            (_thrower.IsPreparingHeldThrow || _thrower.IsHandOffLocked);
 
         /// <summary>腹パン役が見つかっているか（HUD の表示に使う）。</summary>
         public bool HasAttacker { get; private set; }
@@ -101,10 +101,8 @@ namespace Ryona.Game
         /// <summary>この拘束で食らう腹パンの総数。</summary>
         public int ComboHitsTotal => Mathf.Max(1, ComboHits);
 
-        /// <summary>次の腹パンまでの残り秒。予約していなければ 0。</summary>
-        public float NextPunchRemaining =>
-            _waitingForFirst ? Mathf.Max(0f, _punchTimer)
-            : (_comboActive && _hits < ComboHitsTotal ? Mathf.Max(0f, _nextPunchTimer) : 0f);
+        /// <summary>次に投げを試すまでの秒数。予約していなければ 0。</summary>
+        public float NextThrowRemaining => _waitingForThrow ? Mathf.Max(0f, _throwTimer) : 0f;
 
         /// <summary>最初の腹パンが当たった瞬間。デバッグ撮影が購読する。</summary>
         public event Action Performed;
@@ -114,8 +112,9 @@ namespace Ryona.Game
         CharacterAnimator _anim;
         ThirdPersonCamera _camera;
 
-        bool _waitingForFirst;
-        float _punchTimer;
+        bool _waitingForThrow;
+        float _throwTimer;
+        EnemyBrain _thrower;
 
         bool _comboActive;
         int _hits;
@@ -206,6 +205,7 @@ namespace Ryona.Game
                 _grapple.Started += OnGrappleStarted;
                 _grapple.Escaped += OnGrappleEnded;
                 _grapple.Failed += OnGrappleEnded;
+                _grapple.HeldThrowLanded += OnHeldThrowLanded;
             }
 
             if (_stats != null)
@@ -219,6 +219,7 @@ namespace Ryona.Game
                 _grapple.Started -= OnGrappleStarted;
                 _grapple.Escaped -= OnGrappleEnded;
                 _grapple.Failed -= OnGrappleEnded;
+                _grapple.HeldThrowLanded -= OnHeldThrowLanded;
             }
 
             if (_stats != null)
@@ -238,11 +239,11 @@ namespace Ryona.Game
             if (kind != GrappleKind.Back)
                 return;
 
-            _waitingForFirst = true;
-            _punchTimer = Mathf.Max(0.1f, PunchDelaySeconds);
+            _waitingForThrow = true;
+            _throwTimer = Mathf.Max(0.1f, ThrowDelaySeconds);
             _attempts = 0;
 
-            Debug.Log($"[HeldPunch] schedule in {_punchTimer:F2}s");
+            Debug.Log($"[HeldPunch] throw scheduled in {_throwTimer:F2}s");
         }
 
         void OnGrappleEnded()
@@ -260,8 +261,9 @@ namespace Ryona.Game
             if (IsPerforming && _camera != null)
                 _camera.PushFocus(0f, 0f);
 
-            _waitingForFirst = false;
-            _punchTimer = 0f;
+            _waitingForThrow = false;
+            _throwTimer = 0f;
+            _thrower = null;
             _comboActive = false;
             _nextPunchTimer = 0f;
             _comboEndTimer = 0f;
@@ -272,6 +274,7 @@ namespace Ryona.Game
             _attempts = 0;
             HasAttacker = false;
             IsPerforming = false;
+            _anim?.EndHeldThrowLead();
         }
 
         void Update()
@@ -285,9 +288,9 @@ namespace Ryona.Game
                 Subscribe();
             }
 
-            if (!_grapple.IsGrappled || _grapple.Kind != GrappleKind.Back)
+            if (!_grapple.IsGrappled || _grapple.IsHandingOff || _grapple.Kind != GrappleKind.Back)
             {
-                if (IsPerforming || _waitingForFirst || _comboActive || _waitingForHit || _waitingForHandOff)
+                if (IsPerforming || _waitingForThrow || _thrower != null || _waitingForHandOff)
                     ResetHold();
                 return;
             }
@@ -316,51 +319,29 @@ namespace Ryona.Game
                 return;
             }
 
-            UpdateFirstPunch();
+            UpdateOpeningThrow();
         }
 
-        void UpdateFirstPunch()
+        void UpdateOpeningThrow()
         {
-            if (_waitingForHit)
-            {
-                _hitTimeout -= Time.deltaTime;
-                if (_hitTimeout <= 0f)
-                {
-                    _waitingForHit = false;
-                    _waitingForFirst = true;
-                    _punchTimer = Mathf.Max(0.2f, RetrySeconds);
-                    _attempts++;
-                    Debug.Log("[HeldPunch] retry (first punch missed)");
-                }
-
+            if (IsThrowIncoming)
                 return;
+
+            if (_thrower != null)
+            {
+                _thrower = null;
+                _throwTimer = Mathf.Max(0.2f, RetrySeconds);
             }
 
-            if (!_waitingForFirst)
+            if (!_waitingForThrow)
                 return;
 
-            _punchTimer -= Time.deltaTime;
-            if (_punchTimer > 0f)
+            _throwTimer -= Time.deltaTime;
+            if (_throwTimer > 0f)
                 return;
 
-            if (TryOrderPunch())
-            {
-                _waitingForFirst = false;
-                _waitingForHit = true;
-                _hitTimeout = 2.0f;
-                return;
-            }
-
-            _attempts++;
-            if (_attempts >= Mathf.Max(1, MaxAttempts))
-            {
-                _waitingForFirst = false;
-                HasAttacker = false;
-                Debug.Log("[HeldPunch] give up (no opening for the first punch)");
-                return;
-            }
-
-            _punchTimer = 0.3f;
+            if (!TryOrderAttack(openingThrow: true))
+                _throwTimer = 0.3f;
         }
 
         void UpdateCombo()
@@ -372,6 +353,18 @@ namespace Ryona.Game
                     FinishCombo(completed: true);
 
                 return;
+            }
+
+            if (_thrower != null)
+            {
+                var openingPuncher = _thrower;
+                _thrower = null;
+                if (openingPuncher.TryStartOpeningBellyPunch(FistHoldSeconds))
+                {
+                    _waitingForHit = true;
+                    _hitTimeout = 1.2f;
+                    return;
+                }
             }
 
             if (_waitingForHit)
@@ -392,7 +385,7 @@ namespace Ryona.Game
             if (_nextPunchTimer > 0f)
                 return;
 
-            if (TryOrderPunch())
+            if (TryOrderAttack(openingThrow: false))
             {
                 _waitingForHit = true;
                 _hitTimeout = 1.2f;
@@ -417,16 +410,7 @@ namespace Ryona.Game
         /// </summary>
         void OnHitReceived(HitResult result)
         {
-            if (!_comboActive)
-            {
-                // 最初の一発が腹でも顔でも、それでコンボが始まる（狙いは当たった場所）。
-                if (ShouldStartCombo(result))
-                    BeginCombo(_stats.LastHitZone ?? PunchZone.Body);
-
-                return;
-            }
-
-            if (!IsTagPunchHit(result))
+            if (!_comboActive || !IsTagPunchHit(result))
                 return;
 
             if (_hits >= ComboHitsTotal)
@@ -469,23 +453,9 @@ namespace Ryona.Game
                 _nextPunchTimer = Mathf.Max(0.1f, ComboIntervalSeconds);
                 Debug.Log($"[HeldPunch] combo {_hits}/{ComboHitsTotal} ({zone})");
             }
-        }
 
-        bool ShouldStartCombo(HitResult result)
-        {
-            if (_grapple == null || _stats == null)
-                return false;
-
-            if (!_grapple.IsGrappled || _grapple.Kind != GrappleKind.Back)
-                return false;
-
-            if (_comboActive || _waitingForHandOff || _cooldown > 0f)
-                return false;
-
-            if (_stats.IsDead)
-                return false;
-
-            return IsTagPunchHit(result);
+            if (_hits == 1)
+                Performed?.Invoke();
         }
 
         /// <summary>「別の敵のパンチ（腹 / 顔）」として演出を始めてよいか。</summary>
@@ -516,19 +486,23 @@ namespace Ryona.Game
             return Vector3.Dot(forward.normalized, to.normalized) > 0.1f;
         }
 
-        void BeginCombo(PunchZone zone)
+        void OnHeldThrowLanded(EnemyBrain attacker)
         {
-            if (_comboActive || _cooldown > 0f)
+            if (!isActiveAndEnabled || _comboActive || _waitingForHandOff || _cooldown > 0f ||
+                !_grapple.IsGrappled || _grapple.IsHandingOff || _grapple.Kind != GrappleKind.Back ||
+                _stats.IsDead)
                 return;
 
             _comboActive = true;
             IsPerforming = true;
-            _hits = 1;
-            LastLandedZone = zone;
-            _waitingForFirst = false;
+            _hits = 0;
+            LastLandedZone = PunchZone.Body;
+            _waitingForThrow = false;
+            _thrower = attacker;
             _waitingForHit = false;
             _attempts = 0;
-            _nextPunchTimer = Mathf.Max(0.1f, ComboIntervalSeconds);
+            // 次の更新で同じ敵がそのまま一発目を打つ。
+            _nextPunchTimer = 0f;
 
             // VRM の読み込みが遅れて CharacterAnimator が後から付くことがある。
             // 演出の瞬間に取り直す（Start で null のままでも姿勢を出せるように）。
@@ -539,21 +513,14 @@ namespace Ryona.Game
             // （逃げたら演出はそこで終わる）。当たりの瞬間だけ 0.12 秒止める。
             _grapple.SuppressStruggle(0.12f);
 
-            if (_anim != null)
-            {
-                if (zone == PunchZone.Face)
-                    _anim.PlayHeldFacePunch(HitPoseSeconds);
-                else
-                    _anim.PlayHeldBellyPunch(HitPoseSeconds);
-            }
+            // 投げは“食らい”ではなく腹パン体勢への移行。折らずに腹を差し出す体勢へ入り、
+            // コンボのあいだそのまま見せる（「く」の字はパンチが当たったときだけ）。
+            _anim?.PlayHeldThrowLead();
 
-            RefreshCamera(2.0f);
-            Debug.Log($"[HeldPunch] combo start 1/{ComboHitsTotal} " +
+            Debug.Log($"[HeldPunch] throw landed → combo start 0/{ComboHitsTotal} " +
                       $"captor={(_grapple.Captor != null ? _grapple.Captor.name : "none")} " +
-                      $"attacker={(_stats.LastAttacker != null ? _stats.LastAttacker.name : "none")} " +
+                      $"attacker={attacker.name} " +
                       $"t={_grapple.HeldSeconds:F2}s");
-
-            Performed?.Invoke();
         }
 
         void FinishCombo(bool completed = false)
@@ -562,6 +529,8 @@ namespace Ryona.Game
 
             _comboActive = false;
             IsPerforming = false;
+            // 投げの崩れが残ったままコンボを終えない（崩れた姿勢のまま次の拘束へ入らない）。
+            _anim?.EndHeldThrowLead();
             _nextPunchTimer = 0f;
             _comboEndTimer = 0f;
             _waitingForHit = false;

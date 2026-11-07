@@ -256,14 +256,78 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator HandOffCatchesBeforeStartingThePin() =>
+            CheckHandOffStages(GrappleKind.Pin);
+
+        [UnityTest]
+        public IEnumerator HandOffCatchesBeforeStartingTheBackHold() =>
+            CheckHandOffStages(GrappleKind.Back);
+
+        IEnumerator CheckHandOffStages(GrappleKind kind)
+        {
+            yield return Load();
+            _player.GetComponent<PlayerMotor>().enabled = false;
+            _captor.transform.SetPositionAndRotation(_player.transform.position + Vector3.left,
+                Quaternion.LookRotation(Vector3.right));
+            _grapple.Begin(_captor, GrappleKind.Back);
+            _other.transform.position = _player.transform.position + Vector3.right * 2f;
+            _other.transform.rotation = Quaternion.LookRotation(Vector3.left);
+
+            int started = 0;
+            _grapple.Started += _ => started++;
+            Vector3 beforePush = _player.transform.position;
+            _grapple.HandOff(_other, kind, shove: true);
+
+            Assert.IsFalse(_other.IsCatching || _other.IsHolding, "The shove comes first.");
+            Assert.AreEqual(0, started, "The new hold must not start during the shove.");
+            Assert.IsTrue(_captor.IsPushing);
+            Assert.AreEqual(0f, _grapple.PushPulse, "The sender reaches before the player reacts.");
+            Assert.AreEqual(beforePush, _player.transform.position, "The player stays planted during the reach.");
+
+            float deadline = Time.realtimeSinceStartup + 3f;
+            while (_grapple.PushPulse == 0f && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.Greater(_grapple.PushPulse, 0f, "The shove starts on contact.");
+            Assert.IsTrue(_captor.IsPushing, "The sender follows through as the player moves.");
+            while (_player.transform.position == beforePush && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.Greater(_player.transform.position.x, beforePush.x);
+
+            while (!_other.IsCatching && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.IsTrue(_other.IsCatching);
+            Assert.IsFalse(_other.IsHolding || _other.IsPinning, "The receiver braces before pinning.");
+            Assert.AreEqual(0, started);
+
+            while (!_other.IsHolding && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.IsTrue(_other.IsHolding);
+            Assert.AreEqual(kind == GrappleKind.Pin, _other.IsPinning);
+            Assert.IsFalse(_other.IsCatching);
+            Assert.AreEqual(kind, _grapple.Kind);
+            Assert.AreEqual(1, started);
+            if (kind == GrappleKind.Pin)
+                Assert.Greater(_grapple.Remaining, CombatConstants.GrappleLimitSeconds - 0.2f);
+        }
+
+        [UnityTest]
         public IEnumerator InterruptedHandOffStopsMovingThePlayer()
         {
             yield return Load();
             _player.GetComponent<PlayerMotor>().enabled = false;
+            _captor.transform.SetPositionAndRotation(_player.transform.position + Vector3.left,
+                Quaternion.LookRotation(Vector3.right));
             _grapple.Begin(_captor, GrappleKind.Back);
             _other.transform.position = _player.transform.position + Vector3.right * 2.5f;
             _other.transform.rotation = Quaternion.LookRotation(Vector3.left);
             _grapple.HandOff(_other, GrappleKind.Pin, shove: true);
+            float deadline = Time.realtimeSinceStartup + 2f;
+            while (_grapple.PushPulse == 0f && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.Greater(_grapple.PushPulse, 0f);
+            yield return null;
 
             _other.TakeHit(new CombatState(), new AttackData { damage = _other.State.Hp });
             Assert.IsFalse(_other.IsAlive);

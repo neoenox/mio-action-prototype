@@ -445,6 +445,24 @@ namespace Ryona.Game
 
                 case State.Grabbed:
                 {
+                    if (Grapple != null && Grapple.IsHandingOff)
+                    {
+                        // 押された間は腕が自由。受け止められたら膝を折り、両腕で釣り合いを取る。
+                        bool caught = Grapple.Captor != null && Grapple.Captor.IsCatching;
+                        float push = Grapple.PushPulse;
+                        Vector3 localPush = transform.InverseTransformDirection(Grapple.PushDirection);
+                        hipsOffset.y = StanceHipsY - (caught ? 0.08f : 0.035f + 0.07f * push);
+                        hipsOffset.z = StanceHipsZ + 0.05f * push * localPush.z;
+                        torsoPitch = caught ? -6f : 4f + 25f * push * localPush.z;
+                        torsoRoll = -18f * push * localPush.x;
+                        headPitch = caught ? 6f : -4f - 15f * push * localPush.z;
+                        armLUpper = armRUpper = new Vector3(0.58f, -0.80f, 0.10f - 0.63f * push * localPush.z);
+                        armLFore = armRFore = new Vector3(0.10f, -0.30f - 0.22f * push, 0.94f - 0.45f * push);
+                        footL += StanceFootL;
+                        footR += StanceFootR;
+                        break;
+                    }
+
                     // 相手に掴まれ、引かれている。上体は反り、両手で相手の腕を掴もうとする。
                     // もがくたびに肘が開き、掴もうとする手が跳ねる（レバガチャの手応えを体で返す）。
                     float pull = 1f - Mathf.Exp(-_stateTime * 10f);
@@ -510,6 +528,18 @@ namespace Ryona.Game
                         footR += StanceFootR;
                         footL += new Vector3(0f, 0f, 0.05f);
                         footPitchL = 30f * pull;
+
+                        // 投げられて正面の敵に差し出される体勢。ここでは折れない
+                        // （折れると「殴られた」に見える）。腰を引いて腹を前へ出し、顔は上げる。
+                        // 一発目が当たると、下の「く」の字がこの上から折る。
+                        float ready = HeldThrowLead;
+                        if (ready > 0f)
+                        {
+                            torsoPitch += 12f * ready;
+                            headPitch -= 8f * ready;
+                            hipsOffset.y -= 0.02f * ready;
+                            hipsOffset.z -= 0.05f * ready;
+                        }
 
                         // 腹パン: 羽交い締めのまま上体を折り、腰を引いて膝を曲げる（くの字）。
                         // もがきの脈（strain / claw）は止めて、抵抗していないことを見せる。
@@ -577,27 +607,18 @@ namespace Ryona.Game
                         headYaw = Mathf.Sin(Time.time * 3.2f) * 5f;
                         headRoll = 0f;
 
-                        // 両腕は体側に封じられるが、もがくと肘が外へ開き、相手の腕を押し返す。
-                        // 締め付けられると逆に内側へ潰れる（press）。
-                        float push = 0.12f * pulse;
-                        float press = 0.05f * crush;
-                        var trappedUpper = new Vector3(0.92f - press, -0.34f, 0.06f);
-                        var trappedFore = new Vector3(0.12f - press * 0.5f, -0.82f + press, 0.30f);
-                        // 引き寄せられると腕が遅れて後ろへ残る（引っ張られている感じ）。
-                        Vector3 trail = new Vector3(0f, -0.03f, -0.13f) * yank;
-                        armLUpper = trappedUpper + trail + new Vector3(0f, -0.02f, push * 0.5f);
-                        armRUpper = trappedUpper + trail + new Vector3(0f, 0f, push * 0.4f);
-                        armLFore = trappedFore + trail * 0.7f + new Vector3(0.04f * push, 0f, 0f);
-                        armRFore = trappedFore + trail * 0.7f + new Vector3(0.03f * push, 0f, 0f);
+                        // 手を開いて胴の前へ構える。実際の接触位置は BearHugPose が合わせる。
+                        armLUpper = armRUpper = new Vector3(0.46f, -0.82f, 0.34f);
+                        armLFore = armRFore = new Vector3(-0.10f, 0.30f, 0.95f);
 
-                        // 締め付けに抗して体を反らす。
-                        torsoPitch -= 5f * strain;
+                        // 締め付けに合わせて胸を起こし、両腕で押し返す。
+                        torsoPitch -= 5f * strain + 8f * crush;
                         headPitch -= 3f * strain;
                         hipsOffset.z -= 0.03f * strain;
 
                         handRollL = StanceHandRollL;
                         handRollR = StanceHandRollR;
-                        grip = 1f;
+                        grip = 0.12f;
 
                         // 抱え上げられている間は両足が浮く。つま先は下へ垂れる。
                         // 引き寄せでは足が床に残ろうとして、体より後ろへ遅れる。
@@ -1408,12 +1429,14 @@ namespace Ryona.Game
                 float stepR = Mathf.Max(0f, -Mathf.Sin(beat));      // 右足の踏み直し
                 float drag = Mathf.Sin(Mathf.PI * t);               // 押されて足が残る量
 
-                // 進まされる向き: 正面（Pin）は前へ、背面（Back）は後ろへ押される。
-                // 足はその逆へ残る。
-                float dirZ = Grapple.Kind == GrappleKind.Back ? 1f : -1f;
-
-                footL += new Vector3(0.02f, 0.07f * stepL, dirZ * (0.10f * drag + 0.05f * stepL));
-                footR += new Vector3(-0.02f, 0.07f * stepR, dirZ * (0.10f * drag - 0.05f * stepR));
+                // 向きを変えても、足は実際に押された向きと逆へ一瞬残る。
+                Vector3 localPush = Grapple.IsHandingOff
+                    ? transform.InverseTransformDirection(Grapple.PushDirection)
+                    : Vector3.forward * (Grapple.Kind == GrappleKind.Back ? -1f : 1f);
+                footL += new Vector3(0.02f, 0.08f * stepL, 0f)
+                    + localPush * (0.08f * stepL - 0.13f * drag);
+                footR += new Vector3(-0.02f, 0.08f * stepR, 0f)
+                    + localPush * (0.08f * stepR - 0.13f * drag);
 
                 // 踏み直す足はつま先立ちになる（かかとが浮く）
                 footPitchL = Mathf.Max(footPitchL, 18f * stepL);

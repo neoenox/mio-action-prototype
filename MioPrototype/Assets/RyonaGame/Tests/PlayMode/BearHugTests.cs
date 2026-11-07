@@ -78,6 +78,16 @@ namespace Ryona.Tests
         {
             yield return Load();
 
+            float rigDeadline = Time.realtimeSinceStartup + 8f;
+            var rig = _player.GetComponentInChildren<ProceduralRig>();
+            while (rig == null && Time.realtimeSinceStartup < rigDeadline)
+            {
+                yield return null;
+                rig = _player.GetComponentInChildren<ProceduralRig>();
+            }
+            Assert.IsNotNull(rig);
+            var figure = _captor.GetComponent<EnemyFigure>();
+
             _captor.enabled = true;
             _captor.QueueBearHug();
 
@@ -89,6 +99,8 @@ namespace Ryona.Tests
             Assert.IsTrue(_grapple.IsGrappled && _grapple.Kind == GrappleKind.BearHug,
                 "正面からベアハッグに入らない");
             Assert.IsTrue(_captor.IsBearHugging, "締め付けの状態になっていない");
+            var camera = Object.FindFirstObjectByType<ThirdPersonCamera>();
+            Assert.IsNotNull(camera);
 
             float hpBefore = _player.State.Hp;
             float squeezeDeadline = Time.realtimeSinceStartup + 3f;
@@ -99,6 +111,14 @@ namespace Ryona.Tests
             // 密着 → 少し離れる → 密着 を繰り返す。距離の振れ幅と、密着時のダメージを見る。
             float minDistance = float.MaxValue;
             float maxDistance = 0f;
+            float closestCameraScale = 1f;
+            float worstWristGap = 0f;
+            float leastPalmContact = 1f;
+            float restElbowSpread = float.PositiveInfinity;
+            float squeezeElbowSpread = 0f;
+            float leastWrapOutside = float.PositiveInfinity;
+            float lowestWrap = float.PositiveInfinity;
+            float mostForwardWrapWrist = float.NegativeInfinity;
             bool sawContact = false;
             bool sawPull = false;
             float observeUntil = Time.realtimeSinceStartup + 2.4f;
@@ -109,8 +129,35 @@ namespace Ryona.Tests
                     _player.transform.position, _captor.transform.position);
                 minDistance = Mathf.Min(minDistance, distance);
                 maxDistance = Mathf.Max(maxDistance, distance);
+                closestCameraScale = Mathf.Min(closestCameraScale, camera.EffectDistanceScale);
+                var chest = figure.ChestBone;
+                Vector3 leftWrist = chest.InverseTransformPoint(rig.LHand.position) / figure.Height;
+                Vector3 rightWrist = chest.InverseTransformPoint(rig.RHand.position) / figure.Height;
+                worstWristGap = Mathf.Max(worstWristGap,
+                    Mathf.Max(TorsoGap(leftWrist, 1f), TorsoGap(rightWrist, -1f)));
+                leastPalmContact = Mathf.Min(leastPalmContact,
+                    Mathf.Min(Vector3.Dot(rig.PalmNormalWorld(true), -chest.forward),
+                        Vector3.Dot(rig.PalmNormalWorld(false), -chest.forward)));
+                float elbowSpread = Mathf.Abs(Vector3.Dot(
+                    rig.RLowerArm.position - rig.LLowerArm.position, _player.transform.right));
+                if (_grapple.SqueezePulse < 0.1f)
+                    restElbowSpread = Mathf.Min(restElbowSpread, elbowSpread);
                 if (_grapple.IsBearHugContact)
+                {
                     sawContact = true;
+                    squeezeElbowSpread = Mathf.Max(squeezeElbowSpread, elbowSpread);
+                    var leftArm = Vector3.Lerp(rig.LUpperArm.position, rig.LLowerArm.position, 0.55f);
+                    var rightArm = Vector3.Lerp(rig.RUpperArm.position, rig.RLowerArm.position, 0.55f);
+                    Vector3 rightWrap = figure.ElbowBone(false).position - leftArm;
+                    Vector3 leftWrap = figure.ElbowBone(true).position - rightArm;
+                    leastWrapOutside = Mathf.Min(leastWrapOutside,
+                        Mathf.Min(Vector3.Dot(rightWrap, -_player.transform.right),
+                            Vector3.Dot(leftWrap, _player.transform.right)));
+                    lowestWrap = Mathf.Min(lowestWrap, Mathf.Min(rightWrap.y, leftWrap.y));
+                    mostForwardWrapWrist = Mathf.Max(mostForwardWrapWrist,
+                        Mathf.Max(Vector3.Dot(figure.WristBone(false).position - rig.Spine.position, _player.transform.forward),
+                            Vector3.Dot(figure.WristBone(true).position - rig.Spine.position, _player.transform.forward)));
+                }
                 if (_grapple.PullPulse > 0.3f)
                     sawPull = true;
             }
@@ -123,6 +170,13 @@ namespace Ryona.Tests
             Assert.Less(_player.State.Hp, hpBefore - 2f, "密着時のダメージが入っていない");
             Assert.Greater(_grapple.LiftPulse, 0.5f, "抱え上げられていない");
             Assert.IsFalse(_player.IsDead, "ベアハッグだけで死亡している");
+            Assert.Less(closestCameraScale, 0.67f, "ベアハッグ中は上半身が見える距離まで寄る");
+            Assert.Less(worstWristGap, 0.055f, "両手が敵の胴の前面から離れない");
+            Assert.Greater(leastPalmContact, 0.8f, "掌を敵の胴へ向けて支える");
+            Assert.Greater(squeezeElbowSpread, restElbowSpread + 0.02f, "締め付け時に肘を張って押し返す");
+            Assert.Greater(leastWrapOutside, 0.035f, "敵の肘は澪の上腕より外側にある");
+            Assert.Greater(lowestWrap, -0.05f, "敵の腕は澪の脇の下へ落ちず、上腕を抱え込む");
+            Assert.Less(mostForwardWrapWrist, -0.04f, "敵の両手が澪の背中まで回る");
 
             // 12 回もがけば脱出できる。
             int need = Mathf.CeilToInt(_grapple.RequiredInputs);
@@ -138,6 +192,14 @@ namespace Ryona.Tests
             yield return new WaitForSeconds(1.2f);
             Assert.AreEqual(hpAfter, _player.State.Hp, 0.01f, "脱出後も締め付けが続いている");
             Assert.Less(_grapple.LiftPulse, 0.1f, "脱出後も抱え上げられたまま");
+            Assert.AreEqual(1f, camera.EffectDistanceScale, 0.01f, "脱出後は通常のカメラ距離に戻る");
+        }
+
+        static float TorsoGap(Vector3 wrist, float side)
+        {
+            // 胸ボーンの前にある胴のうち、左右の手で支える範囲までの距離。
+            var contact = new Vector3(side * 0.06f, Mathf.Clamp(wrist.y, 0.05f, 0.10f), 0.06f);
+            return Vector3.Distance(wrist, contact);
         }
     }
 }

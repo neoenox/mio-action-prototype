@@ -93,6 +93,90 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator BearHugOpensEyesBetweenSqueezes() => CheckHeldFace(GrappleKind.BearHug);
+
+        [UnityTest]
+        public IEnumerator BackHoldOpensEyesBetweenBodyPunches() => CheckHeldFace(GrappleKind.Back);
+
+        [UnityTest]
+        public IEnumerator PinOpensEyesBetweenKneeStrikes() => CheckHeldFace(GrappleKind.Pin);
+
+        IEnumerator CheckHeldFace(GrappleKind kind)
+        {
+            yield return TestScene.LoadPrototype();
+            _stats = Object.FindFirstObjectByType<PlayerStats>();
+            var enemies = Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None);
+            foreach (var enemy in enemies)
+                enemy.enabled = false;
+
+            PlayerFace face = null;
+            float deadline = Time.realtimeSinceStartup + 8f;
+            while (face == null && Time.realtimeSinceStartup < deadline)
+            {
+                face = _stats.GetComponentInChildren<PlayerFace>();
+                yield return null;
+            }
+            Assert.IsNotNull(face);
+
+            var mesh = System.Array.Find(face.GetComponentsInChildren<SkinnedMeshRenderer>(),
+                renderer => renderer.sharedMesh != null &&
+                    renderer.sharedMesh.GetBlendShapeIndex("Fcl_BRW_Sorrow") >= 0);
+            Assert.IsNotNull(mesh);
+            int brow = mesh.sharedMesh.GetBlendShapeIndex("Fcl_BRW_Sorrow");
+            int eyelids = mesh.sharedMesh.GetBlendShapeIndex("Fcl_EYE_Close");
+            int mouth = mesh.sharedMesh.GetBlendShapeIndex("Fcl_MTH_A");
+            Assert.GreaterOrEqual(eyelids, 0);
+            Assert.GreaterOrEqual(mouth, 0);
+
+            var grapple = _stats.GetComponent<PlayerGrapple>();
+            grapple.Begin(enemies[0], kind);
+            yield return WaitUnscaled(0.1f);
+            Assert.Greater(mesh.GetBlendShapeWeight(brow), 30f, "The hold uses a worried brow.");
+            Assert.Less(mesh.GetBlendShapeWeight(eyelids), 5f, "Eyes stay open between hits.");
+            float restingMouth = mesh.GetBlendShapeWeight(mouth);
+
+            if (kind == GrappleKind.BearHug)
+                grapple.Squeeze();
+            float peakClosed = 0f;
+            float peakMouth = 0f;
+            bool tookDamage = false;
+            deadline = Time.realtimeSinceStartup + 0.55f;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+                if (!tookDamage && (kind != GrappleKind.BearHug || grapple.IsBearHugContact))
+                {
+                    _stats.LastHitZone = PunchZone.Body;
+                    bool tagPunch = kind == GrappleKind.Back;
+                    var attacker = tagPunch ? enemies[1] : enemies[0];
+                    float bellyDamage = kind switch
+                    {
+                        GrappleKind.Back => CombatConstants.HeldBellyPunchDamage,
+                        GrappleKind.Pin => CombatConstants.HeldKneeBellyDamage,
+                        _ => 0f
+                    };
+                    var attackKind = kind == GrappleKind.BearHug ? AttackKind.Grapple : AttackKind.Light;
+                    _stats.ReceiveHit(attacker.State, new AttackData { kind = attackKind, damage = 1f },
+                        attacker.transform, bellyDamage, isTagPunch: tagPunch);
+                    tookDamage = true;
+                }
+                peakClosed = Mathf.Max(peakClosed, mesh.GetBlendShapeWeight(eyelids));
+                peakMouth = Mathf.Max(peakMouth, mesh.GetBlendShapeWeight(mouth));
+            }
+            Assert.IsTrue(tookDamage);
+            Assert.Greater(peakClosed, 90f, "The hit closes the eyes.");
+            Assert.Greater(peakMouth, restingMouth + 8f, "The hit opens the mouth a little more.");
+            Assert.IsTrue(grapple.IsGrappled);
+            Assert.Less(mesh.GetBlendShapeWeight(eyelids), 5f, "Eyes reopen after the hit.");
+
+            grapple.Release();
+            yield return null;
+            yield return null;
+            Assert.Less(mesh.GetBlendShapeWeight(brow), 5f, "The worried brow clears on release.");
+            Assert.Less(mesh.GetBlendShapeWeight(eyelids), 5f, "Held damage does not leave a punch expression.");
+        }
+
+        [UnityTest]
         public IEnumerator 腹パンで表情が腹パン用の配合に切り替わる()
         {
             yield return LoadFace();

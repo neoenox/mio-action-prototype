@@ -50,7 +50,7 @@ namespace Ryona.Game
             HasAttacker = false;
         }
 
-        /// <summary>次のコンボまでの待ち時間を入れて、最初の一発を予約し直す。</summary>
+        /// <summary>次の連撃は再び正面の投げから始める。</summary>
         void StartComboCooldown()
         {
             _attempts = 0;
@@ -59,8 +59,8 @@ namespace Ryona.Game
             if (_grapple == null || !_grapple.IsGrappled || _grapple.Kind != GrappleKind.Back)
                 return;
 
-            _waitingForFirst = true;
-            _punchTimer = _cooldown;
+            _waitingForThrow = true;
+            _throwTimer = _cooldown;
         }
 
         /// <summary>コンボ中、カメラを斜め前の構図に保つ。ヒットごとに押し直す。</summary>

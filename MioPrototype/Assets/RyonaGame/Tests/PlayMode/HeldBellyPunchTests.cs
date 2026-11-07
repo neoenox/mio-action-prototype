@@ -36,7 +36,7 @@ namespace Ryona.Tests
         }
 
         /// <summary>シーンを読み、後ろ拘束を1つ作る。攻撃役は正面に置く。</summary>
-        IEnumerator LoadAndGrab(bool waitForAnimator = false, bool directorEnabled = true)
+        IEnumerator LoadAndGrab(bool waitForAnimator = false, bool directorEnabled = true, float? throwDelay = null)
         {
             yield return TestScene.LoadPrototype();
 
@@ -49,6 +49,8 @@ namespace Ryona.Tests
             _director = Object.FindFirstObjectByType<HeldBellyPunchDirector>();
             Assert.IsNotNull(_director, "HeldBellyPunchDirector が自動で付いていない");
             _director.enabled = directorEnabled;
+            if (throwDelay.HasValue)
+                _director.ThrowDelaySeconds = throwDelay.Value;
 
             // 個別のテストで指定する場合を除き、受け渡しの抽選を止める。
             var handOff = Object.FindFirstObjectByType<GrappleHandOff>();
@@ -122,20 +124,74 @@ namespace Ryona.Tests
             return _player.ReceiveHit(source.State, attack, source.transform, isTagPunch: isTagPunch);
         }
 
+        void LandOpeningThrow()
+        {
+            PlaceAttackerInFront(0.82f);
+            _attacker.enabled = true;
+            Assert.IsTrue(_attacker.TryStartHeldThrow());
+            Assert.IsFalse(_director.IsPerforming, "The windup is not a landed throw.");
+            const BindingFlags privateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
+            typeof(EnemyBrain).GetMethod("TickWindup", privateInstance)
+                .Invoke(_attacker, new object[] { 10f });
+            Assert.AreEqual(EnemyPhase.Attack, _attacker.Phase);
+            typeof(EnemyBrain).GetMethod("Strike", privateInstance)
+                .Invoke(_attacker, new object[] { 0.82f });
+            Assert.IsTrue(_director.IsPerforming, "The landed throw opens the combo.");
+            Assert.AreEqual(0, _director.ComboHitsLanded, "A throw does not count as a punch.");
+        }
+
         [UnityTest]
         public IEnumerator 通常パンチはタッグ連撃を開始せず途中の打数にも入らない()
         {
             yield return LoadAndGrab();
             PlaceAttackerInFront();
 
+            float hp = _player.State.Hp;
             Hit(_attacker, PunchZone.Body, isTagPunch: false);
             Assert.IsFalse(_director.IsPerforming);
+            Assert.Less(_player.State.Hp, hp, "An ordinary punch still deals damage.");
             Assert.AreEqual(0f, _player.HeldBellyDamage);
 
             Hit(_attacker, PunchZone.Body);
-            Assert.IsTrue(_director.IsPerforming);
+            Assert.IsFalse(_director.IsPerforming, "Even a tagged punch cannot open the combo.");
+            LandOpeningThrow();
+            Hit(_attacker, PunchZone.Body);
             Hit(_attacker, PunchZone.Face, isTagPunch: false);
             Assert.AreEqual(1, _director.ComboHitsLanded);
+        }
+
+        [UnityTest]
+        public IEnumerator FrontEnemyAutomaticallyThrowsBeforeStartingTheCombo()
+        {
+            yield return LoadAndGrab(throwDelay: 0.3f);
+            _attacker.enabled = true;
+            _attacker.HoldFire(10f);
+            _attacker.transform.position = _player.transform.position - _player.transform.forward * 0.9f;
+            Assert.IsFalse(_attacker.TryStartHeldThrow(), "An enemy behind the player cannot open the combo.");
+            PlaceAttackerInFront(1.02f);
+
+            float deadline = Time.realtimeSinceStartup + 6f;
+            while (!_director.IsThrowIncoming && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.IsTrue(_director.IsThrowIncoming, "A front enemy should start the throw windup.");
+            Assert.IsFalse(_director.IsPerforming);
+
+            float hp = _player.State.Hp;
+            while (!_director.IsPerforming && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.IsTrue(_director.IsPerforming, "Landing the throw starts the combo.");
+            Assert.AreEqual(hp, _player.State.Hp, 0.01f, "The throw only changes her stance, it does not deal damage.");
+            Assert.IsFalse(_player.IsStunned, "The throw must not stun.");
+            Assert.AreEqual(0, _director.ComboHitsLanded);
+            Assert.AreSame(_captor, _grapple.Captor);
+
+            float firstPunchDeadline = Time.time + 0.30f;
+            while (_director.ComboHitsLanded == 0 && Time.time < firstPunchDeadline &&
+                Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.AreEqual(1, _director.ComboHitsLanded, "The first punch follows the reach immediately.");
+            Assert.AreEqual(PunchZone.Body, _director.LastLandedZone);
+            Assert.AreSame(_attacker.transform, _player.LastAttacker, "The thrower follows through with the punch.");
         }
 
         [UnityTest]
@@ -160,28 +216,32 @@ namespace Ryona.Tests
             _director.FacePunchChance = 0f;
             PlaceAttackerInFront();
 
-            Hit(_attacker, PunchZone.Body);
-            // コンボの残り4発は敵自身に振らせる必要があるので有効化する。
+            LandOpeningThrow();
+            // 5発は敵自身に振らせる。
             // ただし AI が勝手に別の攻撃を始めないよう、攻撃予約だけ止めておく。
             _attacker.HoldFire(10f);
             _attacker.enabled = true;
             yield return null;
 
             Assert.IsTrue(_director.IsPerforming, "Belly punch combo must start");
-            Assert.AreEqual(1, _director.ComboHitsLanded, "The first hit must be counted");
+            Assert.AreEqual(0, _director.ComboHitsLanded, "The throw does not count as a punch");
             Assert.IsTrue(_grapple.IsStruggleSuppressed, "Struggle must stop during the combo");
-            Assert.IsTrue(_anim.IsHeldBellyPunch, "Held belly punch pose must play");
-            Assert.Less(_camera.EffectDistanceScale, 0.6f, "Camera must push in");
-            Assert.IsTrue(_camera.IsFocusing, "Camera must center on the player");
+            Assert.IsTrue(_anim.IsHeldThrowLead, "The throw bends her into the belly-punch stance");
+            Assert.IsFalse(_anim.IsHeldBellyPunch, "The opening throw is a transition, not a punch reaction");
 
-            // 0.3 秒後: まだ拘束中で、くの字のピーク付近
-            yield return new WaitForSeconds(0.30f);
+            // 投げから一発目まで構図と拘束をつなぐ。
+            float focusDeadline = Time.realtimeSinceStartup + 3f;
+            while (_director.ComboHitsLanded == 0 && Time.realtimeSinceStartup < focusDeadline)
+                yield return null;
+            Assert.AreEqual(1, _director.ComboHitsLanded);
             Assert.IsTrue(_grapple.IsGrappled, "The hold must remain during the combo");
-            Assert.Greater(_anim.HeldBellyPunchFold, 0.5f, "The body must fold");
+            Assert.Greater(_anim.HeldThrowLead, 0.6f, "The throw leaves her in the belly stance");
+            Assert.IsTrue(_anim.IsHeldBellyPunch, "The first punch folds her over");
+            Assert.IsTrue(_camera.IsFocusing, "Camera must center on the player for the punches");
 
             // 5 発を食らっても拘束は続く
             float deadline = Time.realtimeSinceStartup + 10f;
-            while ((_director.IsPerforming || _director.NextPunchRemaining <= 0f)
+            while ((_director.IsPerforming || _director.NextThrowRemaining <= 0f)
                 && Time.realtimeSinceStartup < deadline)
                 yield return null;
 
@@ -189,7 +249,7 @@ namespace Ryona.Tests
             Assert.AreEqual(5, _director.ComboHitsLanded, "The player must take 5 belly punches");
             Assert.IsTrue(_grapple.IsGrappled, "The original hold must continue");
             Assert.AreSame(_captor, _grapple.Captor);
-            Assert.Greater(_director.NextPunchRemaining, 0f, "Schedule the next combo");
+            Assert.Greater(_director.NextThrowRemaining, 0f, "Schedule the next opening throw");
             Assert.IsFalse(_player.IsDown, "One combo is below the belly threshold");
         }
 
@@ -204,8 +264,7 @@ namespace Ryona.Tests
             _director.FacePunchChance = 0f;
             PlaceAttackerInFront();
             _attacker.HoldFire(10f);
-            _attacker.enabled = true;
-            Hit(_attacker, PunchZone.Body);
+            LandOpeningThrow();
 
             float deadline = Time.realtimeSinceStartup + 10f;
             while (_director.ComboHitsLanded < _director.ComboHitsTotal
@@ -261,38 +320,48 @@ namespace Ryona.Tests
             Assert.IsTrue(_grapple.IsGrappled, "待った後は次の敵へ引き渡す");
             Assert.AreNotSame(_captor, _grapple.Captor);
             Assert.IsTrue(_captor.IsHandOffLocked, "渡す側が引き渡し中にロックされていない");
-            Assert.IsTrue(_grapple.Captor.IsHolding, "受け手がその場で拘束していない");
+            Assert.IsTrue(_grapple.IsHandingOff, "最初は突き飛ばしの途中");
+            Assert.IsFalse(_grapple.Captor.IsHolding, "突き飛ばしと拘束を同時に始めない");
 
             // 以前は 0.9m 突き飛ばしてから掴み位置へ瞬間移動していた。
             // 通常フレームで 1 フレームの移動が大きすぎないことを見る（ワープ防止）。
             Vector3 prev = _player.transform.position;
             float maxStep = 0f;
-            float observeUntil = Time.realtimeSinceStartup + 0.9f;
-            while (Time.realtimeSinceStartup < observeUntil)
+            float observeUntil = Time.realtimeSinceStartup + 2f;
+            bool sawCatch = false;
+            while (_grapple.IsHandingOff && Time.realtimeSinceStartup < observeUntil)
             {
                 yield return null;
                 Vector3 now = _player.transform.position;
                 if (Time.deltaTime < 0.05f)
                     maxStep = Mathf.Max(maxStep, Vector3.Distance(prev, now));
                 prev = now;
+                sawCatch |= _grapple.Captor != null && _grapple.Captor.IsCatching && !_grapple.Captor.IsHolding;
             }
 
+            Assert.IsTrue(sawCatch, "掴む前に受け止めの姿勢を取る");
+            Assert.IsFalse(_grapple.IsHandingOff);
+            Assert.IsTrue(_grapple.Captor != null && _grapple.Captor.IsHolding, "受け止めた後で拘束する");
             Assert.Less(maxStep, 0.25f, $"受け渡しで瞬間移動している（1 フレーム {maxStep:F2}m）");
             float gap = Vector3.Distance(_player.transform.position, _grapple.Captor.transform.position);
             Assert.Less(gap, 0.8f, $"受け渡し後の距離が離れすぎている（{gap:F2}m）");
         }
 
         [UnityTest]
-        public IEnumerator 顔面パンチでもコンボが始まり首が手前へ振れる()
+        public IEnumerator 投げから派生した連撃の顔面パンチで首が手前へ振れる()
         {
             yield return LoadAndGrab(waitForAnimator: true);
-            _director.FacePunchChance = 1f;   // 顔面に固定
+            _director.FacePunchChance = 1f;   // 一発目の腹パンの後は顔面に固定
             PlaceAttackerInFront();
 
-            Hit(_attacker, PunchZone.Face);
-            yield return null;
+            LandOpeningThrow();
+            _attacker.HoldFire(10f);
+            float deadline = Time.realtimeSinceStartup + 5f;
+            while (_director.ComboHitsLanded < 2 && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.AreEqual(2, _director.ComboHitsLanded);
 
-            Assert.IsTrue(_director.IsPerforming, "A face punch must start the combo too");
+            Assert.IsTrue(_director.IsPerforming, "The combo continues after a face punch");
             Assert.AreEqual(PunchZone.Face, _director.LastLandedZone, "The landed zone must be the face");
             Assert.IsTrue(_anim.IsHeldFacePunch, "The face-punch reaction must play");
             Assert.IsFalse(_anim.IsHeldBellyPunch, "A face punch must not fold the body");
@@ -303,10 +372,44 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator 投げは食らいにならず腹パン体勢へ移行する()
+        {
+            yield return LoadAndGrab(waitForAnimator: true);
+            PlaceAttackerInFront(1.02f);
+            _attacker.enabled = true;
+            _attacker.HoldFire(10f);
+
+            int hits = 0;
+            System.Action<HitResult> countHit = _ => hits++;
+            _player.HitReceived += countHit;
+            float hp = _player.State.Hp;
+            LandOpeningThrow();
+            _player.HitReceived -= countHit;
+
+            Assert.AreEqual(0, hits, "The throw must not go through the damage path");
+            Assert.AreEqual(hp, _player.State.Hp, 0.01f, "The throw does not deal damage");
+            Assert.IsFalse(_player.IsStunned, "The throw does not stun");
+            Assert.IsTrue(_anim.IsHeldThrowLead, "She is pulled into the belly-punch stance");
+            Assert.IsFalse(_anim.IsHeldBellyPunch, "The transition is not a punch reaction");
+            Assert.Less(_anim.HeldBellyPunchFold, 0.05f, "The throw must not double her over");
+
+            // 最初の一発で崩れを引き継ぎ、当てられた反応に切り替わる。
+            float deadline = Time.realtimeSinceStartup + 3f;
+            while (!_anim.IsHeldBellyPunch && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.IsTrue(_anim.IsHeldBellyPunch, "The first punch takes over from the throw");
+            Assert.AreEqual(1, _director.ComboHitsLanded);
+            Assert.AreEqual(CharacterAnimator.State.Grabbed, _anim.Current, "She stays held");
+        }
+
+        [UnityTest]
         public IEnumerator 拘束者自身の攻撃では腹パン演出が始まらない()
         {
             yield return LoadAndGrab();
 
+            _captor.enabled = true;
+            Assert.IsFalse(_captor.TryStartHeldThrow(), "The rear captor cannot perform the opening throw.");
             Hit(_captor, PunchZone.Body);
             yield return null;
 
@@ -318,13 +421,17 @@ namespace Ryona.Tests
         public IEnumerator 連打で先に逃げると腹パン演出は始まらない()
         {
             yield return LoadAndGrab();
+            PlaceAttackerInFront(1.02f);
+            _attacker.enabled = true;
+            Assert.IsTrue(_attacker.TryStartHeldThrow());
 
             var escape = typeof(PlayerGrapple).GetMethod("Escape",
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.IsNotNull(escape, "Escape not found");
             escape.Invoke(_grapple, null);
 
-            yield return new WaitForSeconds(1.8f);
+            yield return null;
+            yield return null;
 
             Assert.IsFalse(_grapple.IsGrappled, "The hold must end after escaping");
             Assert.IsFalse(_director.IsPerforming, "No belly punch after escaping");
@@ -344,7 +451,10 @@ namespace Ryona.Tests
             yield return null;
 
             PlaceAttackerInFront();
-            Hit(_attacker, PunchZone.Body);
+            LandOpeningThrow();
+            float deadline = Time.realtimeSinceStartup + 3f;
+            while (!_camera.IsFocusing && Time.realtimeSinceStartup < deadline)
+                yield return null;
             yield return null;
 
             Assert.IsTrue(_camera.IsFocusing, "Camera must focus during the combo");
@@ -408,7 +518,7 @@ namespace Ryona.Tests
             _director.FacePunchChance = 0f;
             PlaceAttackerInFront();
 
-            Hit(_attacker, PunchZone.Body);
+            LandOpeningThrow();
             _attacker.HoldFire(10f);
             _attacker.enabled = true;
             yield return null;
@@ -439,11 +549,10 @@ namespace Ryona.Tests
         [UnityTest]
         public IEnumerator 拘束中の腹パンと顔面パンチは外れずに5発当たる()
         {
-            yield return LoadAndGrab(waitForAnimator: true);
+            yield return LoadAndGrab(waitForAnimator: true, throwDelay: 0.3f);
 
             _director.FacePunchChance = 0.5f;
             _director.RestartCooldownSeconds = 0.5f;
-            _director.PunchDelaySeconds = 0.3f;
 
             // 4 コンボ分の被弾で HP が尽きると、拘束が解けてコンボが終わらなくなる。
             // このテストが見るのは「当たるか」なので、死亡しないようにする。

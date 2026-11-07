@@ -96,7 +96,7 @@ namespace Ryona.Game
         {
             if (_grapple == null)
                 _grapple = FindFirstObjectByType<PlayerGrapple>();
-            if (_grapple == null || !_grapple.IsGrappled)
+            if (_grapple == null || !_grapple.IsGrappled || _grapple.IsHandingOff)
                 return false;
 
             bool roll = Random.value < Mathf.Clamp01(Chance);
@@ -123,7 +123,12 @@ namespace Ryona.Game
                     enemy.Phase == EnemyPhase.Stagger || enemy.IsHolding)
                     continue;
 
-                float d = Vector3.Distance(enemy.transform.position, _grapple.transform.position);
+                Vector3 offset = enemy.transform.position - _grapple.transform.position;
+                // 背後の送り手から、澪を前へ押し出せる位置にいる相手を選ぶ。
+                if (Vector3.Dot(_grapple.transform.forward, offset) <= 0.05f)
+                    continue;
+
+                float d = offset.magnitude;
                 if (d >= bestDistance)
                     continue;
 
@@ -144,20 +149,14 @@ namespace Ryona.Game
             else
                 kind = Random.value < 0.5f ? GrappleKind.Pin : GrappleKind.Back;
 
-            // 押し出す側（いま掴んでいる敵）に腕を突き出させる
-            captor.PushAway();
-
             if (_burstPrefix != null && !_burstDone)
             {
                 _burstDone = true;
                 StartCoroutine(BurstShots());
             }
 
-            // 渡す側は突き出した腕のまま、彼女が移り終えるまでロックする。
-            // 受け手も TakeOverHold でその場に固定され、届いた彼女をそのまま拘束する。
+            // 受け手は PlayerGrapple 側で、到着 → 受け止め → 拘束の順に切り替える。
             _grapple.HandOff(best, kind, shove: true);
-            best.TakeOverHold(CombatConstants.GrappleLimitSeconds + 4f);
-            captor.LockForHandOff(0.9f);
             Debug.Log($"[HandOff] {captor.name} → {best.name} kind={kind} dist={bestDistance:F2}");
             return true;
         }

@@ -26,6 +26,10 @@ namespace Ryona.Game
         /// <summary>掴まれた瞬間。</summary>
         public event Action<GrappleKind> Started;
 
+        internal event Action<EnemyBrain> HeldThrowLanded;
+
+        internal void NotifyHeldThrowLanded(EnemyBrain attacker) => HeldThrowLanded?.Invoke(attacker);
+
         /// <summary>振りほどけた瞬間。</summary>
         public event Action Escaped;
 
@@ -59,6 +63,9 @@ namespace Ryona.Game
         /// <summary>掴まれているか。</summary>
         public bool IsGrappled { get; private set; }
 
+        /// <summary>突き飛ばしから受け止めまで。新しい拘束はまだ始まっていない。</summary>
+        public bool IsHandingOff { get; private set; }
+
         /// <summary>
         /// 掴まれている残り時間。後ろ拘束は時間切れが無いので 0 を返す
         /// （表示するときは <see cref="HasTimeLimit"/> で分岐する）。
@@ -73,7 +80,7 @@ namespace Ryona.Game
         public float HeldSeconds => _heldSeconds;
 
         /// <summary>腹パン演出などで、もがき入力を一時的に止めているか。</summary>
-        public bool IsStruggleSuppressed => _suppressRemaining > 0f;
+        public bool IsStruggleSuppressed => IsHandingOff || _suppressRemaining > 0f;
 
         /// <summary>もがき入力を止めている残り秒。</summary>
         public float SuppressRemaining => Mathf.Max(0f, _suppressRemaining);
@@ -189,16 +196,14 @@ namespace Ryona.Game
         /// 引き渡し（<see cref="HandOff"/>）で立てる。
         /// </summary>
         public float PushPulse { get; private set; }
+        internal Vector3 PushDirection { get; private set; }
+        EnemyBrain _shoveSender;
 
         /// <summary>突き飛ばしの見た目を立てる。</summary>
         public void PushOff()
         {
             PushPulse = 1f;
         }
-
-        /// <summary>突き飛ばしの形を保つ秒。</summary>
-        const float PushHoldSeconds = 0.12f;
-        float _pushHold;
 
         void Awake()
         {
@@ -235,13 +240,8 @@ namespace Ryona.Game
             else if (KneePulse > 0f)
                 KneePulse = Mathf.Max(0f, KneePulse - Time.deltaTime * 4f);
 
-            // 突き飛ばしの見た目も同じ作り（保ってから減衰）
-            if (_pushHold > 0f)
-            {
-                _pushHold -= Time.deltaTime;
-                PushPulse = 1f;
-            }
-            else if (PushPulse > 0f)
+            // 引き渡し中は、移動と同じ時計で押された姿勢を進める。
+            if (!IsHandingOff && PushPulse > 0f)
                 PushPulse = Mathf.Max(0f, PushPulse - Time.deltaTime * 4f);
 
             // ベアハッグ以外では密着度・引き寄せを抜く（演出の取りこぼし防止）。
@@ -272,6 +272,9 @@ namespace Ryona.Game
                 Release();
                 return;
             }
+
+            if (IsHandingOff)
+                return;
 
             // ベアハッグ: 体を引き寄せて密着させ、少し離してからまた締める。
             if (Kind == GrappleKind.BearHug)
@@ -371,32 +374,41 @@ namespace Ryona.Game
         /// </summary>
         public void HandOff(EnemyBrain next, GrappleKind kind = GrappleKind.Back, bool shove = false)
         {
-            if (!IsGrappled || next == null || !next.IsAlive || next == Captor || Stats == null || Stats.IsDead)
+            if (!IsGrappled || IsHandingOff || next == null || !next.IsAlive ||
+                next == Captor || Stats == null || Stats.IsDead)
+                return;
+
+            var previous = Captor;
+            if (shove && (previous == null || !previous.IsAlive))
                 return;
 
             Captor = next;
 
             if (shove)
             {
-                // 突き飛ばし: 相手の正面（Pin）か背面（Back）へ、掴み位置まで
-                // 一続きに押し出す。以前は 0.9m 突き飛ばしてから掴み位置へ
-                // SnapToCaptor で戻していたため、行き過ぎてから瞬間移動して見えた。
+                const float lockSeconds = 1.22f;
+                IsHandingOff = true;
+                _shoveSender = previous;
+                previous.LockForHandOff(lockSeconds);
+                previous.PushAway();
+                next.LockForHandOff(lockSeconds);
                 StartCoroutine(Shove(next, kind));
-            }
-            else
-            {
-                SnapToCaptor(next, kind);
+                return;
             }
 
+            SnapToCaptor(next, kind);
+            ApplyHandOffHold(kind);
+            Started?.Invoke(kind);
+        }
+
+        void ApplyHandOffHold(GrappleKind kind)
+        {
             RequiredInputs = ResistanceMath.RequiredInputs(kind, 1f, Stats.State.Body[BodyPart.Arms]);
             _resistance = new GrappleResistance(kind, RequiredInputs);
             _remaining = kind == GrappleKind.Back
                 ? float.PositiveInfinity
                 : CombatConstants.GrappleLimitSeconds;
             _suppressRemaining = 0f;
-
-            Debug.Log($"[HandOff] {next.name} が拘束を引き継ぐ kind={kind} need={RequiredInputs:F1}");
-            Started?.Invoke(kind);
         }
 
         /// <summary>
@@ -405,12 +417,11 @@ namespace Ryona.Game
         /// </summary>
         System.Collections.IEnumerator Shove(EnemyBrain next, GrappleKind kind)
         {
-            // 押された瞬間の姿勢（上体が前へ、腕が後ろへ残る）
-            _pushHold = PushHoldSeconds;
-            PushPulse = 1f;
-
             Vector3 fromPos = transform.position;
             Vector3 toPos = GrabSpot(next, kind);
+            Vector3 catchPos = kind == GrappleKind.Back
+                ? Vector3.MoveTowards(toPos, fromPos, GrabDistance - BackGrabDistance)
+                : toPos;
 
             Vector3 toNext = next.transform.position - toPos;
             toNext.y = 0f;
@@ -422,27 +433,87 @@ namespace Ryona.Game
                 : fromRot;
 
             float distance = Vector3.Distance(fromPos, toPos);
-            float moveSeconds = Mathf.Clamp(0.12f + distance * 0.18f, 0.18f, 0.65f);
-            const float turnSeconds = 0.25f;
+            float moveSeconds = Mathf.Clamp(0.12f + distance * 0.18f, 0.24f, 0.65f);
+            const float catchSeconds = 0.26f;
+            if (toNext.sqrMagnitude > 1e-4f)
+                next.transform.rotation = Quaternion.LookRotation(-toNext, Vector3.up);
 
+            // 送り手が両手を背に付けるまでは、その場で踏ん張る。
+            float contactAt = Time.time + EnemyBrain.PushContactSeconds;
+            while (Time.time < contactAt)
+            {
+                yield return null;
+                if (!CanContinueHandOff(next))
+                    yield break;
+                if (_shoveSender == null || !_shoveSender.IsAlive || !_shoveSender.IsPushing)
+                {
+                    Release();
+                    yield break;
+                }
+            }
+
+            PushDirection = Vector3.ProjectOnPlane(catchPos - fromPos, Vector3.up).normalized;
+            PushPulse = 1f;
             float t = 0f;
             while (t < moveSeconds)
             {
-                t += Time.deltaTime;
-                float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / moveSeconds));
-                transform.position = Vector3.Lerp(fromPos, toPos, k);
-                transform.rotation = Quaternion.Slerp(fromRot, targetRot,
-                    Mathf.Clamp01(t / turnSeconds));
                 yield return null;
-
-                // 次のフレームで位置や向きを書き込む前に、拘束が続いているか確認する。
-                if (!IsGrappled || Captor != next || next == null || !next.IsAlive || Stats == null || Stats.IsDead)
+                if (!CanContinueHandOff(next))
                     yield break;
+
+                t += Time.deltaTime;
+                float progress = Mathf.Clamp01(t / moveSeconds);
+                float easeOut = 1f - (1f - progress) * (1f - progress);
+                float distanceT = Mathf.Lerp(Mathf.SmoothStep(0f, 1f, progress), easeOut, 0.45f);
+                float turnT = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.22f, 1f, progress));
+                transform.position = Vector3.Lerp(fromPos, catchPos, distanceT);
+                transform.rotation = Quaternion.Slerp(fromRot, targetRot, turnT);
+                PushPulse = 1f - progress;
+            }
+
+            EndShove();
+            next.BeginCatch(catchSeconds);
+            Debug.Log($"[HandOff] catch {next.name} kind={kind}");
+            t = 0f;
+            while (t < catchSeconds)
+            {
+                yield return null;
+                if (!CanContinueHandOff(next))
+                    yield break;
+
+                t += Time.deltaTime;
+                float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / catchSeconds));
+                transform.position = Vector3.Lerp(catchPos, toPos, k);
             }
 
             transform.position = toPos;
-            transform.rotation = targetRot;
-            Debug.Log($"[HandOff] shove kind={kind} dist={distance:F2} t={moveSeconds:F2}s");
+            ApplyHandOffHold(kind);
+            _heldSeconds = 0f;
+            next.TakeOverHold(CombatConstants.GrappleLimitSeconds + 4f);
+            IsHandingOff = false;
+            Started?.Invoke(kind);
+        }
+
+        void EndShove()
+        {
+            if (_shoveSender != null)
+                _shoveSender.EndPush();
+            _shoveSender = null;
+            PushPulse = 0f;
+            PushDirection = Vector3.zero;
+        }
+
+        bool CanContinueHandOff(EnemyBrain next)
+        {
+            if (!IsHandingOff || Captor != next)
+                return false;
+
+            if (next != null && next.IsAlive && next.Phase != EnemyPhase.Stagger &&
+                Stats != null && !Stats.IsDead && !Stats.IsDown)
+                return true;
+
+            Release();
+            return false;
         }
 
         /// <summary>
@@ -451,6 +522,14 @@ namespace Ryona.Game
         public void Release()
         {
             bool wasGrappled = IsGrappled;
+
+            if (IsHandingOff)
+            {
+                if (Captor != null)
+                    Captor.EndCatch();
+                IsHandingOff = false;
+                EndShove();
+            }
 
             IsGrappled = false;
             _remaining = 0f;

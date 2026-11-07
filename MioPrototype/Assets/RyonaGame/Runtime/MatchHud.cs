@@ -164,6 +164,14 @@ namespace Ryona.Game
                 return;
             }
 
+            if (_grapple.IsHandingOff)
+            {
+                _grappleText.text = "受け渡し中";
+                _grappleText.color = TextColor;
+                _grappleFill.fillAmount = 0f;
+                return;
+            }
+
             float progress = Mathf.Clamp01(_grapple.Progress);
             int need = Mathf.CeilToInt(_grapple.RequiredInputs);
 
@@ -196,15 +204,15 @@ namespace Ryona.Game
                 tail = $"{what} {_bellyPunch.ComboHitsLanded}/{_bellyPunch.ComboHitsTotal}";
                 danger = true;
             }
-            else if (_bellyPunch.IsPunchIncoming)
+            else if (_bellyPunch.IsThrowIncoming)
             {
-                tail = "パンチが来る！";
+                tail = "正面から投げが来る！";
                 danger = true;
             }
-            else if (_bellyPunch.NextPunchRemaining > 0f)
+            else if (_bellyPunch.NextThrowRemaining > 0f)
             {
-                float remaining = _bellyPunch.NextPunchRemaining;
-                tail = $"パンチまで {remaining:F1}s";
+                float remaining = _bellyPunch.NextThrowRemaining;
+                tail = $"投げまで {remaining:F1}s";
                 danger = remaining <= 0.5f;
             }
             else

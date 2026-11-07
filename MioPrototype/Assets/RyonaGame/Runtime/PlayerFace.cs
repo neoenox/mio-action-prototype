@@ -153,6 +153,18 @@ namespace Ryona.Game
         float _bellyBlend;  // 0=顔ヒットの配合 1=腹パンの配合
         float _bellyTarget; // 直近のヒットが腹なら 1
 
+        PlayerGrapple _grapple;
+        SkinnedMeshRenderer _worriedBrow;
+        int _worriedBrowIndex;
+        float _originalBrowWeight;
+        bool _heldFaceActive;
+        float _heldImpact;
+        float _heldImpactUntil;
+        bool _heldGenericHit;
+
+        bool UsesHeldFace => Stats != null && !Stats.IsDead && _grapple != null &&
+            _grapple.IsGrappled && !_grapple.IsHandingOff;
+
         float _blinkTimer = 2f;   // 次のまばたきまで
         float _blinkT = -1f;      // まばたき中だけ 0 以上
         int _blinkCount;          // 動作確認用（最初の数回だけログに出す）
@@ -187,6 +199,7 @@ namespace Ryona.Game
 
         void OnDisable()
         {
+            ClearHeldFace();
             Unsubscribe();
         }
 
@@ -195,6 +208,7 @@ namespace Ryona.Game
             // Start で購読すると VrmCharacterSlot が実行時に足した場合に
             // OnEnable より後に来ることがあるので、二重購読を避けてここで張り直す。
             Subscribe();
+            FindWorriedBrow();
 
             Debug.Log($"[Face] start stats={(Stats != null)} vrm={(Vrm != null)} anim={(Anim != null)}");
         }
@@ -208,6 +222,7 @@ namespace Ryona.Game
             Unsubscribe();
             Stats.HitReceived += OnHitReceived;
             _subscribed = Stats;
+            _grapple = Stats.GetComponent<PlayerGrapple>();
         }
 
         void Unsubscribe()
@@ -216,13 +231,29 @@ namespace Ryona.Game
                 _subscribed.HitReceived -= OnHitReceived;
 
             _subscribed = null;
+            _grapple = null;
         }
 
         void OnHitReceived(HitResult result)
         {
+            bool heldFace = UsesHeldFace;
+            // 締め付けは密着のタイミングで表情を作る。
+            if (heldFace && _grapple.IsBearHugContact &&
+                _grapple.Captor != null && Stats.LastAttacker == _grapple.Captor.transform)
+                return;
+
+            bool belly = Stats != null && Stats.LastHitZone == PunchZone.Body;
+            if (heldFace && _grapple.Kind != GrappleKind.BearHug && result.Damage > 0f)
+            {
+                // 拘束中の腹への一撃は短く反応し、次の一撃までに目を開ける。
+                _heldGenericHit = !belly;
+                _heldImpactUntil = belly ? Time.unscaledTime + 0.12f : 0f;
+                if (belly)
+                    return;
+            }
+
             // 腹パンは顔ヒットと別の配合にする。殴られた場所は ReceiveHit の前に
             // EnemyBrain が立てている（投げなどでは null）。
-            bool belly = Stats != null && Stats.LastHitZone == PunchZone.Body;
             _bellyTarget = belly ? 1f : 0f;
 
             float peak = result.Stagger switch
@@ -268,6 +299,7 @@ namespace Ryona.Game
 
             if (PreviewAmount >= 0f)
             {
+                ClearHeldFace();
                 _pain = Mathf.Clamp01(PreviewAmount);
                 if (PreviewBelly >= 0f)
                     _bellyBlend = Mathf.Clamp01(PreviewBelly);
@@ -288,8 +320,23 @@ namespace Ryona.Game
             if (_pain <= 0.001f)
                 _peak = 0f;
 
-            // 苦悶が強いあいだはまばたきを止める（目を細めているので二重になる）
-            Apply(_pain, Mathf.Clamp01(1f - _pain * 2f));
+            bool heldFace = UsesHeldFace;
+            if (!heldFace)
+            {
+                _heldImpactUntil = 0f;
+                _heldGenericHit = false;
+            }
+
+            if (heldFace && (!_heldGenericHit || _pain <= 0.001f))
+            {
+                ApplyHeldFace(dt);
+            }
+            else
+            {
+                ClearHeldFace();
+                // 苦悶が強いあいだはまばたきを止める（目を細めているので二重になる）。
+                Apply(_pain, Mathf.Clamp01(1f - _pain * 2f));
+            }
 
             // 「閉じた」と言い切る前に、実際にメッシュへ入った重みを読む。
             if (_eyeCheckAt > 0f && Time.unscaledTime >= _eyeCheckAt)
@@ -297,6 +344,51 @@ namespace Ryona.Game
                 _eyeCheckAt = -1f;
                 Debug.Log($"[Face] eye close blend={EyeCloseBlend():F0} (0=open 100=shut) eyeClose={_eyeClose:F2}");
             }
+        }
+
+        void FindWorriedBrow()
+        {
+            foreach (var renderer in GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh = renderer.sharedMesh;
+                int index = mesh != null ? mesh.GetBlendShapeIndex("Fcl_BRW_Sorrow") : -1;
+                if (index < 0)
+                    continue;
+
+                _worriedBrow = renderer;
+                _worriedBrowIndex = index;
+                break;
+            }
+        }
+
+        void ApplyHeldFace(float dt)
+        {
+            // 澪の眉専用シェイプなら、困り眉にしても目や口の形を変えずに済む。
+            if (_worriedBrow != null)
+            {
+                if (!_heldFaceActive)
+                    _originalBrowWeight = _worriedBrow.GetBlendShapeWeight(_worriedBrowIndex);
+                _worriedBrow.SetBlendShapeWeight(_worriedBrowIndex, 65f);
+            }
+            _heldFaceActive = true;
+
+            bool reacting = _grapple.IsBearHugContact || Time.unscaledTime < _heldImpactUntil;
+            _heldImpact = Mathf.MoveTowards(_heldImpact, reacting ? 1f : 0f,
+                dt / (reacting ? 0.04f : 0.12f));
+            float mouth = Mathf.Lerp(0.14f, 0.30f, _heldImpact);
+            float sad = _worriedBrow != null ? 0f : 0.60f;
+            WriteShape(new PainShape(0f, sad, mouth, 0f, _heldImpact), 1f, _heldImpact);
+        }
+
+        void ClearHeldFace()
+        {
+            if (!_heldFaceActive)
+                return;
+
+            if (_worriedBrow != null)
+                _worriedBrow.SetBlendShapeWeight(_worriedBrowIndex, _originalBrowWeight);
+            _heldFaceActive = false;
+            _heldImpact = 0f;
         }
 
         /// <summary>
@@ -451,19 +543,23 @@ namespace Ryona.Game
                 return;
 
             amount = Mathf.Clamp01(amount);
-            var expression = Vrm.Runtime.Expression;
-            var shape = PainShape.Lerp(FacePain, BellyPain, _bellyBlend);
-
-            expression.SetWeight(AngryKey, shape.Angry * amount);
-            expression.SetWeight(SadKey, shape.Sad * amount);
-            expression.SetWeight(MouthKey, shape.Mouth * amount);
-            expression.SetWeight(GritKey, shape.Grit * amount);
+            var shape = CurrentShape;
             // 倒れている間は目を閉じる（閉じた目でまばたきが混ざらないよう最大値で取る）
             // 痛みの濃さに比例させると、弱い一撃（濃さ 0.66）で 3 分の 2 しか閉じず
             // 「半開きで痛がっている」ように見える。ダメージを受けたらギュッと閉じる。
             float blink = Mathf.Clamp01(shape.Blink * Mathf.Clamp01(amount * 1.45f)
                                         + BlinkAmount() * blinkScale);
-            expression.SetWeight(BlinkKey, Mathf.Max(blink, _eyeClose));
+            WriteShape(shape, amount, Mathf.Max(blink, _eyeClose));
+        }
+
+        void WriteShape(PainShape shape, float amount, float blink)
+        {
+            var expression = Vrm.Runtime.Expression;
+            expression.SetWeight(AngryKey, shape.Angry * amount);
+            expression.SetWeight(SadKey, shape.Sad * amount);
+            expression.SetWeight(MouthKey, shape.Mouth * amount);
+            expression.SetWeight(GritKey, shape.Grit * amount);
+            expression.SetWeight(BlinkKey, blink);
         }
     }
 }
