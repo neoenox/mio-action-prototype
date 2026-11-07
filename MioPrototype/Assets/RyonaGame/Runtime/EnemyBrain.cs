@@ -257,6 +257,13 @@ namespace Ryona.Game
         /// <summary>攻撃トークンを保持しているか。<see cref="Group"/> が無ければ常に false。</summary>
         public bool HasAttackToken => Group != null && Group.HasAttackToken(this);
 
+        /// <summary>
+        /// タッグ腹パン用に攻撃トークンを先に確保する。位置合わせの間に
+        /// 他の敵に取られて「歩いたのに打てない」になるのを防ぐ。
+        /// </summary>
+        public bool TryReserveTagPunchToken() =>
+            Group == null || Group.TryAcquireAttackToken(this);
+
         /// <summary>次の予備動作まで残っている秒数（0 なら攻撃可能）。</summary>
         public float AttackCooldownRemaining => Mathf.Max(0f, _attackReadyAt - Time.time);
 
@@ -499,18 +506,16 @@ namespace Ryona.Game
         /// 引き渡しの間、渡す側をその場に固定する。腕を突き出したまま硬直（Recover）にし、
         /// 彼女が受け手の拘束位置へ移り終えるまで追いかけさせない。
         /// </summary>
-        public void LockForHandOff(float seconds)
+        public void LockForHandOff(float seconds, bool releaseToken = true)
         {
             float length = Mathf.Max(0.1f, seconds);
 
             AbsorbLungeOffset();
             HideTelegraph();
             IsHolding = false;
-            IsPinning = false;
-            IsBearHugging = false;
-            _pinKneesLeft = 0;
-            ClearTransientAttackState();
-            ReleaseToken();
+            ClearGrappleState(clearAttackState: true);
+            if (releaseToken)
+                ReleaseToken();
 
             _timer = length;
             Phase = EnemyPhase.Recover;
@@ -912,8 +917,7 @@ namespace Ryona.Game
                         if (hold != null && hold.IsGrappled && hold.Captor == this)
                             break;
                         IsHolding = false;
-                        IsPinning = false;
-                        _pinKneesLeft = 0;
+                        ClearGrappleState();
                         _timer = 0f;
                     }
                     _timer -= dt;
@@ -1171,10 +1175,7 @@ namespace Ryona.Game
             _pinPending = false;
             _bearHugPending = false;
             if (!grabbed)
-            {
-                IsPinning = false;
-                IsBearHugging = false;
-            }
+                ClearGrappleState();
 
             _punchVisualTimer = _run.Id == AttackId.Grab ? 0f : 0.18f;
             Phase = EnemyPhase.Recover;
@@ -1341,10 +1342,7 @@ namespace Ryona.Game
             HideTelegraph();
             _riseTimer = 0f;
             IsHolding = false;
-            IsPinning = false;
-            IsBearHugging = false;
-            _pinKneesLeft = 0;
-            ClearTransientAttackState();
+            ClearGrappleState(clearAttackState: true);
             ReleaseToken();
             _timer = Mathf.Max(0.05f, seconds);
             _staggerTotal = _timer;
@@ -1381,8 +1379,7 @@ namespace Ryona.Game
 
             _attackReadyAt = Time.time + Mathf.Max(0f, AttackCooldown);
             IsHolding = false;
-            IsPinning = false;
-            IsBearHugging = false;
+            ClearGrappleState();
             Phase = EnemyPhase.Chase;
         }
 
@@ -1406,6 +1403,22 @@ namespace Ryona.Game
             ReleaseToken();
             _attackReadyAt = Time.time + Mathf.Max(0f, AttackCooldown);
             Phase = EnemyPhase.Chase;
+        }
+
+        /// <summary>
+        /// 拘束（押さえつけ / ベアハッグ / 引き渡し）の状態を落とす。
+        /// 攻撃の一時フラグまで消すかは呼び出し側で決める。
+        /// </summary>
+        void ClearGrappleState(bool clearAttackState = false, bool resetKneeTimer = false)
+        {
+            IsPinning = false;
+            IsBearHugging = false;
+            _pinKneesLeft = 0;
+            _squeezeActive = false;
+            if (resetKneeTimer)
+                _pinNextKneeAt = 0f;
+            if (clearAttackState)
+                ClearTransientAttackState();
         }
 
         /// <summary>
@@ -1559,33 +1572,47 @@ namespace Ryona.Game
         }
 
         /// <summary>
-        /// 押さえつけが当たったとき。正面から掴んで 4.2 秒 / 12 回のレバガチャへ移す。
+        /// 正面の掴み（Pin / BearHug）を開始する共通部分。
+        /// 抽選（CanStartPin / CanStartBearHug）と同じ向き・間合いで判定する。
         /// </summary>
-        bool TryPin()
+        bool TryBeginFrontGrapple(GrappleKind kind, out float distance)
         {
+            distance = 0f;
+
             var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
             if (grapple == null || grapple.IsGrappled)
                 return false;
 
-            // 判定は抽選（CanStartPin）と同じ向き・間合いで取る。
-            // ここだけ別の条件にすると「選ばれたのに空振りする」角度ができる。
             if (IsBehindPlayer())
                 return false;
 
             Vector3 to = Player.transform.position - transform.position;
             to.y = 0f;
-            if (to.magnitude > RangeOf(AttackId.Grab) + StrikeTolerance)
+            distance = to.magnitude;
+            if (distance > RangeOf(AttackId.Grab) + StrikeTolerance)
                 return false;
 
-            grapple.Begin(this, GrappleKind.Pin);
+            grapple.Begin(this, kind);
             _lastPinAt = Time.time;
             _pinOrder = false;
+            _bearHugOrder = false;
+            return true;
+        }
+
+        /// <summary>
+        /// 押さえつけが当たったとき。正面から掴んで 4.2 秒 / 12 回のレバガチャへ移す。
+        /// </summary>
+        bool TryPin()
+        {
+            if (!TryBeginFrontGrapple(GrappleKind.Pin, out float distance))
+                return false;
+
+            ClearGrappleState();
             IsPinning = true;
             // 押さえつけている間に膝を 5 発入れる（何もできない 4.2 秒にしない）
             _pinKneesLeft = Mathf.Max(1, CombatConstants.PinKneeCount);
             _pinNextKneeAt = Time.time + Mathf.Max(0.1f, CombatConstants.PinKneeDelay);
-            IsBearHugging = false;
-            Debug.Log($"[Pin] begin {name} dist={to.magnitude:F2} knees={_pinKneesLeft}");
+            Debug.Log($"[Pin] begin {name} dist={distance:F2} knees={_pinKneesLeft}");
             return true;
         }
 
@@ -1595,28 +1622,14 @@ namespace Ryona.Game
         /// </summary>
         bool TryBearHug()
         {
-            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
-            if (grapple == null || grapple.IsGrappled)
+            if (!TryBeginFrontGrapple(GrappleKind.BearHug, out float distance))
                 return false;
 
-            if (IsBehindPlayer())
-                return false;
-
-            Vector3 to = Player.transform.position - transform.position;
-            to.y = 0f;
-            if (to.magnitude > RangeOf(AttackId.Grab) + StrikeTolerance)
-                return false;
-
-            grapple.Begin(this, GrappleKind.BearHug);
-            _lastPinAt = Time.time;
-            _pinOrder = false;
-            _bearHugOrder = false;
-            IsPinning = false;
+            ClearGrappleState();
             IsBearHugging = true;
             IsHolding = true;
-            _squeezeActive = false;
             _squeezeNextAt = Time.time + Mathf.Max(0.1f, CombatConstants.BearHugSqueezeDelay);
-            Debug.Log($"[BearHug] begin {name} dist={to.magnitude:F2}");
+            Debug.Log($"[BearHug] begin {name} dist={distance:F2}");
             return true;
         }
 
@@ -2027,10 +2040,7 @@ namespace Ryona.Game
             // 進行中の攻撃はキャンセルする。トークンも返して他の敵に順番を渡す。
             AbsorbLungeOffset();
             HideTelegraph();
-            IsPinning = false;
-            IsBearHugging = false;
-            _pinKneesLeft = 0;
-            ClearTransientAttackState();
+            ClearGrappleState(clearAttackState: true);
             ReleaseToken();
 
             Phase = EnemyPhase.Stagger;
@@ -2078,12 +2088,9 @@ namespace Ryona.Game
             Phase = EnemyPhase.Dead;
             HideTelegraph();
             IsHolding = false;
-            IsPinning = false;
-            IsBearHugging = false;
-            _pinKneesLeft = 0;
+            ClearGrappleState(clearAttackState: true);
             _pinOrder = false;
             _bearHugOrder = false;
-            ClearTransientAttackState();
             ReleaseToken();
             UnregisterGroup();
             enabled = false;
@@ -2120,13 +2127,9 @@ namespace Ryona.Game
             // 死亡時に取りこぼした遷移状態を必ず戻す（再出現後に正面回り込みや
             // 重なり回避が効かない、という残り方を防ぐ）。
             IsHolding = false;
-            IsPinning = false;
-            IsBearHugging = false;
-            _pinKneesLeft = 0;
-            _pinNextKneeAt = 0f;
+            ClearGrappleState(clearAttackState: true, resetKneeTimer: true);
             _pinOrder = false;
             _bearHugOrder = false;
-            ClearTransientAttackState();
             _riseTimer = RiseSeconds * UnityEngine.Random.Range(1f, 1.4f);   // 見た目はここから起き上がる（少しずつずらす）
 
             Phase = EnemyPhase.Chase;

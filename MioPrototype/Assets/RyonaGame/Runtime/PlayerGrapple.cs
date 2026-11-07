@@ -138,7 +138,8 @@ namespace Ryona.Game
         public float SqueezePulse { get; private set; }
 
         /// <summary>いま「密着して締め付けている」瞬間か（ダメージはこの瞬間に入れる）。</summary>
-        public bool IsBearHugContact => IsGrappled && Kind == GrappleKind.BearHug && _hugStage == 2;
+        public bool IsBearHugContact =>
+            IsGrappled && Kind == GrappleKind.BearHug && _hugStage == HugStage.Contact;
 
         /// <summary>
         /// 引き寄せられている勢い 0..1。引き寄せの中盤で最大になり、密着で 0 に戻る。
@@ -155,10 +156,10 @@ namespace Ryona.Game
         /// </summary>
         public void Squeeze()
         {
-            if (!IsGrappled || Kind != GrappleKind.BearHug || _hugStage != 0)
+            if (!IsGrappled || Kind != GrappleKind.BearHug || _hugStage != HugStage.Rest)
                 return;
 
-            _hugStage = 1;    // 引き寄せ
+            _hugStage = HugStage.Pull;
             _hugTime = 0f;
         }
 
@@ -167,8 +168,16 @@ namespace Ryona.Game
         const float HugContactSeconds = 0.10f;
         const float HugReleaseSeconds = 0.30f;
 
-        /// <summary>0 = 離れ気味 / 1 = 掴み位置の基準 / 2 = 密着。</summary>
-        int _hugStage;
+        /// <summary>ベアハッグの密着サイクル。</summary>
+        enum HugStage
+        {
+            Rest,
+            Pull,
+            Contact,
+            Release
+        }
+
+        HugStage _hugStage;
         float _hugTime;
         float _hugPhase;
 
@@ -337,7 +346,7 @@ namespace Ryona.Game
             KneePulse = 0f;
             if (kind == GrappleKind.BearHug)
             {
-                _hugStage = 0;
+                _hugStage = HugStage.Rest;
                 _hugTime = 0f;
                 _hugPhase = 0f;
                 SqueezePulse = 0f;
@@ -446,7 +455,7 @@ namespace Ryona.Game
             _remaining = 0f;
             _suppressRemaining = 0f;
             Captor = null;
-            _hugStage = 0;
+            _hugStage = HugStage.Rest;
             _hugTime = 0f;
             _hugPhase = 0f;
             PullPulse = 0f;
@@ -522,7 +531,7 @@ namespace Ryona.Game
 
             switch (_hugStage)
             {
-                case 1: // 引き寄せ
+                case HugStage.Pull:
                     _hugTime += dt;
                     {
                         float x = Mathf.Clamp01(_hugTime / HugPullSeconds);
@@ -542,24 +551,24 @@ namespace Ryona.Game
                             // 引き込みの勢いで少し行き過ぎてから戻る（ぶつかる感じ）。
                             _hugPhase = 1.08f;
                             PullPulse = 0f;
-                            _hugStage = 2;
+                            _hugStage = HugStage.Contact;
                             _hugTime = 0f;
                         }
                     }
                     break;
 
-                case 2: // 密着（ここでダメージ）
+                case HugStage.Contact: // 密着（ここでダメージ）
                     _hugTime += dt;
                     _hugPhase = Mathf.MoveTowards(_hugPhase, 1f, dt * 0.8f);
                     PullPulse = Mathf.MoveTowards(PullPulse, 0f, dt * 12f);
                     if (_hugTime >= HugContactSeconds)
                     {
-                        _hugStage = 3;
+                        _hugStage = HugStage.Release;
                         _hugTime = 0f;
                     }
                     break;
 
-                case 3: // 少し離す
+                case HugStage.Release: // 少し離す
                     _hugTime += dt;
                     _hugPhase = 1f - Mathf.SmoothStep(0f, 1f,
                         Mathf.Clamp01(_hugTime / HugReleaseSeconds));
@@ -567,7 +576,7 @@ namespace Ryona.Game
                     if (_hugTime >= HugReleaseSeconds)
                     {
                         _hugPhase = 0f;
-                        _hugStage = 0;
+                        _hugStage = HugStage.Rest;
                         _hugTime = 0f;
                     }
                     break;
@@ -602,7 +611,7 @@ namespace Ryona.Game
             _remaining = 0f;
             _suppressRemaining = 0f;
             Captor = null;
-            _hugStage = 0;
+            _hugStage = HugStage.Rest;
             _hugTime = 0f;
             _hugPhase = 0f;
 

@@ -509,6 +509,15 @@ namespace Ryona.Game
                 : best.transform.rotation;
 
             PunchZone zone = NextZone();
+
+            // 歩き始める前に攻撃トークンを確保する。取れなければ位置も動かさず、
+            // 次の機会（0.3 秒後）に選び直す。
+            if (!best.TryReserveTagPunchToken())
+            {
+                HasAttacker = false;
+                return false;
+            }
+
             float moveDistance = Vector3.Distance(best.transform.position, spot);
             if (moveDistance <= 0.05f)
             {
@@ -520,7 +529,7 @@ namespace Ryona.Game
 
             // 遠くから瞬間移動させず、短く歩かせてから打たせる。
             // 位置合わせの間は AI を止め、体が勝手に動いて拳の位置がずれないようにする。
-            best.LockForHandOff(0.8f);
+            best.LockForHandOff(0.8f, releaseToken: false);
             StartCoroutine(PlaceThenPunch(best, spot, face, zone, moveDistance));
             return true;
         }
@@ -551,8 +560,33 @@ namespace Ryona.Game
 
             enemy.transform.position = spot;
             enemy.transform.rotation = face;
-            if (enemy.TryStartTagPunch(zone, allowRecover: true, holdPoseSeconds: FistHoldSeconds))
+
+            // 位置に着いても、攻撃トークンが埋まっていて発注に失敗することがある。
+            // すぐ諦めると「1 発目が空振り」になるので、少しだけ順番待ちする。
+            float orderUntil = Time.time + 0.5f;
+            bool started = false;
+            while (!started && Time.time < orderUntil)
+            {
+                if (enemy == null || !enemy.IsAlive || _grapple == null || !_grapple.IsGrappled)
+                    yield break;
+
+                started = enemy.TryStartTagPunch(zone, allowRecover: true,
+                    holdPoseSeconds: FistHoldSeconds);
+                if (!started)
+                    yield return null;
+            }
+
+            if (started)
+            {
+                // 位置合わせに使った時間をヒット待ちの残りから差し引かない。
+                _hitTimeout = Mathf.Max(_hitTimeout, 1.5f);
                 Debug.Log($"[HeldPunch] placed {enemy.name} dist={distance:F2}m t={seconds:F2}s");
+            }
+            else
+            {
+                Debug.Log($"[HeldPunch] place order failed {enemy.name} phase={enemy.Phase} " +
+                          $"token={enemy.HasAttackToken} dist={distance:F2}m");
+            }
         }
 
         /// <summary>次の一発の狙い。腹パンと顔面パンチを毎回ランダムに選ぶ。</summary>
