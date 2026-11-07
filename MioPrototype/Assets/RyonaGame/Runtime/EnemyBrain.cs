@@ -1117,8 +1117,8 @@ namespace Ryona.Game
         /// <summary>判定を出す瞬間。1 フレームだけ <see cref="EnemyPhase.Attack"/> に滞在する。</summary>
         void Strike(float distance)
         {
-            // 予備動作の最終フレームで別の敵が先に掴んだ場合も、二重に掴まない。
-            if (IsRedundantGrab())
+            // 予備動作が終わった直後でも、別の敵に倒されたり掴まれたりすることがある。
+            if ((Player != null && Player.IsDown) || IsRedundantGrab())
             {
                 CancelWindup();
                 return;

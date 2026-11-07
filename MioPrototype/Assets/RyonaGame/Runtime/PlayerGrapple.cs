@@ -371,7 +371,7 @@ namespace Ryona.Game
         /// </summary>
         public void HandOff(EnemyBrain next, GrappleKind kind = GrappleKind.Back, bool shove = false)
         {
-            if (!IsGrappled || next == null || next == Captor || Stats == null || Stats.IsDead)
+            if (!IsGrappled || next == null || !next.IsAlive || next == Captor || Stats == null || Stats.IsDead)
                 return;
 
             Captor = next;
@@ -434,10 +434,11 @@ namespace Ryona.Game
                 transform.rotation = Quaternion.Slerp(fromRot, targetRot,
                     Mathf.Clamp01(t / turnSeconds));
                 yield return null;
-            }
 
-            if (!IsGrappled || Captor != next)
-                yield break;
+                // 次のフレームで位置や向きを書き込む前に、拘束が続いているか確認する。
+                if (!IsGrappled || Captor != next || next == null || !next.IsAlive || Stats == null || Stats.IsDead)
+                    yield break;
+            }
 
             transform.position = toPos;
             transform.rotation = targetRot;

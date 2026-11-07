@@ -256,6 +256,30 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator InterruptedHandOffStopsMovingThePlayer()
+        {
+            yield return Load();
+            _player.GetComponent<PlayerMotor>().enabled = false;
+            _grapple.Begin(_captor, GrappleKind.Back);
+            _other.transform.position = _player.transform.position + Vector3.right * 2.5f;
+            _other.transform.rotation = Quaternion.LookRotation(Vector3.left);
+            _grapple.HandOff(_other, GrappleKind.Pin, shove: true);
+
+            _other.TakeHit(new CombatState(), new AttackData { damage = _other.State.Hp });
+            Assert.IsFalse(_other.IsAlive);
+            yield return null;
+            Assert.IsFalse(_grapple.IsGrappled);
+
+            Vector3 releasedPosition = _player.transform.position;
+            Quaternion releasedRotation = _player.transform.rotation;
+            yield return null;
+            yield return null;
+
+            Assert.AreEqual(releasedPosition, _player.transform.position);
+            Assert.AreEqual(releasedRotation, _player.transform.rotation);
+        }
+
+        [UnityTest]
         public IEnumerator 膝蹴りの連撃中に別の敵の通常パンチも当たる()
         {
             yield return Load();

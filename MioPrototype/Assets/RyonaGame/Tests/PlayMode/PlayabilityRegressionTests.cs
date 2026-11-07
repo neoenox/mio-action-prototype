@@ -126,6 +126,32 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator EnemyCannotGrabWhenPlayerGoesDownBeforeImpact()
+        {
+            yield return TestScene.LoadPrototype();
+            var player = Object.FindFirstObjectByType<PlayerStats>();
+            var grapple = player.GetComponent<PlayerGrapple>();
+            var enemy = Object.FindFirstObjectByType<EnemyBrain>();
+            enemy.FeintChance = 0f;
+            player.transform.rotation = Quaternion.LookRotation(Vector3.right);
+            enemy.transform.position = player.transform.position + Vector3.left * 0.6f;
+            enemy.transform.rotation = Quaternion.LookRotation(Vector3.right);
+
+            const BindingFlags privateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
+            typeof(EnemyBrain).GetMethod("BeginWindup", privateInstance)
+                .Invoke(enemy, new object[] { EnemyBrain.AttackId.Grab });
+            typeof(EnemyBrain).GetMethod("TickWindup", privateInstance)
+                .Invoke(enemy, new object[] { 10f });
+            Assert.AreEqual(EnemyPhase.Attack, enemy.Phase);
+
+            player.ForceDown(1f, "test", forward: true);
+            typeof(EnemyBrain).GetMethod("Strike", privateInstance)
+                .Invoke(enemy, new object[] { 0.6f });
+
+            Assert.IsFalse(grapple.IsGrappled, "A grab must not connect after the player goes down.");
+        }
+
+        [UnityTest]
         public IEnumerator BackGrabKeepsPlayerFacingAwayFromCaptor()
         {
             yield return TestScene.LoadPrototype();
