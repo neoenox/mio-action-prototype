@@ -148,6 +148,14 @@ namespace Ryona.Game
             bool grappled = _grapple != null && _grapple.IsGrappled && !Player.IsDead;
             bool show = grappled || _releasedRemaining > 0f;
 
+            // 腹パンのコンボ中は腹が画面の中心に来る。中央下のままだと
+            // 腹パン表示が当たっている場所に重なるので、コンボ中だけ下へ退ける。
+            bool combo = _bellyPunch != null && (_bellyPunch.IsPerforming || _bellyPunch.IsThrowIncoming);
+            Vector2 blockPos = _grappleRoot.anchoredPosition;
+            blockPos.y = combo ? 96f : 232f;
+            if ((_grappleRoot.anchoredPosition - blockPos).sqrMagnitude > 0.01f)
+                _grappleRoot.anchoredPosition = blockPos;
+
             if (_grappleRoot.gameObject.activeSelf != show)
                 _grappleRoot.gameObject.SetActive(show);
 
@@ -189,7 +197,13 @@ namespace Ryona.Game
             string tail;
             bool danger = false;
 
-            if (_grapple.HasTimeLimit)
+            if (_grapple.FrontEscapeRemaining > 0f)
+            {
+                string attack = _grapple.Kind == GrappleKind.BearHug ? "締め付け" : "膝蹴り";
+                tail = $"{attack}まで {_grapple.FrontEscapeRemaining:F1}s";
+                danger = _grapple.FrontEscapeRemaining <= 0.5f;
+            }
+            else if (_grapple.HasTimeLimit)
             {
                 tail = $"あと {_grapple.Remaining:F1}s で解放";
                 // 時間切れは解放なので、危険色にはしない

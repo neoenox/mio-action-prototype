@@ -130,8 +130,10 @@ namespace Ryona.Tests
 
             var grapple = _stats.GetComponent<PlayerGrapple>();
             grapple.Begin(enemies[0], kind);
-            yield return WaitUnscaled(0.1f);
+            yield return WaitUnscaled(kind == GrappleKind.Back ? 0.1f : 0.24f);
             Assert.Greater(mesh.GetBlendShapeWeight(brow), 30f, "The hold uses a worried brow.");
+            if (kind != GrappleKind.Back)
+                Assert.Greater(mesh.GetBlendShapeWeight(brow), 74f, "Anticipation strengthens the worried brow.");
             Assert.Less(mesh.GetBlendShapeWeight(eyelids), 5f, "Eyes stay open between hits.");
             float restingMouth = mesh.GetBlendShapeWeight(mouth);
 
@@ -206,6 +208,107 @@ namespace Ryona.Tests
             Assert.Less(_face.BellyBlend, 0.05f, "顔ヒットのあと腹パン用の配合が残っている");
             Assert.AreEqual(_face.FacePain.Mouth, _face.CurrentShape.Mouth, 0.02f,
                 "口の開きが顔ヒット用に戻っていない");
+        }
+
+        [UnityTest]
+        public IEnumerator 殴られたら目を強く閉じ少しして開ける()
+        {
+            yield return LoadFace();
+
+            Hit(PunchZone.Face);
+            yield return WaitUnscaled(0.08f);
+            Assert.Greater(_face.Squeeze, 0.9f, "殴られた瞬間に目を強く閉じていない");
+
+            yield return WaitUnscaled(1.6f);
+            Assert.Less(_face.Squeeze, 0.1f, "いつまでも目を閉じたまま");
+        }
+
+        /// <summary>声を 1 回鳴らして、口の母音と開きの推移を集める。</summary>
+        IEnumerator Record(SfxId id, System.Collections.Generic.List<(float t, PlayerFace.Vowel v, float open)> log)
+        {
+            var sfx = ProceduralSfx.Instance;
+            Assert.IsNotNull(sfx, "ProceduralSfx が無い");
+            sfx.Play(id, 0.01f, 1f);
+
+            float t = 0f;
+            while (t < 1.2f)
+            {
+                yield return null;
+                t += Time.unscaledDeltaTime;
+                log.Add((t, _face.VoiceVowel, _face.VoiceOpen));
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator 声あに合わせて口をあの形で開け無音の間は開けない()
+        {
+            yield return LoadFace();
+            var log = new System.Collections.Generic.List<(float t, PlayerFace.Vowel v, float open)>();
+            yield return Record(SfxId.HurtLarge, log);
+
+            float early = 0f, peak = 0f;
+            PlayerFace.Vowel atPeak = PlayerFace.Vowel.None;
+            foreach (var s in log)
+            {
+                if (s.t < 0.10f)
+                    early = Mathf.Max(early, s.open);
+                if (s.open > peak)
+                {
+                    peak = s.open;
+                    atPeak = s.v;
+                }
+            }
+
+            Debug.Log($"[VoiceMouth] large early={early:F2} peak={peak:F2} vowel={atPeak}");
+            Assert.Less(early, 0.05f, "声の出だし（無音）で口が開いている");
+            Assert.Greater(peak, 0.5f, "声が出ているのに口が開かない");
+            Assert.AreEqual(PlayerFace.Vowel.A, atPeak, "「あ」の声なのに口の形が違う");
+            Assert.Less(log[log.Count - 1].open, 0.05f, "声が終わっても口が開いたまま");
+        }
+
+        [UnityTest]
+        public IEnumerator 腹の声おふは口をおからうへ変える()
+        {
+            yield return LoadFace();
+            var log = new System.Collections.Generic.List<(float t, PlayerFace.Vowel v, float open)>();
+            yield return Record(SfxId.HurtBelly, log);
+
+            float firstO = -1f, firstU = -1f;
+            foreach (var s in log)
+            {
+                if (s.open < 0.05f)
+                    continue;
+                if (s.v == PlayerFace.Vowel.O && firstO < 0f)
+                    firstO = s.t;
+                if (s.v == PlayerFace.Vowel.U && firstU < 0f)
+                    firstU = s.t;
+            }
+
+            Debug.Log($"[VoiceMouth] belly O at {firstO:F2}s, U at {firstU:F2}s");
+            Assert.GreaterOrEqual(firstO, 0f, "「お」の口にならない");
+            Assert.Greater(firstU, firstO, "「お」のあと「ふ（う）」の口にならない");
+        }
+
+        [UnityTest]
+        public IEnumerator 声うは口をうの形にする()
+        {
+            yield return LoadFace();
+            var log = new System.Collections.Generic.List<(float t, PlayerFace.Vowel v, float open)>();
+            yield return Record(SfxId.HurtSmall, log);
+
+            float peak = 0f;
+            PlayerFace.Vowel atPeak = PlayerFace.Vowel.None;
+            foreach (var s in log)
+            {
+                if (s.open > peak)
+                {
+                    peak = s.open;
+                    atPeak = s.v;
+                }
+            }
+
+            Assert.Greater(peak, 0.5f, "声が出ているのに口が開かない");
+            Assert.AreEqual(PlayerFace.Vowel.U, atPeak, "「う」の声なのに口の形が違う");
         }
     }
 }

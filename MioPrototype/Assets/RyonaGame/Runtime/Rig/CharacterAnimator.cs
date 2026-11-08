@@ -167,7 +167,7 @@ namespace Ryona.Game
         }
 
         /// <summary>
-        /// 腹パンの「く」の字を再生する。拘束（Grabbed）の上に重ねるので、
+        /// 腹パンの被弾姿勢を再生する。拘束（Grabbed）の上に重ねるので、
         /// 呼んでも状態は Grabbed のまま。
         /// </summary>
         public void PlayHeldBellyPunch(float seconds)
@@ -180,7 +180,7 @@ namespace Ryona.Game
         }
 
         /// <summary>
-        /// 腹パンの折れ具合（0..1）。入り 0.07 秒、保持、戻り 0.18 秒。
+        /// 腹パンの反動の強さ（0..1）。素早く押し戻され、時間をかけて立て直す。
         /// テストと Editor 診断が姿勢を数値で確認するために公開している。
         /// </summary>
         public float HeldBellyPunchFold
@@ -191,8 +191,8 @@ namespace Ryona.Game
                     return 0f;
 
                 float t = _heldBellyPunchTotal - _heldBellyPunchRemaining;
-                float inT = Mathf.SmoothStep(0f, 1f, t / 0.07f);
-                float outT = 1f - Mathf.SmoothStep(0f, 1f, (t - 0.37f) / 0.18f);
+                float inT = Mathf.SmoothStep(0f, 1f, t / 0.055f);
+                float outT = 1f - Mathf.SmoothStep(0f, 1f, (t - 0.20f) / 0.35f);
                 return Mathf.Clamp01(inT * outT);
             }
         }
@@ -624,6 +624,72 @@ namespace Ryona.Game
             }
         }
 
+        // --- 後ろ拘束で、殴りに来る敵を不安そうに見る -------------------------------
+
+        HeldBellyPunchDirector _punchDirector;
+
+        /// <summary>殴りに来る敵を見る重み（0〜1）。拘束中に正面の敵が選ばれると上がる。</summary>
+        float _dreadLook;
+
+        EnemyBrain _dreadEnemy;
+        float _dreadYaw;
+        float _dreadPitch;
+        bool _hasDreadAngles;
+
+        /// <summary>前のフレームで姿勢を組んだ後の頭の位置（ResetPose 前の値）。</summary>
+        Vector3 _posedHeadPosition;
+        bool _hasPosedHead;
+
+        /// <summary>殴りに来る敵を見ている重み（検証用）。</summary>
+        public float DreadLook => _dreadLook;
+
+        void UpdateDreadLook(float dt)
+        {
+            if (_punchDirector == null)
+                _punchDirector = FindFirstObjectByType<HeldBellyPunchDirector>();
+
+            EnemyBrain target = _punchDirector != null && _punchDirector.isActiveAndEnabled
+                && Grapple != null && Grapple.IsGrappled && !Grapple.IsHandingOff
+                && Grapple.Kind == GrappleKind.Back
+                ? _punchDirector.DreadEnemy
+                : null;
+
+            if (target != _dreadEnemy)
+            {
+                _dreadEnemy = target;
+                _hasDreadAngles = false;
+            }
+
+            if (target != null && !_hasDreadAngles && Rig != null && Rig.Head != null)
+                CaptureDreadAngles(_punchDirector.DreadStartPoint);
+
+            bool bracing = target != null && target.IsTagPunch &&
+                (target.Phase == EnemyPhase.Attack ||
+                 (target.Phase == EnemyPhase.Windup &&
+                  target.WindupProgress >= (target.IsOpeningBellyPunch ? 0.15f : 0.55f)));
+            bool look = target != null && _hasDreadAngles && !bracing;
+            // 拳が出る前だけ視線を外す。被弾姿勢から戻るときは最初の角度へ戻す。
+            float seconds = look ? 0.18f : bracing ? 0.085f : 0.35f;
+            _dreadLook = Mathf.MoveTowards(_dreadLook, look ? 1f : 0f, Mathf.Max(0f, dt) / seconds);
+        }
+
+        /// <summary>
+        /// 殴りに来る敵の顔へ向く首の角度（体のローカル）。yaw は右 +、pitch は上 −。
+        /// 上体の前傾ぶんは呼び出し側で差し引く。
+        /// </summary>
+        void CaptureDreadAngles(Vector3 point)
+        {
+            Vector3 to = point - (_hasPosedHead ? _posedHeadPosition : Rig.Head.position);
+            Vector3 local = transform.InverseTransformDirection(to);
+            float flat = new Vector2(local.x, local.z).magnitude;
+            if (flat < 0.05f)
+                return;
+
+            _dreadYaw = Mathf.Clamp(Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg, -70f, 70f);
+            _dreadPitch = Mathf.Clamp(-Mathf.Atan2(local.y, flat) * Mathf.Rad2Deg, -45f, 25f);
+            _hasDreadAngles = true;
+        }
+
         /// <summary>
         /// カメラがどちら側にいるか（度）。正面 0、右 +、左 −。
         /// 顔を「手前（カメラ側）へ背ける」向きを出すのに使う。
@@ -749,7 +815,7 @@ namespace Ryona.Game
             if (_shoveTime > 0f)
                 _shoveTime = Mathf.Max(0f, _shoveTime - dt);
 
-            // 腹パンの「く」の字。ヒットストップ中は dt=0 なので、当たった瞬間の姿勢で止まる。
+            // 腹パンと顔パンの反動。ヒットストップ中は dt=0 なので、当たった瞬間の姿勢で止まる。
             _heldBellyPunchRemaining = Mathf.Max(0f, _heldBellyPunchRemaining - dt);
             _heldFacePunchRemaining = Mathf.Max(0f, _heldFacePunchRemaining - dt);
 
@@ -758,6 +824,8 @@ namespace Ryona.Game
                 _heldThrowLeadOn = false;
             _heldThrowLead = Mathf.MoveTowards(_heldThrowLead, _heldThrowLeadOn ? 1f : 0f,
                 dt / (_heldThrowLeadOn ? 0.10f : 0.16f));
+
+            UpdateDreadLook(dt);
 
             // 実際の移動速度。足を地面に固定する（滑らせない）ために使う。
             Vector3 move = transform.position - _lastPosition;
@@ -788,6 +856,19 @@ namespace Ryona.Game
             }
 
             State before = _state;
+            bool held = Grapple != null && Grapple.IsGrappled && (Stats == null || !Stats.IsDead);
+
+            if (held)
+            {
+                // 掴まれる前に始まった被弾の振り向きや攻撃の照準を拘束へ持ち越さない。
+                _hasFaceYaw = false;
+                _hasAim = false;
+                if (_state != State.Grabbed)
+                {
+                    _faceFlickAt = -10f;
+                    SetState(State.Grabbed, 0f);
+                }
+            }
 
             if (_stunPlayed && Stats != null && !Stats.IsStunned)
                 _stunPlayed = false;
@@ -854,10 +935,6 @@ namespace Ryona.Game
                     if (Stats != null && Stats.IsDead)
                     {
                         SetState(State.Down, 999f);
-                    }
-                    else if (Grapple != null && Grapple.IsGrappled)
-                    {
-                        SetState(State.Grabbed, 0f);
                     }
                     else if (Combat != null && Combat.IsAttacking)
                     {

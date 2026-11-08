@@ -191,7 +191,16 @@ namespace Ryona.Game
 
             voice.pitch = Mathf.Clamp(pitch, 0.5f, 1.6f);
             voice.PlayOneShot(clip, gain);
+
+            if (id == SfxId.HurtSmall || id == SfxId.HurtLarge || id == SfxId.HurtBelly)
+                HurtVoicePlayed?.Invoke(id, clip, voice.pitch);
         }
+
+        /// <summary>
+        /// 被弾の声を鳴らした瞬間（声の種類・素材・高さ）。表情が口の形と開きを声に合わせるのに使う。
+        /// 声は timeScale に関係なく進むので、受け手は unscaled の時刻で追うこと。
+        /// </summary>
+        public static event System.Action<SfxId, AudioClip, float> HurtVoicePlayed;
 
         /// <summary>
         /// 指定した位置から鳴らす（足元で倒れる音など、場所が分かった方が良い音）。
@@ -289,6 +298,10 @@ namespace Ryona.Game
                 Debug.LogWarning($"[Sfx] 声の素材が見つからない: {path}");
                 return;
             }
+
+            // 表情が声の音量（口の開き）を波形から読むので、先に読み込んでおく
+            // （インポート設定が Preload Audio Data オフのため）。
+            clip.LoadAudioData();
 
             _clips[id] = clip;
             // どの素材がどの声に付いたかを 1 度だけ出す（差し替えの確認用）

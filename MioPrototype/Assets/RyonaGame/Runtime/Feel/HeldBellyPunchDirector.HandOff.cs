@@ -17,11 +17,12 @@ namespace Ryona.Game
                 return;
             }
 
+            SetPunchGuard(null);
             _handOffTimer -= Time.deltaTime;
             if (_handOffTimer > 0f)
                 return;
 
-            _waitingForHandOff = false;
+            _phase = Phase.Idle;
             int hits = _hits;
             var chain = FindFirstObjectByType<GrappleHandOff>();
             if (chain != null && chain.TryChain())
@@ -36,6 +37,7 @@ namespace Ryona.Game
 
         void ContinueHold()
         {
+            SetPunchGuard(null);
             if (_grapple != null && _grapple.IsGrappled)
             {
                 _grapple.ClearStruggleSuppression();
@@ -57,9 +59,12 @@ namespace Ryona.Game
             _cooldown = Mathf.Max(0.1f, RestartCooldownSeconds);
 
             if (_grapple == null || !_grapple.IsGrappled || _grapple.Kind != GrappleKind.Back)
+            {
+                _phase = Phase.Idle;
                 return;
+            }
 
-            _waitingForThrow = true;
+            _phase = Phase.WaitingThrow;
             _throwTimer = _cooldown;
         }
 

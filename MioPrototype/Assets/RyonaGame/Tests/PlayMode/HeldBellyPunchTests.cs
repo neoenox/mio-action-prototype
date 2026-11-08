@@ -11,7 +11,7 @@ namespace Ryona.Tests
     /// 後ろ拘束中のタッグ技（腹パン / 顔面パンチ）の回帰テスト。
     ///
     /// 後ろ拘束は時間切れで解けない。別の敵のパンチが当たると
-    /// 「く」の字（腹）または首振り（顔）＋カメラ寄せが始まる。
+    /// 上体の反動（腹）または首振り（顔）＋カメラ寄せが始まる。
     /// 5 発食らい切ると、腹の蓄積でダウンするか、引き渡しまたは拘束継続になる。
     /// 途中で諦めた場合だけ拘束が続く。
     /// 拘束者自身の攻撃では発動しない。
@@ -95,6 +95,38 @@ namespace Ryona.Tests
                 "キャラクターのリグが組み上がらない（VRM の読み込み待ちで時間切れ）");
         }
 
+        [UnityTest]
+        public IEnumerator RearCaptorFollowsBellyRecoilButStaysBracedForFacePunch()
+        {
+            yield return LoadAndGrab(waitForAnimator: true, directorEnabled: false);
+            Vector3 center = _player.transform.position;
+            center.x = -3f;
+            Quaternion facing = Quaternion.LookRotation(Vector3.right);
+            _player.transform.SetPositionAndRotation(center, facing);
+            _captor.transform.SetPositionAndRotation(center + Vector3.left * 0.34f, facing);
+            _captor.TakeOverHold(10f);
+            yield return new WaitForSeconds(0.25f);
+
+            var figure = _captor.GetComponent<EnemyFigure>();
+            float headDepth = _captor.transform.InverseTransformPoint(figure.HeadBone.position).z;
+            Vector3 hipsBefore = _anim.Rig.Hips.position;
+
+            _anim.PlayHeldBellyPunch(0.55f);
+            yield return new WaitForSeconds(0.14f);
+            float bellyDepth = _captor.transform.InverseTransformPoint(figure.HeadBone.position).z;
+            Assert.Greater(_anim.DebugTorsoPitch, 27f, "The upper body folds over the abdomen.");
+            Assert.Less(Vector3.Dot(_anim.Rig.Hips.position - hipsBefore, _player.transform.forward), -0.075f,
+                "The waist travels in the direction of the impact.");
+            Assert.Less(bellyDepth, headDepth - 0.04f, "The captor yields with the player's recoil.");
+
+            yield return new WaitForSeconds(0.5f);
+            _anim.PlayHeldFacePunch(0.55f);
+            yield return new WaitForSeconds(0.10f);
+            float faceDepth = _captor.transform.InverseTransformPoint(figure.HeadBone.position).z;
+            Assert.AreEqual(headDepth, faceDepth, 0.04f, "The captor stays braced during the face punch.");
+            Assert.AreSame(_captor, _grapple.Captor);
+        }
+
         void PlaceAttackerInFront(float distance = 1.15f)
         {
             Vector3 forward = _player.transform.forward;
@@ -135,9 +167,41 @@ namespace Ryona.Tests
                 .Invoke(_attacker, new object[] { 10f });
             Assert.AreEqual(EnemyPhase.Attack, _attacker.Phase);
             typeof(EnemyBrain).GetMethod("Strike", privateInstance)
-                .Invoke(_attacker, new object[] { 0.82f });
+                .Invoke(_attacker, new object[] { Vector3.Distance(_attacker.transform.position, _player.transform.position) });
             Assert.IsTrue(_director.IsPerforming, "The landed throw opens the combo.");
             Assert.AreEqual(0, _director.ComboHitsLanded, "A throw does not count as a punch.");
+        }
+
+        [UnityTest]
+        public IEnumerator 演出の段階が投げ待ちからコンボへ進む()
+        {
+            // 投げの発注は 5 秒先にしておき、段階の遷移だけを決定的に見る。
+            yield return LoadAndGrab(waitForAnimator: true, throwDelay: 5f);
+
+            Assert.AreEqual(HeldBellyPunchDirector.Phase.WaitingThrow, _director.CurrentPhase);
+            Assert.Greater(_director.NextThrowRemaining, 0f, "投げ待ちの残り秒が出る");
+            Assert.IsFalse(_director.IsPerforming);
+
+            PlaceAttackerInFront();
+            LandOpeningThrow();
+
+            Assert.AreEqual(HeldBellyPunchDirector.Phase.Combo, _director.CurrentPhase,
+                "投げが決まったらコンボの段階へ移る");
+            Assert.IsTrue(_director.IsPerforming);
+
+            // 5 発と余韻が終わると、コンボの段階からは抜ける（引き渡し待ち / 次の投げ待ち）。
+            _attacker.HoldFire(10f);
+            _attacker.enabled = true;
+            float deadline = Time.realtimeSinceStartup + 12f;
+            while (_director.IsPerforming && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.IsFalse(_director.IsPerforming, "コンボが終われば段階が戻る");
+            Assert.AreNotEqual(HeldBellyPunchDirector.Phase.Combo, _director.CurrentPhase);
+            Assert.IsTrue(
+                _director.CurrentPhase == HeldBellyPunchDirector.Phase.HandOffWait ||
+                _director.CurrentPhase == HeldBellyPunchDirector.Phase.WaitingThrow,
+                $"コンボ後は引き渡し待ちか再投げ待ち（実際: {_director.CurrentPhase}）");
         }
 
         [UnityTest]
@@ -161,9 +225,86 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator OpeningThrowStepsIntoReachBeforeContact()
+        {
+            yield return LoadAndGrab(throwDelay: 10f);
+            _captor.TakeOverHold(10f);
+            _attacker.MinPlayerGap = 0.95f;
+            _attacker.HoldFire(10f);
+            PlaceAttackerInFront(0.82f);
+            _attacker.enabled = true;
+            Assert.IsTrue(_attacker.TryStartHeldThrow());
+
+            float deadline = Time.realtimeSinceStartup + 4f;
+            while (!_director.IsPerforming && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.IsTrue(_director.IsPerforming);
+            Assert.Less(Vector3.Distance(_attacker.transform.position, _player.transform.position), 0.75f,
+                "The thrower must get close enough to reach the player's shoulders.");
+            Assert.AreEqual(0, _director.ComboHitsLanded);
+        }
+
+        [UnityTest]
+        public IEnumerator BellyPuncherKeepsLowGuardAfterRetractingFist()
+        {
+            yield return LoadAndGrab(throwDelay: 10f);
+            _captor.TakeOverHold(10f);
+            _attacker.HoldFire(10f);
+            float rigDeadline = Time.realtimeSinceStartup + 8f;
+            while (_player.GetComponentInChildren<CharacterAnimator>() == null &&
+                Time.realtimeSinceStartup < rigDeadline)
+                yield return null;
+            Assert.IsNotNull(_player.GetComponentInChildren<CharacterAnimator>());
+            Object.FindFirstObjectByType<EnemyGroup>().ReleaseAllTokens();
+            _director.FacePunchChance = 0f;
+            _director.ComboIntervalSeconds = 0.65f;
+            LandOpeningThrow();
+
+            float deadline = Time.realtimeSinceStartup + 4f;
+            while (_director.ComboHitsLanded == 0 && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.AreEqual(1, _director.ComboHitsLanded);
+            var chest = _attacker.GetComponent<EnemyFigure>().ChestBone;
+            yield return new WaitForSeconds(0.18f);
+            float contactHeight = chest.position.y;
+            yield return new WaitForSeconds(0.25f);
+
+            Assert.AreEqual(1, _director.ComboHitsLanded);
+            Assert.IsFalse(_attacker.IsBellyPunch, "The fist should already be retracting.");
+            Assert.Less(chest.position.y - contactHeight, 0.11f,
+                "The puncher should keep a low guard between punches.");
+        }
+
+        [UnityTest]
+        public IEnumerator OrdinaryPunchFollowsThroughDuringRearHold()
+        {
+            yield return LoadAndGrab(directorEnabled: false);
+            _captor.TakeOverHold(10f);
+            PlaceAttackerInFront(0.82f);
+            _attacker.enabled = true;
+            _attacker.FeintChance = 1f;
+
+            const BindingFlags privateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
+            var begin = typeof(EnemyBrain).GetMethod("TryBeginAttack", privateInstance);
+            Assert.IsTrue((bool)begin.Invoke(_attacker, new object[] { 0.82f }));
+            Assert.AreEqual(EnemyPhase.Windup, _attacker.Phase);
+            Assert.IsFalse(_attacker.IsTagPunch);
+
+            typeof(EnemyBrain).GetMethod("TickWindup", privateInstance)
+                .Invoke(_attacker, new object[] { 10f });
+
+            Assert.AreEqual(EnemyPhase.Attack, _attacker.Phase,
+                "A regular punch should follow through while another enemy holds the player.");
+            Assert.IsFalse(_director.IsPerforming);
+        }
+
+        [UnityTest]
         public IEnumerator FrontEnemyAutomaticallyThrowsBeforeStartingTheCombo()
         {
             yield return LoadAndGrab(throwDelay: 0.3f);
+            _captor.TakeOverHold(10f);
             _attacker.enabled = true;
             _attacker.HoldFire(10f);
             _attacker.transform.position = _player.transform.position - _player.transform.forward * 0.9f;
@@ -208,11 +349,11 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator 腹パンでくの字とカメラ寄せが始まり抽選に外れると拘束が続く()
+        public IEnumerator 腹パンで被弾姿勢とカメラ寄せが始まり抽選に外れると拘束が続く()
         {
             yield return LoadAndGrab(waitForAnimator: true);
 
-            // このテストは「く」の字と拘束の継続だけを見る。狙いを腹に固定する。
+            // 被弾姿勢と拘束の継続を見るため、狙いを腹に固定する。
             _director.FacePunchChance = 0f;
             PlaceAttackerInFront();
 
@@ -236,7 +377,7 @@ namespace Ryona.Tests
             Assert.AreEqual(1, _director.ComboHitsLanded);
             Assert.IsTrue(_grapple.IsGrappled, "The hold must remain during the combo");
             Assert.Greater(_anim.HeldThrowLead, 0.6f, "The throw leaves her in the belly stance");
-            Assert.IsTrue(_anim.IsHeldBellyPunch, "The first punch folds her over");
+            Assert.IsTrue(_anim.IsHeldBellyPunch, "The first punch starts her recoil");
             Assert.IsTrue(_camera.IsFocusing, "Camera must center on the player for the punches");
 
             // 5 発を食らっても拘束は続く
@@ -374,7 +515,18 @@ namespace Ryona.Tests
         [UnityTest]
         public IEnumerator 投げは食らいにならず腹パン体勢へ移行する()
         {
-            yield return LoadAndGrab(waitForAnimator: true);
+            // リグの読み込み待ちの間に拘束役が殴ると、投げと関係ないスタンが残る。
+            // 拘束の状態は掴んだときに決まっているので、待つ前に AI を止める。
+            yield return LoadAndGrab();
+            _captor.enabled = false;
+            float rigDeadline = Time.realtimeSinceStartup + 8f;
+            while (_anim == null && Time.realtimeSinceStartup < rigDeadline)
+            {
+                _anim = _player.GetComponentInChildren<CharacterAnimator>();
+                yield return null;
+            }
+            Assert.IsNotNull(_anim);
+
             PlaceAttackerInFront(1.02f);
             _attacker.enabled = true;
             _attacker.HoldFire(10f);
@@ -461,6 +613,8 @@ namespace Ryona.Tests
 
             Vector3 toCamera = _camera.transform.position - _player.transform.position;
             toCamera.y = 0f;
+            // 腹パンの構図は正面斜め前（彼女の顔が見える）。左を向いたときも
+            // 同じ側（正面）へ回り込むこと。
             Assert.Greater(Vector3.Dot(_player.transform.forward, toCamera.normalized), 0.3f,
                 "Camera must stay on the player's front side when facing left");
         }
@@ -623,6 +777,49 @@ namespace Ryona.Tests
 
             Assert.GreaterOrEqual(combos, 4, $"コンボが終わらない combos={combos}");
             Assert.AreEqual(0, retries, "外れた回数: " + string.Join(" / ", misses));
+        }
+
+        /// <summary>
+        /// 敵の最初の位置に顔を向け、移動には追従せず、振りかぶりで視線を外す。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 腹パンが始まるとき殴りに来る敵の顔を見る()
+        {
+            yield return LoadAndGrab(waitForAnimator: true, throwDelay: 10f);
+            _captor.TakeOverHold(10f);
+            PlaceAttackerInFront(1.15f);
+            _attacker.transform.position += _player.transform.right * 0.45f;
+            typeof(HeldBellyPunchDirector).GetMethod("SetDreadTarget", BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(_director, new object[] { _attacker });
+
+            yield return new WaitForSeconds(0.25f);
+            Assert.GreaterOrEqual(_anim.DreadLook, 0.95f, "最初に敵へ顔を向ける");
+            float firstYaw = _anim.DebugHeadYaw;
+            float firstPitch = _anim.DebugHeadPitch + _anim.DebugTorsoPitch;
+            Assert.Greater(firstYaw, 10f, "最初の敵の横位置が顔の角度に反映される");
+
+            PlaceAttackerInFront(0.72f);
+            yield return new WaitForSeconds(0.14f);
+            Assert.AreEqual(firstYaw, _anim.DebugHeadYaw, 3f, "敵の移動に顔が追従する");
+            Assert.AreEqual(firstPitch, _anim.DebugHeadPitch + _anim.DebugTorsoPitch, 5f);
+
+            const BindingFlags privateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
+            _attacker.JabSeconds = 0.35f;
+            typeof(EnemyBrain).GetMethod("BeginWindup", privateInstance)
+                .Invoke(_attacker, new object[] { EnemyBrain.AttackId.Jab });
+            typeof(EnemyBrain).GetField("_tagPunchSwing", privateInstance).SetValue(_attacker, true);
+            typeof(EnemyBrain).GetMethod("TickWindup", privateInstance)
+                .Invoke(_attacker, new object[] { 0.24f });
+            yield return new WaitForSeconds(0.14f);
+            Assert.AreEqual(EnemyPhase.Windup, _attacker.Phase);
+            Assert.Less(_anim.DreadLook, 0.05f, "殴られる前に敵から視線を外す");
+
+            _attacker.LockForHandOff(1f);
+            _anim.PlayHeldBellyPunch(0.55f);
+            yield return new WaitForSeconds(0.62f);
+            Assert.GreaterOrEqual(_anim.DreadLook, 0.95f, "腹パンの反応が終わったら顔を上げる");
+            Assert.AreEqual(firstYaw, _anim.DebugHeadYaw, 3f, "被弾後も最初の敵の位置を基準にする");
+            Assert.AreEqual(firstPitch, _anim.DebugHeadPitch + _anim.DebugTorsoPitch, 5f);
         }
 
         [UnityTest]

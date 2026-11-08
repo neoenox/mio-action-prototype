@@ -229,6 +229,7 @@ namespace Ryona.Tests
             Assert.IsTrue(holder.IsHolding);
             Assert.IsFalse(holder.HasAttackToken, "The holder must free the attack slot");
             float hp = player.State.Hp;
+            yield return new WaitForSeconds(0.22f);
             float holdGap = Vector3.Distance(holder.transform.position, player.transform.position);
             while (grapple.IsGrappled && player.State.Hp >= hp && Time.realtimeSinceStartup < end)
                 yield return null;
@@ -240,6 +241,58 @@ namespace Ryona.Tests
                 .Invoke(holder, new object[] { StaggerTier.Medium, BodyPart.Torso });
             Assert.IsFalse(grapple.IsGrappled, "A staggered holder must release the player");
             Assert.IsFalse(holder.IsHolding);
+        }
+
+        [UnityTest]
+        public IEnumerator RearHoldKeepsFacingWhenAnotherEnemyHits() =>
+            CheckHoldFacingDuringOtherHits(GrappleKind.Back);
+
+        [UnityTest]
+        public IEnumerator FrontHoldKeepsFacingWhenAnotherEnemyHits() =>
+            CheckHoldFacingDuringOtherHits(GrappleKind.Pin);
+
+        [UnityTest]
+        public IEnumerator BearHugKeepsFacingWhenAnotherEnemyHits() =>
+            CheckHoldFacingDuringOtherHits(GrappleKind.BearHug);
+
+        IEnumerator CheckHoldFacingDuringOtherHits(GrappleKind kind)
+        {
+            yield return TestScene.LoadPrototype();
+            var player = Object.FindFirstObjectByType<PlayerStats>();
+            var grapple = player.GetComponent<PlayerGrapple>();
+            var enemies = Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None);
+            foreach (var enemy in enemies)
+                enemy.enabled = false;
+
+            var slot = Object.FindFirstObjectByType<VrmCharacterSlot>();
+            float deadline = Time.realtimeSinceStartup + 8f;
+            while (!slot.Loaded && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.IsTrue(slot.Loaded);
+            yield return null;
+
+            var animator = slot.Instance.GetComponent<CharacterAnimator>();
+            var captor = enemies[0];
+            var attacker = enemies[1];
+            Vector3 origin = player.transform.position;
+            player.transform.rotation = Quaternion.LookRotation(Vector3.right);
+            captor.transform.position = origin + Vector3.right * (kind == GrappleKind.Back ? -1f : 1f);
+            attacker.transform.position = origin + Vector3.left * 1.8f;
+
+            player.LastHitZone = PunchZone.Body;
+            player.ReceiveHit(attacker.State, AttackLibrary.Heavy(), attacker.transform);
+            Assert.AreEqual(CharacterAnimator.State.Stagger, animator.Current);
+            grapple.Begin(captor, kind);
+            float hp = player.State.Hp;
+            player.ReceiveHit(attacker.State, AttackLibrary.Light(), attacker.transform);
+            Assert.Less(player.State.Hp, hp);
+
+            yield return new WaitForSeconds(0.16f);
+            Assert.AreEqual(CharacterAnimator.State.Grabbed, animator.Current);
+            Assert.AreSame(captor, grapple.Captor);
+            Assert.AreEqual(kind, grapple.Kind);
+            Assert.Greater(Vector3.Dot(Vector3.right, player.transform.forward), 0.98f,
+                "An outside hit must not turn the player's body away from the hold.");
         }
 
         [UnityTest]

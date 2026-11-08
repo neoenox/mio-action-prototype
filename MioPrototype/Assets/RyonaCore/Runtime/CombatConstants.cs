@@ -42,7 +42,12 @@ namespace Ryona
         /// 掴まれてすぐ膝蹴りを始めず、しばらくそのまま押さえる（脱出する猶予）。
         /// 後ろ拘束（<see cref="GrappleKind.Back"/>）は時間切れで解けないので、この値は使わない。
         /// </summary>
-        public const float GrappleLimitSeconds = 4.2f;
+        public const float GrappleLimitSeconds = FrontGrappleEscapeSeconds + 3.1f;
+
+        /// <summary>正面拘束で、膝蹴りや締め付けが始まる前にもがける秒数。</summary>
+        public const float FrontGrappleEscapeSeconds = 2.7f;
+
+        public const float BearHugLimitSeconds = FrontGrappleEscapeSeconds + 3.6f;
 
         /// <summary>振りほどいた直後、掴んでいた側がよろける時間（反撃の隙）。</summary>
         public const float GrappleEscapeStun = 0.70f;
@@ -60,9 +65,6 @@ namespace Ryona
         /// <summary>押さえつけ中に入れる膝蹴りの回数。</summary>
         public const int PinKneeCount = 5;
 
-        /// <summary>押さえつけ開始から 1 発目の膝蹴りまでの秒。しばらく押さえたままにして脱出の猶予を作る。</summary>
-        public const float PinKneeDelay = 1.1f;
-
         /// <summary>膝蹴りの間隔（秒）。一発ずつ間を取り、5 発目が制限時間内に収まるようにする。</summary>
         public const float PinKneeInterval = 0.65f;
 
@@ -73,8 +75,7 @@ namespace Ryona
         /// <summary>正面の掴みのうち、ベアハッグを選ぶ割合。</summary>
         public const float BearHugChance = 0.5f;
 
-        /// <summary>ベアハッグ中に締め付ける間隔・初回までの秒・1 回のダメージ。</summary>
-        public const float BearHugSqueezeDelay = 0.6f;
+        /// <summary>ベアハッグ中に締め付ける間隔と 1 回のダメージ。</summary>
         public const float BearHugSqueezeInterval = 0.65f;
         public const float BearHugSqueezeDamage = 2.0f;
 

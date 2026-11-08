@@ -36,11 +36,11 @@ namespace Ryona.Game
         [Tooltip("次の腹パンを指示するまでの秒数（前の一発が当たってから）")]
         public float ComboIntervalSeconds = 0.55f;
 
-        [Tooltip("1 発ごとの「く」の字の長さ")]
+        [Tooltip("1 発ごとの被弾姿勢の長さ")]
         public float HitPoseSeconds = 0.55f;
 
-        [Tooltip("当たった瞬間から拳を腹に押し込んでおく秒数。彼女の折れ（HitPoseSeconds）より十分短くする。長いと次の一発まで拳が伸びたままになり、打つ動作に見えない")]
-        public float FistHoldSeconds = 0.28f;
+        [Tooltip("腹に当ててから拳を引き切るまでの秒数")]
+        public float FistHoldSeconds = 0.17f;
 
         [Tooltip("最後の一発のあと、カメラの寄りを保つ秒数")]
         public float ComboTailSeconds = 1.4f;
@@ -61,21 +61,21 @@ namespace Ryona.Game
         public int MaxAttempts = 8;
 
         [Header("Camera")]
-        [Tooltip("腹パン中のカメラ距離倍率（1 未満で寄る）。0.28 で約 1.5m（基本距離 5.2m × 0.28）")]
-        public float CameraDistanceScale = 0.28f;
+        [Tooltip("腹パン中のカメラ距離倍率（1 未満で寄る）。0.30 で約 1.6m（基本距離 5.2m × 0.30）")]
+        public float CameraDistanceScale = 0.30f;
 
-        [Tooltip("腹パン中のピボット上下（正で上がる）。顔が画面に入る高さまで上げる")]
-        public float CameraPivotOffset = 0.27f;
+        [Tooltip("腹パン中のピボット上下（正で上がる）。脚を切って腹と顔を入れる高さ")]
+        public float CameraPivotOffset = 0.34f;
 
         [Tooltip("腹パン中の俯角オフセット（負で見上げる）")]
         public float CameraPitchOffset = -12f;
 
-        [Tooltip("腹パン中のヨーオフセット（負でプレイヤーの正面側へ回り込む）")]
-        public float CameraYawOffset = -40f;
+        [Tooltip("腹パン中のヨーオフセット（負で彼女の正面側へ回り込み、顔が見える）。殴る腕が体の奥に隠れない角度にする")]
+        public float CameraYawOffset = -35f;
 
         [Header("Aim")]
-        [Tooltip("腹パン役を立たせる、プレイヤーの腹からの前方距離（m）")]
-        public float AttackerDistance = 0.74f;
+        [Tooltip("腹パン役を立たせる、プレイヤーの腹からの前方距離（m）。離して踏み込ませると拳の移動が見える")]
+        public float AttackerDistance = 0.82f;
 
         [Tooltip("（未使用）ベルトでは敵の z が毎フレーム彼女に合わせられるため、側方オフセットは効かない")]
         public float AttackerSideOffset = 0.68f;
@@ -83,14 +83,57 @@ namespace Ryona.Game
         [Tooltip("この距離より遠い敵は腹パン役に選ばない（m）。遠すぎると位置合わせがワープに見える")]
         public float AttackerSearchRange = 2.5f;
 
-        /// <summary>腹パンのコンボ中か。</summary>
-        public bool IsPerforming { get; private set; }
+        /// <summary>
+        /// 演出の段階。フラグの組み合わせではなく 1 つの値で持つ（不正な組み合わせを作らない）。
+        /// </summary>
+        public enum Phase
+        {
+            /// <summary>何も待っていない（拘束中でない・演出が終わった）。</summary>
+            Idle = 0,
 
-        public bool IsThrowIncoming => !_comboActive && _thrower != null && _thrower.isActiveAndEnabled &&
+            /// <summary>正面の敵に投げを発注する待ち。クールタイム中もここ。</summary>
+            WaitingThrow = 1,
+
+            /// <summary>投げが決まり、腹パンを数えている。</summary>
+            Combo = 2,
+
+            /// <summary>コンボ後。カメラが戻ってから引き渡すまでの待ち。</summary>
+            HandOffWait = 3,
+        }
+
+        /// <summary>いまの段階（テスト・デバッグ表示用）。</summary>
+        public Phase CurrentPhase => _phase;
+
+        /// <summary>腹パンのコンボ中か（投げが決まってから打数を数え終わるまで）。</summary>
+        public bool IsPerforming => _phase == Phase.Combo;
+
+        public bool IsThrowIncoming => _phase != Phase.Combo && _thrower != null &&
+            _thrower.isActiveAndEnabled &&
             (_thrower.IsPreparingHeldThrow || _thrower.IsHandOffLocked);
 
         /// <summary>腹パン役が見つかっているか（HUD の表示に使う）。</summary>
         public bool HasAttacker { get; private set; }
+
+        /// <summary>
+        /// 構え始めに彼女が目を向ける相手（投げ役 → 腹パン役）。
+        /// </summary>
+        public Transform DreadTarget => DreadEnemy != null ? DreadEnemy.transform : null;
+        internal EnemyBrain DreadEnemy { get; private set; }
+        internal Vector3 DreadStartPoint { get; private set; }
+
+        void SetDreadTarget(EnemyBrain enemy)
+        {
+            if (DreadEnemy == enemy)
+                return;
+
+            DreadEnemy = enemy;
+            if (enemy == null)
+                return;
+
+            var figure = enemy.GetComponent<EnemyFigure>();
+            Transform head = figure != null ? figure.HeadBone : null;
+            DreadStartPoint = head != null ? head.position : enemy.transform.position + Vector3.up * 1.55f;
+        }
 
         /// <summary>いま当たった腹パンの数。</summary>
         public int ComboHitsLanded => _hits;
@@ -102,7 +145,8 @@ namespace Ryona.Game
         public int ComboHitsTotal => Mathf.Max(1, ComboHits);
 
         /// <summary>次に投げを試すまでの秒数。予約していなければ 0。</summary>
-        public float NextThrowRemaining => _waitingForThrow ? Mathf.Max(0f, _throwTimer) : 0f;
+        public float NextThrowRemaining =>
+            _phase == Phase.WaitingThrow ? Mathf.Max(0f, _throwTimer) : 0f;
 
         /// <summary>最初の腹パンが当たった瞬間。デバッグ撮影が購読する。</summary>
         public event Action Performed;
@@ -112,18 +156,18 @@ namespace Ryona.Game
         CharacterAnimator _anim;
         ThirdPersonCamera _camera;
 
-        bool _waitingForThrow;
-        float _throwTimer;
-        EnemyBrain _thrower;
+        Phase _phase = Phase.Idle;
 
-        bool _comboActive;
+        float _throwTimer;      // WaitingThrow のときだけ意味を持つ
+        EnemyBrain _thrower;
+        EnemyBrain _guardPuncher;
+
         int _hits;
         float _nextPunchTimer;
         float _comboEndTimer;
-        bool _waitingForHandOff;
-        float _handOffTimer;
+        float _handOffTimer;    // HandOffWait のときだけ意味を持つ
 
-        bool _waitingForHit;
+        bool _punchInFlight;
         float _hitTimeout;
         int _attempts;
 
@@ -171,6 +215,20 @@ namespace Ryona.Game
         void OnDestroy()
         {
             Unsubscribe();
+        }
+
+        void OnDisable() => SetPunchGuard(null);
+
+        void SetPunchGuard(EnemyBrain puncher)
+        {
+            if (_guardPuncher == puncher)
+                return;
+
+            if (_guardPuncher != null)
+                _guardPuncher.HoldsBellyPunchGuard = false;
+            _guardPuncher = puncher;
+            if (_guardPuncher != null)
+                _guardPuncher.HoldsBellyPunchGuard = true;
         }
 
         void ResolveReferences()
@@ -239,7 +297,7 @@ namespace Ryona.Game
             if (kind != GrappleKind.Back)
                 return;
 
-            _waitingForThrow = true;
+            _phase = Phase.WaitingThrow;
             _throwTimer = Mathf.Max(0.1f, ThrowDelaySeconds);
             _attempts = 0;
 
@@ -258,22 +316,22 @@ namespace Ryona.Game
         void ResetHold()
         {
             // 演出中に拘束が解けた（連打で逃げた等）なら、カメラの中央寄せも即座に戻す。
+            // Phase を戻す前に判定する（IsPerforming は Phase から導出している）。
             if (IsPerforming && _camera != null)
                 _camera.PushFocus(0f, 0f);
 
-            _waitingForThrow = false;
+            _phase = Phase.Idle;
             _throwTimer = 0f;
             _thrower = null;
-            _comboActive = false;
+            SetPunchGuard(null);
             _nextPunchTimer = 0f;
             _comboEndTimer = 0f;
-            _waitingForHandOff = false;
             _handOffTimer = 0f;
-            _waitingForHit = false;
+            _punchInFlight = false;
             _hitTimeout = 0f;
             _attempts = 0;
             HasAttacker = false;
-            IsPerforming = false;
+            SetDreadTarget(null);
             _anim?.EndHeldThrowLead();
         }
 
@@ -290,7 +348,7 @@ namespace Ryona.Game
 
             if (!_grapple.IsGrappled || _grapple.IsHandingOff || _grapple.Kind != GrappleKind.Back)
             {
-                if (IsPerforming || _waitingForThrow || _thrower != null || _waitingForHandOff)
+                if (_phase != Phase.Idle || _thrower != null)
                     ResetHold();
                 return;
             }
@@ -299,27 +357,26 @@ namespace Ryona.Game
             if (Time.timeScale <= 0f)
                 return;
 
-            if (_waitingForHandOff)
-            {
-                UpdateHandOff();
-                return;
-            }
-
             if (_cooldown > 0f)
                 _cooldown = Mathf.Max(0f, _cooldown - Time.deltaTime);
 
-            if (_comboActive)
+            switch (_phase)
             {
-                UpdateCombo();
+                case Phase.HandOffWait:
+                    UpdateHandOff();
+                    break;
 
-                // 構図はコンボ中ずっと保つ（ヒット時の押し込みは 0.2 秒で抜けるため）
-                if (_comboActive)
-                    HoldFraming();
+                case Phase.Combo:
+                    UpdateCombo();
+                    // 構図はコンボ中ずっと保つ（ヒット時の押し込みは 0.2 秒で抜けるため）
+                    if (_phase == Phase.Combo)
+                        HoldFraming();
+                    break;
 
-                return;
+                case Phase.WaitingThrow:
+                    UpdateOpeningThrow();
+                    break;
             }
-
-            UpdateOpeningThrow();
         }
 
         void UpdateOpeningThrow()
@@ -332,9 +389,6 @@ namespace Ryona.Game
                 _thrower = null;
                 _throwTimer = Mathf.Max(0.2f, RetrySeconds);
             }
-
-            if (!_waitingForThrow)
-                return;
 
             _throwTimer -= Time.deltaTime;
             if (_throwTimer > 0f)
@@ -361,18 +415,18 @@ namespace Ryona.Game
                 _thrower = null;
                 if (openingPuncher.TryStartOpeningBellyPunch(FistHoldSeconds))
                 {
-                    _waitingForHit = true;
+                    _punchInFlight = true;
                     _hitTimeout = 1.2f;
                     return;
                 }
             }
 
-            if (_waitingForHit)
+            if (_punchInFlight)
             {
                 _hitTimeout -= Time.deltaTime;
                 if (_hitTimeout <= 0f)
                 {
-                    _waitingForHit = false;
+                    _punchInFlight = false;
                     _nextPunchTimer = Mathf.Max(0.2f, RetrySeconds);
                     _attempts++;
                     Debug.Log("[HeldPunch] retry (miss)");
@@ -387,7 +441,7 @@ namespace Ryona.Game
 
             if (TryOrderAttack(openingThrow: false))
             {
-                _waitingForHit = true;
+                _punchInFlight = true;
                 _hitTimeout = 1.2f;
                 return;
             }
@@ -410,24 +464,27 @@ namespace Ryona.Game
         /// </summary>
         void OnHitReceived(HitResult result)
         {
-            if (!_comboActive || !IsTagPunchHit(result))
+            if (!isActiveAndEnabled || _phase != Phase.Combo || !IsTagPunchHit(result))
                 return;
 
             if (_hits >= ComboHitsTotal)
                 return;
 
             _hits++;
-            _waitingForHit = false;
+            _punchInFlight = false;
             _attempts = 0;
 
             // 1 発を重く見せる。既存の被弾ヒットストップ（約 0.07 秒）より少し長く止める。
             HitStop.Play(0.09f);
 
             // 狙いで見た目を分ける。
-            //   腹: 「く」の字に折れる（拘束されたまま腹を抱える）
+            //   腹: 腰が押し戻され、その上で上体が前に折れる
             //   顔: 通常の顔面パンチと同じく、首が手前（カメラ側）へ振れる
             PunchZone zone = _stats.LastHitZone ?? PunchZone.Body;
             LastLandedZone = zone;
+            var puncher = _stats.LastAttacker.GetComponent<EnemyBrain>();
+            if (zone == PunchZone.Body || puncher != _guardPuncher)
+                SetPunchGuard(zone == PunchZone.Body ? puncher : null);
 
             if (_anim != null)
             {
@@ -488,18 +545,18 @@ namespace Ryona.Game
 
         void OnHeldThrowLanded(EnemyBrain attacker)
         {
-            if (!isActiveAndEnabled || _comboActive || _waitingForHandOff || _cooldown > 0f ||
+            if (!isActiveAndEnabled || _phase == Phase.Combo || _phase == Phase.HandOffWait ||
+                _cooldown > 0f ||
                 !_grapple.IsGrappled || _grapple.IsHandingOff || _grapple.Kind != GrappleKind.Back ||
                 _stats.IsDead)
                 return;
 
-            _comboActive = true;
-            IsPerforming = true;
+            _phase = Phase.Combo;
             _hits = 0;
             LastLandedZone = PunchZone.Body;
-            _waitingForThrow = false;
+            _throwTimer = 0f;
             _thrower = attacker;
-            _waitingForHit = false;
+            _punchInFlight = false;
             _attempts = 0;
             // 次の更新で同じ敵がそのまま一発目を打つ。
             _nextPunchTimer = 0f;
@@ -514,7 +571,7 @@ namespace Ryona.Game
             _grapple.SuppressStruggle(0.12f);
 
             // 投げは“食らい”ではなく腹パン体勢への移行。折らずに腹を差し出す体勢へ入り、
-            // コンボのあいだそのまま見せる（「く」の字はパンチが当たったときだけ）。
+            // コンボのあいだそのまま見せる（被弾姿勢はパンチが当たったときだけ）。
             _anim?.PlayHeldThrowLead();
 
             Debug.Log($"[HeldPunch] throw landed → combo start 0/{ComboHitsTotal} " +
@@ -527,13 +584,13 @@ namespace Ryona.Game
         {
             int hits = _hits;
 
-            _comboActive = false;
-            IsPerforming = false;
+            _phase = Phase.Idle;
+            SetDreadTarget(null);
             // 投げの崩れが残ったままコンボを終えない（崩れた姿勢のまま次の拘束へ入らない）。
             _anim?.EndHeldThrowLead();
             _nextPunchTimer = 0f;
             _comboEndTimer = 0f;
-            _waitingForHit = false;
+            _punchInFlight = false;
             _hitTimeout = 0f;
 
             if (completed && _grapple != null && _grapple.IsGrappled
@@ -541,6 +598,7 @@ namespace Ryona.Game
             {
                 if (_stats.HasHeldBellyDown)
                 {
+                    SetPunchGuard(null);
                     _grapple.Release();
                     _camera?.PushFocus(0f, 0f);
                     _stats.ResolveHeldBellyDown();
@@ -551,7 +609,7 @@ namespace Ryona.Game
                 }
 
                 _grapple.ClearStruggleSuppression();
-                _waitingForHandOff = true;
+                _phase = Phase.HandOffWait;
                 _handOffTimer = Mathf.Max(0f, HandOffDelaySeconds);
                 HasAttacker = false;
                 return;

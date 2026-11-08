@@ -297,6 +297,7 @@ namespace Ryona.Game
             public AttackData Data;
             public float Range;
             public float Windup;
+            public bool FromHeldThrow;
         }
 
         EnemyAttackRunner _run;
@@ -362,8 +363,16 @@ namespace Ryona.Game
 
         /// <summary>投げで引き込んで、彼女を腹パン体勢へ崩すまでの秒数。</summary>
         const float HeldThrowPullSeconds = 0.30f;
+        const float HeldThrowReach = 0.62f;
+        const float HeldThrowContactTolerance = 0.12f;
+        const float GrabReach = 0.72f;
+        const float GrabContactRange = 0.88f;
 
         internal bool IsPreparingHeldThrow => !ReferenceEquals(_heldThrowCaptor, null);
+        internal bool IsPreparingGrab => _run.Id == AttackId.Grab &&
+            (Phase == EnemyPhase.Windup || Phase == EnemyPhase.Attack);
+        internal bool IsPreparingFrontGrab => IsPreparingHeldThrow || _pinPending || _bearHugPending;
+        internal float GrabAdvance { get; private set; }
         internal float HeldThrowPull => Mathf.Clamp01((_heldThrowPullUntil - Time.time) / HeldThrowPullSeconds);
 
         /// <summary>
@@ -380,7 +389,7 @@ namespace Ryona.Game
         const float DefaultBodyBias = 0.40f;
 
         /// <summary>腹パンだけは低め（へそ寄り）を狙う。</summary>
-        const float BellyPunchBodyBias = 0.22f;
+        const float BellyPunchBodyBias = 0.34f;
 
         /// <summary>
         /// Body 狙いのとき、腰から胸のどこを狙うか（0=腰, 1=胸）。
@@ -394,12 +403,14 @@ namespace Ryona.Game
 
         /// <summary>タッグ腹パンの最中（発注から拳を押し込んでいる間）。見た目側がしゃがみ込むのに使う。</summary>
         public bool IsBellyPunch => _bellyPunchPendingHold > 0f || _punchPoseHoldSeconds > 0f;
+        internal bool HoldsBellyPunchGuard { get; set; }
 
         /// <summary>
         /// この一振りがタッグ技（腹 / 顔）か。見た目側が片手打ちの姿勢を組むのに使う。
         /// 腹と顔が混ざるコンボでも腕の形が入れ替わらないよう、振り抜きまで true を保つ。
         /// </summary>
         public bool IsTagPunch => _tagPunchSwing;
+        internal bool IsOpeningBellyPunch => _run.FromHeldThrow && _tagPunchSwing;
 
         public float PunchPoseWeight
         {
@@ -407,12 +418,10 @@ namespace Ryona.Game
             {
                 if (_currentAttack == AttackId.Grab) return 0f;
 
-                // タッグ技の腹パンは、彼女が「く」の字に折れる間ずっと拳を腹に押し込む。
-                // 通常の Recover（0.18 秒）だけで戻すと、折れる前に拳が引いて見える。
-                // 予備動作・怯み・死亡では伸ばさない（振りかぶりが潰れる／死体が拳を突き出したままになる）。
+                // 腹に当たった拳は反動の初動だけ追い、彼女が戻り始める前に引く。
                 if (_punchPoseHoldSeconds > 0f &&
                     (Phase == EnemyPhase.Attack || Phase == EnemyPhase.Recover))
-                    return 1f;
+                    return Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_punchPoseHoldSeconds / 0.11f));
 
                 if (Phase == EnemyPhase.Windup)
                 {
@@ -910,9 +919,12 @@ namespace Ryona.Game
 
                 case EnemyPhase.Recover:
                     _punchVisualTimer = Mathf.Max(0f, _punchVisualTimer - dt);
+                    var frontHold = IsPinning || IsBearHugging ? Player.GetComponent<PlayerGrapple>() : null;
+                    bool canHitHeld = frontHold != null && frontHold.IsGrappled &&
+                        !frontHold.IsHandingOff && frontHold.Captor == this && frontHold.FrontEscapeRemaining <= 0f;
 
                     // 押さえつけ中の膝蹴り（5 発）
-                    if (IsPinning && _pinKneesLeft > 0 && Time.time >= _pinNextKneeAt)
+                    if (canHitHeld && IsPinning && _pinKneesLeft > 0 && Time.time >= _pinNextKneeAt)
                     {
                         _pinKneesLeft--;
                         _pinNextKneeAt = Time.time + Mathf.Max(0.1f, CombatConstants.PinKneeInterval);
@@ -920,24 +932,19 @@ namespace Ryona.Game
                     }
 
                     // ベアハッグの締め付け。体を引き寄せ、密着した瞬間に HP を削る。
-                    if (IsBearHugging && !_squeezeActive && Time.time >= _squeezeNextAt)
+                    if (canHitHeld && IsBearHugging && !_squeezeActive && Time.time >= _squeezeNextAt)
                     {
-                        var hug = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
-                        if (hug != null && hug.Kind == GrappleKind.BearHug)
+                        if (frontHold.Kind == GrappleKind.BearHug)
                         {
                             _squeezeActive = true;
-                            hug.Squeeze();
+                            frontHold.Squeeze();
                         }
                     }
-                    if (IsBearHugging && _squeezeActive)
+                    if (canHitHeld && IsBearHugging && _squeezeActive && frontHold.IsBearHugContact)
                     {
-                        var hug = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
-                        if (hug != null && hug.IsBearHugContact)
-                        {
-                            _squeezeActive = false;
-                            _squeezeNextAt = Time.time + Mathf.Max(0.1f, CombatConstants.BearHugSqueezeInterval);
-                            DoBearHugSqueeze();
-                        }
+                        _squeezeActive = false;
+                        _squeezeNextAt = Time.time + Mathf.Max(0.1f, CombatConstants.BearHugSqueezeInterval);
+                        DoBearHugSqueeze();
                     }
 
                     if (IsHolding && Player != null)
@@ -1114,21 +1121,24 @@ namespace Ryona.Game
 
         void TickWindup(float dt)
         {
-            // 予備動作中は絶対に動かない（歩きながら殴らない）
+            // 掴みと投げは、手を伸ばす段階でだけ踏み込む。
             _timer -= dt;
 
             float total = Mathf.Max(0.05f, _run.Windup);
             float t = 1f - Mathf.Clamp01(_timer / total);
             WindupProgress = t;
+            if (IsPreparingGrab)
+                StepIntoGrab(1f - Mathf.Clamp01((_timer + dt) / total), t);
             ApplyTelegraphVisual(t);
 
             if (_timer <= 0f)
             {
                 // フェイント: 予備動作まで見せてから振らずに引く。
                 // 踏み込ませて空振りさせるための揺さぶり。1 回の接近につき 1 度だけ。
-                // タッグ技（拘束中の腹 / 顔）は必ず振る。引くと演出が空振りで止まる。
-                if (!_tagPunchPending && !IsPreparingHeldThrow && !_feinted &&
-                    FeintChance > 0f && UnityEngine.Random.value < FeintChance)
+                // 羽交い締め中は構えを途中で引かない。タッグ技も必ず振る。
+                bool rearHold = _grapple != null && _grapple.IsGrappled && _grapple.Kind == GrappleKind.Back;
+                if (!_tagPunchPending && _run.Id != AttackId.Grab && !_feinted &&
+                    !rearHold && FeintChance > 0f && UnityEngine.Random.value < FeintChance)
                 {
                     _feinted = true;
                     HideTelegraph();
@@ -1167,14 +1177,21 @@ namespace Ryona.Game
 
             if (Player != null && !Player.IsDead && _run.Data != null)
             {
-                if (distance <= _run.Range + StrikeTolerance)
+                float strikeRange = IsPreparingHeldThrow ? HeldThrowReach + HeldThrowContactTolerance
+                    : _run.Id == AttackId.Grab ? GrabContactRange : _run.Range + StrikeTolerance;
+                if (distance <= strikeRange)
                 {
                     if (IsPreparingHeldThrow)
                         LandHeldThrow();
                     else if (_run.Id == AttackId.Grab)
-                        grabbed = _pinPending ? TryPin()
-                            : _bearHugPending ? TryBearHug()
-                            : TryGrab();
+                    {
+                        Vector3 toPlayer = Player.transform.position - transform.position;
+                        toPlayer.y = 0f;
+                        if (Vector3.Dot(transform.forward, toPlayer.normalized) >= 0.7f)
+                            grabbed = _pinPending ? TryPin()
+                                : _bearHugPending ? TryBearHug()
+                                : TryGrab();
+                    }
                     else if (PunchTouchesPlayer())
                     {
                         Player.LastHitZone = Zone;
@@ -1216,13 +1233,13 @@ namespace Ryona.Game
             // 掴んだときは「相手がもがき終わるまで」硬直を伸ばす。
             // ここで上書きすると 0.7 秒で手を離してしまい、掴みポーズも消える。
             _timer = grabbed
-                ? CombatConstants.GrappleLimitSeconds + 0.2f
+                ? (IsBearHugging ? CombatConstants.BearHugLimitSeconds : CombatConstants.GrappleLimitSeconds) + 0.2f
                 : Mathf.Max(0f, RecoverSeconds);
             IsHolding = grabbed;
             if (grabbed)
             {
                 _forceGrab = false;
-                _grabReadyAt = Time.time + CombatConstants.GrappleLimitSeconds + 3f;
+                _grabReadyAt = Time.time + 7.2f;
                 ReleaseToken();
             }
         }
@@ -1265,6 +1282,34 @@ namespace Ryona.Game
             Vector3 fromPlayer = transform.position - Player.transform.position;
             fromPlayer.y = 0f;
             return Vector3.Dot(Player.transform.forward, fromPlayer.normalized) > 0.55f;
+        }
+
+        void StepIntoGrab(float previous, float progress)
+        {
+            float before = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.45f, 1f, previous));
+            float after = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.45f, 1f, progress));
+            if (after <= before)
+                return;
+
+            Vector3 toPlayer = Player.transform.position - transform.position;
+            toPlayer.y = 0f;
+            if (toPlayer.sqrMagnitude < 0.0001f)
+                return;
+
+            Vector3 direction = toPlayer.normalized;
+            bool heldThrow = IsPreparingHeldThrow;
+            if (!heldThrow && (IsBehindPlayer() == IsPreparingFrontGrab ||
+                Vector3.Dot(transform.forward, direction) < 0.7f))
+                return;
+
+            float reach = heldThrow ? HeldThrowReach : GrabReach;
+            float maxStep = heldThrow ? 0.60f : 0.52f;
+            float distance = Mathf.Max(0f, toPlayer.magnitude - reach);
+            float step = Mathf.Min(distance, maxStep * (after - before));
+            transform.position += direction * step;
+            GrabAdvance += step;
+            if (heldThrow)
+                transform.rotation = Quaternion.LookRotation(direction, Vector3.up);
         }
 
         void LandHeldThrow()
@@ -1320,7 +1365,7 @@ namespace Ryona.Game
             if (!IsBehindPlayer())
                 return false;
 
-            grapple.Begin(this, GrappleKind.Back);
+            grapple.BeginContact(this, GrappleKind.Back);
             return true;
         }
 
@@ -1404,7 +1449,7 @@ namespace Ryona.Game
             bool pin = grapple != null && grapple.Kind == GrappleKind.Pin;
             IsPinning = pin;
             _pinKneesLeft = pin ? Mathf.Max(1, CombatConstants.PinKneeCount) : 0;
-            _pinNextKneeAt = pin ? Time.time + Mathf.Max(0.1f, CombatConstants.PinKneeDelay) : 0f;
+            _pinNextKneeAt = pin ? Time.time + CombatConstants.FrontGrappleEscapeSeconds : 0f;
 
             EndCatch();
 
@@ -1578,7 +1623,7 @@ namespace Ryona.Game
             }
             else if (CanStartPin(distance))
             {
-                // 正面からの押さえつけ。当たると 4.2 秒 / 12 回のレバガチャになる。
+                // 正面からの押さえつけ。振りほどく猶予の後に膝蹴りへ移る。
                 id = AttackId.Grab;
                 pin = true;
             }
@@ -1682,10 +1727,7 @@ namespace Ryona.Game
             Vector3 to = Player.transform.position - transform.position;
             to.y = 0f;
             distance = to.magnitude;
-            if (distance > RangeOf(AttackId.Grab) + StrikeTolerance)
-                return false;
-
-            grapple.Begin(this, kind);
+            grapple.BeginContact(this, kind);
             _lastPinAt = Time.time;
             _pinOrder = false;
             _bearHugOrder = false;
@@ -1693,7 +1735,7 @@ namespace Ryona.Game
         }
 
         /// <summary>
-        /// 押さえつけが当たったとき。正面から掴んで 4.2 秒 / 12 回のレバガチャへ移す。
+        /// 押さえつけが当たったとき。正面から掴んで、振りほどく猶予を作る。
         /// </summary>
         bool TryPin()
         {
@@ -1702,15 +1744,15 @@ namespace Ryona.Game
 
             ClearGrappleState();
             IsPinning = true;
-            // 押さえつけている間に膝を 5 発入れる（何もできない 4.2 秒にしない）
+            // 振りほどけなければ、押さえつけている間に膝を 5 発入れる。
             _pinKneesLeft = Mathf.Max(1, CombatConstants.PinKneeCount);
-            _pinNextKneeAt = Time.time + Mathf.Max(0.1f, CombatConstants.PinKneeDelay);
+            _pinNextKneeAt = Time.time + CombatConstants.FrontGrappleEscapeSeconds;
             Debug.Log($"[Pin] begin {name} dist={distance:F2} knees={_pinKneesLeft}");
             return true;
         }
 
         /// <summary>
-        /// ベアハッグが当たったとき。正面から胴を抱えて 4.2 秒 / 12 回のレバガチャへ移す。
+        /// ベアハッグが当たったとき。正面から胴を抱えて、振りほどく猶予を作る。
         /// 押さえつけと違って膝は入らず、一定間隔で締め付けて HP を少し削る。
         /// </summary>
         bool TryBearHug()
@@ -1721,7 +1763,7 @@ namespace Ryona.Game
             ClearGrappleState();
             IsBearHugging = true;
             IsHolding = true;
-            _squeezeNextAt = Time.time + Mathf.Max(0.1f, CombatConstants.BearHugSqueezeDelay);
+            _squeezeNextAt = Time.time + CombatConstants.FrontGrappleEscapeSeconds;
             Debug.Log($"[BearHug] begin {name} dist={distance:F2}");
             return true;
         }
@@ -1936,6 +1978,7 @@ namespace Ryona.Game
         {
             _currentAttack = id;
             ClearTransientAttackState();
+            GrabAdvance = 0f;
 
             AttackData data = DataOf(id);
             if (data != null)
@@ -1946,10 +1989,12 @@ namespace Ryona.Game
                 Id = id,
                 Data = data,
                 Range = RangeOf(id),
-                Windup = fromThrow ? 0.12f : Mathf.Max(0.05f, WindupOf(id))
+                Windup = fromThrow ? 0.12f : Mathf.Max(0.05f, WindupOf(id)),
+                FromHeldThrow = fromThrow
             };
 
             _timer = _run.Windup;
+            WindupProgress = 0f;
 
             // 狙いを決める。崩しは腹、素早い一撃は顔寄り、重い一撃は腹寄り。
             Zone = ForceZone ?? id switch
@@ -2300,7 +2345,8 @@ namespace Ryona.Game
             // （実測: 0.33m ずれて gap 0.33 の空振りが続いた）。
             // 顔パンは _bellyPunchPendingHold が 0 なので、発注から当たるまでの
             // _tagPunchPending でも除外する（でないと顔パンだけ位置がずらされて外れる）。
-            if (_bellyPunchPendingHold > 0f || _punchPoseHoldSeconds > 0f || _tagPunchPending)
+            if (_bellyPunchPendingHold > 0f || _punchPoseHoldSeconds > 0f || _tagPunchPending ||
+                IsPreparingGrab || HeldThrowPull > 0f)
                 return;
 
             KeepOutOfPlayer();

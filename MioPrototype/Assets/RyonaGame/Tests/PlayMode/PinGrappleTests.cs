@@ -10,7 +10,7 @@ namespace Ryona.Tests
     /// 押さえつけ（<see cref="GrappleKind.Pin"/>）の回帰テスト。
     ///
     /// 後ろ拘束（Back）は時間切れで解けないが、押さえつけは
-    /// 4.2 秒の制限時間内に 12 回もがけば逃げられ、時間切れなら解放される。
+    /// 制限時間内に 12 回もがけば逃げられ、時間切れなら解放される。
     /// 入口は正面 0.90〜1.30m・攻撃トークンあり・クールダウン外だけ。
     /// </summary>
     public sealed class PinGrappleTests
@@ -173,6 +173,93 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator FrontGrabClosesTheGapBeforeItConnects() =>
+            CheckGrabClosesTheGap(GrappleKind.Pin);
+
+        [UnityTest]
+        public IEnumerator RearGrabClosesTheGapBeforeItConnects() =>
+            CheckGrabClosesTheGap(GrappleKind.Back);
+
+        IEnumerator CheckGrabClosesTheGap(GrappleKind kind)
+        {
+            yield return Load();
+            if (kind == GrappleKind.Pin)
+                _captor.QueuePin();
+            else
+            {
+                _captor.CanPin = false;
+                _captor.transform.SetPositionAndRotation(
+                    _player.transform.position + Vector3.left * 1.10f, Quaternion.LookRotation(Vector3.right));
+                _captor.QueueGrab();
+            }
+            _captor.FeintChance = 1f;
+            _captor.MinPlayerGap = 0.95f;
+            _captor.enabled = true;
+
+            float deadline = Time.realtimeSinceStartup + 4f;
+            while (_captor.Phase != EnemyPhase.Attack && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.AreEqual(EnemyPhase.Attack, _captor.Phase);
+            Assert.Less(Vector3.Distance(_captor.transform.position, _player.transform.position), 0.88f);
+            Vector3 atReach = _player.transform.position;
+
+            while (!_grapple.IsGrappled && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.IsTrue(_grapple.IsGrappled);
+            Assert.AreEqual(kind, _grapple.Kind);
+            Assert.Less(Vector3.Distance(atReach, _player.transform.position), 0.09f,
+                "The player stays near the contact point on the first frame of the grab.");
+
+            yield return new WaitForSeconds(0.22f);
+            Assert.AreEqual(kind == GrappleKind.Back ? 0.34f : 0.60f,
+                Vector3.Distance(_captor.transform.position, _player.transform.position), 0.035f);
+        }
+
+        [UnityTest]
+        public IEnumerator PinCanBeEscapedBeforeTheFirstKnee() => EscapeBeforeFrontAttack(GrappleKind.Pin);
+
+        [UnityTest]
+        public IEnumerator BearHugCanBeEscapedBeforeTheFirstSqueeze() => EscapeBeforeFrontAttack(GrappleKind.BearHug);
+
+        IEnumerator EscapeBeforeFrontAttack(GrappleKind kind)
+        {
+            yield return Load();
+            _player.State.Body.Apply(BodyPart.Arms, CombatConstants.PartMax);
+            _captor.enabled = true;
+            if (kind == GrappleKind.Pin)
+                _captor.QueuePin();
+            else
+                _captor.QueueBearHug();
+
+            float deadline = Time.realtimeSinceStartup + 5f;
+            while (!_grapple.IsGrappled && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.IsTrue(_grapple.IsGrappled);
+            Assert.AreEqual(kind, _grapple.Kind);
+            Assert.AreEqual(15, Mathf.CeilToInt(_grapple.RequiredInputs));
+
+            float hp = _player.State.Hp;
+            float first = Time.time;
+            for (int i = 1; i <= 15; i++)
+            {
+                while (Time.time < first + i / 6f && Time.realtimeSinceStartup < deadline + 4f)
+                    yield return null;
+
+                Assert.Greater(_grapple.FrontEscapeRemaining, 0f);
+                Assert.AreEqual(0f, _grapple.KneePulse);
+                Assert.AreEqual(0f, _grapple.SqueezePulse);
+                Assert.AreEqual(hp, _player.State.Hp);
+                _grapple.Struggle();
+            }
+
+            Assert.IsFalse(_grapple.IsGrappled);
+            Assert.AreEqual(EnemyPhase.Stagger, _captor.Phase);
+        }
+
+        [UnityTest]
         public IEnumerator 押さえつけ中に膝蹴りが5回入る()
         {
             yield return Load();
@@ -194,13 +281,14 @@ namespace Ryona.Tests
 
             Assert.AreEqual(0, hits, "掴んだ瞬間はまだ膝蹴りは入らない");
 
-            // 膝蹴りは 1.1 秒後から 0.65 秒間隔で 5 発（最後は 3.7 秒）。
-            yield return new WaitForSeconds(3.9f);
+            float lastKnee = CombatConstants.FrontGrappleEscapeSeconds +
+                (CombatConstants.PinKneeCount - 1) * CombatConstants.PinKneeInterval;
+            yield return new WaitForSeconds(lastKnee + 0.25f);
 
             Assert.AreEqual(CombatConstants.PinKneeCount, hits, "押さえつけ中に膝蹴りが 5 発入る");
             Assert.Less(_player.State.Hp, hpBefore - 10f, "膝蹴り 5 発ぶん HP が減る");
 
-            // 時間切れ（4.2 秒）より前に蹴り終わっている
+            // 時間切れより前に蹴り終わっている
             yield return new WaitForSeconds(0.1f);
             Assert.AreEqual(CombatConstants.PinKneeCount, hits, "制限時間内に 5 発で収まる");
         }
@@ -212,28 +300,45 @@ namespace Ryona.Tests
             _captor.enabled = true;
             _captor.QueuePin();
             float deadline = Time.realtimeSinceStartup + 6f;
+            while (!_grapple.IsGrappled && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.AreEqual(GrappleKind.Pin, _grapple.Kind);
+            yield return new WaitForSeconds(0.3f);
+            var figure = _captor.GetComponent<EnemyFigure>();
+            Assert.IsNotNull(figure);
+            float headDepth = _captor.transform.InverseTransformPoint(figure.HeadBone.position).z;
             while (_grapple.KneePulse < 0.99f && Time.realtimeSinceStartup < deadline)
                 yield return null;
             Assert.GreaterOrEqual(_grapple.KneePulse, 0.99f, "膝蹴りが始まらない");
-            var figure = _captor.GetComponent<EnemyFigure>();
             var rig = _player.GetComponentInChildren<ProceduralRig>();
-            Assert.IsNotNull(figure);
             Assert.IsNotNull(rig);
             int samples = 0;
+            float kickHeadDepth = float.PositiveInfinity;
             while (_grapple.KneePulse >= 0.99f && samples < 6)
             {
                 // yield null の再開時には直前フレームの LateUpdate の骨位置が読める。
                 yield return null;
                 Vector3 belly = Vector3.Lerp(rig.Spine.position, rig.Chest.position, 0.45f)
                     + _player.transform.forward * 0.12f;
-                float gap = Mathf.Min(Vector3.Distance(figure.KneeBone(true).position, belly),
-                    Vector3.Distance(figure.KneeBone(false).position, belly));
+                bool left = (figure.KneeBone(true).position - belly).sqrMagnitude
+                    < (figure.KneeBone(false).position - belly).sqrMagnitude;
+                Vector3 knee = figure.KneeBone(left).position;
+                float gap = Vector3.Distance(knee, belly);
                 // 骨位置は「前フレームの LateUpdate」なので 1 フレームぶんの遅れを含む。
                 // 1cm 未満を求めるとフレームレートで落ちるので、見た目で分からない 12cm を上限にする。
                 Assert.Less(gap, 0.12f, "跳ね上がった腹から膝が離れている");
+                Vector3 shin = figure.AnkleBone(left).position - knee;
+                Assert.Less(Vector3.Dot(shin, _captor.transform.forward), -0.05f,
+                    "当たる膝より奥へ脛が入り込まない");
+                Assert.Less(Vector3.Angle(figure.ChestBone.up, _captor.transform.up), 52f,
+                    "ヒットストップ中も上体の反りが積み重ならない");
+                kickHeadDepth = Mathf.Min(kickHeadDepth,
+                    _captor.transform.InverseTransformPoint(figure.HeadBone.position).z);
                 samples++;
             }
             Assert.Greater(samples, 0);
+            Assert.Less(kickHeadDepth, headDepth - 0.03f,
+                "膝を入れながら上体を引き、澪の顔が跳ね上がる空間を空ける");
         }
 
         [UnityTest]
@@ -374,7 +479,7 @@ namespace Ryona.Tests
             _captor.enabled = true;
             _captor.TakeOverHold(CombatConstants.GrappleLimitSeconds + 1f);
 
-            float deadline = Time.realtimeSinceStartup + 3f;
+            float deadline = Time.realtimeSinceStartup + CombatConstants.FrontGrappleEscapeSeconds + 1.5f;
             while (_grapple.KneePulse <= 0f && Time.realtimeSinceStartup < deadline)
                 yield return null;
             Assert.Greater(_grapple.KneePulse, 0f);

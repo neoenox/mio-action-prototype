@@ -9,7 +9,7 @@ namespace Ryona.Tests
     /// <summary>
     /// ベアハッグ（<see cref="GrappleKind.BearHug"/>）の回帰テスト。
     ///
-    /// 正面から胴を抱えて締める。4.2 秒の制限時間つきで、12 回もがけば脱出できる。
+    /// 正面から胴を抱えて締める。制限時間つきで、12 回もがけば脱出できる。
     /// 押さえつけと違って膝は入らず、一定間隔で締め付けて HP を少し削る。
     /// </summary>
     public sealed class BearHugTests
@@ -62,7 +62,7 @@ namespace Ryona.Tests
             Assert.IsTrue(_grapple.IsGrappled, "ベアハッグが始まらない");
             Assert.AreEqual(GrappleKind.BearHug, _grapple.Kind);
             Assert.IsTrue(_grapple.HasTimeLimit, "ベアハッグは時間切れがある");
-            Assert.AreEqual(CombatConstants.GrappleLimitSeconds, _grapple.Remaining, 0.05f);
+            Assert.AreEqual(CombatConstants.BearHugLimitSeconds, _grapple.Remaining, 0.05f);
             Assert.AreEqual(CombatConstants.MashBaseBearHug, _grapple.RequiredInputs, 0.01f,
                 "必要入力は 12 回");
 
@@ -103,7 +103,10 @@ namespace Ryona.Tests
             Assert.IsNotNull(camera);
 
             float hpBefore = _player.State.Hp;
-            float squeezeDeadline = Time.realtimeSinceStartup + 3f;
+            yield return new WaitForSeconds(0.55f);
+            Assert.Greater(_grapple.FrontEscapeRemaining, 0f);
+            Assert.Less(camera.EffectDistanceScale, 0.30f, "締め付けの前から顔と腕が見える距離まで寄る");
+            float squeezeDeadline = Time.realtimeSinceStartup + CombatConstants.FrontGrappleEscapeSeconds + 1.5f;
             while (_grapple.SqueezePulse <= 0f && Time.realtimeSinceStartup < squeezeDeadline)
                 yield return null;
             Assert.Greater(_grapple.SqueezePulse, 0f, "締め付けのパルスが来ない");
@@ -170,7 +173,7 @@ namespace Ryona.Tests
             Assert.Less(_player.State.Hp, hpBefore - 2f, "密着時のダメージが入っていない");
             Assert.Greater(_grapple.LiftPulse, 0.5f, "抱え上げられていない");
             Assert.IsFalse(_player.IsDead, "ベアハッグだけで死亡している");
-            Assert.Less(closestCameraScale, 0.67f, "ベアハッグ中は上半身が見える距離まで寄る");
+            Assert.Less(closestCameraScale, 0.25f, "締め付け時は顔と腕にさらに寄る");
             Assert.Less(worstWristGap, 0.055f, "両手が敵の胴の前面から離れない");
             Assert.Greater(leastPalmContact, 0.8f, "掌を敵の胴へ向けて支える");
             Assert.Greater(squeezeElbowSpread, restElbowSpread + 0.02f, "締め付け時に肘を張って押し返す");

@@ -347,6 +347,7 @@ namespace Ryona.Game
         {
             Transform hip = left ? _hipL : _hipR;
             Transform knee = left ? _kneeL : _kneeR;
+            Transform ankle = left ? _ankleL : _ankleR;
             Transform supportHip = left ? _hipR : _hipL;
             Transform supportKnee = left ? _kneeR : _kneeL;
             Transform supportFoot = left ? _ankleR : _ankleL;
@@ -364,6 +365,12 @@ namespace Ryona.Game
             _hips.position += shift * weight;
             Quaternion aimed = Quaternion.FromToRotation(knee.position - hip.position, belly - hip.position) * hip.rotation;
             hip.rotation = Quaternion.Slerp(hip.rotation, aimed, weight);
+
+            // 膝頭を当て、脛と足先は相手と反対側へ畳む。
+            Vector3 shin = -transform.up - transform.forward * 0.65f;
+            Quaternion tucked = Quaternion.FromToRotation(ankle.position - knee.position, shin) * knee.rotation;
+            knee.rotation = Quaternion.Slerp(knee.rotation, tucked, weight);
+            ankle.rotation = Quaternion.Slerp(ankle.rotation, transform.rotation * Quaternion.Euler(55f, 0f, 0f), weight);
 
             ProceduralRig.SolveTwoBone(supportHip, supportKnee, supportFoot, planted,
                 supportHip.position + transform.forward * 0.5f + Vector3.up * 0.15f);
@@ -693,7 +700,9 @@ namespace Ryona.Game
                     if (_swingTime >= 0f)
                     {
                         float t = _swingTime;
-                        if (t < 0.055f)
+                        if (Brain != null && Brain.IsTagPunch && Brain.Zone == PunchZone.Body)
+                            s = 1f - Mathf.SmoothStep(0f, 1f, (t - 0.20f) / 0.17f);
+                        else if (t < 0.055f)
                             s = Mathf.SmoothStep(0f, 1f, t / 0.055f);
                         else if (t < 0.24f)
                             s = 1f;
@@ -847,10 +856,10 @@ namespace Ryona.Game
                     armRSpread = Mathf.Lerp(armRSpread, -14f, close);
                     armLSpread = Mathf.Lerp(armLSpread, 14f, close);
 
-                    torsoPitch = Mathf.Lerp(Mathf.Lerp(4f, 12f, open), 14f, close);
+                    torsoPitch = Mathf.Lerp(4f * open, -18f, close);
                     torsoYaw = 0f;
-                    hipsY = restY - Mathf.Lerp(0.03f, 0.06f, open) - 0.02f * close;
-                    hipsZ = Mathf.Lerp(0.02f, 0.05f, close);
+                    hipsY = restY - 0.045f * open - 0.055f * close;
+                    hipsZ = Mathf.Lerp(-0.035f * open, 0.08f, close);
                     kneeR = Mathf.Lerp(10f, 26f, open);
                     kneeL = Mathf.Lerp(10f, 30f, open);
                     legRPitch = 0f;
@@ -903,6 +912,17 @@ namespace Ryona.Game
                         headPitch = 0f;
                     }
                 }
+
+                if (Brain != null && Brain.IsPreparingGrab)
+                {
+                    float step = Mathf.InverseLerp(0.44f, 0.90f, WindupNow);
+                    float advance = Brain.GrabAdvance;
+                    float floor = Height * 0.030f - hipsY;
+                    float forward = Mathf.SmoothStep(0f, 0.21f, step);
+                    _legTargetR = new Vector3(0f, floor + 0.085f * Mathf.Sin(Mathf.PI * step), forward - hipsZ);
+                    _legTargetL = new Vector3(0f, floor, -0.07f - Mathf.Min(advance, 0.30f) - hipsZ);
+                    legsExact = true;
+                }
             }
             if (Brain != null && Brain.HeldThrowPull > 0f)
             {
@@ -921,13 +941,10 @@ namespace Ryona.Game
                 float bw = Brain.PunchPoseWeight;
                 if (Brain.IsBellyPunch)
                 {
-                    // タッグ腹パン。彼女は「く」の字に折れて腹が下がっているので、
-                    // 立ったまま腕を下ろすと「手を添えている」画になる。
-                    // ただし深くしゃがむと「座っている」画になるので、
-                    // 前足に乗るランジで肩だけを腹の高さへ落とす。
+                    // 前足に重さを乗せ、肩を腹の高さへ運ぶ。
                     torsoPitch -= 15f * bw;
-                    hipsY -= 0.24f * bw;
-                    kneeR += 55f * bw;
+                    hipsY -= 0.20f * bw;
+                    kneeR += 42f * bw;
                     kneeL += 18f * bw;
                     // 前後に足を割る。両足を揃えて沈むと「座っている」画になる。
                     legRPitch -= 22f * bw;
@@ -940,6 +957,23 @@ namespace Ryona.Game
                     kneeR += 14f * bw;
                     kneeL += 14f * bw;
                 }
+            }
+            // 拳を引いても次の打撃までは腰を上げない。顔を打つ瞬間だけ必要な高さを戻す。
+            if (Brain != null && Brain.HoldsBellyPunchGuard &&
+                (phase == EnemyPhase.Recover || phase == EnemyPhase.Chase || phase == EnemyPhase.Strafe ||
+                 (Brain.IsTagPunch && (phase == EnemyPhase.Windup || phase == EnemyPhase.Attack))))
+            {
+                float guard = Brain.IsTagPunch && Brain.Zone == PunchZone.Face ? 1f - Brain.PunchPoseWeight : 1f;
+                float lowHips = Mathf.Min(hipsY, restY - 0.20f * guard);
+                if (legsExact)
+                {
+                    _legTargetR.y += hipsY - lowHips;
+                    _legTargetL.y += hipsY - lowHips;
+                }
+                hipsY = lowHips;
+                torsoPitch = Mathf.Min(torsoPitch, -13f * guard);
+                kneeR = Mathf.Max(kneeR, 35f * guard);
+                kneeL = Mathf.Max(kneeL, 23f * guard);
             }
             // タッグ技（腹 / 顔）は片手で打つ。通常のジャブは左前腕を胸の前へ水平に構えるので、
             // 腹パンの体勢（上体を前へ倒す）と重なると「両手を前に出して押している」画になる。
@@ -1061,7 +1095,6 @@ namespace Ryona.Game
                         leftKnee = Vector3.Dot(toCam, transform.right) < 0f;
                     }
 
-                    torsoPitch += 8f * knee;
                     hipsY += 0.02f * knee;
                     hipsZ += 0.08f * knee;
                     if (leftKnee)
@@ -1263,14 +1296,29 @@ namespace Ryona.Game
                 else if (phase == EnemyPhase.Recover && _swingTime >= 0f)
                     drive = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((_swingTime - 0.24f) / 0.18f));
             }
-            float throwStep = Brain == null ? 0f : Brain.IsPreparingHeldThrow
-                ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.55f, 1f, WindupNow))
-                : Brain.HeldThrowPull;
-            _lungeOffset = 0.40f * drive + 0.28f * throwStep;
+            float lunge = 0.40f;
+            if (Brain != null && Brain.IsTagPunch && Brain.Zone == PunchZone.Body && Brain.Player != null)
+            {
+                float gap = Vector3.Dot(Brain.Player.transform.position - transform.position, transform.forward);
+                lunge = Mathf.Clamp(gap - 0.50f, 0f, lunge);
+                if (phase == EnemyPhase.Recover && _swingTime >= 0f)
+                    drive = 1f - Mathf.SmoothStep(0f, 1f, (_swingTime - 0.20f) / 0.17f);
+            }
+            _lungeOffset = lunge * drive;
             _root.localPosition += Vector3.forward * _lungeOffset;
             if (Brain != null && Brain.IsHolding && holdState != null && holdState.IsGrappled
                 && holdState.Captor == Brain && holdState.Kind == GrappleKind.Back)
                 _root.localPosition += Vector3.forward * 0.03f;
+        }
+
+        // 澪の被弾姿勢を反映した後、手の位置を解く前に上体を引く。
+        internal void BraceHoldUpperBody(float leanBack, float leanSide, float tuckChin)
+        {
+            // ヒットストップ中は Step が止まるので、前フレームの補正には重ねない。
+            _chest.localRotation = Quaternion.Euler(-_torsoPitch, _torsoYaw * 0.55f, _torsoRoll)
+                * Quaternion.Euler(-leanBack, 0f, leanSide);
+            _head.localRotation = Quaternion.Euler(-_headPitch * 0.5f, -_torsoYaw * 0.25f, 0f)
+                * Quaternion.Euler(tuckChin, 0f, leanSide * 0.5f);
         }
 
         /// <summary>
@@ -1738,6 +1786,7 @@ namespace Ryona.Game
         EnemyFigure _figure;
         EnemyBrain _brain;
         ProceduralRig _targetRig;
+        CharacterAnimator _targetAnimator;
 
         void LateUpdate()
         {
@@ -1750,13 +1799,14 @@ namespace Ryona.Game
             float punchWeight = _brain.PunchPoseWeight;
             if (punchWeight > 0f)
                 AimPunch(punchWeight);
-            float throwGrip = _brain.IsPreparingHeldThrow
+            float grabGrip = _brain.IsPreparingGrab
                 ? Mathf.InverseLerp(0.65f, 0.95f, _brain.WindupProgress)
                 : _brain.HeldThrowPull;
-            if (throwGrip > 0f && _targetRig != null)
+            if (grabGrip > 0f && _targetRig != null)
             {
-                AimShoulderGrip(false, _targetRig.LUpperArm, throwGrip);
-                AimShoulderGrip(true, _targetRig.RUpperArm, throwGrip);
+                bool front = _brain.IsPreparingFrontGrab || _brain.HeldThrowPull > 0f;
+                AimShoulderGrip(false, front ? _targetRig.LUpperArm : _targetRig.RUpperArm, grabGrip);
+                AimShoulderGrip(true, front ? _targetRig.RUpperArm : _targetRig.LUpperArm, grabGrip);
             }
             if (_brain.IsPushing && _targetRig != null)
             {
@@ -1786,8 +1836,18 @@ namespace Ryona.Game
             // 羽交い締め: 両腕を彼女の脇の下へ通し、首の後ろ（後頭部の下）で両手を組む。
             // 腕は彼女の腕の下をくぐって上へ回り込むので、彼女の肘は押し上げられて外へ開く。
             if (_targetRig.Neck == null) return;
-            Solve(false, _targetRig.RUpperArm);
-            Solve(true, _targetRig.LUpperArm);
+            if (_targetAnimator == null)
+                _targetAnimator = _targetRig.GetComponent<CharacterAnimator>();
+            float belly = _targetAnimator != null ? _targetAnimator.HeldBellyPunchFold : 0f;
+            float face = _targetAnimator != null ? _targetAnimator.HeldFacePunchFlick : 0f;
+            if (belly > 0f || face > 0f)
+            {
+                Vector3 headOffset = _targetRig.Neck.position - _brain.Player.transform.position;
+                float headSide = Mathf.Clamp(Vector3.Dot(headOffset, transform.right) / 0.08f, -1f, 1f);
+                _figure.BraceHoldUpperBody(14f * belly, 3f * face * headSide, 10f * belly);
+            }
+            Solve(false, _targetRig.RUpperArm, hold.GrabContactWeight, belly, face);
+            Solve(true, _targetRig.LUpperArm, hold.GrabContactWeight, belly, face);
         }
 
         void AimShoulderGrip(bool left, Transform shoulder, float weight, bool shove = false)
@@ -1836,8 +1896,26 @@ namespace Ryona.Game
             Vector3 toMe = upper.position - target;
             toMe.y = 0f;
             toMe = toMe.sqrMagnitude > 1e-4f ? toMe.normalized : -transform.forward;
-            float reach = zone == PunchZone.Face ? 0.09f : (_brain.IsBellyPunch ? 0.11f : -0.03f);
-            Vector3 goal = target + toMe * reach;
+
+            Vector3 goal;
+            if (_brain.IsBellyPunch)
+            {
+                // タッグ腹パンは「カメラ側の面」で止める。殴り手側（彼女の正面）で止めると
+                // 拳が体の奥に沈み、カメラからは当たっている場所が見えない。
+                // 画面の奥向き（カメラの forward）の逆へずらすと、拳が手前の面に出る。
+                Camera cam = Camera.main;
+                Vector3 screenIn = cam != null
+                    ? Vector3.ProjectOnPlane(cam.transform.forward, Vector3.up)
+                    : Vector3.zero;
+                screenIn = screenIn.sqrMagnitude > 1e-4f ? screenIn.normalized : -toMe;
+                goal = target - screenIn * 0.11f;
+            }
+            else
+            {
+                // 顔は手前の表面で止める。通常の腹パンチは少しめり込ませる。
+                float reach = zone == PunchZone.Face ? 0.09f : -0.03f;
+                goal = target + toMe * reach;
+            }
 
             // 肘は顔なら外へ、腹なら下・外へ向ける（腹を狙うときは肘が体の前に回らない）。
             // タッグ腹パンは肘を高く外へ張り、前腕を腹へ水平気味に差し込む（ボディーブロー）。
@@ -1854,7 +1932,7 @@ namespace Ryona.Game
             elbow.rotation = Quaternion.Slerp(oldElbow, aimedElbow, weight);
         }
 
-        void Solve(bool left, Transform target)
+        void Solve(bool left, Transform target, float contact, float belly, float face)
         {
             var upper = _figure.ShoulderBone(left);
             var elbow = _figure.ElbowBone(left);
@@ -1868,16 +1946,19 @@ namespace Ryona.Game
             // 手を低め（首の付け根）に置くと、上腕が下へ向き、肘が彼女の腕の下へ入る。
             // 高い位置に置くと上腕が水平になり、彼女の腕の「上」を通ってしまう。
             Transform player = _brain.Player.transform;
+            // 腹パンでは肩の沈みを支え、顔パンでは前腕を外へ逃がして頭の通り道を空ける。
             Vector3 goal = _targetRig.Neck.position
                 + player.forward * 0.04f
-                + player.right * (side * 0.18f)
-                - Vector3.up * 0.06f;
+                + player.right * (side * (0.18f + 0.045f * face))
+                - Vector3.up * (0.06f + 0.025f * belly + 0.05f * face);
 
             // 肘は彼女の脇の下（体の側面、やや前）へ入れる。腕が「肘を前、手を後ろ」に折れて、
             // 彼女の腕の下をくぐるのが真横からも見える。
             Vector3 pole = target.position - transform.up * 0.55f
-                + player.right * (side * 0.34f)
+                + player.right * (side * (0.34f + 0.10f * face))
                 + player.forward * 0.28f;
+            goal = Vector3.Lerp(goal, target.position - transform.forward * 0.045f, contact);
+            pole = Vector3.Lerp(pole, upper.position + transform.right * (side * 0.25f) - transform.up * 0.24f, contact);
             ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);
         }
     }
@@ -1924,13 +2005,16 @@ namespace Ryona.Game
                     + _brain.Player.transform.forward * 0.12f;
                 var cam = Camera.main;
                 bool left = cam != null && Vector3.Dot(cam.transform.position - transform.position, transform.right) < 0f;
-                _figure.AlignPinKnee(left, belly, Mathf.SmoothStep(0f, 1f, hold.KneePulse));
+                float kick = Mathf.SmoothStep(0f, 1f, hold.KneePulse);
+                _figure.AlignPinKnee(left, belly, kick);
+                // 膝を届かせる骨盤の踏み込みと同じフレームに、跳ね上がる顔から胸と顎を引く。
+                _figure.BraceHoldUpperBody(33f * kick, 0f, 20f * kick);
             }
 
             // 彼は彼女と正面で向かい合っている。彼の右手は彼女の左腕、左手は右腕を掴む。
             // 同じ側（右→右）にすると腕が交差して「左右が逆」に見える（実測）。
-            Solve(false, _targetRig.LLowerArm, _targetRig.LHand);
-            Solve(true, _targetRig.RLowerArm, _targetRig.RHand);
+            Solve(false, _targetRig.LUpperArm, _targetRig.LLowerArm, _targetRig.LHand, hold.GrabContactWeight);
+            Solve(true, _targetRig.RUpperArm, _targetRig.RLowerArm, _targetRig.RHand, hold.GrabContactWeight);
 
             // もがかれるほど彼女の肩が浮く（押し返されている）。手は毎フレーム腕を追う。
             _lift = 0.12f * Mathf.Clamp01(hold.Progress);
@@ -2003,7 +2087,7 @@ namespace Ryona.Game
             }
         }
 
-        void Solve(bool left, Transform lowerArm, Transform hand)
+        void Solve(bool left, Transform shoulder, Transform lowerArm, Transform hand, float contact)
         {
             var upper = _figure.ShoulderBone(left);
             var elbow = _figure.ElbowBone(left);
@@ -2026,6 +2110,8 @@ namespace Ryona.Game
                 + transform.right * (side * 0.55f)
                 - Vector3.up * 0.30f;
 
+            goal = Vector3.Lerp(goal, shoulder.position - transform.forward * 0.045f, contact);
+            pole = Vector3.Lerp(pole, upper.position + transform.right * (side * 0.25f) - transform.up * 0.24f, contact);
             ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);
         }
     }
@@ -2078,7 +2164,9 @@ namespace Ryona.Game
             var chest = _figure.ChestBone;
             if (chest != null)
             {
-                float effort = Mathf.Clamp01(0.85f * squeeze + 0.55f * hold.StrugglePulse + 0.2f * yank);
+                float waiting = hold.FrontEscapePoseWeight;
+                float struggle = Mathf.Lerp(hold.StrugglePulse, hold.FrontEscapeEffort, waiting);
+                float effort = Mathf.Clamp01(0.85f * squeeze + 0.55f * struggle + 0.2f * yank + 0.28f * waiting);
                 BracePlayerArm(true, player, chest, effort);
                 BracePlayerArm(false, player, chest, effort);
             }
@@ -2087,7 +2175,7 @@ namespace Ryona.Game
             // 引き寄せでは手を自分の胸元へ引き込み、彼女を抱き寄せる。
             Vector3 pull = player.up * (0.035f * lift + 0.028f * squeeze + tremor)
                 + player.forward * (0.025f * yank);
-            float spread = Mathf.Lerp(0.085f, 0.045f, squeeze);
+            float spread = Mathf.Lerp(0.085f, 0.068f, squeeze);
 
             WrapArm(false, player, center + pull, spread);
             WrapArm(true, player, center + pull, spread);
@@ -2101,8 +2189,8 @@ namespace Ryona.Game
                 float close = Mathf.Clamp01(hold.SqueezePulse);
                 float x = player.position.x + sign * 0.16f;
                 _camera.HoldFocus(
-                    Mathf.Lerp(0.52f, 0.48f, close),
-                    Mathf.Lerp(0.24f, 0.28f, close),
+                    Mathf.Lerp(0.25f, 0.21f, close),
+                    Mathf.Lerp(0.30f, 0.36f, close),
                     x, 0.5f, 3f, -12f * sign);
             }
         }
@@ -2144,7 +2232,8 @@ namespace Ryona.Game
                 ? Vector3.Lerp(playerShoulder.position, playerElbow.position, 0.55f)
                 : playerShoulder.position;
             Vector3 outward = player.right * (left ? 1f : -1f);
-            Vector3 pole = arm + outward * 0.40f + player.up * 0.10f;
+            Vector3 pole = Vector3.Lerp(upper.position, arm, 0.45f)
+                + outward * 0.80f + player.up * 0.15f;
 
             ProceduralRig.SolveTwoBone(upper, elbow, wrist, behind + outward * spread, pole, player.up);
         }

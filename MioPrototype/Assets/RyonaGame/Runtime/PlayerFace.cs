@@ -79,6 +79,53 @@ namespace Ryona.Game
         /// </summary>
         public static PainShape DefaultBellyPain => new PainShape(0.93f, 0.24f, 0.52f, 0.40f, 1.00f);
 
+        /// <summary>被弾の顔で直接動かすブレンドシェイプ（表情シートも同じ名前を使う）。</summary>
+        public static readonly string[] HurtShapeNames =
+        {
+            "Fcl_EYE_Close", "Fcl_EYE_Angry", "Fcl_BRW_Angry", "Fcl_BRW_Sorrow",
+            "Fcl_MTH_A", "Fcl_MTH_U", "Fcl_MTH_O",
+        };
+
+        /// <summary>
+        /// どの Expression にも割り当てられていないので、直接書いても上書きされないシェイプ。
+        /// 目を閉じる・母音は Expression（Blink / Aa / Ou / Oh）で動かす（瞳を隠すシェイプも一緒に動くため）。
+        /// </summary>
+        public static readonly string[] DirectHurtShapes =
+        {
+            "Fcl_EYE_Angry", "Fcl_BRW_Angry", "Fcl_BRW_Sorrow",
+        };
+
+        /// <summary>見比べ用の配合（<c>voice_faces.png</c>）。</summary>
+        public static System.Collections.Generic.List<(string, System.Collections.Generic.Dictionary<string, float>)> HurtFaceSheet()
+        {
+            static System.Collections.Generic.Dictionary<string, float> F(
+                float squeeze, float browAngry, float browSorrow, float a, float u, float o) =>
+                new System.Collections.Generic.Dictionary<string, float>
+                {
+                    ["Fcl_EYE_Close"] = 1f,
+                    ["Fcl_EYE_Angry"] = squeeze,
+                    ["Fcl_BRW_Angry"] = browAngry,
+                    ["Fcl_BRW_Sorrow"] = browSorrow,
+                    ["Fcl_MTH_A"] = a,
+                    ["Fcl_MTH_U"] = u,
+                    ["Fcl_MTH_O"] = o,
+                };
+
+            // 実機の既定値（インスペクタの初期値）と同じ配合。
+            const float sq = 0.8f, ba = 0.7f, bs = 0.45f;
+            return new System.Collections.Generic.List<(string, System.Collections.Generic.Dictionary<string, float>)>
+            {
+                ("閉じるだけ（以前）", F(0f, 0f, 0f, 0f, 0f, 0f)),
+                ("強く閉じる", F(sq, ba, bs, 0f, 0f, 0f)),
+                ("う（hurt_small）", F(sq, ba, bs, 0f, 0.8f, 0f)),
+                ("あ（hurt_large）", F(sq, ba, bs, 0.85f, 0f, 0f)),
+                ("お（hurt_belly）", F(sq, ba, bs, 0f, 0f, 0.8f)),
+                ("ふ（hurt_belly 後半）", F(sq, ba, bs, 0f, 0.45f, 0f)),
+                ("拘束中 お", F(sq, ba * 0.5f, 0.65f, 0f, 0f, 0.8f)),
+                ("拘束中 あ", F(sq, ba * 0.5f, 0.65f, 0.85f, 0f, 0f)),
+            };
+        }
+
         [Header("References")]
         public PlayerStats Stats;
         public Vrm10Instance Vrm;
@@ -140,11 +187,172 @@ namespace Ryona.Game
         [Tooltip("1 回のまばたきの長さ（閉じ始め〜開き終わり）。")]
         public float BlinkSeconds = 0.16f;
 
+        [Header("被弾の瞬間（目を強く閉じる・声に合わせて口を開ける）")]
+        [Tooltip("被弾したら最低この秒数は目を強く閉じる。声が鳴っている間はその長さまで延ばす。")]
+        public float SqueezeSeconds = 0.45f;
+
+        [Tooltip("拘束中の被弾で目を強く閉じる秒数。連撃（0.55 秒おき）の合間に目を開けて、次の一撃を見せる。声が続いても延ばさない。")]
+        public float HeldSqueezeSeconds = 0.32f;
+
+        [Tooltip("閉じた目に力を入れる（Fcl_EYE_Angry）。0 だと眠っているような閉じ方になる。")]
+        [Range(0f, 1f)] public float EyeSqueeze = 0.8f;
+
+        [Tooltip("目を閉じている間、眉を寄せる（Fcl_BRW_Angry）。")]
+        [Range(0f, 1f)] public float SqueezeBrowAngry = 0.7f;
+
+        [Tooltip("目を閉じている間、眉の内側を上げる（Fcl_BRW_Sorrow）。痛みの眉にする。")]
+        [Range(0f, 1f)] public float SqueezeBrowSorrow = 0.45f;
+
+        [Tooltip("声「あ」（hurt_large）の口の最大の開き。")]
+        [Range(0f, 1f)] public float VoiceMouthA = 0.85f;
+
+        [Tooltip("声「う」（hurt_small、hurt_belly の「ふ」）の口の最大の開き。")]
+        [Range(0f, 1f)] public float VoiceMouthU = 0.8f;
+
+        [Tooltip("声「お」（hurt_belly の「お」）の口の最大の開き。")]
+        [Range(0f, 1f)] public float VoiceMouthO = 0.8f;
+
         static readonly ExpressionKey AngryKey = ExpressionKey.Angry;
         static readonly ExpressionKey SadKey = ExpressionKey.Sad;
         static readonly ExpressionKey MouthKey = ExpressionKey.Aa;
         static readonly ExpressionKey GritKey = ExpressionKey.Ih;
         static readonly ExpressionKey BlinkKey = ExpressionKey.Blink;
+        static readonly ExpressionKey VowelUKey = ExpressionKey.Ou;
+        static readonly ExpressionKey VowelOKey = ExpressionKey.Oh;
+
+        /// <summary>声の母音（口の形）。</summary>
+        public enum Vowel { None, A, U, O }
+
+        // --- 被弾の瞬間 ---
+        float _squeeze;          // 目を強く閉じる重み（0-1）
+        float _squeezeUntil;     // この時刻まで閉じる（unscaled）
+
+        // --- 声に合わせた口 ---
+        AudioClip _voiceClip;
+        SfxId _voiceId;
+        float _voiceStart;       // 鳴らした時刻（unscaled）
+        float _voicePitch = 1f;
+        VoiceEnvelope _voiceEnv;
+        float _voiceOpen;        // いまの口の開き（0-1、声の音量から）
+        float _voiceWeight;      // 声の口が苦悶の口を置き換える割合（0-1）
+        Vowel _voiceVowel;
+
+        // 直接書くシェイプ（Expression に割り当ての無いもの）
+        SkinnedMeshRenderer _eyeAngrySmr;
+        int _eyeAngryIndex = -1;
+        SkinnedMeshRenderer _browAngrySmr;
+        int _browAngryIndex = -1;
+        bool _wroteSorrow;
+
+        /// <summary>目を強く閉じている重み（テスト用）。</summary>
+        public float Squeeze => _squeeze;
+
+        /// <summary>声に合わせた口の開き（テスト用）。</summary>
+        public float VoiceOpen => _voiceOpen * _voiceWeight;
+
+        /// <summary>いまの声の母音（テスト用）。</summary>
+        public Vowel VoiceVowel => _voiceWeight > 0.001f ? _voiceVowel : Vowel.None;
+
+        /// <summary>
+        /// 声の音量の推移（20ms ごと、最大 1 に正規化）。
+        /// 「お」→「ふ」のように 2 つの山がある声は、2 つ目の山から母音を切り替える。
+        /// </summary>
+        sealed class VoiceEnvelope
+        {
+            public const float Step = 0.02f;
+            public float[] Level;
+            public float SoundStart;   // 声が出始める秒（冒頭の無音を飛ばす）
+            public float SoundEnd;     // 声が消える秒
+            public float SecondPeak = -1f;   // 2 つ目の山の始まり（無ければ負）
+
+            public float At(float t)
+            {
+                if (Level == null || Level.Length == 0 || t < 0f)
+                    return 0f;
+                float f = t / Step;
+                int i = Mathf.FloorToInt(f);
+                if (i >= Level.Length - 1)
+                    return i == Level.Length - 1 ? Level[i] : 0f;
+                return Mathf.Lerp(Level[i], Level[i + 1], f - i);
+            }
+        }
+
+        static readonly System.Collections.Generic.Dictionary<AudioClip, VoiceEnvelope> s_envelopes =
+            new System.Collections.Generic.Dictionary<AudioClip, VoiceEnvelope>();
+
+        static VoiceEnvelope EnvelopeOf(AudioClip clip)
+        {
+            if (clip == null)
+                return null;
+            if (s_envelopes.TryGetValue(clip, out var cached))
+                return cached;
+
+            var env = new VoiceEnvelope();
+            int channels = Mathf.Max(1, clip.channels);
+            var data = new float[clip.samples * channels];
+            if (clip.loadState != AudioDataLoadState.Loaded)
+                clip.LoadAudioData();
+            if (!clip.GetData(data, 0))
+            {
+                // 読めなければ「鳴っている間ずっと半開き」で代用する
+                env.Level = new[] { 0.6f, 0.6f };
+                env.SoundStart = 0f;
+                env.SoundEnd = clip.length;
+                s_envelopes[clip] = env;
+                return env;
+            }
+
+            int window = Mathf.Max(1, Mathf.RoundToInt(clip.frequency * VoiceEnvelope.Step));
+            int frames = clip.samples;
+            int count = Mathf.CeilToInt(frames / (float)window);
+            env.Level = new float[count];
+            float peak = 1e-5f;
+            for (int w = 0; w < count; w++)
+            {
+                double sum = 0;
+                int n = 0;
+                int end = Mathf.Min(frames, (w + 1) * window);
+                for (int f = w * window; f < end; f++)
+                {
+                    float v = data[f * channels];
+                    sum += v * v;
+                    n++;
+                }
+                float rms = n > 0 ? Mathf.Sqrt((float)(sum / n)) : 0f;
+                env.Level[w] = rms;
+                peak = Mathf.Max(peak, rms);
+            }
+
+            // 最大で 1 に揃え、小さい雑音は 0 に落とす
+            for (int w = 0; w < count; w++)
+                env.Level[w] = Mathf.Clamp01((env.Level[w] / peak - 0.08f) / 0.92f);
+
+            int first = System.Array.FindIndex(env.Level, v => v > 0.12f);
+            int last = System.Array.FindLastIndex(env.Level, v => v > 0.12f);
+            env.SoundStart = first >= 0 ? first * VoiceEnvelope.Step : 0f;
+            env.SoundEnd = last >= 0 ? (last + 1) * VoiceEnvelope.Step : clip.length;
+
+            // 2 つ目の山: 1 つ目の山のあと、いったん 0.15 未満まで落ちてから 0.15 を超えた所
+            if (first >= 0)
+            {
+                bool dipped = false;
+                for (int w = first + 1; w < count; w++)
+                {
+                    if (!dipped && env.Level[w] < 0.15f)
+                        dipped = true;
+                    else if (dipped && env.Level[w] > 0.15f)
+                    {
+                        env.SecondPeak = w * VoiceEnvelope.Step;
+                        break;
+                    }
+                }
+            }
+
+            s_envelopes[clip] = env;
+            Debug.Log($"[Face] voice envelope {clip.name}: sound {env.SoundStart:F2}-{env.SoundEnd:F2}s " +
+                      $"second={env.SecondPeak:F2}s");
+            return env;
+        }
 
         float _pain;        // いまの濃さ（0-1）
         float _peak;        // このヒットでの最大の濃さ
@@ -195,12 +403,82 @@ namespace Ryona.Game
         void OnEnable()
         {
             Subscribe();
+            ProceduralSfx.HurtVoicePlayed -= OnHurtVoice;
+            ProceduralSfx.HurtVoicePlayed += OnHurtVoice;
         }
 
         void OnDisable()
         {
+            ProceduralSfx.HurtVoicePlayed -= OnHurtVoice;
             ClearHeldFace();
             Unsubscribe();
+        }
+
+        /// <summary>被弾の声が鳴った。口の形をその声の母音にし、開きを音量に合わせる。</summary>
+        void OnHurtVoice(SfxId id, AudioClip clip, float pitch)
+        {
+            if (clip == null || Stats == null || Stats.IsDead)
+                return;
+
+            _voiceClip = clip;
+            _voiceId = id;
+            _voiceStart = Time.unscaledTime;
+            _voicePitch = Mathf.Max(0.1f, pitch);
+            _voiceEnv = EnvelopeOf(clip);
+
+            // 声が出ている間は目を開けない。ただし拘束中は連撃の合間に目を開けるので延ばさない。
+            if (_voiceEnv != null && !UsesHeldFace)
+                _squeezeUntil = Mathf.Max(_squeezeUntil, _voiceStart + _voiceEnv.SoundEnd / _voicePitch);
+        }
+
+        /// <summary>この声のこの時刻の母音。「おふっ」は 2 つ目の山から「う」にする。</summary>
+        Vowel VowelAt(float t)
+        {
+            switch (_voiceId)
+            {
+                case SfxId.HurtSmall: return Vowel.U;
+                case SfxId.HurtLarge: return Vowel.A;
+                case SfxId.HurtBelly:
+                    return _voiceEnv != null && _voiceEnv.SecondPeak > 0f && t >= _voiceEnv.SecondPeak - 0.02f
+                        ? Vowel.U : Vowel.O;
+                default: return Vowel.A;
+            }
+        }
+
+        /// <summary>目を強く閉じる重みと、声に合わせた口を毎フレーム進める。</summary>
+        void UpdateHurtFace(float dt)
+        {
+            bool squeezing = Time.unscaledTime < _squeezeUntil && Stats != null && !Stats.IsDead;
+            // 閉じるのは一瞬（反射）、開けるのはゆっくり
+            _squeeze = Mathf.MoveTowards(_squeeze, squeezing ? 1f : 0f, dt / (squeezing ? 0.03f : 0.15f));
+
+            float targetOpen = 0f;
+            float targetWeight = 0f;
+            if (_voiceClip != null && _voiceEnv != null)
+            {
+                float t = (Time.unscaledTime - _voiceStart) * _voicePitch;   // 声の中の秒
+                if (t <= _voiceEnv.SoundEnd + 0.05f)
+                {
+                    // 声が出る少し前から口の形を作る（冒頭の無音のあいだは苦悶の口のまま）
+                    if (t >= _voiceEnv.SoundStart - 0.04f)
+                    {
+                        targetWeight = 1f;
+                        targetOpen = _voiceEnv.At(t + 0.02f);   // 口は音より少しだけ先に開く
+                        _voiceVowel = VowelAt(t);
+                    }
+                }
+                else
+                {
+                    _voiceClip = null;
+                }
+            }
+
+            // 開きは音量どおり速く追い、閉じはわずかに遅らせる（パクパクしない）
+            _voiceOpen = Mathf.MoveTowards(_voiceOpen, targetOpen,
+                dt / (targetOpen > _voiceOpen ? 0.03f : 0.07f));
+            _voiceWeight = Mathf.MoveTowards(_voiceWeight, targetWeight, dt / (targetWeight > 0f ? 0.04f : 0.12f));
+            if (_voiceWeight <= 0.001f)
+                _voiceVowel = Vowel.None;
         }
 
         void Start()
@@ -241,6 +519,12 @@ namespace Ryona.Game
             if (heldFace && _grapple.IsBearHugContact &&
                 _grapple.Captor != null && Stats.LastAttacker == _grapple.Captor.transform)
                 return;
+
+            // 殴られたら反射で目を強く閉じる（拘束中も、腹でも顔でも）。
+            // 声が続けて鳴れば、その間は閉じたまま延びる（OnHurtVoice、拘束中は延ばさない）。
+            if (result.Damage > 0f)
+                _squeezeUntil = Mathf.Max(_squeezeUntil,
+                    Time.unscaledTime + (heldFace ? HeldSqueezeSeconds : SqueezeSeconds));
 
             bool belly = Stats != null && Stats.LastHitZone == PunchZone.Body;
             if (heldFace && _grapple.Kind != GrappleKind.BearHug && result.Damage > 0f)
@@ -290,6 +574,9 @@ namespace Ryona.Game
             // Vrm が無くても進める（テストと状態ログが配合を読めるように）。
             float blendSeconds = _bellyTarget > _bellyBlend ? RaiseSeconds : ReleaseSeconds;
             _bellyBlend = Mathf.MoveTowards(_bellyBlend, _bellyTarget, dt / Mathf.Max(0.01f, blendSeconds));
+
+            // 目を強く閉じる・声に合わせた口も、Vrm が無くても進める（テストが読めるように）。
+            UpdateHurtFace(dt);
 
             if (Vrm == null)
                 return;
@@ -351,32 +638,51 @@ namespace Ryona.Game
             foreach (var renderer in GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 var mesh = renderer.sharedMesh;
-                int index = mesh != null ? mesh.GetBlendShapeIndex("Fcl_BRW_Sorrow") : -1;
-                if (index < 0)
+                if (mesh == null)
                     continue;
 
-                _worriedBrow = renderer;
-                _worriedBrowIndex = index;
-                break;
+                int index = mesh.GetBlendShapeIndex("Fcl_BRW_Sorrow");
+                if (index >= 0 && _worriedBrow == null)
+                {
+                    _worriedBrow = renderer;
+                    _worriedBrowIndex = index;
+                }
+
+                // 被弾で目に力を入れる・眉を寄せる（Expression に割り当てが無いので直接書く）
+                int eye = mesh.GetBlendShapeIndex("Fcl_EYE_Angry");
+                if (eye >= 0 && _eyeAngrySmr == null)
+                {
+                    _eyeAngrySmr = renderer;
+                    _eyeAngryIndex = eye;
+                }
+
+                int brow = mesh.GetBlendShapeIndex("Fcl_BRW_Angry");
+                if (brow >= 0 && _browAngrySmr == null)
+                {
+                    _browAngrySmr = renderer;
+                    _browAngryIndex = brow;
+                }
             }
         }
 
         void ApplyHeldFace(float dt)
         {
+            float worry = _grapple.FrontEscapePoseWeight;
+            float effort = _grapple.FrontEscapeEffort * worry;
             // 澪の眉専用シェイプなら、困り眉にしても目や口の形を変えずに済む。
             if (_worriedBrow != null)
             {
                 if (!_heldFaceActive)
                     _originalBrowWeight = _worriedBrow.GetBlendShapeWeight(_worriedBrowIndex);
-                _worriedBrow.SetBlendShapeWeight(_worriedBrowIndex, 65f);
+                _worriedBrow.SetBlendShapeWeight(_worriedBrowIndex, 65f + 17f * worry + 6f * effort);
             }
             _heldFaceActive = true;
 
             bool reacting = _grapple.IsBearHugContact || Time.unscaledTime < _heldImpactUntil;
             _heldImpact = Mathf.MoveTowards(_heldImpact, reacting ? 1f : 0f,
                 dt / (reacting ? 0.04f : 0.12f));
-            float mouth = Mathf.Lerp(0.14f, 0.30f, _heldImpact);
-            float sad = _worriedBrow != null ? 0f : 0.60f;
+            float mouth = Mathf.Lerp(0.14f + 0.035f * worry + 0.035f * effort, 0.30f, _heldImpact);
+            float sad = _worriedBrow != null ? 0f : 0.60f + 0.18f * worry;
             WriteShape(new PainShape(0f, sad, mouth, 0f, _heldImpact), 1f, _heldImpact);
         }
 
@@ -554,12 +860,50 @@ namespace Ryona.Game
 
         void WriteShape(PainShape shape, float amount, float blink)
         {
+            // VRM の読み込みが Start より遅れることがあるので、見つかるまで探し直す
+            if (_eyeAngrySmr == null || _browAngrySmr == null || _worriedBrow == null)
+                FindWorriedBrow();
+
+            // 声が出ている間は、口を声の母音に置き換える。
+            // Angry / Sad の表情（Fcl_ALL_*）は口の形も含むので、重ねると「う」の口が消える。
+            // その間は眉を直接のシェイプ（下）で作る。
+            float voice = _voiceWeight;
+            float open = _voiceOpen;
+            float a = 0f, u = 0f, o = 0f;
+            switch (_voiceVowel)
+            {
+                case Vowel.A: a = open * VoiceMouthA; break;
+                case Vowel.U: u = open * VoiceMouthU; break;
+                case Vowel.O: o = open * VoiceMouthO; break;
+            }
+
             var expression = Vrm.Runtime.Expression;
-            expression.SetWeight(AngryKey, shape.Angry * amount);
-            expression.SetWeight(SadKey, shape.Sad * amount);
-            expression.SetWeight(MouthKey, shape.Mouth * amount);
-            expression.SetWeight(GritKey, shape.Grit * amount);
-            expression.SetWeight(BlinkKey, blink);
+            expression.SetWeight(AngryKey, shape.Angry * amount * (1f - voice));
+            expression.SetWeight(SadKey, shape.Sad * amount * (1f - voice));
+            expression.SetWeight(MouthKey, Mathf.Lerp(shape.Mouth * amount, a, voice));
+            expression.SetWeight(GritKey, shape.Grit * amount * (1f - voice));
+            expression.SetWeight(VowelUKey, u * voice);
+            expression.SetWeight(VowelOKey, o * voice);
+
+            // 殴られたら目を強く閉じる。まぶたを閉じるだけだと眠っているように見えるので、
+            // 目と眉に力を入れる（ギュッとつぶる）。
+            float squeeze = _squeeze;
+            expression.SetWeight(BlinkKey, Mathf.Max(blink, squeeze));
+
+            if (_eyeAngrySmr != null)
+                _eyeAngrySmr.SetBlendShapeWeight(_eyeAngryIndex, 100f * EyeSqueeze * squeeze);
+            if (_browAngrySmr != null)
+                _browAngrySmr.SetBlendShapeWeight(_browAngryIndex,
+                    100f * SqueezeBrowAngry * squeeze * (_heldFaceActive ? 0.5f : 1f));
+
+            // 眉の内側を上げる。拘束中の困り眉（65）があればそれより弱めない。
+            if (_worriedBrow != null && (squeeze > 0.001f || _wroteSorrow))
+            {
+                float baseSorrow = _heldFaceActive ? 65f : _originalBrowWeight;
+                _worriedBrow.SetBlendShapeWeight(_worriedBrowIndex,
+                    Mathf.Max(baseSorrow, 100f * SqueezeBrowSorrow * squeeze));
+                _wroteSorrow = squeeze > 0.001f;
+            }
         }
     }
 }

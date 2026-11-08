@@ -79,6 +79,16 @@ namespace Ryona.Game
         /// <summary>掴まれてからの経過秒。ログとテスト用。</summary>
         public float HeldSeconds => _heldSeconds;
 
+        public float FrontEscapeRemaining => IsGrappled && !IsHandingOff && HasTimeLimit
+            ? Mathf.Max(0f, CombatConstants.FrontGrappleEscapeSeconds - _heldSeconds)
+            : 0f;
+
+        internal float FrontEscapePoseWeight => Mathf.SmoothStep(0f, 1f, Mathf.Min(
+            _heldSeconds / 0.18f, FrontEscapeRemaining / 0.20f));
+
+        internal float FrontEscapeEffort { get; private set; }
+        float _frontEffortHold;
+
         /// <summary>腹パン演出などで、もがき入力を一時的に止めているか。</summary>
         public bool IsStruggleSuppressed => IsHandingOff || _suppressRemaining > 0f;
 
@@ -204,6 +214,11 @@ namespace Ryona.Game
         internal float HandOffTurn { get; private set; }
         internal float RecoveryDistance { get; private set; }
         internal const float ShoveLandingFraction = 0.8f;
+        const float GrabContactSeconds = 0.18f;
+        float _grabContactRemaining;
+        Vector3 _grabContactFrom;
+        Quaternion _grabContactRotation;
+        internal float GrabContactWeight => Mathf.SmoothStep(0f, 1f, _grabContactRemaining / GrabContactSeconds);
         EnemyBrain _shoveSender;
 
         /// <summary>突き飛ばしの見た目を立てる。</summary>
@@ -259,7 +274,8 @@ namespace Ryona.Game
             }
 
             // 抱え上げ。掴まれてベアハッグの間だけ上がり、解放されると下がる。
-            float liftTarget = IsGrappled && Kind == GrappleKind.BearHug ? 1f : 0f;
+            float liftTarget = IsGrappled && Kind == GrappleKind.BearHug &&
+                (FrontEscapeRemaining <= 0f || _hugStage != HugStage.Rest) ? 1f : 0f;
             LiftPulse = Mathf.MoveTowards(LiftPulse, liftTarget,
                 Time.deltaTime * (liftTarget > LiftPulse ? 2.5f : 4.5f));
 
@@ -284,10 +300,22 @@ namespace Ryona.Game
                 return;
 
             // ベアハッグ: 体を引き寄せて密着させ、少し離してからまた締める。
-            if (Kind == GrappleKind.BearHug)
+            if (_grabContactRemaining > 0f)
+            {
+                _grabContactRemaining = Mathf.Max(0f, _grabContactRemaining - Time.deltaTime);
+                float weight = GrabContactWeight;
+                SnapToCaptor(Captor, Kind);
+                transform.position = Vector3.Lerp(transform.position, _grabContactFrom, weight);
+                transform.rotation = Quaternion.Slerp(transform.rotation, _grabContactRotation, weight);
+            }
+            else if (Kind == GrappleKind.BearHug)
                 TickBearHugBody(Time.deltaTime);
 
             _heldSeconds += Time.deltaTime;
+            _frontEffortHold = Mathf.Max(0f, _frontEffortHold - Time.deltaTime);
+            bool pressing = _frontEffortHold > 0f && FrontEscapeRemaining > 0f;
+            FrontEscapeEffort = Mathf.MoveTowards(FrontEscapeEffort, pressing ? 1f : 0f,
+                Time.deltaTime / (pressing ? 0.30f : 0.45f));
 
             // 腹パンで「く」の字になっている間は、もがき入力を受け付けない。
             // 拘束は続くので、演出が終わればまた連打できる。
@@ -323,36 +351,48 @@ namespace Ryona.Game
                 return;
 
             StrugglePulse = 1f;
+            if (FrontEscapeRemaining > 0f)
+                _frontEffortHold = 0.36f;
 
             if (_resistance.RegisterInput())
                 Escape();
         }
 
         /// <summary>掴まれる。外部（敵の掴み攻撃）から呼ぶ。掴みは背後からだけ。</summary>
-        public void Begin(EnemyBrain captor, GrappleKind kind = GrappleKind.Back)
+        public void Begin(EnemyBrain captor, GrappleKind kind = GrappleKind.Back) =>
+            BeginHold(captor, kind, blendContact: false);
+
+        internal void BeginContact(EnemyBrain captor, GrappleKind kind) =>
+            BeginHold(captor, kind, blendContact: true);
+
+        void BeginHold(EnemyBrain captor, GrappleKind kind, bool blendContact)
         {
             if (IsGrappled || Stats == null || Stats.IsDead)
                 return;
 
             Captor = captor;
 
-            // 掴まれた瞬間に相手の正面へ引き寄せられる。
-            // 間合い（パイプ用に 1.4m 前後）のままだと手が届いて見えないので、
-            // 掴みの間だけ詰めて「掴まれている」形にする。
-            SnapToCaptor(captor, kind);
+            if (blendContact)
+            {
+                _grabContactFrom = transform.position;
+                _grabContactRotation = transform.rotation;
+                _grabContactRemaining = GrabContactSeconds;
+            }
+            else
+                SnapToCaptor(captor, kind);
 
             // 腕が壊れているほど逃げにくい（仕様書 §4.3）
             float armInjury = Stats.State.Body[BodyPart.Arms];
             RequiredInputs = ResistanceMath.RequiredInputs(kind, 1f, armInjury);
 
             _resistance = new GrappleResistance(kind, RequiredInputs);
-            _remaining = kind == GrappleKind.Back
-                ? float.PositiveInfinity
-                : CombatConstants.GrappleLimitSeconds;
+            _remaining = HoldDuration(kind);
             _heldSeconds = 0f;
             _suppressRemaining = 0f;
             IsGrappled = true;
             StrugglePulse = 0f;
+            FrontEscapeEffort = 0f;
+            _frontEffortHold = 0f;
             KneePulse = 0f;
             if (kind == GrappleKind.BearHug)
             {
@@ -390,6 +430,9 @@ namespace Ryona.Game
                 return;
 
             Captor = next;
+            FrontEscapeEffort = 0f;
+            _frontEffortHold = 0f;
+            _grabContactRemaining = 0f;
 
             if (shove)
             {
@@ -413,11 +456,16 @@ namespace Ryona.Game
         {
             RequiredInputs = ResistanceMath.RequiredInputs(kind, 1f, Stats.State.Body[BodyPart.Arms]);
             _resistance = new GrappleResistance(kind, RequiredInputs);
-            _remaining = kind == GrappleKind.Back
-                ? float.PositiveInfinity
-                : CombatConstants.GrappleLimitSeconds;
+            _remaining = HoldDuration(kind);
             _suppressRemaining = 0f;
         }
+
+        static float HoldDuration(GrappleKind kind) => kind switch
+        {
+            GrappleKind.Back => float.PositiveInfinity,
+            GrappleKind.BearHug => CombatConstants.BearHugLimitSeconds,
+            _ => CombatConstants.GrappleLimitSeconds
+        };
 
         /// <summary>
         /// 掴み位置まで一続きに移動する。突き飛ばしの距離と掴み位置を別々に扱うと、
@@ -578,6 +626,9 @@ namespace Ryona.Game
             }
 
             IsGrappled = false;
+            FrontEscapeEffort = 0f;
+            _frontEffortHold = 0f;
+            _grabContactRemaining = 0f;
             _remaining = 0f;
             _suppressRemaining = 0f;
             Captor = null;

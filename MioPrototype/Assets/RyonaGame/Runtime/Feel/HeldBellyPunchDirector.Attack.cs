@@ -82,8 +82,13 @@ namespace Ryona.Game
             if (!best.TryReserveTagPunchToken())
             {
                 HasAttacker = false;
+                SetDreadTarget(null);
                 return false;
             }
+
+            // 実際に攻撃が始まる（トークンを取れた）ときだけ「見る相手」にする。
+            // ここより前に立てると、発注に失敗した敵を不安そうに見続けてしまう。
+            SetDreadTarget(best);
 
             float moveDistance = Vector3.Distance(best.transform.position, spot);
             if (moveDistance <= 0.05f)
@@ -91,9 +96,15 @@ namespace Ryona.Game
                 best.transform.position = spot;
                 best.transform.rotation = face;
                 bool started = BeginOrderedAttack(best, zone, openingThrow);
-                if (started && openingThrow)
+                if (!started)
+                {
+                    SetDreadTarget(null);
+                    return false;
+                }
+
+                if (openingThrow)
                     _thrower = best;
-                return started;
+                return true;
             }
 
             // 遠くから瞬間移動させず、短く歩かせてから打たせる。
@@ -116,7 +127,7 @@ namespace Ryona.Game
             return enemy != null && enemy.isActiveAndEnabled && enemy.IsAlive &&
                 _grapple != null && _grapple.IsGrappled && !_grapple.IsHandingOff &&
                 _grapple.Kind == GrappleKind.Back && _grapple.Captor == captor &&
-                (openingThrow ? _thrower == enemy : _comboActive);
+                (openingThrow ? _thrower == enemy : _phase == Phase.Combo);
         }
 
         /// <summary>攻撃役を短く歩かせてから、投げまたはパンチを指示する。</summary>
