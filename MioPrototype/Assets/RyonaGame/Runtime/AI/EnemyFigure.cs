@@ -980,27 +980,44 @@ namespace Ryona.Game
                 kneeL = 18f + 18f * load;
             }
             var holdState = Brain != null && Brain.Player != null ? Brain.Player.GetComponent<PlayerGrapple>() : null;
-            // 到着前は腕を引いて待ち、届いた瞬間に腕を開いて膝で衝撃を受ける。
+            // 体で衝撃を受けてから腕で支え、背面拘束では片腕で向きを誘導する。
             if (Brain != null && Brain.IsCatching)
             {
-                armRPitch = -42f;
-                elbowR = 52f;
-                armRSpread = -30f;
-                armLPitch = -42f;
-                elbowL = 52f;
-                armLSpread = 30f;
-                torsoPitch -= 6f;      // 上体は少し起こして受け止める
-                hipsZ -= 0.04f;        // 半歩かがむ
-                hipsY -= 0.03f;
-                kneeR += 8f;
-                kneeL += 8f;
+                float impact = Brain.CatchImpact;
+                armRPitch = armLPitch = Mathf.Lerp(-58f, -44f, impact);
+                elbowR = elbowL = Mathf.Lerp(60f, 78f, impact);
+                armRSpread = -Mathf.Lerp(24f, 11f, impact);
+                armLSpread = -armRSpread;
+                torsoPitch += 24f * impact - 6f;
+                hipsZ -= 0.04f + 0.045f * impact;
+                hipsY -= 0.03f + 0.06f * impact;
+                legLPitch += 13f * impact;
+                kneeR += 8f + 16f * impact;
+                kneeL += 8f + 10f * impact;
+                if (holdState != null)
+                {
+                    float guide = Mathf.Sin(Mathf.PI * holdState.HandOffTurn);
+                    armRPitch -= 18f * guide;
+                    elbowR += 16f * guide;
+                    armLPitch += 14f * guide;
+                    legRPitch -= 12f * guide;
+                }
             }
             else if (holdState != null && holdState.IsHandingOff && holdState.Captor == Brain)
             {
-                armRPitch = armLPitch = -12f;
-                elbowR = elbowL = 65f;
-                armRSpread = -8f;
-                armLSpread = 8f;
+                float ready = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(1.20f, 1.85f, holdState.RecoveryStep));
+                armRPitch = armLPitch = Mathf.Lerp(-8f, -52f, ready);
+                elbowR = elbowL = Mathf.Lerp(18f, 40f, ready);
+                armRSpread = -Mathf.Lerp(8f, 23f, ready);
+                armLSpread = -armRSpread;
+            }
+            else if (holdState != null && holdState.IsHandingOff && Brain.IsHandOffLocked && !Brain.IsPushing)
+            {
+                // 送り手は押し切った腕を戻し、受け渡しを見送る。
+                armRPitch = armLPitch = -20f;
+                elbowR = elbowL = 42f;
+                torsoPitch = 0f;
+                hipsZ = 0f;
             }
             // ベアハッグ: 胴を抱え込むので上体を前へ寄せ、膝を落として締める。
             if (Brain != null && Brain.IsBearHugging)
@@ -1738,8 +1755,8 @@ namespace Ryona.Game
                 : _brain.HeldThrowPull;
             if (throwGrip > 0f && _targetRig != null)
             {
-                AimThrowGrip(false, _targetRig.LUpperArm, throwGrip);
-                AimThrowGrip(true, _targetRig.RUpperArm, throwGrip);
+                AimShoulderGrip(false, _targetRig.LUpperArm, throwGrip);
+                AimShoulderGrip(true, _targetRig.RUpperArm, throwGrip);
             }
             if (_brain.IsPushing && _targetRig != null)
             {
@@ -1747,11 +1764,18 @@ namespace Ryona.Game
                 float touch = Mathf.SmoothStep(0f, 1f,
                     Mathf.InverseLerp(0.045f, EnemyBrain.PushContactSeconds, time));
                 float release = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.19f, 0.28f, time));
-                AimThrowGrip(false, _targetRig.RUpperArm, touch * (1f - release), shove: true);
-                AimThrowGrip(true, _targetRig.LUpperArm, touch * (1f - release), shove: true);
+                AimShoulderGrip(false, _targetRig.RUpperArm, touch * (1f - release), shove: true);
+                AimShoulderGrip(true, _targetRig.LUpperArm, touch * (1f - release), shove: true);
+            }
+            if (!_brain.IsHolding && !_brain.IsCatching) return;
+            var hold = _brain.Player.GetComponent<PlayerGrapple>();
+            if (_brain.IsCatching && _targetRig != null && hold != null && hold.Captor == _brain)
+            {
+                float support = (1f - _brain.CatchImpact) * (1f - Mathf.SmoothStep(0f, 1f, hold.HandOffTurn));
+                AimShoulderGrip(false, _targetRig.LUpperArm, support);
+                AimShoulderGrip(true, _targetRig.RUpperArm, support);
             }
             if (!_brain.IsHolding) return;
-            var hold = _brain.Player.GetComponent<PlayerGrapple>();
             if (hold == null || !hold.IsGrappled || hold.Captor != _brain || hold.Kind != GrappleKind.Back)
                 return;
             if (_targetRig == null)
@@ -1766,7 +1790,7 @@ namespace Ryona.Game
             Solve(true, _targetRig.LUpperArm);
         }
 
-        void AimThrowGrip(bool left, Transform shoulder, float weight, bool shove = false)
+        void AimShoulderGrip(bool left, Transform shoulder, float weight, bool shove = false)
         {
             if (weight <= 0f)
                 return;

@@ -7,6 +7,27 @@ namespace Ryona.Game
     /// </summary>
     public sealed partial class CharacterAnimator
     {
+        void BracePalm(bool left, Transform chest, Vector3 center, float weight)
+        {
+            Transform upper = left ? Rig.LUpperArm : Rig.RUpperArm;
+            Transform elbow = left ? Rig.LLowerArm : Rig.RLowerArm;
+            Transform hand = left ? Rig.LHand : Rig.RHand;
+            if (upper == null || elbow == null || hand == null)
+                return;
+
+            Vector3 side = transform.right * (left ? -1f : 1f);
+            Vector3 goal = center + side * 0.13f + chest.forward * 0.12f;
+            Quaternion upperPose = upper.rotation;
+            Quaternion elbowPose = elbow.rotation;
+            Quaternion handPose = hand.rotation;
+            ProceduralRig.SolveTwoBone(upper, elbow, hand, goal,
+                elbow.position + side * 0.16f - Vector3.up * 0.20f, transform.right);
+            upper.rotation = Quaternion.Slerp(upperPose, upper.rotation, weight);
+            elbow.rotation = Quaternion.Slerp(elbowPose, elbow.rotation, weight);
+            Rig.AlignPalm(left, -chest.forward, chest.up);
+            hand.rotation = Quaternion.Slerp(handPose, hand.rotation, weight);
+        }
+
         public void ApplyPose()
         {
             if (Rig == null || !Rig.Ready)
@@ -17,6 +38,7 @@ namespace Ryona.Game
             Vector3 pole = transform.position + transform.forward * 2f + Vector3.up * 0.55f;
             Vector3 footL = Rig.RestFootL;
             Vector3 footR = Rig.RestFootR;
+            float handOffBrace = 0f;
 
             Vector3 hipsOffset = Vector3.zero;
             float torsoPitch = 0f;
@@ -448,18 +470,74 @@ namespace Ryona.Game
                     if (Grapple != null && Grapple.IsHandingOff)
                     {
                         // 押された間は腕が自由。受け止められたら膝を折り、両腕で釣り合いを取る。
-                        bool caught = Grapple.Captor != null && Grapple.Captor.IsCatching;
+                        var receiver = Grapple.Captor;
+                        bool caught = receiver != null && receiver.IsCatching;
+                        float impact = caught ? receiver.CatchImpact : 0f;
                         float push = Grapple.PushPulse;
                         Vector3 localPush = transform.InverseTransformDirection(Grapple.PushDirection);
                         hipsOffset.y = StanceHipsY - (caught ? 0.08f : 0.035f + 0.07f * push);
                         hipsOffset.z = StanceHipsZ + 0.05f * push * localPush.z;
-                        torsoPitch = caught ? -6f : 4f + 25f * push * localPush.z;
+                        torsoPitch = caught ? -6f : 4f + 33f * push * localPush.z;
                         torsoRoll = -18f * push * localPush.x;
                         headPitch = caught ? 6f : -4f - 15f * push * localPush.z;
+                        hipsOffset -= localPush * (0.045f * impact);
+                        hipsOffset.y -= 0.035f * impact;
+                        torsoPitch -= 9f * impact * localPush.z;
+                        torsoRoll += 15f * impact * localPush.x;
                         armLUpper = armRUpper = new Vector3(0.58f, -0.80f, 0.10f - 0.63f * push * localPush.z);
                         armLFore = armRFore = new Vector3(0.10f, -0.30f - 0.22f * push, 0.94f - 0.45f * push);
                         footL += StanceFootL;
                         footR += StanceFootR;
+                        if (Grapple.RecoveryPoseWeight > 0f)
+                        {
+                            float step = Grapple.RecoveryStep;
+                            float blend = Grapple.RecoveryPoseWeight;
+                            float momentum = Mathf.InverseLerp(1.15f, 0f, step) * blend;
+                            float rush = Mathf.InverseLerp(0.85f, 1.65f, step) * (caught ? impact : 1f);
+                            handOffBrace = caught
+                                ? (1f - Grapple.HandOffTurn) * blend
+                                : Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(1.05f, 1.75f, step));
+                            grip *= 1f - handOffBrace;
+                            float flight = Mathf.Sin(Mathf.PI * Mathf.Clamp01(step));
+                            float swing = Mathf.InverseLerp(1.02f, 1.88f, step);
+                            float imbalance = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, 0.34f, step))
+                                * (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.78f, 1.38f, step)));
+                            float travelled = Grapple.RecoveryTravel;
+                            float landing = PlayerGrapple.ShoveLandingFraction * Grapple.RecoveryDistance;
+                            float planted = Mathf.Min(0f, landing - travelled);
+                            float plantR = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.72f, 1f, step));
+                            // 後ろ足が残っている間に、右膝と足先を前へ出して転倒を防ぐ。
+                            float reflex = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, 0.26f, step))
+                                * (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.48f, 0.94f, step)));
+                            float reflexReach = Mathf.Min(0.24f, Grapple.RecoveryDistance * 0.21f) * reflex;
+                            float rightReach = Mathf.Lerp(planted, landing - travelled, plantR) + 0.065f + reflexReach;
+                            float footZ = (footL.z + footR.z) * 0.5f;
+                            Vector3 launchFoot = footL - localPush * travelled - Vector3.up * Grapple.RecoveryLift;
+                            // 右足を先に置いて体を支え、後ろに残った左足が追いつく。
+                            float reach = Grapple.RecoveryDistance - landing;
+                            float leftReach = Mathf.SmoothStep(-0.14f - 0.09f * flight, reach, swing);
+                            footL += blend * (localPush * (planted + leftReach)
+                                + new Vector3(-0.045f * imbalance, 0.055f * flight + 0.075f * Mathf.Sin(Mathf.PI * swing), footZ - footL.z));
+                            footR += blend * (localPush * rightReach
+                                + new Vector3(0.025f * reflex, 0.10f * reflex, footZ - footR.z));
+                            // 押された直後の左足は床に残し、かかとから遅れて離す。
+                            float releaseFoot = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.10f, 0.34f, step));
+                            footL = Vector3.Lerp(launchFoot, footL, releaseFoot);
+                            footPitchL += 14f * Mathf.Sin(Mathf.PI * releaseFoot);
+                            float landingLoad = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.92f, 1.12f, step))
+                                * (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(1.12f, 1.62f, step)));
+                            hipsOffset.y -= 0.072f * landingLoad;
+                            torsoPitch += 8f * landingLoad * localPush.z;
+                            torsoPitch += 12f * momentum * localPush.z;
+                            torsoPitch += 14f * rush * localPush.z;
+                            torsoRoll += 11f * imbalance;
+                            hipsOffset.x += 0.045f * imbalance;
+                            headPitch -= 9f * handOffBrace;
+                            armLUpper.x += 0.30f * imbalance;
+                            armRUpper.z -= 0.36f * imbalance;
+                            armLFore.z -= 0.38f * momentum;
+                            armRFore.z -= 0.38f * momentum;
+                        }
                         break;
                     }
 
@@ -1417,22 +1495,20 @@ namespace Ryona.Game
                 footR = hipsLocal + undo * (footR - hipsLocal);
             }
 
-            // 突き飛ばされてたたらを踏む。押されている 0.35 秒の間に、左右交互に足を踏み直す。
+            // 押された瞬間に足が残り、片足で体勢を立て直し始める。
             // ここで足先を動かすと、この後の IK（SolveLeg）が脚の形を合わせてくれるので、
             // 「滑っている」ではなく「踏ん張って持ちこたえている」に見える。
-            if (Grapple != null && Grapple.PushPulse > 0f && _state == State.Grabbed)
+            if (Grapple != null && !Grapple.IsHandingOff && Grapple.PushPulse > 0f && _state == State.Grabbed)
             {
                 float p = Mathf.Clamp01(Grapple.PushPulse);
                 float t = 1f - p;                                   // 0 → 1（押され始め → 終わり）
-                float beat = t * Mathf.PI * 2f;                     // 2 歩ぶん
+                float beat = t * Mathf.PI * 2f;
                 float stepL = Mathf.Max(0f, Mathf.Sin(beat));       // 左足の踏み直し
                 float stepR = Mathf.Max(0f, -Mathf.Sin(beat));      // 右足の踏み直し
                 float drag = Mathf.Sin(Mathf.PI * t);               // 押されて足が残る量
 
                 // 向きを変えても、足は実際に押された向きと逆へ一瞬残る。
-                Vector3 localPush = Grapple.IsHandingOff
-                    ? transform.InverseTransformDirection(Grapple.PushDirection)
-                    : Vector3.forward * (Grapple.Kind == GrappleKind.Back ? -1f : 1f);
+                Vector3 localPush = Vector3.forward * (Grapple.Kind == GrappleKind.Back ? -1f : 1f);
                 footL += new Vector3(0.02f, 0.08f * stepL, 0f)
                     + localPush * (0.08f * stepL - 0.13f * drag);
                 footR += new Vector3(-0.02f, 0.08f * stepR, 0f)
@@ -1473,6 +1549,21 @@ namespace Ryona.Game
                 ArmDirection(true, armLFore).normalized, handRollL);
             Rig.SetArm(false, ArmDirection(false, armRUpper).normalized,
                 ArmDirection(false, armRFore).normalized, handRollR);
+
+            if (handOffBrace > 0f && Grapple.Captor != null
+                && Grapple.Captor.TryGetComponent<EnemyFigure>(out var receiverFigure)
+                && receiverFigure.ChestBone != null)
+            {
+                Transform chest = receiverFigure.ChestBone;
+                Transform shoulderL = receiverFigure.ShoulderBone(true);
+                Transform shoulderR = receiverFigure.ShoulderBone(false);
+                if (shoulderL != null && shoulderR != null)
+                {
+                    Vector3 braceCenter = (shoulderL.position + shoulderR.position) * 0.5f - chest.up * 0.16f;
+                    BracePalm(true, chest, braceCenter, handOffBrace);
+                    BracePalm(false, chest, braceCenter, handOffBrace);
+                }
+            }
 
             DebugArmLUpper = ArmDirection(true, armLUpper).normalized;
             DebugArmLFore = ArmDirection(true, armLFore).normalized;

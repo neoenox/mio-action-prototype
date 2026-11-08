@@ -197,6 +197,13 @@ namespace Ryona.Game
         /// </summary>
         public float PushPulse { get; private set; }
         internal Vector3 PushDirection { get; private set; }
+        internal float RecoveryStep { get; private set; }
+        internal float RecoveryTravel { get; private set; }
+        internal float RecoveryLift { get; private set; }
+        internal float RecoveryPoseWeight { get; private set; }
+        internal float HandOffTurn { get; private set; }
+        internal float RecoveryDistance { get; private set; }
+        internal const float ShoveLandingFraction = 0.8f;
         EnemyBrain _shoveSender;
 
         /// <summary>突き飛ばしの見た目を立てる。</summary>
@@ -386,7 +393,8 @@ namespace Ryona.Game
 
             if (shove)
             {
-                const float lockSeconds = 1.22f;
+                // 接触待ち・二歩・受け止めの間は両者を固定する。
+                const float lockSeconds = 1.30f;
                 IsHandingOff = true;
                 _shoveSender = previous;
                 previous.LockForHandOff(lockSeconds);
@@ -419,12 +427,11 @@ namespace Ryona.Game
         {
             Vector3 fromPos = transform.position;
             Vector3 toPos = GrabSpot(next, kind);
-            Vector3 catchPos = kind == GrappleKind.Back
-                ? Vector3.MoveTowards(toPos, fromPos, GrabDistance - BackGrabDistance)
-                : toPos;
-
             Vector3 toNext = next.transform.position - toPos;
             toNext.y = 0f;
+            // どちらの拘束でも、受け手に正面から当たってから掴みに移る。
+            Vector3 towardReceiver = toNext.normalized;
+            Vector3 catchPos = toPos + towardReceiver * (kind == GrappleKind.Back ? -0.015f : 0.24f);
             Vector3 lookDir = kind == GrappleKind.Back ? -toNext : toNext;
 
             Quaternion fromRot = transform.rotation;
@@ -432,9 +439,11 @@ namespace Ryona.Game
                 ? Quaternion.LookRotation(lookDir.normalized, Vector3.up)
                 : fromRot;
 
-            float distance = Vector3.Distance(fromPos, toPos);
-            float moveSeconds = Mathf.Clamp(0.12f + distance * 0.18f, 0.24f, 0.65f);
-            const float catchSeconds = 0.26f;
+            float distance = Vector3.Distance(fromPos, catchPos);
+            const float pushSeconds = 0.18f;
+            const float impactSeconds = 0.13f;
+            const float supportedSeconds = 0.22f;
+            float catchSeconds = kind == GrappleKind.Back ? 0.45f : 0.32f;
             if (toNext.sqrMagnitude > 1e-4f)
                 next.transform.rotation = Quaternion.LookRotation(-toNext, Vector3.up);
 
@@ -453,28 +462,47 @@ namespace Ryona.Game
             }
 
             PushDirection = Vector3.ProjectOnPlane(catchPos - fromPos, Vector3.up).normalized;
+            Quaternion travelRot = PushDirection.sqrMagnitude > 0f
+                ? Quaternion.LookRotation(PushDirection, Vector3.up)
+                : fromRot;
             PushPulse = 1f;
+            RecoveryDistance = distance;
+            const float flightSeconds = 0.33f;
+            const float followThroughSeconds = 0.17f;
+            const float recoverySeconds = flightSeconds + followThroughSeconds;
             float t = 0f;
-            while (t < moveSeconds)
+            while (t < recoverySeconds)
             {
                 yield return null;
                 if (!CanContinueHandOff(next))
                     yield break;
 
                 t += Time.deltaTime;
-                float progress = Mathf.Clamp01(t / moveSeconds);
-                float easeOut = 1f - (1f - progress) * (1f - progress);
-                float distanceT = Mathf.Lerp(Mathf.SmoothStep(0f, 1f, progress), easeOut, 0.45f);
-                float turnT = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.22f, 1f, progress));
-                transform.position = Vector3.Lerp(fromPos, catchPos, distanceT);
-                transform.rotation = Quaternion.Slerp(fromRot, targetRot, turnT);
-                PushPulse = 1f - progress;
+                float pushProgress = Mathf.Clamp01(t / pushSeconds);
+                PushPulse = 1f - pushProgress;
+                float flight = Mathf.Clamp01(t / flightSeconds);
+                float followThrough = Mathf.InverseLerp(flightSeconds, recoverySeconds, t);
+                RecoveryStep = flight + followThrough;
+                RecoveryPoseWeight = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, 0.18f, RecoveryStep));
+                // 着地の前後で水平速度が急に変わらないようにする。
+                float drivenFlight = flight * (1.50f - 0.50f * flight);
+                float travel = ShoveLandingFraction * drivenFlight + (1f - ShoveLandingFraction) * followThrough;
+                // 押された体が先に動き、足が遅れて床を離れる。
+                float airborne = Mathf.InverseLerp(0.12f, 1f, flight);
+                RecoveryLift = 0.075f * (4f * airborne * (1f - airborne)) * Mathf.InverseLerp(0.1f, 0.8f, distance);
+                RecoveryTravel = distance * travel;
+                transform.position = Vector3.Lerp(fromPos, catchPos, travel) + Vector3.up * RecoveryLift;
+                transform.rotation = Quaternion.Slerp(fromRot, travelRot, Mathf.SmoothStep(0f, 1f, pushProgress));
             }
 
-            EndShove();
             next.BeginCatch(catchSeconds);
             Debug.Log($"[HandOff] catch {next.name} kind={kind}");
             t = 0f;
+            Quaternion catchRot = transform.rotation;
+            Vector3 receiverStart = next.transform.position;
+            Quaternion receiverRot = next.transform.rotation;
+            // 受け手の後退は、接触までに残った速度に合わせる。
+            Vector3 recoil = towardReceiver * Mathf.Min(0.16f, distance * 0.073f);
             while (t < catchSeconds)
             {
                 yield return null;
@@ -482,11 +510,23 @@ namespace Ryona.Game
                     yield break;
 
                 t += Time.deltaTime;
-                float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / catchSeconds));
-                transform.position = Vector3.Lerp(catchPos, toPos, k);
+                float recoilTime = Mathf.Clamp01(t / impactSeconds);
+                float recoilProgress = recoilTime * (2f - recoilTime);
+                Vector3 drift = recoil * recoilProgress;
+                next.transform.position = receiverStart + drift;
+
+                // 衝突後はまず踏ん張って支える。後ろ拘束への回転は、それから二人で行う。
+                float settle = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(supportedSeconds, catchSeconds, t));
+                HandOffTurn = kind == GrappleKind.Back ? settle : 0f;
+                Quaternion pivot = Quaternion.AngleAxis(18f * HandOffTurn, Vector3.up);
+                next.transform.rotation = pivot * receiverRot;
+                Vector3 offset = Vector3.Lerp(catchPos, toPos, settle) - receiverStart;
+                transform.position = next.transform.position + pivot * offset;
+                transform.rotation = Quaternion.Slerp(catchRot, pivot * targetRot, settle);
+                RecoveryPoseWeight = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(impactSeconds, catchSeconds, t));
             }
 
-            transform.position = toPos;
+            EndShove();
             ApplyHandOffHold(kind);
             _heldSeconds = 0f;
             next.TakeOverHold(CombatConstants.GrappleLimitSeconds + 4f);
@@ -501,6 +541,12 @@ namespace Ryona.Game
             _shoveSender = null;
             PushPulse = 0f;
             PushDirection = Vector3.zero;
+            RecoveryStep = 0f;
+            RecoveryTravel = 0f;
+            RecoveryLift = 0f;
+            RecoveryPoseWeight = 0f;
+            HandOffTurn = 0f;
+            RecoveryDistance = 0f;
         }
 
         bool CanContinueHandOff(EnemyBrain next)

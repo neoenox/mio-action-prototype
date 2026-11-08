@@ -537,10 +537,12 @@ namespace Ryona.Game
 
         /// <summary>受け止める構えの残り秒。</summary>
         float _catchUntil;
+        float _catchStartedAt;
 
         /// <summary>引き渡しで彼女を受け止める瞬間、腕を開いて構える。</summary>
         public void BeginCatch(float seconds)
         {
+            _catchStartedAt = Time.time;
             _catchUntil = Time.time + Mathf.Max(0.1f, seconds);
         }
 
@@ -548,6 +550,20 @@ namespace Ryona.Game
 
         /// <summary>いま受け止める構えの最中か（見た目側が腕を開くのに使う）。</summary>
         public bool IsCatching => Time.time < _catchUntil;
+
+        internal float CatchImpact
+        {
+            get
+            {
+                if (!IsCatching)
+                    return 0f;
+
+                float time = Time.time - _catchStartedAt;
+                float compression = Mathf.Lerp(0.65f, 1f, Mathf.InverseLerp(0f, 0.035f, time));
+                float settle = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.035f, 0.20f, time));
+                return compression * (1f - settle);
+            }
+        }
 
         /// <summary>押さえつけ中の相手か（掴んでいる本人）。見た目側が姿勢を組むのに使う。</summary>
         public bool IsPinning { get; private set; }
@@ -1392,8 +1408,7 @@ namespace Ryona.Game
 
             EndCatch();
 
-            // 受け手はその場を動かさず、届いた彼女をそのまま拘束する。
-            // 向きだけは彼女へ合わせる（後ろ拘束なら背中、正面拘束なら顔の正面）。
+            // 受け止め終えた位置で、向きを彼女へ合わせる。
             if (Player != null)
             {
                 Vector3 look = Player.transform.position - transform.position;

@@ -276,6 +276,7 @@ namespace Ryona.Tests
             int started = 0;
             _grapple.Started += _ => started++;
             Vector3 beforePush = _player.transform.position;
+            Vector3 receiverStart = _other.transform.position;
             _grapple.HandOff(_other, kind, shove: true);
 
             Assert.IsFalse(_other.IsCatching || _other.IsHolding, "The shove comes first.");
@@ -293,10 +294,23 @@ namespace Ryona.Tests
                 yield return null;
             Assert.Greater(_player.transform.position.x, beforePush.x);
 
+            while (_grapple.PushPulse > 0f && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.IsFalse(_other.IsCatching, "The player takes recovery steps before reaching the receiver.");
+            Vector3 beforeSteps = _player.transform.position;
+
             while (!_other.IsCatching && Time.realtimeSinceStartup < deadline)
                 yield return null;
 
             Assert.IsTrue(_other.IsCatching);
+            float contactDistance = Vector3.Distance(_player.transform.position, _other.transform.position);
+            Assert.Less(contactDistance, kind == GrappleKind.Back ? 0.36f : 0.46f,
+                "The receiver catches after the player reaches body contact.");
+            Assert.Greater(Vector3.Dot(_player.transform.forward, Vector3.right), 0.9f,
+                "The player collides facing forward before turning into the new hold.");
+            Quaternion receiverAtContact = _other.transform.rotation;
+            Assert.Greater(_player.transform.position.x - beforeSteps.x, 0.25f,
+                "The player still travels after the shove reaction ends.");
             Assert.IsFalse(_other.IsHolding || _other.IsPinning, "The receiver braces before pinning.");
             Assert.AreEqual(0, started);
 
@@ -304,6 +318,14 @@ namespace Ryona.Tests
                 yield return null;
 
             Assert.IsTrue(_other.IsHolding);
+            Assert.Greater(_other.transform.position.x - receiverStart.x, 0.10f,
+                "The impact pushes the receiver back before the hold starts.");
+            if (kind == GrappleKind.Back)
+            {
+                Assert.Greater(Quaternion.Angle(receiverAtContact, _other.transform.rotation), 10f,
+                    "The receiver also turns while guiding the player into the back hold.");
+                Assert.Greater(Vector3.Dot(_player.transform.forward, _other.transform.forward), 0.98f);
+            }
             Assert.AreEqual(kind == GrappleKind.Pin, _other.IsPinning);
             Assert.IsFalse(_other.IsCatching);
             Assert.AreEqual(kind, _grapple.Kind);
