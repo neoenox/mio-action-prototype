@@ -689,20 +689,36 @@ namespace Ryona.Game
                     pose.HeadPitch += Mathf.Sin(Time.time * 9.7f + 1.3f) * 0.8f * dread;
                 }
 
-                // 腹パン: 腰と腹が先に押し戻され、遅れてみぞおちから上が前へ折れる。
+                // 腹パン: 腹で一度折れた後、胸を起こそうとする間に膝が折れて腰が沈む。
                 float toCamera = CameraYawToMe();
                 float recoil = HeldBellyPunchFold;
                 if (recoil > 0f)
                 {
                     float hitTime = _heldBellyPunchTotal - _heldBellyPunchRemaining;
-                    float fold = recoil * Mathf.SmoothStep(0f, 1f, (hitTime - 0.015f) / 0.055f);
+                    float bendIn = Mathf.SmoothStep(0f, 1f, (hitTime - 0.015f) / 0.055f);
+                    float fold = Mathf.Lerp(_heldBellyCarry, recoil, bendIn);
+                    float straighten = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.15f, 0.32f, hitTime));
+                    fold *= Mathf.Lerp(1f, 0.27f + 0.09f * _heldBellyFatigue, straighten);
                     pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, 52f, fold);
                     pose.TorsoYaw = Mathf.Lerp(pose.TorsoYaw, 0f, recoil);
                     // 胴の前傾を首で打ち消し、腹で折れても顔は前に残す。
                     pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -72f, fold);
                     pose.HeadYaw = Mathf.Lerp(pose.HeadYaw, Mathf.Clamp(toCamera, -35f, 35f) * 0.35f, fold);
-                    pose.HipsOffset.y = Mathf.Lerp(pose.HipsOffset.y, StanceHipsY - 0.14f, recoil);
+                    // 足の IK 目標は床に残し、左右どちらかへ重さが偏りながら膝を折る。
+                    float buckle = recoil * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.07f, 0.23f, hitTime));
+                    pose.HipsOffset.y = Mathf.Lerp(pose.HipsOffset.y, StanceHipsY - 0.055f, recoil)
+                        - (0.14f + 0.085f * _heldBellyFatigue) * buckle;
+                    pose.HipsOffset.x += (toCamera >= 0f ? 1f : -1f) * 0.035f * buckle;
                     pose.HipsOffset.z = Mathf.Lerp(pose.HipsOffset.z, StanceHipsZ - 0.17f, recoil);
+
+                    // 脇を引かれて肩が先に戻り、腰は少し遅れて持ち上がる。
+                    float lift = HeldBellyCaptorLift;
+                    pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, 12f, lift);
+                    pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -17f, lift);
+                    pose.HipsOffset.y = Mathf.Lerp(pose.HipsOffset.y, StanceHipsY + 0.025f, lift * lift);
+                    pose.HipsOffset.z = Mathf.Lerp(pose.HipsOffset.z, StanceHipsZ - 0.055f, lift);
+                    pose.ArmLUpper.y += 0.36f * lift;
+                    pose.ArmRUpper.y += 0.36f * lift;
                 }
 
                 // 顔面パンチ: 上体は折らず、首だけ手前（カメラ側）へ振る。

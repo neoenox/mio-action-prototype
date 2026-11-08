@@ -26,11 +26,11 @@ namespace Ryona.Game
         [Tooltip("後ろ拘束が始まってから、正面の敵に投げを指示するまでの秒数")]
         public float ThrowDelaySeconds = 1.6f;
 
-        [Tooltip("1 回の拘束で食らう腹パンの回数")]
+        [Tooltip("1 回の連撃で食らうパンチの回数")]
         public int ComboHits = 5;
 
         [Range(0f, 1f)]
-        [Tooltip("各パンチが顔面を狙う確率。残りは腹パン。0 で腹パンのみ、1 で顔面のみ")]
+        [Tooltip("連撃が顔面パンチになる確率。0 で腹パンのみ、1 で顔面のみ")]
         public float FacePunchChance = 0.5f;
 
         [Tooltip("次の腹パンを指示するまでの秒数（前の一発が当たってから）")]
@@ -163,6 +163,8 @@ namespace Ryona.Game
         EnemyBrain _guardPuncher;
 
         int _hits;
+        PunchZone _comboZone;
+        int _bellyHits;
         float _nextPunchTimer;
         float _comboEndTimer;
         float _handOffTimer;    // HandOffWait のときだけ意味を持つ
@@ -288,6 +290,7 @@ namespace Ryona.Game
         {
             ResetHold();
             _hits = 0;
+            _bellyHits = 0;
 
             // 前の拘束で残ったクールタイムを持ち越さない（持ち越すと、掴み直した直後の
             // 一発がコンボを始められず、拘束されているのに演出だけ出ない）
@@ -413,7 +416,7 @@ namespace Ryona.Game
             {
                 var openingPuncher = _thrower;
                 _thrower = null;
-                if (openingPuncher.TryStartOpeningBellyPunch(FistHoldSeconds))
+                if (openingPuncher.TryStartOpeningPunch(_comboZone, FistHoldSeconds))
                 {
                     _punchInFlight = true;
                     _hitTimeout = 1.2f;
@@ -486,12 +489,24 @@ namespace Ryona.Game
             if (zone == PunchZone.Body || puncher != _guardPuncher)
                 SetPunchGuard(zone == PunchZone.Body ? puncher : null);
 
+            float liftBeat = 0f;
+            if (zone == PunchZone.Body)
+                _bellyHits++;
             if (_anim != null)
             {
                 if (zone == PunchZone.Face)
+                {
+                    _anim.EndHeldThrowLead();
                     _anim.PlayHeldFacePunch(HitPoseSeconds);
+                }
                 else
-                    _anim.PlayHeldBellyPunch(HitPoseSeconds);
+                {
+                    float fatigue = Mathf.InverseLerp(1f, 4f, _bellyHits);
+                    float poseSeconds = HitPoseSeconds + (ComboIntervalSeconds + 0.12f) * fatigue;
+                    _anim.PlayHeldBellyPunch(poseSeconds, fatigue);
+                    if (_bellyHits >= 3)
+                        liftBeat = poseSeconds * 0.90f;
+                }
             }
 
             RefreshCamera(1.6f);
@@ -502,12 +517,12 @@ namespace Ryona.Game
 
             if (_hits >= ComboHitsTotal)
             {
-                _comboEndTimer = Mathf.Max(0.1f, ComboTailSeconds);
+                _comboEndTimer = Mathf.Max(0.1f, ComboTailSeconds, liftBeat);
                 Debug.Log($"[HeldPunch] combo {_hits}/{ComboHitsTotal} ({zone}) → finish");
             }
             else
             {
-                _nextPunchTimer = Mathf.Max(0.1f, ComboIntervalSeconds);
+                _nextPunchTimer = Mathf.Max(0.1f, ComboIntervalSeconds, liftBeat);
                 Debug.Log($"[HeldPunch] combo {_hits}/{ComboHitsTotal} ({zone})");
             }
 
@@ -522,7 +537,7 @@ namespace Ryona.Game
                 return false;
 
             PunchZone? zone = _stats.LastHitZone;
-            if (zone != PunchZone.Body && zone != PunchZone.Face)
+            if (zone != _comboZone)
                 return false;
 
             var captor = _grapple.Captor;
@@ -552,7 +567,9 @@ namespace Ryona.Game
                 return;
 
             _phase = Phase.Combo;
+            _comboZone = ChooseComboZone();
             _hits = 0;
+            _bellyHits = 0;
             LastLandedZone = PunchZone.Body;
             _throwTimer = 0f;
             _thrower = attacker;

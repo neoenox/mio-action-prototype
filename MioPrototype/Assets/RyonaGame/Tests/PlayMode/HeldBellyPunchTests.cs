@@ -49,6 +49,7 @@ namespace Ryona.Tests
             _director = Object.FindFirstObjectByType<HeldBellyPunchDirector>();
             Assert.IsNotNull(_director, "HeldBellyPunchDirector が自動で付いていない");
             _director.enabled = directorEnabled;
+            _director.FacePunchChance = 0f;
             if (throwDelay.HasValue)
                 _director.ThrowDelaySeconds = throwDelay.Value;
 
@@ -376,6 +377,7 @@ namespace Ryona.Tests
                 yield return null;
             Assert.AreEqual(1, _director.ComboHitsLanded);
             Assert.IsTrue(_grapple.IsGrappled, "The hold must remain during the combo");
+            _director.FacePunchChance = 1f;
             Assert.Greater(_anim.HeldThrowLead, 0.6f, "The throw leaves her in the belly stance");
             Assert.IsTrue(_anim.IsHeldBellyPunch, "The first punch starts her recoil");
             Assert.IsTrue(_camera.IsFocusing, "Camera must center on the player for the punches");
@@ -388,6 +390,7 @@ namespace Ryona.Tests
 
             Assert.IsFalse(_director.IsPerforming, "The combo must end");
             Assert.AreEqual(5, _director.ComboHitsLanded, "The player must take 5 belly punches");
+            Assert.AreEqual(PunchZone.Body, _director.LastLandedZone);
             Assert.IsTrue(_grapple.IsGrappled, "The original hold must continue");
             Assert.AreSame(_captor, _grapple.Captor);
             Assert.Greater(_director.NextThrowRemaining, 0f, "Schedule the next opening throw");
@@ -492,15 +495,16 @@ namespace Ryona.Tests
         public IEnumerator 投げから派生した連撃の顔面パンチで首が手前へ振れる()
         {
             yield return LoadAndGrab(waitForAnimator: true);
-            _director.FacePunchChance = 1f;   // 一発目の腹パンの後は顔面に固定
+            _director.FacePunchChance = 1f;
             PlaceAttackerInFront();
 
             LandOpeningThrow();
+            _director.FacePunchChance = 0f;
             _attacker.HoldFire(10f);
             float deadline = Time.realtimeSinceStartup + 5f;
-            while (_director.ComboHitsLanded < 2 && Time.realtimeSinceStartup < deadline)
+            while (_director.ComboHitsLanded < 1 && Time.realtimeSinceStartup < deadline)
                 yield return null;
-            Assert.AreEqual(2, _director.ComboHitsLanded);
+            Assert.AreEqual(1, _director.ComboHitsLanded);
 
             Assert.IsTrue(_director.IsPerforming, "The combo continues after a face punch");
             Assert.AreEqual(PunchZone.Face, _director.LastLandedZone, "The landed zone must be the face");
@@ -510,6 +514,15 @@ namespace Ryona.Tests
             yield return new WaitForSeconds(0.12f);
             Assert.Greater(_anim.HeldFacePunchFlick, 0.5f, "The head must snap away toward the camera");
             Assert.IsTrue(_grapple.IsGrappled, "The hold must remain during the combo");
+
+            deadline = Time.realtimeSinceStartup + 10f;
+            while (_director.ComboHitsLanded < 5 && Time.realtimeSinceStartup < deadline)
+            {
+                Assert.AreEqual(PunchZone.Face, _director.LastLandedZone);
+                yield return null;
+            }
+            Assert.AreEqual(5, _director.ComboHitsLanded);
+            Assert.AreEqual(PunchZone.Face, _director.LastLandedZone);
         }
 
         [UnityTest]
@@ -697,7 +710,7 @@ namespace Ryona.Tests
         }
 
         /// <summary>
-        /// 演出に任せて腹・顔を混ぜて打たせ、外れ（retry）が出ないこと。
+        /// 連撃ごとに腹か顔を選び、外れ（retry）が出ないこと。
         /// 敵 AI は実機どおり有効（フェイントも抽選される）。
         /// </summary>
         [UnityTest]

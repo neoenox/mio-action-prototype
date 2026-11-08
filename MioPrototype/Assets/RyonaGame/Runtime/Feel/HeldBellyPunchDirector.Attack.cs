@@ -75,7 +75,7 @@ namespace Ryona.Game
                 ? Quaternion.LookRotation(toPlayer.normalized, Vector3.up)
                 : best.transform.rotation;
 
-            PunchZone zone = openingThrow || _hits == 0 ? PunchZone.Body : NextZone();
+            PunchZone zone = openingThrow ? PunchZone.Body : _comboZone;
 
             // 歩き始める前に攻撃トークンを確保する。取れなければ位置も動かさず、
             // 次の機会（0.3 秒後）に選び直す。
@@ -185,10 +185,10 @@ namespace Ryona.Game
             }
         }
 
-        /// <summary>次の一発の狙い。腹パンと顔面パンチを毎回ランダムに選ぶ。</summary>
-        PunchZone NextZone()
+        /// <summary>連撃の狙いを開始時に一度だけ決める。</summary>
+        PunchZone ChooseComboZone()
         {
-            return UnityEngine.Random.value < Mathf.Clamp01(FacePunchChance)
+            return FacePunchChance >= 1f || (FacePunchChance > 0f && UnityEngine.Random.value < FacePunchChance)
                 ? PunchZone.Face
                 : PunchZone.Body;
         }

@@ -93,6 +93,8 @@ namespace Ryona.Game
 
         // 腹パン演出（後ろ拘束中に別の敵の腹パンチを受けたとき）の残り時間。
         float _heldBellyPunchRemaining;
+        float _heldBellyFatigue;
+        float _heldBellyCarry;
         float _heldBellyPunchTotal;
 
         float _heldFacePunchRemaining;
@@ -170,11 +172,13 @@ namespace Ryona.Game
         /// 腹パンの被弾姿勢を再生する。拘束（Grabbed）の上に重ねるので、
         /// 呼んでも状態は Grabbed のまま。
         /// </summary>
-        public void PlayHeldBellyPunch(float seconds)
+        public void PlayHeldBellyPunch(float seconds, float fatigue = 0f)
         {
             if (seconds <= 0f)
                 return;
 
+            _heldBellyCarry = HeldBellyPunchFold;
+            _heldBellyFatigue = Mathf.Clamp01(fatigue);
             _heldBellyPunchTotal = seconds;
             _heldBellyPunchRemaining = seconds;
         }
@@ -191,9 +195,23 @@ namespace Ryona.Game
                     return 0f;
 
                 float t = _heldBellyPunchTotal - _heldBellyPunchRemaining;
-                float inT = Mathf.SmoothStep(0f, 1f, t / 0.055f);
-                float outT = 1f - Mathf.SmoothStep(0f, 1f, (t - 0.20f) / 0.35f);
+                float inT = Mathf.SmoothStep(_heldBellyCarry, 1f, t / 0.055f);
+                float recoverAt = _heldBellyPunchTotal * Mathf.Lerp(0.26f, 0.72f, _heldBellyFatigue);
+                float outT = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(recoverAt, _heldBellyPunchTotal, t));
                 return Mathf.Clamp01(inT * outT);
+            }
+        }
+
+        internal float HeldBellyCaptorLift
+        {
+            get
+            {
+                if (_heldBellyPunchRemaining <= 0f || _heldBellyFatigue < 0.6f)
+                    return 0f;
+                float progress = 1f - _heldBellyPunchRemaining / _heldBellyPunchTotal;
+                float pull = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.49f, 0.72f, progress));
+                float release = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.81f, 1f, progress));
+                return pull * (1f - release);
             }
         }
 
@@ -817,6 +835,8 @@ namespace Ryona.Game
 
             // 腹パンと顔パンの反動。ヒットストップ中は dt=0 なので、当たった瞬間の姿勢で止まる。
             _heldBellyPunchRemaining = Mathf.Max(0f, _heldBellyPunchRemaining - dt);
+            if (Grapple != null && (!Grapple.IsGrappled || Grapple.IsHandingOff))
+                _heldBellyPunchRemaining = 0f;
             _heldFacePunchRemaining = Mathf.Max(0f, _heldFacePunchRemaining - dt);
 
             // 投げの崩れ。引き込まれる動きなので、パンチの折れ（0.07 秒）よりゆっくり入れる。

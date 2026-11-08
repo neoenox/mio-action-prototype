@@ -403,6 +403,9 @@ namespace Ryona.Game
 
         /// <summary>タッグ腹パンの最中（発注から拳を押し込んでいる間）。見た目側がしゃがみ込むのに使う。</summary>
         public bool IsBellyPunch => _bellyPunchPendingHold > 0f || _punchPoseHoldSeconds > 0f;
+        internal float BellyPunchDrive => Phase == EnemyPhase.Windup
+            ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.40f, 0.86f, WindupProgress))
+            : 1f;
         internal bool HoldsBellyPunchGuard { get; set; }
 
         /// <summary>
@@ -433,6 +436,8 @@ namespace Ryona.Game
                 {
                     if (IsTagFaceHook)
                         return Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.08f, 0.44f, WindupProgress));
+                    if (IsBellyPunch)
+                        return Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.02f, 0.34f, WindupProgress));
 
                     // 当たりは「前フレームに描いた拳」で取る。通常の 0.7 から伸ばす ramp だと、
                     // 間合いの端（1.19m）で拳が伸びきる前に判定が来て空振りする。
@@ -1386,9 +1391,9 @@ namespace Ryona.Game
         public bool TryStartTagPunch(PunchZone zone, bool allowRecover = false, float holdPoseSeconds = 0f)
             => TryStartTagPunch(zone, allowRecover, holdPoseSeconds, fromThrow: false);
 
-        internal bool TryStartOpeningBellyPunch(float holdPoseSeconds)
+        internal bool TryStartOpeningPunch(PunchZone zone, float holdPoseSeconds)
             => isActiveAndEnabled &&
-                TryStartTagPunch(PunchZone.Body, true, holdPoseSeconds, fromThrow: true);
+                TryStartTagPunch(zone, true, holdPoseSeconds, fromThrow: zone == PunchZone.Body);
 
         bool TryStartTagPunch(PunchZone zone, bool allowRecover, float holdPoseSeconds, bool fromThrow)
         {

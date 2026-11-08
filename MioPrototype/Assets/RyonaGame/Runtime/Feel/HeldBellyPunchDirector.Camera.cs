@@ -7,6 +7,8 @@ namespace Ryona.Game
     /// </summary>
     public sealed partial class HeldBellyPunchDirector
     {
+        float ComboCameraPivot => CameraPivotOffset - (_comboZone == PunchZone.Body ? 0.18f : 0f);
+
         void ApplyCameraOverrides()
         {
             foreach (string a in System.Environment.GetCommandLineArgs())
@@ -41,14 +43,15 @@ namespace Ryona.Game
 
             float hold = Mathf.Max(0.2f, seconds);
             _camera.PushDistance(CameraDistanceScale, hold);
-            _camera.PushPivot(CameraPivotOffset, hold);
+            float pivot = ComboCameraPivot;
+            _camera.PushPivot(pivot, hold);
 
             float yaw = FocusYaw();
             _camera.PushFocus(_stats.transform.position.x, hold, CameraPitchOffset, yaw);
 
             // ヒット時に押した値だけ出す（毎フレームの保持はログに出さない）
             if (hold >= 1.5f)
-                Debug.Log($"[HeldPunchCam] scale={CameraDistanceScale:F2} pivot={CameraPivotOffset:F2} " +
+                Debug.Log($"[HeldPunchCam] scale={CameraDistanceScale:F2} pivot={pivot:F2} " +
                           $"pitch={CameraPitchOffset:F0} yaw={yaw:F0} " +
                           $"liveScale={_camera.EffectDistanceScale:F2} livePivot={_camera.EffectPivotOffset:F2}");
         }
@@ -63,7 +66,7 @@ namespace Ryona.Game
             if (!ResolveCamera())
                 return;
 
-            _camera.HoldFocus(CameraDistanceScale, CameraPivotOffset,
+            _camera.HoldFocus(CameraDistanceScale, ComboCameraPivot,
                 _stats.transform.position.x, 0.5f, CameraPitchOffset, FocusYaw());
         }
 

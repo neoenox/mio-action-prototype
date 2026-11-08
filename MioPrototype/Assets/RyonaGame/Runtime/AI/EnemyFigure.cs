@@ -940,14 +940,16 @@ namespace Ryona.Game
                 float bw = Brain.PunchPoseWeight;
                 if (Brain.IsBellyPunch)
                 {
-                    // 前足に重さを乗せ、肩を腹の高さへ運ぶ。
-                    torsoPitch -= 15f * bw;
-                    hipsY -= 0.20f * bw;
-                    kneeR += 42f * bw;
-                    kneeL += 18f * bw;
-                    // 前後に足を割る。両足を揃えて沈むと「座っている」画になる。
-                    legRPitch -= 22f * bw;
-                    legLPitch += 16f * bw;
+                    // 先に膝を曲げて拳を脇に溜め、前足に体重を移しながら腰を返す。
+                    float bodyDrive = Brain.BellyPunchDrive;
+                    torsoYaw = Mathf.Lerp(24f, -31f, bodyDrive) * bw;
+                    torsoPitch = Mathf.Lerp(torsoPitch, Mathf.Lerp(-12f, -21f, bodyDrive), bw);
+                    hipsY = Mathf.Lerp(hipsY, restY - Mathf.Lerp(0.34f, 0.30f, bodyDrive), bw);
+                    hipsZ = Mathf.Lerp(hipsZ, Mathf.Lerp(-0.085f, 0.07f, bodyDrive), bw);
+                    kneeR = Mathf.Lerp(kneeR, Mathf.Lerp(48f, 67f, bodyDrive), bw);
+                    kneeL = Mathf.Lerp(kneeL, Mathf.Lerp(61f, 34f, bodyDrive), bw);
+                    legRPitch = Mathf.Lerp(legRPitch, Mathf.Lerp(-20f, -29f, bodyDrive), bw);
+                    legLPitch = Mathf.Lerp(legLPitch, Mathf.Lerp(-4f, 18f, bodyDrive), bw);
                 }
                 else
                 {
@@ -1332,12 +1334,13 @@ namespace Ryona.Game
                 _root.localPosition += Vector3.forward * 0.03f;
         }
 
-        internal void FollowHeldBellyFold(float fold)
+        internal void FollowHeldBellyFold(float fold, float lift)
         {
             Vector3 leftFoot = _ankleL.position;
             Vector3 rightFoot = _ankleR.position;
-            _hips.localPosition = new Vector3(_hipsX, _hipsY - 0.065f * fold, _hipsZ - 0.035f * fold);
-            BraceHoldUpperBody(-19f * fold, 0f, -8f * fold);
+            _hips.localPosition = new Vector3(_hipsX, _hipsY - 0.065f * fold + 0.045f * lift,
+                _hipsZ - 0.035f * fold - 0.06f * lift);
+            BraceHoldUpperBody(-19f * fold + 18f * lift, 0f, -8f * fold + 8f * lift);
             ProceduralRig.SolveTwoBone(_hipL, _kneeL, _ankleL, leftFoot,
                 _hipL.position + transform.forward * 0.5f);
             ProceduralRig.SolveTwoBone(_hipR, _kneeR, _ankleR, rightFoot,
@@ -1874,18 +1877,19 @@ namespace Ryona.Game
                 _targetAnimator = _targetRig.GetComponent<CharacterAnimator>();
             float belly = _targetAnimator != null ? _targetAnimator.HeldBellyPunchFold : 0f;
             float face = _targetAnimator != null ? _targetAnimator.HeldFacePunchFlick : 0f;
+            float lift = _targetAnimator != null ? _targetAnimator.HeldBellyCaptorLift : 0f;
             if (belly > 0f || face > 0f)
             {
                 Vector3 headOffset = _targetRig.Neck.position - _brain.Player.transform.position;
                 float headSide = Mathf.Clamp(Vector3.Dot(headOffset, transform.right) / 0.08f, -1f, 1f);
                 float fold = belly * Mathf.SmoothStep(0f, 1f,
                     Mathf.InverseLerp(12f, 45f, _targetAnimator.DebugTorsoPitch));
-                _figure.FollowHeldBellyFold(fold);
+                _figure.FollowHeldBellyFold(fold, lift);
                 if (face > 0f)
-                    _figure.BraceHoldUpperBody(-19f * fold, 3f * face * headSide, -8f * fold);
+                    _figure.BraceHoldUpperBody(-19f * fold + 18f * lift, 3f * face * headSide, -8f * fold + 8f * lift);
             }
-            Solve(false, _targetRig.RUpperArm, hold.GrabContactWeight, belly, face);
-            Solve(true, _targetRig.LUpperArm, hold.GrabContactWeight, belly, face);
+            Solve(false, _targetRig.RUpperArm, hold.GrabContactWeight, belly, face, lift);
+            Solve(true, _targetRig.LUpperArm, hold.GrabContactWeight, belly, face, lift);
         }
 
         void AimShoulderGrip(bool left, Transform shoulder, float weight, bool shove = false)
@@ -1958,7 +1962,10 @@ namespace Ryona.Game
                     ? Vector3.ProjectOnPlane(cam.transform.forward, Vector3.up)
                     : Vector3.zero;
                 screenIn = screenIn.sqrMagnitude > 1e-4f ? screenIn.normalized : -toMe;
-                goal = target - screenIn * 0.11f;
+                Vector3 chamber = upper.position + outside * 0.12f
+                    - transform.up * 0.30f - transform.forward * 0.14f;
+                Vector3 contact = target - screenIn * 0.11f;
+                goal = Vector3.Lerp(chamber, contact, _brain.BellyPunchDrive);
             }
             else
             {
@@ -1972,6 +1979,9 @@ namespace Ryona.Game
             float down = zone == PunchZone.Face ? 0.30f : (_brain.IsBellyPunch ? 0.28f : 0.50f);
             float out_ = _brain.IsBellyPunch ? 0.34f : 0.20f;
             Vector3 pole = upper.position - transform.up * down + transform.right * out_;
+            if (_brain.IsBellyPunch)
+                pole = upper.position + outside * 0.36f
+                    - transform.up * Mathf.Lerp(0.42f, 0.12f, _brain.BellyPunchDrive);
             if (_brain.IsTagFaceHook)
                 pole = upper.position + outside * 0.48f + transform.up * 0.06f;
 
@@ -1984,7 +1994,7 @@ namespace Ryona.Game
             elbow.rotation = Quaternion.Slerp(oldElbow, aimedElbow, weight);
         }
 
-        void Solve(bool left, Transform target, float contact, float belly, float face)
+        void Solve(bool left, Transform target, float contact, float belly, float face, float lift)
         {
             var upper = _figure.ShoulderBone(left);
             var elbow = _figure.ElbowBone(left);
@@ -2010,6 +2020,7 @@ namespace Ryona.Game
                 + player.right * (side * (0.34f + 0.10f * face))
                 + player.forward * 0.28f;
             goal = Vector3.Lerp(goal, target.position - transform.forward * 0.045f, contact);
+            goal += (Vector3.up * 0.085f - player.forward * 0.075f) * lift;
             pole = Vector3.Lerp(pole, upper.position + transform.right * (side * 0.25f) - transform.up * 0.24f, contact);
             ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);
         }
