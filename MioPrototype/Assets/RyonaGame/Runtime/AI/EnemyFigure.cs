@@ -976,14 +976,31 @@ namespace Ryona.Game
             }
             // タッグ技（腹 / 顔）は片手で打つ。通常のジャブは左前腕を胸の前へ水平に構えるので、
             // 腹パンの体勢（上体を前へ倒す）と重なると「両手を前に出して押している」画になる。
-            // 打たない左腕は脇を締めたまま拳を胸の前に構え、右の拳だけを出す。
-            // 腹と顔が混ざるコンボでも腕の形が入れ替わらないよう、振り抜きまで同じ形を保つ。
+            // 打たない腕は脇を締めたまま拳を胸の前に構える。顔のフックは奥側の腕で打つ。
             if (Brain != null && Brain.IsTagPunch && AttackNow != AttackId.Grab
                 && (phase == EnemyPhase.Windup || phase == EnemyPhase.Attack || phase == EnemyPhase.Recover))
             {
-                armLPitch = _tagArmL;
-                elbowL = _tagElbowL;
-                armLSpread = _tagSpreadL;
+                if (Brain.UsesLeftPunch)
+                {
+                    armLPitch = armRPitch;
+                    elbowL = elbowR;
+                    armLSpread = -armRSpread;
+                    torsoYaw = -torsoYaw;
+                    armRPitch = _tagArmL;
+                    elbowR = _tagElbowL;
+                    armRSpread = -_tagSpreadL;
+                }
+                else
+                {
+                    armLPitch = _tagArmL;
+                    elbowL = _tagElbowL;
+                    armLSpread = _tagSpreadL;
+                }
+                if (Brain.IsTagFaceHook)
+                {
+                    float side = Brain.UsesLeftPunch ? -1f : 1f;
+                    torsoYaw = side * Brain.PunchPoseWeight * Mathf.Lerp(24f, -30f, Brain.FaceHookSweep);
+                }
             }
             // 検証用の上書き（エディタで姿勢を撮り比べる）。実行中は null なので影響しない。
             if (ForceLeftArm.HasValue)            {
@@ -1302,6 +1319,11 @@ namespace Ryona.Game
                 lunge = Mathf.Clamp(gap - 0.50f, 0f, lunge);
                 if (phase == EnemyPhase.Recover && _swingTime >= 0f)
                     drive = 1f - Mathf.SmoothStep(0f, 1f, (_swingTime - 0.20f) / 0.17f);
+            }
+            else if (Brain != null && Brain.IsTagFaceHook && Brain.Player != null)
+            {
+                float gap = Vector3.Dot(Brain.Player.transform.position - transform.position, transform.forward);
+                lunge = Mathf.Clamp(gap - 0.45f, 0f, lunge);
             }
             _lungeOffset = lunge * drive;
             _root.localPosition += Vector3.forward * _lungeOffset;
@@ -1897,9 +1919,10 @@ namespace Ryona.Game
         /// </summary>
         void AimPunch(float weight)
         {
-            var upper = _figure.ShoulderBone(false);
-            var elbow = _figure.ElbowBone(false);
-            var wrist = _figure.WristBone(false);
+            bool left = _brain.UsesLeftPunch;
+            var upper = _figure.ShoulderBone(left);
+            var elbow = _figure.ElbowBone(left);
+            var wrist = _figure.WristBone(left);
             if (upper == null || elbow == null || wrist == null || _brain.Player == null) return;
 
             PunchZone zone = _brain.Zone;
@@ -1914,7 +1937,18 @@ namespace Ryona.Game
             toMe = toMe.sqrMagnitude > 1e-4f ? toMe.normalized : -transform.forward;
 
             Vector3 goal;
-            if (_brain.IsBellyPunch)
+            Vector3 outside = transform.right * (left ? -1f : 1f);
+            if (_brain.IsTagFaceHook)
+            {
+                // 拳を肩の外に引き、前に出てから横へ回り込む弧を描く。
+                float sweep = _brain.FaceHookSweep;
+                Vector3 cocked = upper.position + outside * 0.28f - transform.forward * 0.08f;
+                Vector3 around = target + outside * 0.40f - transform.forward * 0.12f;
+                Vector3 cheek = target - transform.forward * 0.045f + outside * 0.065f;
+                goal = Vector3.Lerp(Vector3.Lerp(cocked, around, sweep),
+                    Vector3.Lerp(around, cheek, sweep), sweep);
+            }
+            else if (_brain.IsBellyPunch)
             {
                 // タッグ腹パンは「カメラ側の面」で止める。殴り手側（彼女の正面）で止めると
                 // 拳が体の奥に沈み、カメラからは当たっている場所が見えない。
@@ -1938,6 +1972,8 @@ namespace Ryona.Game
             float down = zone == PunchZone.Face ? 0.30f : (_brain.IsBellyPunch ? 0.28f : 0.50f);
             float out_ = _brain.IsBellyPunch ? 0.34f : 0.20f;
             Vector3 pole = upper.position - transform.up * down + transform.right * out_;
+            if (_brain.IsTagFaceHook)
+                pole = upper.position + outside * 0.48f + transform.up * 0.06f;
 
             Quaternion oldUpper = upper.rotation;
             Quaternion oldElbow = elbow.rotation;

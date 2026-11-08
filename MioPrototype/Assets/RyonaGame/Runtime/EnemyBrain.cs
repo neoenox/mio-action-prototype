@@ -410,6 +410,12 @@ namespace Ryona.Game
         /// 腹と顔が混ざるコンボでも腕の形が入れ替わらないよう、振り抜きまで true を保つ。
         /// </summary>
         public bool IsTagPunch => _tagPunchSwing;
+        internal bool IsTagFaceHook => _tagPunchSwing && Zone == PunchZone.Face;
+        internal bool UsesLeftPunch => IsTagFaceHook && _tagHookLeft;
+        internal float FaceHookSweep => Phase == EnemyPhase.Windup
+            ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.52f, 0.90f, WindupProgress))
+            : 1f;
+        bool _tagHookLeft;
         internal bool IsOpeningBellyPunch => _run.FromHeldThrow && _tagPunchSwing;
 
         public float PunchPoseWeight
@@ -425,6 +431,9 @@ namespace Ryona.Game
 
                 if (Phase == EnemyPhase.Windup)
                 {
+                    if (IsTagFaceHook)
+                        return Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.08f, 0.44f, WindupProgress));
+
                     // 当たりは「前フレームに描いた拳」で取る。通常の 0.7 から伸ばす ramp だと、
                     // 間合いの端（1.19m）で拳が伸びきる前に判定が来て空振りする。
                     // タッグ技（腹 / 顔）だけ早めに伸ばしきって、当てにいく。
@@ -1327,7 +1336,7 @@ namespace Ryona.Game
         bool PunchTouchesPlayer()
         {
             var figure = GetComponent<EnemyFigure>();
-            var fist = figure != null ? figure.Fist(false) : null;
+            var fist = figure != null ? figure.Fist(UsesLeftPunch) : null;
             if (fist == null || Player == null) return false;
             Vector3 target = PunchTarget(Player, Zone, BodyTargetBias);
             Vector3 toPlayer = Player.transform.position - transform.position;
@@ -1337,7 +1346,7 @@ namespace Ryona.Game
             // 腹パンの距離は -hitlog のときだけ出す（常時出すとログが埋まる）。
             if (_hitLog && (_punchPoseHoldSeconds > 0f || _bellyPunchPendingHold > 0f || _tagPunchPending))
             {
-                Transform wrist = figure.WristBone(false);
+                Transform wrist = figure.WristBone(UsesLeftPunch);
                 float wristGap = wrist != null ? Vector3.Distance(wrist.position, target) : -1f;
                 Debug.Log($"[BellyHit] att={name} pos=({transform.position.x:F2},{transform.position.z:F2}) " +
                           $"yaw={transform.eulerAngles.y:F0} " +
@@ -1423,6 +1432,9 @@ namespace Ryona.Game
             _bellyPunchPendingHold = zone == PunchZone.Body ? Mathf.Max(0f, holdPoseSeconds) : 0f;
             _tagPunchPending = true;
             _tagPunchSwing = true;
+            Camera camera = Camera.main;
+            _tagHookLeft = zone == PunchZone.Face && camera != null &&
+                Vector3.Dot(camera.transform.position - transform.position, transform.right) > 0f;
             ForceZone = null;
 
             Debug.Log($"[HeldPunch] order {name} zone={zone} dist={distance:F2} " +
