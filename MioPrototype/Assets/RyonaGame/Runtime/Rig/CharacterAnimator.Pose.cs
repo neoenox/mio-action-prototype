@@ -809,17 +809,18 @@ namespace Ryona.Game
             pose.ArmLFore += new Vector3(0f, -0.12f * give, 0f);
             pose.ArmRFore += new Vector3(0f, -0.12f * give, 0f);
 
-            // 蹴り上げに合わせ、腹で折れながら腰と両足が跳ね上がる。
-            // 足の IK 目標も上げ、接地したまま脚だけが伸びるのを防ぐ。
+            // 膝に押された腹を引き、みぞおちから上を前へ折る。足は一瞬だけ浮く。
             float knee = Grapple != null ? Grapple.KneePulse : 0f;
             if (knee > 0f)
             {
-                pose.TorsoPitch += 18f * knee;
-                pose.HipsOffset.y += 0.28f * knee;
-                pose.HipsOffset.z += 0.03f * knee;
-                pose.FootL += new Vector3(0f, 0.16f, -0.06f) * knee;
-                pose.FootR += new Vector3(0f, 0.16f, -0.06f) * knee;
-                pose.HeadPitch -= 12f * knee;   // 顎を上げて顔を残す（前髪で隠れない）
+                float fold = Mathf.SmoothStep(0f, 1f, knee);
+                pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, 49f, fold);
+                pose.HipsOffset.y += 0.14f * knee;
+                pose.HipsOffset.z -= 0.10f * knee;
+                pose.FootL += new Vector3(0f, 0.085f, -0.075f) * knee;
+                pose.FootR += new Vector3(0f, 0.085f, -0.075f) * knee;
+                // 胸にも前傾が配られるので、その分も首で打ち消して顔を前に残す。
+                pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -67f, fold);
             }
 
             pose.Grip = 1f;

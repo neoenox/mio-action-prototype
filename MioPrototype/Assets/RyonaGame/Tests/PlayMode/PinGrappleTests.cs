@@ -318,15 +318,15 @@ namespace Ryona.Tests
             {
                 // yield null の再開時には直前フレームの LateUpdate の骨位置が読める。
                 yield return null;
-                Vector3 belly = Vector3.Lerp(rig.Spine.position, rig.Chest.position, 0.45f)
-                    + _player.transform.forward * 0.12f;
+                Vector3 spine = rig.Spine.position;
+                Vector3 chest = rig.Chest.position;
+                Vector3 front = Vector3.ProjectOnPlane(_player.transform.forward, chest - spine).normalized;
+                Vector3 belly = Vector3.Lerp(spine, chest, 0.60f) + front * 0.085f;
                 bool left = (figure.KneeBone(true).position - belly).sqrMagnitude
                     < (figure.KneeBone(false).position - belly).sqrMagnitude;
                 Vector3 knee = figure.KneeBone(left).position;
-                float gap = Vector3.Distance(knee, belly);
-                // 骨位置は「前フレームの LateUpdate」なので 1 フレームぶんの遅れを含む。
-                // 1cm 未満を求めるとフレームレートで落ちるので、見た目で分からない 12cm を上限にする。
-                Assert.Less(gap, 0.12f, "跳ね上がった腹から膝が離れている");
+                Vector3 kneeSurface = knee - front * (figure.Height * 0.039f);
+                Assert.Less(Vector3.Distance(kneeSurface, belly), 0.055f, "膝頭が前傾した腹の表面から離れている");
                 Vector3 shin = figure.AnkleBone(left).position - knee;
                 Assert.Less(Vector3.Dot(shin, _captor.transform.forward), -0.05f,
                     "当たる膝より奥へ脛が入り込まない");

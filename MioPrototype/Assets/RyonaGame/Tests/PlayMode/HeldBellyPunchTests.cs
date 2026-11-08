@@ -117,7 +117,7 @@ namespace Ryona.Tests
             Assert.Greater(_anim.DebugTorsoPitch, 27f, "The upper body folds over the abdomen.");
             Assert.Less(Vector3.Dot(_anim.Rig.Hips.position - hipsBefore, _player.transform.forward), -0.075f,
                 "The waist travels in the direction of the impact.");
-            Assert.Less(bellyDepth, headDepth - 0.04f, "The captor yields with the player's recoil.");
+            Assert.Greater(bellyDepth, headDepth + 0.04f, "The captor bends with the player's folded upper body.");
 
             yield return new WaitForSeconds(0.5f);
             _anim.PlayHeldFacePunch(0.55f);

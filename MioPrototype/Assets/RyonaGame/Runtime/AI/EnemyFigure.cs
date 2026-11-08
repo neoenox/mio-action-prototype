@@ -359,9 +359,8 @@ namespace Ryona.Game
             Vector3 toBelly = belly - hip.position;
             if (toBelly.sqrMagnitude < 0.0001f) return;
 
-            // 腹が腿の届く球面より外なら、骨盤も踏み込ませる。
-            // 固定角度を深くするだけでは、膝は高くなっても腹から後ろへ離れてしまう。
-            Vector3 shift = toBelly.normalized * Mathf.Max(0f, toBelly.magnitude - thighLength);
+            // 骨盤も合わせて動かし、腿の長さを保ったまま膝頭を腹の表面で止める。
+            Vector3 shift = toBelly.normalized * Mathf.Max(-0.065f, toBelly.magnitude - thighLength);
             _hips.position += shift * weight;
             Quaternion aimed = Quaternion.FromToRotation(knee.position - hip.position, belly - hip.position) * hip.rotation;
             hip.rotation = Quaternion.Slerp(hip.rotation, aimed, weight);
@@ -1311,7 +1310,20 @@ namespace Ryona.Game
                 _root.localPosition += Vector3.forward * 0.03f;
         }
 
-        // 澪の被弾姿勢を反映した後、手の位置を解く前に上体を引く。
+        internal void FollowHeldBellyFold(float fold)
+        {
+            Vector3 leftFoot = _ankleL.position;
+            Vector3 rightFoot = _ankleR.position;
+            _hips.localPosition = new Vector3(_hipsX, _hipsY - 0.065f * fold, _hipsZ - 0.035f * fold);
+            BraceHoldUpperBody(-19f * fold, 0f, -8f * fold);
+            ProceduralRig.SolveTwoBone(_hipL, _kneeL, _ankleL, leftFoot,
+                _hipL.position + transform.forward * 0.5f);
+            ProceduralRig.SolveTwoBone(_hipR, _kneeR, _ankleR, rightFoot,
+                _hipR.position + transform.forward * 0.5f);
+            _ankleL.rotation = _ankleR.rotation = transform.rotation;
+        }
+
+        // 澪の被弾姿勢を反映した後、手の位置を解く前に上体を合わせる。
         internal void BraceHoldUpperBody(float leanBack, float leanSide, float tuckChin)
         {
             // ヒットストップ中は Step が止まるので、前フレームの補正には重ねない。
@@ -1844,7 +1856,11 @@ namespace Ryona.Game
             {
                 Vector3 headOffset = _targetRig.Neck.position - _brain.Player.transform.position;
                 float headSide = Mathf.Clamp(Vector3.Dot(headOffset, transform.right) / 0.08f, -1f, 1f);
-                _figure.BraceHoldUpperBody(14f * belly, 3f * face * headSide, 10f * belly);
+                float fold = belly * Mathf.SmoothStep(0f, 1f,
+                    Mathf.InverseLerp(12f, 45f, _targetAnimator.DebugTorsoPitch));
+                _figure.FollowHeldBellyFold(fold);
+                if (face > 0f)
+                    _figure.BraceHoldUpperBody(-19f * fold, 3f * face * headSide, -8f * fold);
             }
             Solve(false, _targetRig.RUpperArm, hold.GrabContactWeight, belly, face);
             Solve(true, _targetRig.LUpperArm, hold.GrabContactWeight, belly, face);
@@ -1998,11 +2014,13 @@ namespace Ryona.Game
                 _targetRig.LUpperArm == null || _targetRig.RUpperArm == null)
                 return;
 
-            // 主人公の跳ね上がりを反映した後の腹を狙う。角度だけでは腰の下へ外れる。
+            // 折れた胴に沿って腹の正面を取り直し、膝頭の表面が当たる位置に関節を置く。
             if (hold.KneePulse > 0f && _targetRig.Spine != null && _targetRig.Chest != null)
             {
-                Vector3 belly = Vector3.Lerp(_targetRig.Spine.position, _targetRig.Chest.position, 0.45f)
-                    + _brain.Player.transform.forward * 0.12f;
+                Vector3 spine = _targetRig.Spine.position;
+                Vector3 chest = _targetRig.Chest.position;
+                Vector3 front = Vector3.ProjectOnPlane(_brain.Player.transform.forward, chest - spine).normalized;
+                Vector3 belly = Vector3.Lerp(spine, chest, 0.60f) + front * (0.085f + _figure.Height * 0.039f);
                 var cam = Camera.main;
                 bool left = cam != null && Vector3.Dot(cam.transform.position - transform.position, transform.right) < 0f;
                 float kick = Mathf.SmoothStep(0f, 1f, hold.KneePulse);
@@ -2191,7 +2209,7 @@ namespace Ryona.Game
                 _camera.HoldFocus(
                     Mathf.Lerp(0.25f, 0.21f, close),
                     Mathf.Lerp(0.30f, 0.36f, close),
-                    x, 0.5f, 3f, -12f * sign);
+                    x, 0.5f, 3f, -24f * sign);
             }
         }
 
