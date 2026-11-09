@@ -36,3 +36,6 @@ InitTestScene*.unity.meta
 
 # 検証用の montage 画像（プロジェクト直下）
 /montage-*.png
+
+# grapple_verify.py の出力
+/MioPrototype/Verify/

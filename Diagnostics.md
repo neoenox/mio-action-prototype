@@ -101,6 +101,29 @@
   逸脱が無くても実測レンジ（各関節の最大角度）を出すので、計測が壊れていないかも分かる
 - 関節の一覧・角度の向き・余裕の調整方法は [Joint-ROM.md](Joint-ROM.md)
 
+## 演出の前後比較と可動域ランキング（`grapple_verify.py`）
+
+実行版を決まった条件で動かし、撮影・可動域の一覧・前後比較をまとめて出す（`MioPrototype/` で実行。Unity Editor は閉じておく）。
+
+```
+python tools/grapple_verify.py run --label before      # 直す前
+python tools/grapple_verify.py run --label after       # 直したあと
+python tools/grapple_verify.py compare before after    # 並べる
+```
+
+| 引数 | 意味 |
+|---|---|
+| `--scenarios` | 既定 `belly,face,mount`。全部は `belly,face,face_far,mount,mount_prone,pin` |
+| `--no-build` / `--build` | ビルド確認を飛ばす / 必ずビルドする（既定はソースが新しければ自動でビルド） |
+| `--count` `--cols` `--tile` | montage のコマ数・列数・1コマの幅 |
+
+出力は `MioPrototype/Verify/<label>/`（git 管理外）。`montage_*.png`（連番から等間隔に抜いたコマ）、
+`rom_report.md`（可動域を超えた関節を**超過の大きい順**に並べた表。上から直す）、`rom.json`。
+`compare` は `Verify/compare_<A>_vs_<B>/` に、上段 A・下段 B の画像と `rom_diff.md`（悪化・新規・改善・消えた）を出す。
+
+可動域は実行版を `-jointrom` で動かして拾うので、キャラ同士が絡む姿勢（Check Joint ROM の総当たりでは出ないもの）も入る。
+警告は同じ関節につき 2 秒に 1 回なので、「回数」は目安。
+
 ## 計測のコツ
 
 - `-hudshot` の時刻は**ゲーム内時間**。起動直後のシェーダコンパイルで遅れるので、
