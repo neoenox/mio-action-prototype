@@ -7,7 +7,21 @@ namespace Ryona.Game
     /// </summary>
     public sealed partial class HeldBellyPunchDirector
     {
-        float ComboCameraPivot => CameraPivotOffset - (_comboZone == PunchZone.Body ? 0.18f : 0f);
+        float ComboCameraPivot =>
+            (_comboZone == PunchZone.Face ? FaceCameraPivotOffset : CameraPivotOffset)
+            - (_comboZone == PunchZone.Body ? 0.18f : 0f);
+
+        /// <summary>顔面パンチは「顔と拳」が同じ画に入るよう、腹パンと別のカメラにする。</summary>
+        float ZoneDistanceScale =>
+            _comboZone == PunchZone.Face ? FaceCameraDistanceScale : CameraDistanceScale;
+
+        float ZonePitch => _comboZone == PunchZone.Face ? FaceCameraPitchOffset : CameraPitchOffset;
+
+        float ZoneYaw => _comboZone == PunchZone.Face ? FaceCameraYawOffset : CameraYawOffset;
+
+        /// <summary>当たった瞬間だけ少し寄る（顔面パンチの衝撃を画で押す）。</summary>
+        float EffectiveDistanceScale =>
+            ZoneDistanceScale * (1f - 0.07f * _impactPulse * (_comboZone == PunchZone.Face ? 1f : 0f));
 
         void ApplyCameraOverrides()
         {
@@ -23,6 +37,14 @@ namespace Ryona.Game
                     CameraYawOffset = yaw;
                 else if (TryRead(a, "-heldpunchface=", out float face))
                     FacePunchChance = Mathf.Clamp01(face);
+                else if (TryRead(a, "-heldpunchfaceyaw=", out float faceYaw))
+                    FaceCameraYawOffset = faceYaw;
+                else if (TryRead(a, "-heldpunchfacepitch=", out float facePitch))
+                    FaceCameraPitchOffset = facePitch;
+                else if (TryRead(a, "-heldpunchfacepivot=", out float facePivot))
+                    FaceCameraPivotOffset = facePivot;
+                else if (TryRead(a, "-heldpunchfacedist=", out float faceDist))
+                    FaceCameraDistanceScale = faceDist;
             }
         }
 
@@ -42,17 +64,17 @@ namespace Ryona.Game
                 return;
 
             float hold = Mathf.Max(0.2f, seconds);
-            _camera.PushDistance(CameraDistanceScale, hold);
+            _camera.PushDistance(EffectiveDistanceScale, hold);
             float pivot = ComboCameraPivot;
             _camera.PushPivot(pivot, hold);
 
             float yaw = FocusYaw();
-            _camera.PushFocus(_stats.transform.position.x, hold, CameraPitchOffset, yaw);
+            _camera.PushFocus(_stats.transform.position.x, hold, ZonePitch, yaw);
 
             // ヒット時に押した値だけ出す（毎フレームの保持はログに出さない）
             if (hold >= 1.5f)
-                Debug.Log($"[HeldPunchCam] scale={CameraDistanceScale:F2} pivot={pivot:F2} " +
-                          $"pitch={CameraPitchOffset:F0} yaw={yaw:F0} " +
+                Debug.Log($"[HeldPunchCam] scale={EffectiveDistanceScale:F2} pivot={pivot:F2} " +
+                          $"pitch={ZonePitch:F0} yaw={yaw:F0} " +
                           $"liveScale={_camera.EffectDistanceScale:F2} livePivot={_camera.EffectPivotOffset:F2}");
         }
 
@@ -66,7 +88,7 @@ namespace Ryona.Game
             if (!ResolveCamera())
                 return;
 
-            _camera.HoldFocus(CameraDistanceScale, ComboCameraPivot,
+            _camera.HoldFocus(EffectiveDistanceScale, ComboCameraPivot,
                 _stats.transform.position.x, 0.5f, CameraPitchOffset, FocusYaw());
         }
 
@@ -75,7 +97,7 @@ namespace Ryona.Game
         {
             float facing = _stats.transform.forward.x;
             float sign = Mathf.Abs(facing) > 0.1f ? Mathf.Sign(facing) : 1f;
-            return CameraYawOffset * sign;
+            return ZoneYaw * sign;
         }
 
         bool ResolveCamera()

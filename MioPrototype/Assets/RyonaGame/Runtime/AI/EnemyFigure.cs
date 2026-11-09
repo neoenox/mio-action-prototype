@@ -1024,49 +1024,57 @@ namespace Ryona.Game
                 if (Brain.IsTagFacePunch)
                 {
                     float side = Brain.UsesLeftPunch ? -1f : 1f;
-                    float faceCoil = Brain.TagFaceCoil;
-                    float faceDrive = Brain.TagFaceDrive;
+                    // 決めの一発（5 発目）は踏み込みを大きくして、連打の締めに見せる。
+                    float power = Brain.TagFacePower;
+                    float faceCoil = Brain.TagFaceCoil * power;
+                    float faceDrive = Brain.TagFaceDrive * power;
 
                     // 腰 → 胸 → 肩の順にひねる。溜めは拳側へ、振り抜きは逆へ回す。
-                    torsoYaw = side * (22f * faceCoil - 28f * faceDrive);
-                    torsoPitch = -4f * faceCoil - 8f * faceDrive;
-                    torsoRoll = side * (-4f * faceCoil + 6f * faceDrive);
+                    // 上体も前へ入れて、腕だけでなく体重が拳に乗っていることを見せる。
+                    torsoYaw = side * (24f * faceCoil - 34f * faceDrive);
+                    torsoPitch = -5f * faceCoil - 16f * faceDrive;
+                    torsoRoll = side * (-4f * faceCoil + 8f * faceDrive);
 
                     // 溜めで後ろへ預けた体重を、踏み込みで拳へ乗せる。
-                    hipsZ = 0.16f * faceDrive - 0.05f * faceCoil;
-                    hipsY = restY - 0.05f * faceDrive + 0.008f * faceCoil;
+                    // 決めの一発でも腰を出しすぎない（出しすぎると拳が彼女の顔に近づきすぎ、
+                    // 肘が折れて「押している」画になる）。強さは上体のひねりと反りに乗せる。
+                    float bodyDrive = Mathf.Min(faceDrive, 1.05f);
+                    hipsZ = 0.18f * bodyDrive - 0.05f * faceCoil;
+                    hipsY = restY - 0.06f * bodyDrive + 0.008f * faceCoil;
 
                     // 拳側（後ろ足）で踏ん張り、前足が体重を受けて曲がる。
                     bool punchRight = side > 0f;
-                    legRPitch = punchRight ? (-3f - 9f * faceDrive) : (8f + 4f * faceDrive);
-                    legLPitch = punchRight ? (8f + 4f * faceDrive) : (-3f - 9f * faceDrive);
+                    legRPitch = punchRight ? (-3f - 12f * faceDrive) : (8f + 4f * faceDrive);
+                    legLPitch = punchRight ? (8f + 4f * faceDrive) : (-3f - 12f * faceDrive);
                     kneeR = punchRight
-                        ? (16f + 6f * faceCoil - 6f * faceDrive)
-                        : (16f + 10f * faceDrive);
+                        ? (16f + 6f * faceCoil - 8f * faceDrive)
+                        : (16f + 14f * faceDrive);
                     kneeL = punchRight
-                        ? (16f + 10f * faceDrive)
-                        : (16f + 6f * faceCoil - 6f * faceDrive);
+                        ? (16f + 14f * faceDrive)
+                        : (16f + 6f * faceCoil - 8f * faceDrive);
 
                     // 打つ拳は頬の横へ引いて構える（振り抜きは BackHoldPose が実際の腕を解く）。
                     // 反対の腕は顎の前に構え、振り抜きで引いて反動をつくる。
-                    float chamber = -36f - 12f * faceDrive;
+                    // 構えの拳は体の中心ではなく「自分の頬の外側」に置く（戻すときに
+                    // 彼女の顔の前を横切らない）。
+                    float chamber = -30f - 12f * faceDrive;
                     if (punchRight)
                     {
                         armRPitch = chamber;
-                        elbowR = 140f;
-                        armRSpread = -3f;
+                        elbowR = 132f;
+                        armRSpread = -18f;
                         armLPitch = -22f - 14f * faceDrive;
                         elbowL = 128f;
-                        armLSpread = 6f;
+                        armLSpread = 10f;
                     }
                     else
                     {
                         armLPitch = chamber;
-                        elbowL = 140f;
-                        armLSpread = 3f;
+                        elbowL = 132f;
+                        armLSpread = 18f;
                         armRPitch = -22f - 14f * faceDrive;
                         elbowR = 128f;
-                        armRSpread = -6f;
+                        armRSpread = -10f;
                     }
                 }
                 else
@@ -1360,7 +1368,7 @@ namespace Ryona.Game
             // 拳側の足はかかとを上げて踏ん張る（体重が拳へ乗ったことが足元で分かる）。
             if (Brain != null && Brain.IsTagFacePunch)
             {
-                float heel = 26f * Brain.TagFaceDrive;
+                float heel = 34f * Brain.TagFaceDrive * Brain.TagFacePower;
                 if (heel > 0.1f)
                 {
                     if (Brain.UsesLeftPunch)
@@ -2064,6 +2072,15 @@ namespace Ryona.Game
         ProceduralRig _targetRig;
         CharacterAnimator _targetAnimator;
 
+        /// <summary>顔面パンチの溜め位置（殴る側のローカル座標）。振り始めの拳から取る。</summary>
+        Vector3 _faceChamberLocal;
+        bool _hasFaceChamber;
+
+        /// <summary>命中した瞬間の腕の角度。振り抜きから構えへ戻すときに使う。</summary>
+        Quaternion _faceContactShoulder = Quaternion.identity;
+        Quaternion _faceContactElbow = Quaternion.identity;
+        bool _hasFaceContactPose;
+
         void LateUpdate()
         {
             if (_figure == null) _figure = GetComponent<EnemyFigure>();
@@ -2234,9 +2251,10 @@ namespace Ryona.Game
         /// <summary>
         /// 拘束中の顔面パンチ。
         ///
-        /// 拳を「自分の頬の横」から「彼女の頬」へ、外側を通る弧で振り抜く。
+        /// 拳を「構えの位置」から「彼女の頬」へ、外側を通る弧で振り抜く。
         /// 弧の進み具合を重みの 2 乗にして、当たる瞬間が一番速くなるようにする
-        /// （そのまま等速で伸ばすと、当たる直前に減速して「やる気のないパンチ」になる）。
+        /// （等速で伸ばすと、当たる直前に減速して「やる気のないパンチ」になる）。
+        /// 溜めの位置は、拳を振り始めた瞬間の実際の拳から取る（構えからの段差を消す）。
         /// </summary>
         void AimTagFacePunch(Transform upper, Transform elbow, Transform wrist,
             Vector3 target, Vector3 outside, float weight)
@@ -2245,6 +2263,25 @@ namespace Ryona.Game
                 return;
 
             float w = Mathf.Clamp01(weight);
+            if (w < 0.04f)
+            {
+                _hasFaceChamber = false;
+                _hasFaceContactPose = false;
+            }
+
+            // 振り抜き（Recover）は、命中時の角度から構えへ戻す。
+            // 軌道で戻すと、肘が畳まれる途中で曲がる面が反転して拳が一瞬 40cm 飛ぶ。
+            if (_brain.Phase == EnemyPhase.Recover)
+            {
+                if (_hasFaceContactPose)
+                {
+                    float back = 1f - w;
+                    upper.localRotation = Quaternion.Slerp(_faceContactShoulder, upper.localRotation, back);
+                    elbow.localRotation = Quaternion.Slerp(_faceContactElbow, elbow.localRotation, back);
+                }
+                return;
+            }
+
             float s = w * w;
 
             bool left = _brain.UsesLeftPunch;
@@ -2252,22 +2289,39 @@ namespace Ryona.Game
                 ? outside.normalized
                 : transform.right * (left ? -1f : 1f);
             Transform fist = _figure.Fist(left);
+            if (fist == null)
+                return;
 
-            // 溜め: 自分の頬の横（肩の後ろ外側）。拳は一度引いてから出る。
-            Vector3 chamber = upper.position
-                - transform.forward * 0.17f
-                + punchSide * 0.15f
-                + Vector3.up * 0.05f;
+            // 溜め: 振り始めの拳の位置を、彼のローカルに控えて体の回転に追従させる。
+            if (!_hasFaceChamber)
+            {
+                _faceChamberLocal = transform.InverseTransformPoint(fist.position);
+                _hasFaceChamber = true;
+            }
+
+            Vector3 chamber = transform.TransformPoint(_faceChamberLocal);
 
             // 弧: 拳が彼女の顔の外側を通って回り込む。
             Vector3 arc = upper.position
-                + transform.forward * 0.18f
-                + punchSide * 0.34f
-                + Vector3.up * 0.09f;
+                + transform.forward * 0.20f
+                + punchSide * 0.30f
+                + Vector3.up * 0.08f;
 
             // 当たる場所: 彼女の頭の中心から拳 1 つぶん手前（頬の表面）。
+            // IK の終点は手首なので、拳がそのぶん先へ出ることを見込んで手前を狙う。
             Vector3 toHead = target - upper.position;
-            Vector3 contact = target - toHead.normalized * 0.10f + punchSide * 0.02f;
+            Vector3 contact = target - toHead.normalized * 0.17f + punchSide * 0.02f;
+
+            // 体が入りすぎて拳が肩へ寄ると、肘の曲がる面が反転して拳が飛ぶ。
+            // 肩から最低限の距離を保つ（そのぶん彼女の顔から離れるが、判定半径内）。
+            Vector3 contactFromShoulder = contact - upper.position;
+            float contactDistance = contactFromShoulder.magnitude;
+            if (contactDistance < 0.34f)
+            {
+                contact = upper.position
+                    + (contactDistance > 1e-4f ? contactFromShoulder / contactDistance : transform.forward)
+                    * 0.34f;
+            }
 
             Vector3 point = (1f - s) * (1f - s) * chamber
                 + 2f * (1f - s) * s * arc
@@ -2279,22 +2333,16 @@ namespace Ryona.Game
                 + Vector3.up * 0.18f
                 + transform.forward * 0.04f;
 
-            Quaternion guardShoulder = upper.localRotation;
-            Quaternion guardElbow = elbow.localRotation;
+            ProceduralRig.SolveTwoBone(upper, elbow, wrist, point, pole, transform.right);
+            EnemyFigure.SettleElbowHinge(upper, elbow, wrist);
 
-            // 手首ではなく拳を狙いに置きたいので、手首→拳のオフセットを引いて 2 回解く。
-            for (int i = 0; i < 2; i++)
+            // 命中の瞬間の角度を控える（振り抜きはここから構えへ戻す）。
+            if (w > 0.985f)
             {
-                ProceduralRig.SolveTwoBone(upper, elbow, wrist, point, pole, transform.right);
-                if (fist == null)
-                    break;
-                point -= fist.position - wrist.position;
+                _faceContactShoulder = upper.localRotation;
+                _faceContactElbow = elbow.localRotation;
+                _hasFaceContactPose = true;
             }
-
-            // 構えから弧へ入るときの段差を消す（重みが小さいうちだけ混ぜる）。
-            float blend = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(w / 0.18f));
-            upper.localRotation = Quaternion.Slerp(guardShoulder, upper.localRotation, blend);
-            elbow.localRotation = Quaternion.Slerp(guardElbow, elbow.localRotation, blend);
         }
 
         /// <summary>

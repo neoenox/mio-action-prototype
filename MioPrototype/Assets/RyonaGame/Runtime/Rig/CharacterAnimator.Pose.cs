@@ -734,24 +734,30 @@ namespace Ryona.Game
                     if (Mathf.Abs(lateral) < 0.15f)
                         lateral = toCamera >= 0f ? 1f : -1f;
 
-                    // 頭は一気に振り切る。少し遅れて胸が付き、腰は拘束位置に残す。
+                    // 頭は先行、胸は少し遅れて付く。腰は拘束位置に残す。
                     float torsoDelay = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((hitTime - 0.030f) / 0.045f))
                         * (1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((hitTime - 0.18f) / 0.30f)));
                     float shake = Mathf.Exp(-hitTime * 6.5f) * Mathf.Sin(hitTime * 38f);
 
-                    pose.HeadYaw += lateral * 52f * faceImpulse + shake * 6f * faceImpulse;
-                    pose.HeadPitch -= 16f * faceImpulse;
-                    pose.HeadRoll += -lateral * 20f * faceImpulse + shake * 5f * faceImpulse;
+                    // 頭は一気に振り切る。少し遅れて胸が付き、腰は拘束位置に残す。
+                    // 「振れ幅を足す」のではなく、当たった形へ寄せる（直前の「目を逸らす」
+                    // 角度が残ると、うつむいたまま髪で顔が隠れて何が起きたか読めない）。
+                    float snap = Mathf.Clamp01(faceImpulse * 1.25f);
+                    pose.HeadYaw = Mathf.Lerp(pose.HeadYaw, lateral * 46f, snap);
+                    pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -14f, snap);
+                    pose.HeadRoll = Mathf.Lerp(pose.HeadRoll, -lateral * 18f, snap);
+                    pose.HeadYaw += shake * 6f * faceImpulse;
+                    pose.HeadRoll += shake * 5f * faceImpulse;
 
                     pose.TorsoYaw += lateral * 14f * torsoDelay;
                     pose.TorsoRoll += -lateral * 8f * torsoDelay;
-                    pose.TorsoPitch -= 9f * torsoDelay;
+                    pose.TorsoPitch -= 13f * torsoDelay;
 
                     // 打たれた方向へ腰が逃げ、膝が抜ける。足は一歩ぶん残る。
-                    pose.HipsOffset.x += lateral * 0.038f * torsoDelay;
+                    pose.HipsOffset.x += lateral * 0.050f * torsoDelay;
                     pose.HipsOffset.y -= 0.05f * faceImpulse;
-                    pose.FootL += new Vector3(lateral * 0.022f, 0f, -0.018f) * faceImpulse;
-                    pose.FootR += new Vector3(lateral * 0.028f, 0f, -0.012f) * faceImpulse;
+                    pose.FootL += new Vector3(lateral * 0.030f, 0f, -0.018f) * faceImpulse;
+                    pose.FootR += new Vector3(lateral * 0.038f, 0f, -0.012f) * faceImpulse;
                     pose.FootPitchR += 16f * faceImpulse;
                     pose.FootPitchL += 8f * faceImpulse;
 
@@ -762,9 +768,11 @@ namespace Ryona.Game
                     pose.ArmRFore += new Vector3(0f, 0.12f, 0.05f) * faceImpulse;
                     pose.Grip = 1f;
 
-                    // 踏ん張り: 顎を引いて胸を起こし、相手を睨み返す。
-                    pose.TorsoPitch += 7f * faceBrace;
-                    pose.HeadPitch += 8f * faceBrace;
+                    // 踏ん張り: 顔を上げて相手を睨み返す（顎を引くと髪で顔が隠れる）。
+                    pose.TorsoPitch += 5f * faceBrace;
+                    pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -8f, faceBrace * 0.8f);
+                    pose.HeadYaw = Mathf.Lerp(pose.HeadYaw,
+                        Mathf.Clamp(toCamera, -45f, 45f), faceBrace * 0.55f);
                     pose.TorsoYaw -= lateral * 4f * faceBrace;
                     pose.TorsoRoll += lateral * 3f * faceBrace;
                     pose.HipsOffset.y -= 0.012f * faceBrace;

@@ -73,9 +73,25 @@ namespace Ryona.Game
         [Tooltip("腹パン中のヨーオフセット（負で彼女の正面側へ回り込み、顔が見える）。殴る腕が体の奥に隠れない角度にする")]
         public float CameraYawOffset = -35f;
 
+        [Header("Camera (face)")]
+        [Tooltip("顔面パンチ中のカメラ距離倍率（1 未満で寄る）")]
+        public float FaceCameraDistanceScale = 0.28f;
+
+        [Tooltip("顔面パンチ中のピボット上下。顔と拳が同じ画に入る高さ")]
+        public float FaceCameraPivotOffset = 0.50f;
+
+        [Tooltip("顔面パンチ中の俯角オフセット。見上げ気味にすると顔が見える")]
+        public float FaceCameraPitchOffset = -6f;
+
+        [Tooltip("顔面パンチ中のヨーオフセット。腹パンと同程度に回り込んで、彼女の顔と拳を同時に見せる")]
+        public float FaceCameraYawOffset = -40f;
+
         [Header("Aim")]
         [Tooltip("腹パン役を立たせる、プレイヤーの腹からの前方距離（m）。離して踏み込ませると拳の移動が見える")]
         public float AttackerDistance = 0.82f;
+
+        [Tooltip("顔面パンチ役を立たせる、プレイヤーからの前方距離（m）。拳を振り抜く弧が見える距離にする")]
+        public float FaceAttackerDistance = 1.05f;
 
         [Tooltip("（未使用）ベルトでは敵の z が毎フレーム彼女に合わせられるため、側方オフセットは効かない")]
         public float AttackerSideOffset = 0.68f;
@@ -164,6 +180,12 @@ namespace Ryona.Game
 
         int _hits;
         PunchZone _comboZone;
+
+        /// <summary>コンボ開始時のカメラ位置が彼女の右側にあるか（顔面パンチを打つ腕を決める）。</summary>
+        bool _cameraOnHerRight;
+
+        /// <summary>顔面パンチが当たった瞬間のカメラ寄せ（1→0 で戻る）。</summary>
+        float _impactPulse;
         int _bellyHits;
         float _nextPunchTimer;
         float _comboEndTimer;
@@ -340,6 +362,10 @@ namespace Ryona.Game
 
         void Update()
         {
+            // 当たった瞬間の寄せを戻す（1 → 0、約 0.12 秒）。
+            if (_impactPulse > 0f)
+                _impactPulse = Mathf.MoveTowards(_impactPulse, 0f, Time.unscaledDeltaTime * 8f);
+
             if (_stats == null || _grapple == null)
             {
                 ResolveReferences();
@@ -421,7 +447,10 @@ namespace Ryona.Game
             {
                 var openingPuncher = _thrower;
                 _thrower = null;
-                if (openingPuncher.TryStartOpeningPunch(_comboZone, FistHoldSeconds))
+                // 投げた距離のままだと顔面パンチが近すぎる。打つ前に一歩ぶん下がらせる。
+                PlaceForOpeningPunch(openingPuncher, _comboZone);
+                if (openingPuncher.TryStartOpeningPunch(_comboZone, FistHoldSeconds,
+                        FacePunchPower(0)))
                 {
                     _punchInFlight = true;
                     _hitTimeout = 1.2f;
@@ -483,8 +512,12 @@ namespace Ryona.Game
             _attempts = 0;
 
             // 1 発を重く見せる。既存の被弾ヒットストップ（約 0.07 秒）より長く止める。
-            // 顔面は「当たった瞬間」が命なので、腹パンより少しだけ長く。
-            HitStop.Play(_stats.LastHitZone == PunchZone.Face ? 0.11f : 0.09f);
+            // 顔面は「当たった瞬間」が命なので、腹パンより少しだけ長く。決めの 5 発目はさらに長い。
+            HitStop.Play(_stats.LastHitZone == PunchZone.Face
+                ? (_hits >= ComboHitsTotal ? 0.13f : 0.11f)
+                : 0.09f);
+            if (_stats.LastHitZone == PunchZone.Face)
+                _impactPulse = 1f;
 
             // 狙いで見た目を分ける。
             //   腹: 腰が押し戻され、その上で上体が前に折れる
@@ -510,7 +543,8 @@ namespace Ryona.Game
                         ? puncherBrain.transform.forward * 0.55f
                           + puncherBrain.transform.right * (puncherBrain.UsesLeftPunch ? -1f : 1f)
                         : _stats.transform.forward;
-                    _anim.PlayHeldFacePunch(HitPoseSeconds, push, 1f);
+                    _anim.PlayHeldFacePunch(HitPoseSeconds, push,
+                        FacePunchPower(Mathf.Max(0, _hits - 1)));
                 }
                 else
                 {
@@ -581,6 +615,8 @@ namespace Ryona.Game
 
             _phase = Phase.Combo;
             _comboZone = ChooseComboZone();
+            // カメラはコンボ中に寄って動くので、「遠い腕」は開始時の構図で決めておく。
+            _cameraOnHerRight = ComputeCameraOnHerRight();
             _hits = 0;
             _bellyHits = 0;
             LastLandedZone = PunchZone.Body;
@@ -602,7 +638,9 @@ namespace Ryona.Game
 
             // 投げは“食らい”ではなく腹パン体勢への移行。折らずに腹を差し出す体勢へ入り、
             // コンボのあいだそのまま見せる（被弾姿勢はパンチが当たったときだけ）。
-            _anim?.PlayHeldThrowLead();
+            // 顔面パンチのときは腹を差し出す必要がないので入れない（前傾したまま顔が隠れる）。
+            if (_comboZone == PunchZone.Body)
+                _anim?.PlayHeldThrowLead();
 
             Debug.Log($"[HeldPunch] throw landed → combo start 0/{ComboHitsTotal} " +
                       $"captor={(_grapple.Captor != null ? _grapple.Captor.name : "none")} " +

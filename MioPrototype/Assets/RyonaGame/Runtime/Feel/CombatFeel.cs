@@ -109,8 +109,9 @@ namespace Ryona.Game
             bool heldFace = result.Damage > 0f && Stats != null &&
                 Stats.LastHitWasTagPunch && Stats.LastHitZone == PunchZone.Face;
             // 顔の寄り画では、細かく長く揺らすより命中の短い衝撃を見せる。
-            Shake(ReceivedShake * (heldFace ? 1.2f : weight),
-                heldFace ? ReceivedShakeSeconds * 0.70f : ReceivedShakeSeconds);
+            // 顔面パンチは「当たった」ことが分かるよう、揺れを強め・短くする。
+            Shake(ReceivedShake * (heldFace ? 1.55f : weight),
+                heldFace ? ReceivedShakeSeconds * 0.60f : ReceivedShakeSeconds);
             float stopSeconds = Stats != null && Stats.GroundMount.IsApplyingPunch ? 0.025f : ReceivedHitStop;
             HitStop.Play(stopSeconds * weight);
 

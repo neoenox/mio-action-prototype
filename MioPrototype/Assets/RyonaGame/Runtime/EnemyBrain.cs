@@ -416,6 +416,10 @@ namespace Ryona.Game
         internal bool IsTagFacePunch => _tagPunchSwing && Zone == PunchZone.Face;
         public bool UsesLeftPunch => IsTagFacePunch && _tagFaceLeft;
         bool _tagFaceLeft;
+
+        /// <summary>この顔面パンチの強さ（1 = 普通、1.25 = 決めの一発）。体の踏み込みに掛ける。</summary>
+        internal float TagFacePower => _tagFacePower;
+        float _tagFacePower = 1f;
         internal bool IsOpeningBellyPunch => _run.FromHeldThrow && _tagPunchSwing;
 
         public float PunchPoseWeight
@@ -433,10 +437,10 @@ namespace Ryona.Game
                 {
                     if (IsTagFacePunch)
                     {
-                        // 拳は「溜め」から一気に振り抜く。当たる瞬間まで速度が落ちないよう、
-                        // 予備動作の終わり（1.0）まで伸ばし続ける（0.92 で止めると、
+                        // 拳は「溜め」から一気に振り抜く。当たる瞬間まで速度を落とさないよう、
+                        // 予備動作の終わり（1.0）まで等速で伸ばす（SmoothStep で止めると、
                         // 当たる直前に減速して「やる気のないパンチ」になる）。
-                        return Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.60f, 0.995f, WindupProgress));
+                        return Mathf.Clamp01((WindupProgress - 0.60f) / 0.395f);
                     }
                     if (IsBellyPunch)
                         return Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.02f, 0.34f, WindupProgress));
@@ -1454,15 +1458,16 @@ namespace Ryona.Game
         /// 演出側（<see cref="HeldBellyPunchDirector"/>）が位置と向きを合わせてから呼ぶ。
         /// </summary>
         public bool TryStartTagPunch(PunchZone zone, bool allowRecover = false, float holdPoseSeconds = 0f,
-            bool? forceLeft = null)
-            => TryStartTagPunch(zone, allowRecover, holdPoseSeconds, fromThrow: false, forceLeft);
+            bool? forceLeft = null, float forcePower = 1f)
+            => TryStartTagPunch(zone, allowRecover, holdPoseSeconds, fromThrow: false, forceLeft, forcePower);
 
-        internal bool TryStartOpeningPunch(PunchZone zone, float holdPoseSeconds)
+        internal bool TryStartOpeningPunch(PunchZone zone, float holdPoseSeconds, float forcePower = 1f)
             => isActiveAndEnabled &&
-                TryStartTagPunch(zone, true, holdPoseSeconds, fromThrow: zone == PunchZone.Body, forceLeft: null);
+                TryStartTagPunch(zone, true, holdPoseSeconds, fromThrow: zone == PunchZone.Body,
+                    forceLeft: null, forcePower: forcePower);
 
         bool TryStartTagPunch(PunchZone zone, bool allowRecover, float holdPoseSeconds, bool fromThrow,
-            bool? forceLeft = null)
+            bool? forceLeft = null, float forcePower = 1f)
         {
             if (Phase == EnemyPhase.Dead || Phase == EnemyPhase.Windup ||
                 Phase == EnemyPhase.Attack || Phase == EnemyPhase.Stagger || IsRising)
@@ -1508,10 +1513,12 @@ namespace Ryona.Game
             _tagFaceLeft = zone == PunchZone.Face &&
                 (forceLeft ?? (camera != null &&
                     Vector3.Dot(camera.transform.position - transform.position, transform.right) > 0f));
+            _tagFacePower = zone == PunchZone.Face ? Mathf.Clamp(forcePower, 0.6f, 1.4f) : 1f;
             ForceZone = null;
 
             Debug.Log($"[HeldPunch] order {name} zone={zone} dist={distance:F2} " +
-                      $"pos=({transform.position.x:F2},{transform.position.z:F2})");
+                      $"pos=({transform.position.x:F2},{transform.position.z:F2}) " +
+                      $"side={(_tagFaceLeft ? "L" : "R")} power={_tagFacePower:F2}");
             return true;
         }
 

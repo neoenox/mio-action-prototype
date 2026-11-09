@@ -58,6 +58,14 @@ namespace Ryona.Game
                 forward = Vector3.right;
             forward.Normalize();
 
+            PunchZone zone = openingThrow ? PunchZone.Body : _comboZone;
+
+            // 顔面パンチは拳を振り抜く距離が要る。腹パンより一歩下がって立たせ、
+            // 腕の振り（弧）が見えるようにする。近すぎると腕が畳まれて「触っただけ」になる。
+            float standOff = openingThrow
+                ? 0.82f
+                : Mathf.Max(0.70f, zone == PunchZone.Face ? FaceAttackerDistance : AttackerDistance);
+
             // ベルトなので奥行き（z）は EnemyBrain.LateUpdate が毎フレーム彼女に合わせる。
             // ここで側方（z）へずらしても次のフレームで戻され、「ずらした前提の向き」だけが
             // 残って腹から 35° 外れる（実測: 拳が 0.33m 届かず空振り）。
@@ -65,7 +73,7 @@ namespace Ryona.Game
             // 下限はカプセルが重ならない距離（彼女 0.30 + 敵 0.40 = 0.70m）に置く。
             // 0.8 に固定していたときは AttackerDistance が効かず、拳が届く位置まで
             // 踏み込めなかった（実測の立ち位置は常に 0.8m）。
-            Vector3 spot = anchor + forward * (openingThrow ? 0.82f : Mathf.Max(0.70f, AttackerDistance));
+            Vector3 spot = anchor + forward * standOff;
             spot.z = _stats.transform.position.z;
             spot.y = best.transform.position.y;
 
@@ -74,8 +82,6 @@ namespace Ryona.Game
             Quaternion face = toPlayer.sqrMagnitude > 1e-4f
                 ? Quaternion.LookRotation(toPlayer.normalized, Vector3.up)
                 : best.transform.rotation;
-
-            PunchZone zone = openingThrow ? PunchZone.Body : _comboZone;
 
             // 歩き始める前に攻撃トークンを確保する。取れなければ位置も動かさず、
             // 次の機会（0.3 秒後）に選び直す。
@@ -122,22 +128,72 @@ namespace Ryona.Game
                 return enemy.TryStartHeldThrow(positioned: true);
 
             bool? punchLeft = zone == PunchZone.Face ? ChooseFacePunchSide(enemy) : null;
+            float power = zone == PunchZone.Face ? FacePunchPower(_hits) : 1f;
             return enemy.TryStartTagPunch(zone, allowRecover: true, holdPoseSeconds: FistHoldSeconds,
-                forceLeft: punchLeft);
+                forceLeft: punchLeft, forcePower: power);
+        }
+
+        /// <summary>
+        /// 5 連撃の強さ。1〜2 発目は軽く、3 発目から強く、5 発目（決め）で一番大きく踏み込む。
+        /// 同じ強さの連打だと「作業」に見えるので、段を作る。
+        /// </summary>
+        float FacePunchPower(int hitIndex)
+        {
+            if (hitIndex >= ComboHitsTotal - 1)
+                return 1.25f;
+            if (hitIndex >= 2)
+                return 1.05f;
+            return 0.92f;
+        }
+
+        /// <summary>
+        /// 投げた敵がそのまま一発目を打つとき、顔面パンチなら拳を振る距離まで下がらせる。
+        /// 投げの距離（0.82m）のままだと腕が畳まれ、「触っただけ」のパンチになる。
+        /// </summary>
+        void PlaceForOpeningPunch(EnemyBrain puncher, PunchZone zone)
+        {
+            if (puncher == null || _stats == null || zone != PunchZone.Face)
+                return;
+
+            Vector3 forward = _stats.transform.forward;
+            forward.y = 0f;
+            if (forward.sqrMagnitude < 1e-4f)
+                forward = Vector3.right;
+            forward.Normalize();
+
+            Vector3 spot = _stats.transform.position + forward * FaceAttackerDistance;
+            spot.y = puncher.transform.position.y;
+            Vector3 to = _stats.transform.position - spot;
+            to.y = 0f;
+            puncher.transform.position = spot;
+            if (to.sqrMagnitude > 1e-4f)
+                puncher.transform.rotation = Quaternion.LookRotation(to.normalized, Vector3.up);
         }
 
         /// <summary>
         /// 顔面パンチを打つ腕。1 発目はカメラから遠い腕にして彼女の顔を隠さない。
         /// 2 発目からは左右交互にして、連打が「同じ腕の連発」に見えないようにする。
+        /// カメラはコンボ中に寄るので、コンボ開始時の構図で「遠い側」を決めておく。
         /// </summary>
         bool ChooseFacePunchSide(EnemyBrain enemy)
         {
-            Camera cam = Camera.main;
-            bool cameraOnHisRight = cam != null &&
-                Vector3.Dot(cam.transform.position - enemy.transform.position, enemy.transform.right) > 0f;
-            // カメラが彼の右側なら、近い腕は右・遠い腕は左。
-            bool farSideLeft = cameraOnHisRight;
+            // 彼は彼女と向かい合う。カメラが彼女の右側なら、カメラ側の腕は彼の左腕。
+            // 遠い腕（彼の右腕）から打ち始める。
+            bool farSideLeft = !_cameraOnHerRight;
             return farSideLeft ^ (_hits % 2 == 1);
+        }
+
+        /// <summary>コンボ開始時のカメラが、彼女の右側にあるか。</summary>
+        bool ComputeCameraOnHerRight()
+        {
+            Camera cam = Camera.main;
+            if (cam == null || _stats == null)
+                return false;
+
+            Vector3 toCam = cam.transform.position - _stats.transform.position;
+            toCam.y = 0f;
+            return toCam.sqrMagnitude > 1e-4f &&
+                Vector3.Dot(toCam.normalized, _stats.transform.right) > 0f;
         }
 
         bool CanContinuePlacement(EnemyBrain enemy, EnemyBrain captor, bool openingThrow)
