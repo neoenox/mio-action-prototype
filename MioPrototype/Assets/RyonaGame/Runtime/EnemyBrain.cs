@@ -630,6 +630,10 @@ namespace Ryona.Game
                 ReleaseToken();
         }
 
+        internal bool CanMountDownedPlayer => isActiveAndEnabled && IsAlive && !IsRising &&
+            !IsHolding && !IsHandOffLocked && !IsFlanking && Time.time >= _attackReadyAt &&
+            (Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe);
+
         float _flankOffset;
         float _blockedFlankSeconds;
         Collider _bodyCollider;
@@ -886,6 +890,9 @@ namespace Ryona.Game
             if (Target == null || Player == null)
                 return;
 
+            if (Player.GroundMount.Attacker == this)
+                return;
+
             if ((Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe) && !IsFlanking && TryApproachForPin())
                 return;
             if ((Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe) && TryFlank(dt))
@@ -998,7 +1005,7 @@ namespace Ryona.Game
 
         void LateUpdate()
         {
-            if (Target == null)
+            if (Target == null || (Player != null && Player.GroundMount.Attacker == this))
                 return;
             var position = transform.position;
             position.z = Target.position.z;

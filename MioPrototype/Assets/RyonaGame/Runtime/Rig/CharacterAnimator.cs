@@ -264,6 +264,7 @@ namespace Ryona.Game
 
         /// <summary>このダウンが「前へ崩れる」か（腹を殴られてうつ伏せになる）。</summary>
         bool _downForward;
+        bool _groundRolled;
 
         /// <summary>倒れきったときの体の角度（起き上がりはここから始める）。</summary>
         float _downEndLay = -92f;
@@ -574,7 +575,8 @@ namespace Ryona.Game
             // 倒れている時間は「ダウンの合計 − 起き上がり」で、合計が DownDuration と揃う。
             if (Stats != null && Stats.State != null && Stats.IsDown)
             {
-                SetState(State.Down, Mathf.Max(0.4f, Stats.DownRemaining - GetUpSeconds));
+                if (_state != State.Down && (_state != State.GetUp || !Stats.IsGettingUp))
+                    SetState(State.Down, Mathf.Max(0.4f, Stats.DownRemaining - GetUpSeconds));
                 return;
             }
 
@@ -757,6 +759,7 @@ namespace Ryona.Game
 
             if (state == State.Down)
             {
+                _groundRolled = false;
                 // 吹き飛ばされて倒れるときは、倒れきる時刻を着地に合わせる。
                 // 空中にいるのに「その場で崩れる」速さで倒れると、足が地面を滑って見える。
                 _downForward = Stats != null && Stats.DownIsForward;
@@ -772,6 +775,18 @@ namespace Ryona.Game
                 _airBlend = _downLaunched ? 1f : 0f;
                 _downEndLay = _downForward ? 92f : -92f;
             }
+        }
+
+        internal void FinishGroundRoll()
+        {
+            Rig.SnapshotPose();
+            _blend = 0f;
+            _blendSeconds = 0.15f;
+            _downForward = false;
+            _groundRolled = true;
+            _downLaunched = false;
+            _airBlend = 0f;
+            _downEndLay = -92f;
         }
 
         /// <summary>
@@ -895,10 +910,8 @@ namespace Ryona.Game
 
             // 被弾イベント以外から倒れる経路（掴みが解けて崩れる等）でもダウンに入る。
             // `Stats.IsDown` は立つのに、姿勢が Idle のままという取りこぼしを防ぐ。
-            // 残りが起き上がり時間ぶんしか無いときは入らない（GetUp 後にまた Down へ戻るのを防ぐ）。
             if (Stats != null && Stats.State != null && Stats.State.IsDown && !Stats.IsDead
-                && Stats.DownRemaining > GetUpSeconds + 0.05f
-                && _state != State.Down && _state != State.GetUp
+                && _state != State.Down && (_state != State.GetUp || !Stats.IsGettingUp)
                 && !(Grapple != null && Grapple.IsGrappled))
             {
                 SetState(State.Down, Mathf.Max(0.4f, Stats.DownRemaining - GetUpSeconds));
@@ -912,17 +925,16 @@ namespace Ryona.Game
                     break;
 
                 case State.Down:
-                    // 時間で終わるのが基本。ただしコア状態（残り秒）が先に尽きたら、
-                    // 倒れたまま動ける状態にならないよう、こちらも合わせて起き上がる。
-                    if (_stateTime >= _stateDuration
-                        || (Stats != null && Stats.DownRemaining > 0f
-                            && Stats.DownRemaining <= GetUpSeconds))
+                    // 倒れ終えても、操作が来るまでは床に留まる。HP 0 からの復帰もここを通る。
+                    if (Time.deltaTime > 0f && _stateTime >= _stateDuration &&
+                        (Stats == null || (!Stats.IsDead && (!Stats.IsDown || Stats.GetUpRequested))))
                     {
-                        // 倒れたまま起き上がる。起き上がり中は動けない
-                        SetState(State.GetUp, Mathf.Max(0.2f, GetUpSeconds));
+                        float getUp = Mathf.Max(0.2f, GetUpSeconds);
+                        SetState(State.GetUp, getUp);
+                        Stats?.BeginGetUp(getUp);
                         Debug.Log($"[Anim] ダウン終了 → 立ち上がり {GetUpSeconds:F2}s");
                         if (Stats != null)
-                            Stats.AddStun(Mathf.Max(0.05f, GetUpSeconds - 0.02f));
+                            Stats.AddStun(getUp);
                     }
                     break;
 

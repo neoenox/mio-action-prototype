@@ -40,6 +40,7 @@ namespace Ryona.Game
         [System.NonSerialized] public float NearFadeRatio = 0.72f;
 
         Transform _player;
+        EnemyBrain _brain;
         Renderer[] _renderers;
         Material[][] _originals;
         Material[][] _faded;
@@ -65,10 +66,11 @@ namespace Ryona.Game
         /// <summary>彼女のトランスフォームを探す。敵の生成順に依存しないようにする。</summary>
         void ResolvePlayer()
         {
-            var brain = GetComponent<EnemyBrain>();
-            if (brain != null && brain.Target != null)
+            if (_brain == null)
+                _brain = GetComponent<EnemyBrain>();
+            if (_brain != null && _brain.Target != null)
             {
-                _player = brain.Target;
+                _player = _brain.Target;
                 return;
             }
 
@@ -141,11 +143,13 @@ namespace Ryona.Game
                 }
             }
 
-            float target = IsOccluding() ? MinAlpha : 1f;
+            var mount = _brain != null && _brain.Player != null ? _brain.Player.GroundMount : null;
+            bool inMountShot = mount != null && mount.Attacker == _brain && mount.BlocksGetUp;
+            float target = !inMountShot && IsOccluding() ? MinAlpha : 1f;
             if (Mathf.Approximately(target, _alpha) && _applied)
                 return;
 
-            _alpha = FadeSeconds <= 0.001f
+            _alpha = inMountShot || FadeSeconds <= 0.001f
                 ? target
                 : Mathf.MoveTowards(_alpha, target, Time.deltaTime / FadeSeconds);
 

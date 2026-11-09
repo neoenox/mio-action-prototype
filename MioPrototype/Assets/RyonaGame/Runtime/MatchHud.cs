@@ -146,13 +146,15 @@ namespace Ryona.Game
                 _releasedRemaining = Mathf.Max(0f, _releasedRemaining - Time.unscaledDeltaTime);
 
             bool grappled = _grapple != null && _grapple.IsGrappled && !Player.IsDead;
-            bool show = grappled || _releasedRemaining > 0f;
+            var mount = Player.GroundMount;
+            bool mounted = mount != null && mount.BlocksGetUp && !Player.IsDead;
+            bool show = grappled || mounted || _releasedRemaining > 0f;
 
             // 腹パンのコンボ中は腹が画面の中心に来る。中央下のままだと
             // 腹パン表示が当たっている場所に重なるので、コンボ中だけ下へ退ける。
             bool combo = _bellyPunch != null && (_bellyPunch.IsPerforming || _bellyPunch.IsThrowIncoming);
             Vector2 blockPos = _grappleRoot.anchoredPosition;
-            blockPos.y = combo ? 96f : 232f;
+            blockPos.y = combo || mounted ? 96f : 232f;
             if ((_grappleRoot.anchoredPosition - blockPos).sqrMagnitude > 0.01f)
                 _grappleRoot.anchoredPosition = blockPos;
 
@@ -161,6 +163,20 @@ namespace Ryona.Game
 
             if (!show)
                 return;
+
+            if (mounted)
+            {
+                _grappleText.text = mount.Stage switch
+                {
+                    GroundMountAttack.Beat.Roll => "仰向けに返される",
+                    GroundMountAttack.Beat.Dismount => "押さえ込みが解ける",
+                    _ => "マウント ─ 連打で脱出"
+                };
+                _grappleText.color = new Color(1f, 0.62f, 0.48f, 0.98f);
+                _grappleFill.fillAmount = mount.EscapeProgress;
+                _grappleFill.color = new Color(0.95f, 0.45f, 0.35f, 0.95f);
+                return;
+            }
 
             if (!grappled)
             {

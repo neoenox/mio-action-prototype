@@ -893,14 +893,14 @@ namespace Ryona.Game
             // 崩れ落ちる: 最初に速く落ちて、最後にゆっくり収まる
             float settle = 1f - Mathf.Pow(1f - Mathf.Clamp01(rise), 2.2f);
 
-            // 膝をついたあと、そのまま後ろへ倒れる
-            float fall = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.15f, 0.65f, rise));
+            // 腰が先に落ち、少し遅れて背中が床へつく。
+            float fall = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.12f, 0.78f, rise));
 
             // 前へ崩れる（腹を殴られた）: 膝が抜けて前へ倒れ、うつ伏せになる。
             if (_downForward)
             {
                 // 腰が落ちる（膝が抜ける）
-                float drop = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.02f, 0.58f, rise));
+                float drop = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.02f, 0.66f, rise));
                 // 体が前へ倒れる（0 → 92° でうつ伏せ）
                 float lay = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.16f, 0.78f, rise));
 
@@ -1001,9 +1001,10 @@ namespace Ryona.Game
             // 足は倒れ始めに地面から離れる。かかとを支点に回したままだと
             // 「板を後ろへ倒した」画になり、ゲームのダウンに見えない（実測）。
             // 山なりに浮いて、倒れきる前に床へ戻る。
-            float lift = Mathf.Sin(Mathf.Clamp01((rise - 0.05f) / 0.55f) * Mathf.PI);
-            pose.FootL += new Vector3(0f, 0.22f * lift, 0.12f * lift);
-            pose.FootR += new Vector3(0f, 0.17f * lift, 0.09f * lift);
+            float liftL = Mathf.Sin(Mathf.Clamp01((rise - 0.05f) / 0.62f) * Mathf.PI);
+            float liftR = Mathf.Sin(Mathf.Clamp01((rise - 0.14f) / 0.64f) * Mathf.PI);
+            pose.FootL += new Vector3(0f, 0.10f * liftL, 0.10f * liftL);
+            pose.FootR += new Vector3(0f, 0.15f * liftR, 0.13f * liftR);
 
             // 支点は倒れ始めの足元で固定する。浮いた足を支点にすると
             // 腰の軌道が途中で折れて「宙返り」に見える。
@@ -1013,7 +1014,7 @@ namespace Ryona.Game
             pose.HipsOffset = arcHips - Rig.RestHips;
 
             // 倒れ始めに一度沈む（膝が抜ける感じ）。倒れきる前に戻す。
-            pose.HipsOffset.y -= 0.09f * settle * (1f - fall);
+            pose.HipsOffset.y -= 0.17f * settle * (1f - fall);
 
             // 上体は前へ潰れてから、倒れるに従って脱力する
             pose.TorsoPitch = Mathf.Lerp(20f * settle, 3f, fall);
@@ -1044,9 +1045,9 @@ namespace Ryona.Game
             // 「棒人間が回っている」ように見える。
             float whip = Mathf.Sin(Mathf.Clamp01(rise / 0.42f) * Mathf.PI);
             pose.ArmLUpper += new Vector3(0.10f * whip, 0.30f * whip, 0.50f * whip);
-            pose.ArmRUpper += new Vector3(-0.10f * whip, 0.26f * whip, 0.46f * whip);
+            pose.ArmRUpper += new Vector3(0.12f * whip, 0.10f * whip, 0.34f * whip);
             pose.ArmLFore += new Vector3(0f, 0.16f * whip, 0.20f * whip);
-            pose.ArmRFore += new Vector3(0f, 0.14f * whip, 0.18f * whip);
+            pose.ArmRFore += new Vector3(0.30f * whip, 0.45f * whip, 0.24f * whip);
 
             // 倒れる途中で腕が横へ開く（体から離れて流れる＝力が抜けた画）
             float splay = Mathf.Sin(Mathf.Clamp01(fall) * Mathf.PI);
@@ -1599,18 +1600,21 @@ namespace Ryona.Game
             {
                 Vector3 hipsLocal = Rig.RestHips + pose.HipsOffset;
                 float follow = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(-70f, -88f, pose.LayAngle));
+                Vector3 fallAxis = Quaternion.AngleAxis(pose.LaySide, Vector3.up) * Vector3.right;
+                Quaternion fallRotation = Quaternion.AngleAxis(pose.LayAngle, fallAxis);
 
-                Vector3 extendedL = hipsLocal +
-                    Quaternion.AngleAxis(pose.LayAngle, Vector3.right) * (Rig.RestFootL - Rig.RestHips);
-                Vector3 extendedR = hipsLocal +
-                    Quaternion.AngleAxis(pose.LayAngle, Vector3.right) * (Rig.RestFootR - Rig.RestHips);
+                // Let the heels slide apart as the back lands, with one knee left a little more bent.
+                Vector3 extendedL = hipsLocal + fallRotation * (Rig.RestFootL - Rig.RestHips)
+                    + new Vector3(-0.035f, -0.025f, -0.105f);
+                Vector3 extendedR = hipsLocal + fallRotation * (Rig.RestFootR - Rig.RestHips)
+                    + new Vector3(0.020f, -0.025f, -0.032f);
 
                 pose.FootL = Vector3.Lerp(pose.FootL, extendedL, follow);
                 pose.FootR = Vector3.Lerp(pose.FootR, extendedR, follow);
 
                 // IK は「倒す前」の姿勢で解き、そのあと LayBody で体ごと倒れる。
                 // 狙った床の位置に足を着けるには、倒れるぶんを打ち消しておく。
-                Quaternion undo = Quaternion.AngleAxis(-pose.LayAngle, Vector3.right);
+                Quaternion undo = Quaternion.Inverse(fallRotation);
                 pose.FootL = hipsLocal + undo * (pose.FootL - hipsLocal);
                 pose.FootR = hipsLocal + undo * (pose.FootR - hipsLocal);
             }
@@ -1771,6 +1775,12 @@ namespace Ryona.Game
                     foreL = (fwd * 0.96f + left * 0.10f - up * 0.04f).normalized;
                     upperR = (fwd * 0.52f - left * 0.62f - up * 0.20f).normalized;
                     foreR = (fwd * 0.58f + left * 0.52f - up * 0.26f).normalized;
+                    float reach = Mathf.SmoothStep(0f, 1f,
+                        Mathf.InverseLerp(0.22f, 0.86f, _stateTime / _downFallSeconds));
+                    upperL = Vector3.Slerp((Rig.LLowerArm.position - Rig.LUpperArm.position).normalized, upperL, reach);
+                    foreL = Vector3.Slerp((Rig.LHand.position - Rig.LLowerArm.position).normalized, foreL, reach);
+                    upperR = Vector3.Slerp((Rig.RLowerArm.position - Rig.RUpperArm.position).normalized, upperR, reach);
+                    foreR = Vector3.Slerp((Rig.RHand.position - Rig.RLowerArm.position).normalized, foreR, reach);
                 }
                 else
                 {
@@ -1796,6 +1806,21 @@ namespace Ryona.Game
                 Rig.SetArm(false, upperR, foreR, pose.HandRollR);
             }
 
+            // The supine pose normally points toward the opposite end of the lane.
+            // Mirror its facing around the feet without turning the gameplay root mid-roll.
+            if (_groundRolled && (_state == State.Down || _state == State.GetUp))
+            {
+                float turn = _state == State.GetUp
+                    ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.55f, 0.98f, _stateTime / _stateDuration)) : 0f;
+                Quaternion facing = Quaternion.AngleAxis(180f * (1f - turn), Vector3.up);
+                Vector3 origin = transform.position;
+                Rig.Hips.SetPositionAndRotation(origin + facing * (Rig.Hips.position - origin),
+                    facing * Rig.Hips.rotation);
+            }
+
+            if (_state == State.Down && Stats != null && Stats.GroundMount.BlocksGetUp)
+                ApplyGroundMountReaction(Stats.GroundMount);
+
             // 状態が切り替わった直後は、切り替え前の姿勢から寄せる（カクつき防止）
             if (_blend < 1f)
             {
@@ -1809,6 +1834,217 @@ namespace Ryona.Game
 
             if (pose.FootPitchR > 0.01f)
                 Rig.RaiseHeel(false, pose.FootPitchR, pole);
+        }
+
+        void ApplyGroundMountReaction(GroundMountAttack mount)
+        {
+            if (mount.Stage == GroundMountAttack.Beat.Roll)
+            {
+                ApplyProneMountRoll(mount);
+                return;
+            }
+
+            float effort = mount.StrugglePulse;
+            float headRecoil = mount.HeadRecoil;
+            float torsoRecoil = mount.TorsoRecoil;
+            float legRecoil = mount.LegRecoil;
+            float guard = mount.Fear;
+            if (guard <= 0f)
+                return;
+
+            float windup = mount.Cock;
+            Vector3 bodyAxis = Vector3.ProjectOnPlane(Rig.Head.position - Rig.Hips.position, Vector3.up);
+            if (bodyAxis.sqrMagnitude <= 0.001f)
+                return;
+
+            bodyAxis.Normalize();
+            Vector3 crossBody = Vector3.Cross(Vector3.up, bodyAxis);
+            Vector3 leftShoulder = Rig.LUpperArm.position - Rig.RUpperArm.position;
+            Vector3 left = crossBody * Mathf.Sign(Vector3.Dot(crossBody, leftShoulder));
+            float incomingSide = Mathf.Sign(Vector3.Dot(crossBody, mount.StrikeSide));
+            float impactSide = Mathf.Sign(Vector3.Dot(crossBody, mount.ImpactSide));
+            bool incomingLeft = Vector3.Dot(left, mount.StrikeSide) > 0f;
+            bool impactLeft = Vector3.Dot(left, mount.ImpactSide) > 0f;
+
+            // Follow the side of the fist at contact, even as the other hand begins winding up.
+            Rig.Hips.position += (bodyAxis * 0.022f - crossBody * (0.027f * impactSide)) * torsoRecoil * guard;
+            Rig.Chest.rotation = Quaternion.AngleAxis((incomingSide * 5f * windup + impactSide * 22f * torsoRecoil)
+                * guard, bodyAxis) * Quaternion.AngleAxis(9f * torsoRecoil, crossBody) * Rig.Chest.rotation;
+            if (Rig.Neck != null)
+                Rig.Neck.rotation = Quaternion.AngleAxis(impactSide * 11f * headRecoil * guard, bodyAxis)
+                    * Rig.Neck.rotation;
+
+            float cheekTurn = -25f * Vector3.Dot(crossBody, Vector3.back);
+            Rig.Head.rotation = Quaternion.AngleAxis((cheekTurn + incomingSide * 7f * windup
+                + impactSide * 41f * headRecoil) * guard, bodyAxis) * Rig.Head.rotation;
+
+            float lookWeight = guard * (1f - mount.GuardRaise) * (1f - headRecoil);
+            if (lookWeight > 0.001f)
+            {
+                Vector3 toAttacker = mount.AttackerHead - Rig.Head.position;
+                Quaternion look = Quaternion.FromToRotation(Rig.Head.forward, toAttacker);
+                Quaternion turn = Quaternion.RotateTowards(Quaternion.identity, look, 42f);
+                Rig.Head.rotation = Quaternion.Slerp(Quaternion.identity, turn, lookWeight) * Rig.Head.rotation;
+            }
+
+            if (legRecoil > 0.001f)
+            {
+                Vector3 pole = Rig.Hips.position + Vector3.up * 0.65f;
+                Vector3 curl = bodyAxis * 0.10f + Vector3.up * 0.026f;
+                BendMountKnee(true, curl, pole, (impactLeft ? 0.43f : 0.20f) * legRecoil);
+                BendMountKnee(false, curl, pole, (impactLeft ? 0.20f : 0.43f) * legRecoil);
+            }
+
+            float flinch = Mathf.Max(headRecoil, torsoRecoil);
+            float brace = windup + 0.5f * effort;
+            float give = mount.Stage == GroundMountAttack.Beat.Strike ? 0.28f * mount.Drive : 0f;
+            float guardWeight = guard * Mathf.SmoothStep(0f, 1f, mount.GuardRaise);
+            float waiting = guard - guardWeight;
+            if (waiting > 0.001f)
+            {
+                SetMountWaitingArm(true, left, bodyAxis, waiting);
+                SetMountWaitingArm(false, -left, bodyAxis, waiting);
+            }
+            if (guardWeight <= 0.001f)
+                return;
+
+            bool leftNearCamera = Vector3.Dot(left, mount.ShotOffset) > 0f;
+            SetMountGuardArm(true, left, bodyAxis, guardWeight, brace * (incomingLeft ? 1f : 0.35f),
+                Mathf.Max(incomingLeft ? give : 0f, impactLeft ? flinch : 0f), leftNearCamera);
+            SetMountGuardArm(false, -left, bodyAxis, guardWeight, brace * (incomingLeft ? 0.35f : 1f),
+                Mathf.Max(incomingLeft ? 0f : give, impactLeft ? 0f : flinch), !leftNearCamera);
+        }
+
+        void ApplyProneMountRoll(GroundMountAttack mount)
+        {
+            Vector3 axis = Vector3.ProjectOnPlane(Rig.Head.position - Rig.Hips.position, Vector3.up);
+            if (axis.sqrMagnitude <= 0.001f)
+                return;
+
+            axis.Normalize();
+            Vector3 across = Vector3.Cross(Vector3.up, axis);
+            float chestTurn = mount.ShoulderRoll;
+            float pelvisTurn = mount.RollProgress;
+            float twist = chestTurn - pelvisTurn;
+            float signedRoll = mount.Side * 180f;
+            Quaternion spine = Rig.Spine != null ? Rig.Spine.rotation : Quaternion.identity;
+            Quaternion chest = Rig.Chest.rotation;
+            Quaternion leftThigh = Rig.LUpperLeg.rotation;
+            Quaternion rightThigh = Rig.RUpperLeg.rotation;
+            Quaternion leftShin = Rig.LLowerLeg.rotation;
+            Quaternion rightShin = Rig.RLowerLeg.rotation;
+            float leftFootHeight = Rig.LFoot.position.y;
+            float rightFootHeight = Rig.RFoot.position.y;
+            bool pulledLeft = mount.RollLeftShoulder;
+            Vector3 plantedHand = (pulledLeft ? Rig.RHand : Rig.LHand).position;
+
+            // The grabbed shoulder leads. Keep the pelvis and legs in their own phases
+            // so they do not inherit the shoulder's turn as a single rigid pose.
+            Rig.Hips.position += across * (0.09f * mount.Side * twist);
+            Rig.Hips.rotation = Quaternion.AngleAxis(signedRoll * pelvisTurn, axis) * Rig.Hips.rotation;
+            if (Rig.Spine != null)
+                Rig.Spine.rotation = Quaternion.AngleAxis(signedRoll * Mathf.Lerp(pelvisTurn, chestTurn, 0.50f), axis)
+                    * Quaternion.AngleAxis(-14f * twist, across) * spine;
+            Rig.Chest.rotation = Quaternion.AngleAxis(signedRoll * chestTurn, axis)
+                * Quaternion.AngleAxis(-24f * twist, across) * chest;
+
+            float leadingLeg = mount.RollPhase(0.46f, 0.96f);
+            float trailingLeg = mount.RollPhase(0.54f, 0.99f);
+            float leftTurn = pulledLeft ? leadingLeg : trailingLeg;
+            float rightTurn = pulledLeft ? trailingLeg : leadingLeg;
+            // The leading leg sweeps out from the hip. Carry the shin along without curling the knee.
+            Quaternion sweep = Quaternion.AngleAxis(-mount.Side * 16f * Mathf.Sin(Mathf.PI * leadingLeg), Vector3.up);
+            Quaternion trail = Quaternion.AngleAxis(mount.Side * 5f * Mathf.Sin(Mathf.PI * trailingLeg), Vector3.up);
+            Quaternion leftRoll = (pulledLeft ? sweep : trail)
+                * Quaternion.AngleAxis(signedRoll * leftTurn, axis);
+            Quaternion rightRoll = (pulledLeft ? trail : sweep)
+                * Quaternion.AngleAxis(signedRoll * rightTurn, axis);
+            Rig.LUpperLeg.rotation = leftRoll * leftThigh;
+            Rig.RUpperLeg.rotation = rightRoll * rightThigh;
+            Rig.LLowerLeg.rotation = leftRoll * leftShin;
+            Rig.RLowerLeg.rotation = rightRoll * rightShin;
+
+            float lowest = Mathf.Min(Rig.Head.position.y - 0.085f, Rig.Chest.position.y - 0.09f,
+                Rig.LFoot.position.y, Rig.RFoot.position.y);
+            Rig.Hips.position += Vector3.up * Mathf.Max(0f, Stats.transform.position.y - lowest);
+
+            // The trailing foot drags against the floor while the near knee rolls over.
+            float trailingPlant = mount.RollPhase(0.38f, 0.60f) * (1f - mount.RollPhase(0.80f, 0.98f));
+            float leadingPlant = mount.RollPhase(0.56f, 0.74f) * (1f - mount.RollPhase(0.83f, 0.98f));
+            KeepRollFootLow(true, leftFootHeight, pulledLeft ? 0.42f * leadingPlant : 0.85f * trailingPlant);
+            KeepRollFootLow(false, rightFootHeight, pulledLeft ? 0.85f * trailingPlant : 0.42f * leadingPlant);
+
+            Vector3 pullSide = across * mount.Side;
+            float armBend = mount.RollPhase(0.24f, 0.53f);
+            if (armBend <= 0.001f)
+                return;
+
+            Transform pulledShoulder = pulledLeft ? Rig.LUpperArm : Rig.RUpperArm;
+            Transform freeShoulder = pulledLeft ? Rig.RUpperArm : Rig.LUpperArm;
+            Vector3 tuckedHand = pulledShoulder.position - axis * 0.22f + pullSide * 0.13f + Vector3.up * 0.06f;
+            Vector3 releasedHand = freeShoulder.position - axis * 0.12f - pullSide * 0.23f + Vector3.up * 0.06f;
+            AimMountHand(pulledLeft, pullSide, axis, tuckedHand, armBend);
+            AimMountHand(!pulledLeft, -pullSide, axis, Vector3.Lerp(plantedHand, releasedHand,
+                mount.RollPhase(0.49f, 0.89f)), armBend);
+        }
+
+        void KeepRollFootLow(bool left, float floorHeight, float weight)
+        {
+            Transform foot = left ? Rig.LFoot : Rig.RFoot;
+            Vector3 target = foot.position;
+            float maxHeight = floorHeight + 0.025f;
+            if (weight <= 0.001f || target.y <= maxHeight)
+                return;
+
+            Transform knee = left ? Rig.LLowerLeg : Rig.RLowerLeg;
+            Quaternion footRotation = foot.rotation;
+            target.y = Mathf.Lerp(target.y, maxHeight, weight);
+            Rig.SolveLeg(left, target, knee.position);
+            foot.rotation = footRotation;
+        }
+
+        void BendMountKnee(bool left, Vector3 curl, Vector3 pole, float weight)
+        {
+            Transform thigh = left ? Rig.LUpperLeg : Rig.RUpperLeg;
+            Transform shin = left ? Rig.LLowerLeg : Rig.RLowerLeg;
+            Transform foot = left ? Rig.LFoot : Rig.RFoot;
+            Quaternion thighBefore = thigh.localRotation;
+            Quaternion shinBefore = shin.localRotation;
+            Quaternion footBefore = foot.rotation;
+            Rig.SolveLeg(left, foot.position + curl, pole);
+            thigh.localRotation = Quaternion.Slerp(thighBefore, thigh.localRotation, weight);
+            shin.localRotation = Quaternion.Slerp(shinBefore, shin.localRotation, weight);
+            foot.rotation = footBefore;
+        }
+
+        void SetMountWaitingArm(bool left, Vector3 outside, Vector3 towardHead, float weight)
+        {
+            Transform shoulder = left ? Rig.LUpperArm : Rig.RUpperArm;
+            // One hand rests by the ribs; the other braces lightly against the floor.
+            Vector3 goal = shoulder.position - towardHead * 0.28f
+                + outside * (left ? -0.07f : 0.21f) + Vector3.up * (left ? 0.05f : -0.10f);
+            AimMountHand(left, outside, towardHead, goal, weight);
+        }
+
+        void SetMountGuardArm(bool left, Vector3 outside, Vector3 towardHead, float weight,
+            float brace, float recoil, bool nearCamera)
+        {
+            float nearHand = nearCamera ? 1f : 0f;
+            Vector3 goal = Rig.Head.position + outside * (0.14f + 0.05f * nearHand + 0.17f * recoil)
+                + Vector3.up * (0.15f - 0.04f * nearHand + 0.055f * brace - 0.14f * recoil)
+                - towardHead * (0.085f + 0.05f * nearHand - 0.075f * brace + 0.20f * recoil);
+            AimMountHand(left, outside, towardHead, goal, weight);
+            Rig.CurlFingers(left, Mathf.Lerp(0.18f, 0.68f - 0.30f * recoil, weight));
+        }
+
+        void AimMountHand(bool left, Vector3 outside, Vector3 towardHead, Vector3 goal, float weight)
+        {
+            Transform shoulder = left ? Rig.LUpperArm : Rig.RUpperArm;
+            Transform elbow = left ? Rig.LLowerArm : Rig.RLowerArm;
+            Transform hand = left ? Rig.LHand : Rig.RHand;
+            Vector3 pole = shoulder.position + outside * 0.34f - towardHead * 0.24f - Vector3.up * 0.15f;
+            ProceduralRig.SolveTwoBone(shoulder, elbow, hand, Vector3.Lerp(hand.position, goal, weight), pole);
+            Rig.SetArm(left, elbow.position - shoulder.position, hand.position - elbow.position, 0f);
         }
 
     }

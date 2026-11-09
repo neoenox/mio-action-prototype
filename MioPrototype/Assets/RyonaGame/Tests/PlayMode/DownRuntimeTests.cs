@@ -29,7 +29,7 @@ namespace Ryona.Tests
             _attacker = null;
         }
 
-        IEnumerator LoadPlayer()
+        IEnumerator LoadPlayer(bool holdEnemies = true)
         {
             yield return TestScene.LoadPrototype();
 
@@ -53,13 +53,114 @@ namespace Ryona.Tests
             // テスト中は AI に殴らせない（当てるのはこのテストだけ）
             foreach (var enemy in Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
             {
-                if (enemy != null)
+                if (holdEnemies && enemy != null)
                     enemy.HoldFire(9999f);
             }
 
             // 殴る側は彼女の正面 0.8m に置く（吹き飛ぶ向きが後ろになる）
             _attacker = new GameObject("Down Test Attacker");
             _attacker.transform.position = _stats.transform.position + _stats.transform.forward * 0.8f;
+        }
+
+        EnemyBrain PrepareMount(bool forward)
+        {
+            var enemies = Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None);
+            Assert.Greater(enemies.Length, 0);
+            var attacker = enemies[0];
+            foreach (var enemy in enemies)
+                enemy.enabled = enemy == attacker;
+            attacker.LockForHandOff(0.1f);
+            attacker.transform.position = _stats.transform.position + Vector3.right * 1.6f;
+            _stats.ForceDown(2f, "mount-test", launchDistance: 0f, forward: forward);
+            return attacker;
+        }
+
+        [UnityTest]
+        public IEnumerator PronePlayerIsMountedThenRolledBeforeFiveAlternatingPunches()
+        {
+            yield return LoadPlayer(holdEnemies: false);
+            var attacker = PrepareMount(forward: true);
+            var mount = _stats.GetComponent("GroundMountAttack");
+            const System.Reflection.BindingFlags members = System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.NonPublic;
+            var leftPunch = mount.GetType().GetProperty("LeftPunch", members);
+            var stage = mount.GetType().GetProperty("Stage", members);
+            bool mountedWhileProne = false;
+            bool rolledWhileMounted = false;
+            int hits = 0;
+            Quaternion headBeforeImpact = Quaternion.identity;
+            _stats.HitReceived += result =>
+            {
+                if (_stats.LastAttacker != attacker.transform || result.Damage <= 0f)
+                    return;
+                Assert.IsFalse(_stats.DownIsForward, "The player is on her back before being punched.");
+                Assert.AreEqual(PunchZone.Face, _stats.LastHitZone);
+                Assert.AreEqual(hits % 2 == 1, leftPunch.GetValue(mount), "Hooks alternate right and left.");
+                headBeforeImpact = _anim.Rig.Head.rotation;
+                hits++;
+            };
+
+            float deadline = Time.realtimeSinceStartup + 9f;
+            float reaction = 0f;
+            while (hits < 5 && Time.realtimeSinceStartup < deadline)
+            {
+                string beat = stage.GetValue(mount).ToString();
+                if (beat == "Mount" && _stats.DownIsForward)
+                    mountedWhileProne = true;
+                if (beat == "Roll")
+                    rolledWhileMounted = mountedWhileProne && _stats.DownIsForward;
+                if (hits == 1)
+                    reaction = Mathf.Max(reaction, Quaternion.Angle(headBeforeImpact, _anim.Rig.Head.rotation));
+                yield return null;
+            }
+            Assert.IsTrue(mountedWhileProne, "The attacker straddles the player while she is still prone.");
+            Assert.IsTrue(rolledWhileMounted, "The attacker rolls the player after straddling her.");
+            Assert.AreEqual(5, hits);
+            Assert.Greater(reaction, 27f, "A landed punch visibly snaps the head away.");
+            yield return new WaitForSeconds(1f);
+            Assert.AreEqual(5, hits, "No second mount starts during the same knockdown.");
+            Assert.IsTrue(_stats.IsDown);
+            _stats.RequestGetUp();
+            yield return new WaitForSeconds(_anim.GetUpSeconds + 0.15f);
+            Assert.IsFalse(_stats.IsDown);
+        }
+
+        [UnityTest]
+        public IEnumerator EarlyGetUpAvoidsGroundMount()
+        {
+            yield return LoadPlayer(holdEnemies: false);
+            PrepareMount(forward: true);
+            float hp = _stats.State.Hp;
+            yield return new WaitForSeconds(0.85f);
+            _stats.RequestGetUp();
+            yield return new WaitForSeconds(1.5f);
+            Assert.IsFalse(_stats.IsDown);
+            Assert.IsTrue(_stats.DownIsForward, "The enemy never rolled the player.");
+            Assert.AreEqual(hp, _stats.State.Hp, 0.001f);
+        }
+
+        [UnityTest]
+        public IEnumerator StrugglingFromSupineMountGetsThePlayerUp()
+        {
+            yield return LoadPlayer(holdEnemies: false);
+            PrepareMount(forward: false);
+            var mount = _stats.GetComponent("GroundMountAttack");
+            Assert.IsNotNull(mount);
+            const System.Reflection.BindingFlags members = System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.NonPublic;
+            var stage = mount.GetType().GetProperty("Stage", members);
+            var struggle = mount.GetType().GetMethod("Struggle", members);
+            float deadline = Time.realtimeSinceStartup + 5f;
+            while (stage.GetValue(mount).ToString() != "Windup" && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.AreEqual("Windup", stage.GetValue(mount).ToString());
+            float hp = _stats.State.Hp;
+            for (int i = 0; i < 6; i++)
+                struggle.Invoke(mount, null);
+
+            yield return new WaitForSeconds(1.5f);
+            Assert.IsFalse(_stats.IsDown);
+            Assert.AreEqual(hp, _stats.State.Hp, 0.001f);
         }
 
         [UnityTest]
@@ -245,16 +346,24 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator ダウンから起き上がって構えに戻る()
+        public IEnumerator ダウンは操作するまで続き起き上がり中も移動できない()
         {
             yield return LoadPlayer();
 
             yield return HitUntilDown();
             Assert.IsTrue(_stats.State.IsDown, "ダウンしていない");
 
-            // ダウン 1.2 秒 + 起き上がり 0.8 秒 + 余裕
             yield return new WaitForSeconds(CombatConstants.DownDuration + 0.5f);
+            Assert.IsTrue(_stats.State.IsDown, "入力がない間はダウンが続く");
+            Assert.AreEqual(CharacterAnimator.State.Down, _anim.Current);
 
+            _stats.RequestGetUp();
+            yield return null;
+            yield return null;
+            Assert.AreEqual(CharacterAnimator.State.GetUp, _anim.Current);
+            Assert.IsTrue(_stats.State.IsDown, "起き上がり中は操作をロックする");
+
+            yield return new WaitForSeconds(_anim.GetUpSeconds + 0.1f);
             Assert.IsFalse(_stats.State.IsDown, "ダウンが明けていない");
             Assert.AreEqual(CharacterAnimator.State.Idle, _anim.Current,
                 $"起き上がって構えに戻っていない（{_anim.Current}）");

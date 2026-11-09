@@ -107,7 +107,8 @@ namespace Ryona.Game
             };
 
             Shake(ReceivedShake * weight, ReceivedShakeSeconds);
-            HitStop.Play(ReceivedHitStop * weight);
+            float stopSeconds = Stats != null && Stats.GroundMount.IsApplyingPunch ? 0.025f : ReceivedHitStop;
+            HitStop.Play(stopSeconds * weight);
 
             // 敵は素手。重い被弾も金属音ではなく打撃音を使う。
             PlaySfx(SfxId.Impact, weight > 1.1f ? 1f : 0.8f);

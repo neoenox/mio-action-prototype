@@ -172,6 +172,13 @@ namespace Ryona.Game
         float _focusPitch;
         float _focusYaw;
         float _focusRemaining;
+        bool _cinematicRequested;
+        bool _cinematicActive;
+        bool _cinematicCut;
+        Vector3 _cinematicPosition;
+        Vector3 _cinematicTarget;
+        Vector3 _shotPosition;
+        Vector3 _shotTarget;
 
         // このフレームで実際に使う値（毎フレーム TickEffects が更新する）
         float _distanceScale = 1f;
@@ -236,6 +243,7 @@ namespace Ryona.Game
                 // _downBlend を使うため、ここで更新しないとダウン演出が一度も効かない。
                 TickDown(Time.deltaTime);
                 TickBelt();
+                ApplyCinematicShot();
                 Framed = true;
                 return;
             }
@@ -313,7 +321,34 @@ namespace Ryona.Game
             transform.position = _smoothPivot + direction * _targetDistance;
             transform.rotation = Quaternion.LookRotation(_smoothPivot - transform.position, Vector3.up);
 
+            ApplyCinematicShot();
             Framed = true;
+        }
+
+        internal void RequestCinematicShot(Vector3 position, Vector3 target, bool cut = false)
+        {
+            _cinematicRequested = true;
+            _cinematicCut = cut;
+            _cinematicPosition = position;
+            _cinematicTarget = target;
+        }
+
+        void ApplyCinematicShot()
+        {
+            if (!_cinematicRequested)
+            {
+                _cinematicActive = false;
+                return;
+            }
+
+            // Cut to the other side of the actors, then track the shot without following each jolt.
+            float follow = _cinematicActive && !_cinematicCut
+                ? 1f - Mathf.Exp(-13f * Time.unscaledDeltaTime) : 1f;
+            _shotPosition = Vector3.Lerp(_shotPosition, _cinematicPosition, follow);
+            _shotTarget = Vector3.Lerp(_shotTarget, _cinematicTarget, follow);
+            transform.SetPositionAndRotation(_shotPosition, Quaternion.LookRotation(_shotTarget - _shotPosition));
+            _cinematicActive = true;
+            _cinematicRequested = false;
         }
 
         /// <summary>
@@ -578,6 +613,7 @@ namespace Ryona.Game
             ResetDistanceEffect();
             ResetPivotEffect();
             _focusRemaining = 0f;
+            _cinematicRequested = _cinematicActive = false;
             _focusPitch = 0f;
             _focusYaw = 0f;
         }

@@ -10,6 +10,7 @@ namespace Ryona.Game
     public sealed class PlayerStats : MonoBehaviour
     {
         public CombatState State { get; private set; }
+        internal GroundMountAttack GroundMount { get; private set; }
 
         /// <summary>移動入力があるか。歩き / 待機の姿勢切替に使う。</summary>
         public bool IsMoving { get; set; }
@@ -64,6 +65,7 @@ namespace Ryona.Game
         void Awake()
         {
             State = new CombatState();
+            GroundMount = gameObject.AddComponent<GroundMountAttack>();
         }
 
         void Update()
@@ -86,7 +88,25 @@ namespace Ryona.Game
             if (_downRemaining > 0f)
             {
                 _downRemaining = Mathf.Max(0f, _downRemaining - Time.deltaTime);
-                State.IsDown = _downRemaining > 0f;
+                if (_gettingUp && _downRemaining <= 0f)
+                {
+                    _gettingUp = false;
+                    State.IsDown = false;
+                }
+            }
+
+            if (IsDown && !IsDead && !_gettingUp && !GroundMount.BlocksGetUp &&
+                !PauseMenu.IsPaused && Time.deltaTime > 0f)
+            {
+                if (InputReader.Move().sqrMagnitude > 0.04f || InputReader.StrugglePressed())
+                    RequestGetUp();
+
+                if (GetUpRequested && _downRemaining <= 0f)
+                {
+                    var animator = GetComponentInChildren<CharacterAnimator>();
+                    if (animator == null || !animator.isActiveAndEnabled || animator.Rig == null || !animator.Rig.Ready)
+                        BeginGetUp(0.8f);
+                }
             }
 
             State.Tick(Time.deltaTime);
@@ -122,6 +142,26 @@ namespace Ryona.Game
 
         /// <summary>ダウン（倒れている）残り時間。コア状態の IsDown をここで立てる。</summary>
         float _downRemaining;
+        bool _gettingUp;
+        internal bool IsGettingUp => _gettingUp;
+        internal bool GetUpRequested { get; private set; }
+
+        public void RequestGetUp()
+        {
+            if (IsDown && !IsDead && !_gettingUp && !GroundMount.BlocksGetUp)
+                GetUpRequested = true;
+        }
+
+        internal void BeginGetUp(float seconds)
+        {
+            if (!IsDown || IsDead || _gettingUp || GroundMount.BlocksGetUp)
+                return;
+
+            GetUpRequested = false;
+            _gettingUp = true;
+            _downRemaining = seconds;
+            _downImmuneUntil = Time.time + seconds + CombatConstants.DownImmunitySeconds;
+        }
 
         /// <summary>この時刻まではダウンしない（起き上がり直後の猶予）。</summary>
         float _downImmuneUntil;
@@ -137,6 +177,7 @@ namespace Ryona.Game
         /// 背後からの一撃か腹ダメージの蓄積で倒れたときは前へ倒れる。
         /// </summary>
         public bool DownIsForward { get; private set; }
+        internal void FinishGroundRoll() => DownIsForward = false;
 
         float _heldBellyDamage;
 
@@ -202,11 +243,14 @@ namespace Ryona.Game
             if (State == null || IsDead)
                 return;
 
+            GroundMount.ResetKnockdown();
             DownIsForward = forward ?? (attacker != null &&
                 Vector3.Dot(transform.forward, attacker.position - transform.position) < 0f);
 
             float length = seconds > 0f ? seconds : CombatConstants.DownDuration;
-            _downRemaining = Mathf.Max(_downRemaining, length);
+            _downRemaining = _gettingUp ? length : Mathf.Max(_downRemaining, length);
+            _gettingUp = false;
+            GetUpRequested = false;
             State.IsDown = true;
             State.ResetFlinch();
             _downImmuneUntil = Time.time + length + CombatConstants.DownImmunitySeconds;
@@ -328,9 +372,12 @@ namespace Ryona.Game
         public void RestoreAll()
         {
             bool wasDead = IsDead;
+            GroundMount.ResetKnockdown();
             State.RestoreAll();
             StunRemaining = 0f;
             _downRemaining = 0f;
+            _gettingUp = false;
+            GetUpRequested = false;
             _downImmuneUntil = 0f;
             _heldBellyDamage = 0f;
             State.IsDown = false;

@@ -364,6 +364,7 @@ namespace Ryona.Game
         PlayerGrapple _grapple;
         SkinnedMeshRenderer _worriedBrow;
         int _worriedBrowIndex;
+        bool _mountFearActive;
         float _originalBrowWeight;
         bool _heldFaceActive;
         float _heldImpact;
@@ -410,6 +411,7 @@ namespace Ryona.Game
         void OnDisable()
         {
             ProceduralSfx.HurtVoicePlayed -= OnHurtVoice;
+            ClearMountFear();
             ClearHeldFace();
             Unsubscribe();
         }
@@ -586,6 +588,7 @@ namespace Ryona.Game
 
             if (PreviewAmount >= 0f)
             {
+                ClearMountFear();
                 ClearHeldFace();
                 _pain = Mathf.Clamp01(PreviewAmount);
                 if (PreviewBelly >= 0f)
@@ -606,6 +609,14 @@ namespace Ryona.Game
             // 溜め終わったら次のヒットに備えてピークを戻す
             if (_pain <= 0.001f)
                 _peak = 0f;
+
+            var mount = Stats != null ? Stats.GroundMount : null;
+            if (mount != null && mount.Fear > 0f)
+            {
+                ApplyMountFear(mount.Fear, mount.HeadRecoil);
+                return;
+            }
+            ClearMountFear();
 
             bool heldFace = UsesHeldFace;
             if (!heldFace)
@@ -684,6 +695,33 @@ namespace Ryona.Game
             float mouth = Mathf.Lerp(0.14f + 0.035f * worry + 0.035f * effort, 0.30f, _heldImpact);
             float sad = _worriedBrow != null ? 0f : 0.60f + 0.18f * worry;
             WriteShape(new PainShape(0f, sad, mouth, 0f, _heldImpact), 1f, _heldImpact);
+        }
+
+        void ApplyMountFear(float fear, float hit)
+        {
+            if (!_mountFearActive && _worriedBrow != null)
+                _originalBrowWeight = _worriedBrow.GetBlendShapeWeight(_worriedBrowIndex);
+            _mountFearActive = true;
+            float blink = Mathf.Lerp(_eyeClose, Mathf.Clamp01(hit * 1.7f), fear);
+            float sad = _worriedBrow != null ? 0f : 0.70f * fear;
+            WriteShape(new PainShape(0f, sad, 0.10f + 0.22f * fear + 0.11f * hit, 0f, 0f),
+                1f, blink, squeezeOverride: hit * fear);
+            if (_worriedBrow != null)
+                _worriedBrow.SetBlendShapeWeight(_worriedBrowIndex,
+                    Mathf.Lerp(_originalBrowWeight, 82f, fear));
+            Vrm.Runtime.Expression.SetWeight(ExpressionKey.Surprised, 0.22f * fear * (1f - blink));
+        }
+
+        void ClearMountFear()
+        {
+            if (!_mountFearActive)
+                return;
+
+            if (Vrm != null)
+                Vrm.Runtime.Expression.SetWeight(ExpressionKey.Surprised, 0f);
+            if (_worriedBrow != null)
+                _worriedBrow.SetBlendShapeWeight(_worriedBrowIndex, _originalBrowWeight);
+            _mountFearActive = false;
         }
 
         void ClearHeldFace()
@@ -858,7 +896,7 @@ namespace Ryona.Game
             WriteShape(shape, amount, Mathf.Max(blink, _eyeClose));
         }
 
-        void WriteShape(PainShape shape, float amount, float blink)
+        void WriteShape(PainShape shape, float amount, float blink, float? squeezeOverride = null)
         {
             // VRM の読み込みが Start より遅れることがあるので、見つかるまで探し直す
             if (_eyeAngrySmr == null || _browAngrySmr == null || _worriedBrow == null)
@@ -887,7 +925,7 @@ namespace Ryona.Game
 
             // 殴られたら目を強く閉じる。まぶたを閉じるだけだと眠っているように見えるので、
             // 目と眉に力を入れる（ギュッとつぶる）。
-            float squeeze = _squeeze;
+            float squeeze = squeezeOverride ?? _squeeze;
             expression.SetWeight(BlinkKey, Mathf.Max(blink, squeeze));
 
             if (_eyeAngrySmr != null)
