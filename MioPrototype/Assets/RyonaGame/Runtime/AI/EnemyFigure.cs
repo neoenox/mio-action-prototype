@@ -1379,23 +1379,28 @@ namespace Ryona.Game
 
             var rig = mount.TargetRig;
             Vector3 side = transform.right * punchSide;
-            Vector3 support = (left ? rig.RUpperArm : rig.LUpperArm).position;
             Vector3 entry = rig.Hips.position + Vector3.up * 0.20f;
-            Vector3 supportGoal = Vector3.Lerp(entry - side * 0.20f,
-                support + Vector3.up * 0.10f - side * 0.07f - transform.forward * 0.06f, seated);
-            Vector3 shoulderPosition = ShoulderBone(left).position;
-            Vector3 chamber = shoulderPosition + side * (0.14f + 0.19f * windup)
-                + transform.forward * (0.15f - 0.04f * windup) + Vector3.up * (-0.22f + 0.29f * windup);
+            Vector3 raised = MountRaisedFist(left, side);
+            Vector3 outside = MountOpenHand(rig, side);
+            Vector3 otherOutside = MountOpenHand(rig, -side);
+            Vector3 otherHand = Vector3.Lerp(otherOutside, MountRaisedFist(!left, -side), mount.NextArmWindup);
             Vector3 contact = mount.StrikeTarget + Vector3.up * 0.095f + side * 0.055f - transform.forward * 0.025f;
-            // Drop toward the cheek's height outside the guard, then sweep inward.
-            Vector3 outsideCheek = contact + side * 0.42f - transform.forward * 0.10f;
-            Vector3 arc = Vector3.Lerp(
-                Vector3.Lerp(chamber, outsideCheek, followThrough),
-                Vector3.Lerp(outsideCheek, contact, followThrough), followThrough);
-            if (mount.Withdrawal > 0f)
-                arc = Vector3.Lerp(chamber, contact, followThrough)
-                    + (side * 0.12f + Vector3.up * 0.14f) * mount.Withdrawal;
-            Vector3 punchGoal = Vector3.Lerp(entry + side * 0.20f, arc, seated);
+            Vector3 punchHand = Vector3.Lerp(outside, raised, mount.ArmWindup);
+            if (stage == GroundMountAttack.Beat.Strike)
+            {
+                // Drop toward cheek height outside the guard, then sweep inward.
+                Vector3 outsideCheek = contact + side * 0.42f - transform.forward * 0.10f;
+                punchHand = Vector3.Lerp(Vector3.Lerp(raised, outsideCheek, followThrough),
+                    Vector3.Lerp(outsideCheek, contact, followThrough), followThrough);
+            }
+            else if (stage == GroundMountAttack.Beat.Recover)
+            {
+                // Clear the cheek and stay outside. The other hand starts rising before this one settles.
+                punchHand = Vector3.Lerp(contact, outside, t)
+                    + (side * 0.11f + Vector3.up * 0.12f) * Mathf.Sin(Mathf.PI * t);
+            }
+            Vector3 punchGoal = Vector3.Lerp(entry + side * 0.20f, punchHand, seated);
+            Vector3 supportGoal = Vector3.Lerp(entry - side * 0.20f, otherHand, seated);
             if (rolling)
             {
                 var shoulder = mount.RollLeftShoulder ? rig.LUpperArm : rig.RUpperArm;
@@ -1408,6 +1413,16 @@ namespace Ryona.Game
             }
             AimMountArm(!left, supportGoal, kneel);
             AimMountArm(left, punchGoal, kneel);
+        }
+
+        Vector3 MountOpenHand(ProceduralRig rig, Vector3 outside)
+        {
+            return rig.Hips.position + transform.forward * 0.37f + outside * 0.24f + Vector3.up * 0.20f;
+        }
+
+        Vector3 MountRaisedFist(bool left, Vector3 outside)
+        {
+            return ShoulderBone(left).position + outside * 0.33f + transform.forward * 0.11f + Vector3.up * 0.07f;
         }
 
         void MountLeg(bool left, float kneel, float seated, float swing)

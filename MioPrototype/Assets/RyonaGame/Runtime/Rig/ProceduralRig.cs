@@ -118,14 +118,17 @@ namespace Ryona.Game
             RestHips = transform.InverseTransformPoint(Hips.position);
 
             CaptureFingers();
+            _hasWristBasis = TryCaptureWristBasis(true, out _leftWristBasis)
+                & TryCaptureWristBasis(false, out _rightWristBasis);
             CaptureFlexAxes();
             CaptureElbowHinges();
         }
 
         /// <summary>
         /// 肘の蝶番軸を上腕のローカル座標で求める。
-        /// 肘は前腕が体の前（+Z）へ曲がるのが正常なので、軸 = 上腕の向き × 体の前。
-        /// これを基準に上腕をひねると、どの姿勢でも肘が同じ面で曲がる。
+        /// 肘は前腕が体の前へ曲がるのが正常なので、軸 = 上腕の向き × **キャラクターの前**。
+        /// ワールド +Z を使うと、+X を向いて立つこのゲームの彼女では腕と平行になって
+        /// 外積が 0 になり、肘の向きが補正されない（マウント時の左腕が反転する原因）。
         /// </summary>
         void CaptureElbowHinges()
         {
@@ -137,9 +140,10 @@ namespace Ryona.Game
 
             Vector3 armL = (LLowerArm.position - LUpperArm.position).normalized;
             Vector3 armR = (RLowerArm.position - RUpperArm.position).normalized;
+            Vector3 forward = transform.forward;
 
-            Vector3 hingeL = Vector3.Cross(armL, Vector3.forward);
-            Vector3 hingeR = Vector3.Cross(armR, Vector3.forward);
+            Vector3 hingeL = HingeAxis(armL, forward);
+            Vector3 hingeR = HingeAxis(armR, forward);
 
             if (hingeL.sqrMagnitude > 1e-6f)
                 _elbowHingeLocalL = Quaternion.Inverse(LUpperArm.rotation) * hingeL.normalized;
@@ -149,6 +153,20 @@ namespace Ryona.Game
 
             Debug.Log($"[Rig] elbow hinge L=({_elbowHingeLocalL.x:F2},{_elbowHingeLocalL.y:F2},{_elbowHingeLocalL.z:F2})" +
                 $" R=({_elbowHingeLocalR.x:F2},{_elbowHingeLocalR.y:F2},{_elbowHingeLocalR.z:F2})");
+        }
+
+        /// <summary>上腕の向きと体の前から肘の曲がる軸を作る。退化時は上・右で代用する。</summary>
+        static Vector3 HingeAxis(Vector3 arm, Vector3 forward)
+        {
+            Vector3 hinge = Vector3.Cross(arm, forward);
+            if (hinge.sqrMagnitude > 1e-6f)
+                return hinge;
+
+            hinge = Vector3.Cross(arm, Vector3.up);
+            if (hinge.sqrMagnitude > 1e-6f)
+                return hinge;
+
+            return Vector3.Cross(arm, Vector3.right);
         }
 
         IEnumerable<Transform> All()
@@ -620,6 +638,51 @@ namespace Ryona.Game
             Vector3 alongSurface = Vector3.ProjectOnPlane(faceSurface * fingerDirection, normal);
             float twist = Vector3.SignedAngle(alongSurface, fingers, normal);
             hand.rotation = Quaternion.AngleAxis(twist, normal) * faceSurface * hand.rotation;
+        }
+
+        Quaternion _leftWristBasis;
+        Quaternion _rightWristBasis;
+        bool _hasWristBasis;
+
+        bool TryCaptureWristBasis(bool left, out Quaternion basis)
+        {
+            basis = Quaternion.identity;
+            Transform hand = left ? LHand : RHand;
+            if (hand == null)
+                return false;
+
+            string prefix = left ? "J_Bip_L_" : "J_Bip_R_";
+            var knuckle = Bone(left ? HumanBodyBones.LeftMiddleProximal : HumanBodyBones.RightMiddleProximal,
+                prefix + "Middle1");
+            var thumb = Bone(left ? HumanBodyBones.LeftThumbProximal : HumanBodyBones.RightThumbProximal,
+                prefix + "Thumb1");
+            // Work with the skinned wrist even if UniVRM exposes a separate control hierarchy.
+            if (knuckle == null || !knuckle.IsChildOf(hand))
+                knuckle = hand.Find(prefix + "Middle1");
+            if (thumb == null || !thumb.IsChildOf(hand))
+                thumb = hand.Find(prefix + "Thumb1");
+            if (knuckle == null || thumb == null)
+                return false;
+
+            Vector3 fingers = knuckle.position - hand.position;
+            Vector3 palm = Vector3.Cross(fingers, thumb.position - hand.position).normalized;
+            if (palm == Vector3.zero)
+                return false;
+            if (Vector3.Dot(palm, transform.up) > 0f)
+                palm = -palm;
+            basis = Quaternion.LookRotation(hand.InverseTransformDirection(fingers), hand.InverseTransformDirection(palm));
+            return true;
+        }
+
+        internal void ReflectRightWristToLeft(Vector3 normal, float weight)
+        {
+            if (!_hasWristBasis)
+                return;
+
+            Quaternion right = RHand.rotation * _rightWristBasis;
+            Quaternion reflected = Quaternion.LookRotation(Vector3.Reflect(right * Vector3.forward, normal),
+                Vector3.Reflect(right * Vector3.up, normal));
+            LHand.rotation = Quaternion.Slerp(LHand.rotation, reflected * Quaternion.Inverse(_leftWristBasis), weight);
         }
 
         void CaptureFingers()

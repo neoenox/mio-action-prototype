@@ -118,11 +118,33 @@ namespace Ryona.Tests
             Assert.AreEqual(5, hits);
             Assert.Greater(reaction, 27f, "A landed punch visibly snaps the head away.");
             yield return new WaitForSeconds(1f);
-            Assert.AreEqual(5, hits, "No second mount starts during the same knockdown.");
+            Assert.AreEqual(5, hits, "The player has time to request get-up after the mount.");
             Assert.IsTrue(_stats.IsDown);
             _stats.RequestGetUp();
             yield return new WaitForSeconds(_anim.GetUpSeconds + 0.15f);
             Assert.IsFalse(_stats.IsDown);
+        }
+
+        [UnityTest]
+        public IEnumerator StayingDownAfterMountLetsTheEnemyAttackAgain()
+        {
+            yield return LoadPlayer(holdEnemies: false);
+            var attacker = PrepareMount(forward: false);
+            int hits = 0;
+            float fifthHitAt = 0f;
+            _stats.HitReceived += result =>
+            {
+                if (_stats.LastAttacker == attacker.transform && result.Damage > 0f && ++hits == 5)
+                    fifthHitAt = Time.time;
+            };
+
+            float deadline = Time.realtimeSinceStartup + 12f;
+            while (hits < 6 && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.AreEqual(6, hits, "The second mount lands a punch without a new knockdown.");
+            Assert.GreaterOrEqual(Time.time - fifthHitAt, 2.5f, "The player gets a recovery window.");
+            Assert.IsTrue(_stats.IsDown);
         }
 
         [UnityTest]

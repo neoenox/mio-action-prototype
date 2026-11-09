@@ -9,6 +9,7 @@ namespace Ryona.Game
         internal enum Beat { Idle, Approach, Mount, Roll, Windup, Strike, Recover, Dismount }
         const int MaxPunches = 5;
         const int EscapeInputs = 6;
+        const float RemountDelay = 2.5f;
 
         PlayerStats _player;
         CharacterAnimator _animator;
@@ -23,13 +24,10 @@ namespace Ryona.Game
         float _downTime;
         float _nextSearch;
         float _side;
-        bool _attempted;
         bool _escaped;
         int _punches;
         int _struggles;
         float _reactionAge = float.PositiveInfinity;
-        float _guardRaise;
-        bool _hitLanded;
 
         internal EnemyBrain Attacker { get; private set; }
         internal Beat Stage { get; private set; }
@@ -53,11 +51,15 @@ namespace Ryona.Game
         internal Vector3 StrikeTarget { get; private set; }
         internal Vector3 StrikeSide => Attacker.transform.right * (LeftPunch ? -1f : 1f);
         internal Vector3 ImpactSide { get; private set; }
+        internal bool ImpactWasLeftPunch { get; private set; }
         internal Vector3 ShotOffset => _shotOffset;
         internal Vector3 AttackerHead => _figure.HeadBone.position;
-        internal float GuardRaise => _guardRaise;
-        internal float HeadRecoil => Recoil(-0.018f, 0.036f, 0.22f);
+        internal bool HasTakenPunch { get; private set; }
+        internal float HeadRecoil => ImpactWasLeftPunch
+            ? Recoil(-0.012f, 0.058f, 0.24f)
+            : Recoil(-0.018f, 0.036f, 0.22f);
         internal float TorsoRecoil => Recoil(0.010f, 0.073f, 0.28f);
+        internal float ArmRecoil => Recoil(-0.052f, 0.10f, 0.30f);
         internal float LegRecoil => Recoil(0.044f, 0.118f, 0.33f);
         internal bool IsApplyingPunch => Attacker != null && Stage == Beat.Strike && _reactionAge == 0f;
 
@@ -78,7 +80,20 @@ namespace Ryona.Game
             Beat.Recover => 1f - Mathf.SmoothStep(0f, 1f, Progress / 0.80f),
             _ => 0f
         };
-        internal float Withdrawal => Stage == Beat.Recover ? Mathf.Sin(Mathf.PI * (1f - Drive)) : 0f;
+        const float OverlapLift = 0.31f;
+        internal float ArmWindup => Stage == Beat.Windup
+            ? Mathf.Lerp(_punches == 0 ? 0f : OverlapLift, 1f, Cock)
+            : 0f;
+        internal float NextArmWindup => Stage == Beat.Recover && _punches + 1 < MaxPunches
+            ? OverlapLift * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.35f, 1f, Progress))
+            : 0f;
+        internal float LeftHookCentering => !LeftPunch ? 0f : Stage switch
+        {
+            Beat.Windup => Cock,
+            Beat.Strike => 1f,
+            Beat.Recover => 1f - Mathf.SmoothStep(0f, 1f, Progress),
+            _ => 0f
+        };
         internal ProceduralRig TargetRig => _animator != null ? _animator.Rig : null;
         internal float EscapeProgress => _struggles / (float)EscapeInputs;
 
@@ -91,7 +106,6 @@ namespace Ryona.Game
         internal void ResetKnockdown()
         {
             End();
-            _attempted = false;
             _downTime = 0f;
             _nextSearch = 0f;
         }
@@ -115,11 +129,12 @@ namespace Ryona.Game
             _downTime += dt;
             StrugglePulse = Mathf.MoveTowards(StrugglePulse, 0f, dt * 4f);
             _reactionAge += dt;
-            if (_hitLanded)
-                _guardRaise = Mathf.MoveTowards(_guardRaise, 1f, dt / 0.14f);
             if (Attacker == null)
             {
-                if (!_attempted && _downTime >= 0.75f && Time.time >= _nextSearch && !_player.GetUpRequested &&
+                if (Stage != Beat.Idle)
+                    End();
+
+                if (_downTime >= 0.75f && Time.time >= _nextSearch && !_player.GetUpRequested &&
                     (_motor == null || !_motor.IsAirborne) &&
                     _animator != null && _animator.Current == CharacterAnimator.State.Down &&
                     TargetRig != null && TargetRig.Ready)
@@ -184,7 +199,6 @@ namespace Ryona.Game
             if (Attacker == null)
                 return;
 
-            _attempted = true;
             _side = Vector3.Dot(Attacker.transform.position - TargetRig.Hips.position, transform.right) < 0f
                 ? -1f : 1f;
             Begin(Beat.Approach, Mathf.Clamp(Mathf.Sqrt(best) / 3f, 0.30f, 0.85f));
@@ -261,10 +275,13 @@ namespace Ryona.Game
                     Begin(Beat.Strike, 0.14f);
                     break;
                 case Beat.Recover:
-                    if (++_punches >= MaxPunches)
+                    if (_punches + 1 >= MaxPunches)
                         Begin(Beat.Dismount, 0.42f);
                     else
+                    {
+                        _punches++;
                         Begin(Beat.Windup, 0.30f);
+                    }
                     break;
                 case Beat.Dismount:
                     bool escaped = _escaped;
@@ -292,10 +309,9 @@ namespace Ryona.Game
                 if (Vector3.Distance(_figure.Fist(LeftPunch).position, TargetRig.Head.position) < 0.20f)
                 {
                     ImpactSide = StrikeSide;
+                    ImpactWasLeftPunch = LeftPunch;
                     _reactionAge = 0f;
-                    if (!_hitLanded)
-                        _guardRaise = 0.12f;
-                    _hitLanded = true;
+                    HasTakenPunch = true;
                     var punch = AttackLibrary.Light();
                     punch.flinch = 0f;
                     _player.LastHitZone = PunchZone.Face;
@@ -359,6 +375,8 @@ namespace Ryona.Game
 
         void End()
         {
+            if (Stage != Beat.Idle)
+                _nextSearch = Time.time + RemountDelay;
             if (Stage == Beat.Roll && RollProgress >= 0.5f && _player.IsDown && !_player.IsDead)
                 FinishRoll();
             if (Attacker != null && Attacker.IsAlive)
@@ -370,9 +388,9 @@ namespace Ryona.Game
             _escaped = false;
             StrugglePulse = 0f;
             _reactionAge = float.PositiveInfinity;
-            _guardRaise = 0f;
-            _hitLanded = false;
+            HasTakenPunch = false;
             ImpactSide = Vector3.zero;
+            ImpactWasLeftPunch = false;
             _shotOffset = Vector3.zero;
         }
     }

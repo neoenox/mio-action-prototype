@@ -1865,20 +1865,32 @@ namespace Ryona.Game
             float impactSide = Mathf.Sign(Vector3.Dot(crossBody, mount.ImpactSide));
             bool incomingLeft = Vector3.Dot(left, mount.StrikeSide) > 0f;
             bool impactLeft = Vector3.Dot(left, mount.ImpactSide) > 0f;
+            Vector3 guardOffset = Rig.Head.position - Rig.RUpperArm.position;
 
             // Follow the side of the fist at contact, even as the other hand begins winding up.
             Rig.Hips.position += (bodyAxis * 0.022f - crossBody * (0.027f * impactSide)) * torsoRecoil * guard;
             Rig.Chest.rotation = Quaternion.AngleAxis((incomingSide * 5f * windup + impactSide * 22f * torsoRecoil)
                 * guard, bodyAxis) * Quaternion.AngleAxis(9f * torsoRecoil, crossBody) * Rig.Chest.rotation;
+            float defaultHeadRecoil = mount.ImpactWasLeftPunch ? 0f : headRecoil;
             if (Rig.Neck != null)
-                Rig.Neck.rotation = Quaternion.AngleAxis(impactSide * 11f * headRecoil * guard, bodyAxis)
+                Rig.Neck.rotation = Quaternion.AngleAxis(impactSide * 11f * defaultHeadRecoil * guard, bodyAxis)
                     * Rig.Neck.rotation;
 
             float cheekTurn = -25f * Vector3.Dot(crossBody, Vector3.back);
             Rig.Head.rotation = Quaternion.AngleAxis((cheekTurn + incomingSide * 7f * windup
-                + impactSide * 41f * headRecoil) * guard, bodyAxis) * Rig.Head.rotation;
+                + impactSide * 41f * defaultHeadRecoil) * guard, bodyAxis) * Rig.Head.rotation;
 
-            float lookWeight = guard * (1f - mount.GuardRaise) * (1f - headRecoil);
+            float centering = mount.LeftHookCentering * guard;
+            if (centering > 0.001f)
+            {
+                Vector3 facing = Vector3.ProjectOnPlane(Rig.Head.forward, bodyAxis);
+                float neutralTurn = Vector3.SignedAngle(facing, Vector3.up, bodyAxis);
+                Rig.Head.rotation = Quaternion.AngleAxis(neutralTurn * 0.60f * centering, bodyAxis) * Rig.Head.rotation;
+            }
+            if (mount.ImpactWasLeftPunch && headRecoil > 0.001f)
+                TurnHeadToLeftShoulder(bodyAxis, crossBody, left, headRecoil * guard);
+
+            float lookWeight = mount.HasTakenPunch ? 0f : guard;
             if (lookWeight > 0.001f)
             {
                 Vector3 toAttacker = mount.AttackerHead - Rig.Head.position;
@@ -1895,24 +1907,48 @@ namespace Ryona.Game
                 BendMountKnee(false, curl, pole, (impactLeft ? 0.20f : 0.43f) * legRecoil);
             }
 
-            float flinch = Mathf.Max(headRecoil, torsoRecoil);
+            float flinch = mount.ArmRecoil;
             float brace = windup + 0.5f * effort;
             float give = mount.Stage == GroundMountAttack.Beat.Strike ? 0.28f * mount.Drive : 0f;
-            float guardWeight = guard * Mathf.SmoothStep(0f, 1f, mount.GuardRaise);
-            float waiting = guard - guardWeight;
-            if (waiting > 0.001f)
-            {
-                SetMountWaitingArm(true, left, bodyAxis, waiting);
-                SetMountWaitingArm(false, -left, bodyAxis, waiting);
-            }
-            if (guardWeight <= 0.001f)
-                return;
+            bool rightNearCamera = Vector3.Dot(-left, mount.ShotOffset) > 0f;
+            float leftBrace = brace * (incomingLeft ? 1f : 0.35f);
+            float leftRecoil = Mathf.Max(incomingLeft ? give : 0f, impactLeft ? flinch : 0f);
+            float rightBrace = brace * (incomingLeft ? 0.35f : 1f);
+            float rightRecoil = Mathf.Max(incomingLeft ? 0f : give, impactLeft ? 0f : flinch);
 
-            bool leftNearCamera = Vector3.Dot(left, mount.ShotOffset) > 0f;
-            SetMountGuardArm(true, left, bodyAxis, guardWeight, brace * (incomingLeft ? 1f : 0.35f),
-                Mathf.Max(incomingLeft ? give : 0f, impactLeft ? flinch : 0f), leftNearCamera);
-            SetMountGuardArm(false, -left, bodyAxis, guardWeight, brace * (incomingLeft ? 0.35f : 1f),
-                Mathf.Max(incomingLeft ? 0f : give, impactLeft ? 0f : flinch), !leftNearCamera);
+            Quaternion rightShoulder = Rig.RUpperArm.localRotation;
+            Quaternion rightElbow = Rig.RLowerArm.localRotation;
+            Quaternion rightHand = Rig.RHand.localRotation;
+            // Pose the right arm with the left side's reaction, then reflect that solution.
+            PoseMountRightArm(-left, bodyAxis, guardOffset, guard, leftBrace, leftRecoil, rightNearCamera);
+            Vector3 leftUpper = Vector3.Reflect(Rig.RLowerArm.position - Rig.RUpperArm.position, left);
+            Vector3 leftForearm = Vector3.Reflect(Rig.RHand.position - Rig.RLowerArm.position, left);
+            Rig.SetArm(true,
+                Vector3.Slerp(Rig.LLowerArm.position - Rig.LUpperArm.position, leftUpper, guard),
+                Vector3.Slerp(Rig.LHand.position - Rig.LLowerArm.position, leftForearm, guard));
+            Rig.ReflectRightWristToLeft(left, guard);
+
+            Rig.RUpperArm.localRotation = rightShoulder;
+            Rig.RLowerArm.localRotation = rightElbow;
+            Rig.RHand.localRotation = rightHand;
+            PoseMountRightArm(-left, bodyAxis, guardOffset, guard, rightBrace, rightRecoil, rightNearCamera);
+
+            Rig.CurlFingers(true, Mathf.Lerp(0.18f, 0.68f - 0.30f * leftRecoil, guard));
+            Rig.CurlFingers(false, Mathf.Lerp(0.18f, 0.68f - 0.30f * rightRecoil, guard));
+        }
+
+        void TurnHeadToLeftShoulder(Vector3 bodyAxis, Vector3 crossBody, Vector3 left, float weight)
+        {
+            Vector3 facing = Vector3.ProjectOnPlane(Rig.Head.forward, bodyAxis);
+            Vector3 towardLeft = Vector3.up * 0.87f + left * 0.50f;
+            float turn = Vector3.SignedAngle(facing, towardLeft, bodyAxis) * weight;
+            if (Rig.Neck != null)
+            {
+                Rig.Neck.rotation = Quaternion.AngleAxis(turn * 0.27f, bodyAxis) * Rig.Neck.rotation;
+                turn *= 0.73f;
+            }
+            Rig.Head.rotation = Quaternion.AngleAxis(turn, bodyAxis)
+                * Quaternion.AngleAxis(-6f * weight, crossBody) * Rig.Head.rotation;
         }
 
         void ApplyProneMountRoll(GroundMountAttack mount)
@@ -2017,24 +2053,38 @@ namespace Ryona.Game
             foot.rotation = footBefore;
         }
 
-        void SetMountWaitingArm(bool left, Vector3 outside, Vector3 towardHead, float weight)
-        {
-            Transform shoulder = left ? Rig.LUpperArm : Rig.RUpperArm;
-            // One hand rests by the ribs; the other braces lightly against the floor.
-            Vector3 goal = shoulder.position - towardHead * 0.28f
-                + outside * (left ? -0.07f : 0.21f) + Vector3.up * (left ? 0.05f : -0.10f);
-            AimMountHand(left, outside, towardHead, goal, weight);
-        }
-
-        void SetMountGuardArm(bool left, Vector3 outside, Vector3 towardHead, float weight,
+        void PoseMountRightArm(Vector3 outside, Vector3 towardHead, Vector3 guardOffset, float weight,
             float brace, float recoil, bool nearCamera)
         {
             float nearHand = nearCamera ? 1f : 0f;
-            Vector3 goal = Rig.Head.position + outside * (0.14f + 0.05f * nearHand + 0.17f * recoil)
-                + Vector3.up * (0.15f - 0.04f * nearHand + 0.055f * brace - 0.14f * recoil)
-                - towardHead * (0.085f + 0.05f * nearHand - 0.075f * brace + 0.20f * recoil);
-            AimMountHand(left, outside, towardHead, goal, weight);
-            Rig.CurlFingers(left, Mathf.Lerp(0.18f, 0.68f - 0.30f * recoil, weight));
+            // 手は頭の上ではなく、耳の横（顔の高さ）へ。頭中心 +15cm だと腕が頭上へ伸び、
+            // マウントされたときに「万歳」して見える。
+            Vector3 goal = Rig.RUpperArm.position + guardOffset + outside * (0.14f + 0.05f * nearHand)
+                + Vector3.up * (0.06f - 0.02f * nearHand + 0.045f * brace)
+                - towardHead * (0.085f + 0.05f * nearHand - 0.075f * brace);
+            AimMountHand(false, outside, towardHead, goal, weight);
+
+            // Keep the guard's elbow bend through the impact. Moving the IK target across
+            // the elbow guide can put the forearm on the other side of the bend in one frame.
+            float give = recoil * weight;
+            if (give <= 0.001f)
+                return;
+
+            Transform shoulder = Rig.RUpperArm;
+            Transform elbow = Rig.RLowerArm;
+            Transform hand = Rig.RHand;
+            Vector3 reach = hand.position - shoulder.position;
+            Vector3 fall = (outside * 0.12f - towardHead * 0.15f - Vector3.up * 0.10f) * give;
+            shoulder.rotation = Quaternion.FromToRotation(reach, reach + fall) * shoulder.rotation;
+
+            Vector3 upper = elbow.position - shoulder.position;
+            Vector3 lower = hand.position - elbow.position;
+            Vector3 hinge = Vector3.Cross(upper, lower);
+            if (hinge.sqrMagnitude > 0.000001f)
+            {
+                float open = Mathf.Clamp(Vector3.Angle(upper, lower) - 12f, 0f, 14f * give);
+                elbow.rotation = Quaternion.AngleAxis(-open, hinge) * elbow.rotation;
+            }
         }
 
         void AimMountHand(bool left, Vector3 outside, Vector3 towardHead, Vector3 goal, float weight)
@@ -2042,7 +2092,9 @@ namespace Ryona.Game
             Transform shoulder = left ? Rig.LUpperArm : Rig.RUpperArm;
             Transform elbow = left ? Rig.LLowerArm : Rig.RLowerArm;
             Transform hand = left ? Rig.LHand : Rig.RHand;
-            Vector3 pole = shoulder.position + outside * 0.34f - towardHead * 0.24f - Vector3.up * 0.15f;
+            // 彼女は床に寝ている。極を床の下（-up）に置くと、肘が床を突き抜ける向きに解けて
+            // 腕が反転する（内側へ手を寄せる左腕で特に出やすい）。肘は横へ出し、床すれすれに置く。
+            Vector3 pole = shoulder.position + outside * 0.34f - towardHead * 0.24f + Vector3.up * 0.02f;
             ProceduralRig.SolveTwoBone(shoulder, elbow, hand, Vector3.Lerp(hand.position, goal, weight), pole);
             Rig.SetArm(left, elbow.position - shoulder.position, hand.position - elbow.position, 0f);
         }
