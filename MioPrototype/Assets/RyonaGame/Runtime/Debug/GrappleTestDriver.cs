@@ -12,6 +12,7 @@ namespace Ryona.Game
     /// <c>-holdmash</c> を付ければ振りほどき、付けなければ時間切れ（投げ）を確認できる。
     /// </summary>
     [AddComponentMenu("Ryona/Grapple Test Driver")]
+    [DefaultExecutionOrder(30000)]
     public sealed class GrappleTestDriver : MonoBehaviour
     {
         /// <summary>次の掴みまでの秒数。</summary>
@@ -45,6 +46,10 @@ namespace Ryona.Game
         string _burstPrefix;
         bool _burstDone;
 
+        /// <summary>タッグパンチ中の撮影カメラを真横へ固定する（<c>-tagcam</c>）。</summary>
+        bool _tagCam;
+        HeldBellyPunchDirector _belly;
+
         /// <summary><c>-pinshot=</c>。押さえつけ開始から 0.3 秒後を撮る。</summary>
         string _pinShotPath;
         float _pinShotDelay = -1f;
@@ -77,6 +82,7 @@ namespace Ryona.Game
             string pinShotPath = null;
             float pinShotDelay = 0.30f;
             string pinBurst = null;
+            bool tagCam = false;
 
             foreach (string a in System.Environment.GetCommandLineArgs())
             {
@@ -119,6 +125,8 @@ namespace Ryona.Game
                 }
                 else if (a.StartsWith("-pinburst=", System.StringComparison.OrdinalIgnoreCase))
                     pinBurst = a.Substring("-pinburst=".Length);
+                else if (string.Equals(a, "-tagcam", System.StringComparison.OrdinalIgnoreCase))
+                    tagCam = true;
             }
 
             if (!wanted)
@@ -139,6 +147,7 @@ namespace Ryona.Game
             driver._pinShotPath = pinShotPath;
             driver._pinShotDelaySeconds = pinShotDelay;
             driver._pinBurstPrefix = pinBurst;
+            driver._tagCam = tagCam;
             driver._once = once;
             driver._hitAfterThrowOnly = hitAfterThrow;
         }
@@ -194,9 +203,9 @@ namespace Ryona.Game
                     _grapple.Failed += () => { _holdFinished = true; Debug.Log("[GrappleTest] 押さえつけが時間切れで解放"); };
                 }
 
-                var belly = FindFirstObjectByType<HeldBellyPunchDirector>();
-                if (belly != null)
-                    belly.Performed += OnBellyPunchPerformed;
+                _belly = FindFirstObjectByType<HeldBellyPunchDirector>();
+                if (_belly != null)
+                    _belly.Performed += OnBellyPunchPerformed;
 
                 return;
             }
@@ -353,8 +362,48 @@ namespace Ryona.Game
             Application.Quit();
         }
 
-        void CaptureHit(HitResult result)
+        /// <summary>
+        /// タッグパンチ中だけカメラを真横へ固定する（<c>-tagcam</c>）。
+        /// ゲーム内カメラは腹と顔へ寄るため、殴る側の上体と肘が画面の外へ出て
+        /// 「敵のモーション」を読めない。検証用に横から全身を写す。
+        /// </summary>
+        void LateUpdate()
         {
+            if (!_tagCam || _belly == null || !_belly.IsPerforming || _player == null)
+                return;
+
+            var cam = Camera.main;
+            if (cam == null)
+                return;
+
+            EnemyBrain puncher = null;
+            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            {
+                if (enemy != null && enemy.IsTagPunch)
+                {
+                    puncher = enemy;
+                    break;
+                }
+            }
+
+            Vector3 center = _player.transform.position + Vector3.up * 1.0f;
+            Vector3 axis = puncher != null
+                ? puncher.transform.position - _player.transform.position
+                : _player.transform.forward;
+            axis.y = 0f;
+            axis = axis.sqrMagnitude > 1e-4f
+                ? axis.normalized
+                : new Vector3(_player.transform.forward.x, 0f, _player.transform.forward.z).normalized;
+            Vector3 side = Vector3.Cross(Vector3.up, axis).normalized;
+
+            // 殴る側と彼女の両方が入るよう、中点を写して少し引く。
+            if (puncher != null)
+                center = Vector3.Lerp(center, puncher.transform.position + Vector3.up * 0.95f, 0.35f);
+            cam.transform.position = center + side * 2.7f - axis * 0.15f + Vector3.up * 0.45f;
+            cam.transform.LookAt(center);
+        }
+
+        void CaptureHit(HitResult result)        {
             if (_hitShotPath == null || (_hitAfterThrowOnly && !_holdFinished)) return;
             ScreenCapture.CaptureScreenshot(_hitShotPath);
             Debug.Log($"[EnemyHitShot] {_hitShotPath}");

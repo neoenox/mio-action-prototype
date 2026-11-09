@@ -358,7 +358,12 @@ namespace Ryona.Game
 
             // ポーズ・タイトル中は進めない
             if (Time.timeScale <= 0f)
+            {
+                // 命中で時間を止めている間も、実時間で減衰する寄りは保つ。
+                if (_phase == Phase.Combo && _comboZone == PunchZone.Face && HitStop.IsActive)
+                    HoldFraming();
                 return;
+            }
 
             if (_cooldown > 0f)
                 _cooldown = Mathf.Max(0f, _cooldown - Time.deltaTime);

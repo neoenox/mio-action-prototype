@@ -106,12 +106,16 @@ namespace Ryona.Game
                 _ => 1f
             };
 
-            Shake(ReceivedShake * weight, ReceivedShakeSeconds);
+            bool heldFace = result.Damage > 0f && Stats != null &&
+                Stats.LastHitWasTagPunch && Stats.LastHitZone == PunchZone.Face;
+            // 顔の寄り画では、細かく長く揺らすより命中の短い衝撃を見せる。
+            Shake(ReceivedShake * (heldFace ? 1.2f : weight),
+                heldFace ? ReceivedShakeSeconds * 0.70f : ReceivedShakeSeconds);
             float stopSeconds = Stats != null && Stats.GroundMount.IsApplyingPunch ? 0.025f : ReceivedHitStop;
             HitStop.Play(stopSeconds * weight);
 
             // 敵は素手。重い被弾も金属音ではなく打撃音を使う。
-            PlaySfx(SfxId.Impact, weight > 1.1f ? 1f : 0.8f);
+            PlaySfx(SfxId.Impact, heldFace || weight > 1.1f ? 1f : 0.8f);
             PlaySfx(SfxId.Stagger, 0.7f);
 
             // 拘束中の腹パン・膝蹴りは、腹用と強い被弾用の声を半々で鳴らす。

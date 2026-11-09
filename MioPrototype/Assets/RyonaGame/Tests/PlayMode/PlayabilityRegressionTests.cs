@@ -325,8 +325,8 @@ namespace Ryona.Tests
             yield return new WaitForSeconds(0.65f);
             var figure = holder.GetComponent<EnemyFigure>();
             // 羽交い締め: 両手は首の後ろ（うなじ）で組まれる
-            float rightGap = Vector3.Distance(figure.WristBone(false).position, rig.Neck.position);
-            float leftGap = Vector3.Distance(figure.WristBone(true).position, rig.Neck.position);
+            float rightGap = Vector3.Distance(figure.Fist(false).position, rig.Neck.position);
+            float leftGap = Vector3.Distance(figure.Fist(true).position, rig.Neck.position);
             float rightElbow = rig.RLowerArm.position.y - rig.RUpperArm.position.y;
             float leftElbow = rig.LLowerArm.position.y - rig.LUpperArm.position.y;
             Assert.Less(rightGap, 0.24f, $"right hand too far from neck: {rightGap:F2}");

@@ -721,17 +721,21 @@ namespace Ryona.Game
                     pose.ArmRUpper.y += 0.36f * lift;
                 }
 
-                // 顔面パンチ: 上体は折らず、首だけ手前（カメラ側）へ振る。
-                // 通常の顔面パンチ（ApplyFaceFlick）と同じ向きにしないと、
-                // 拘束中だけ後ろへ仰け反って「別の反応」に見える。
+                // 顔面パンチ: 頭の振れに続いて胸が起き、肩が短く揺れる。
                 float faceFlick = HeldFacePunchFlick;
                 if (faceFlick > 0f)
                 {
                     float side = toCamera >= 0f ? 1f : -1f;
-                    pose.TorsoYaw += 4f * side * faceFlick;
+                    float hitTime = _heldFacePunchTotal - _heldFacePunchRemaining;
+                    float shoulderRecoil = Mathf.SmoothStep(0.45f, 1f, (hitTime - 0.01f) / 0.035f)
+                        * (1f - Mathf.SmoothStep(0f, 1f, (hitTime - 0.045f) / 0.14f));
+                    // 腰を拘束位置に残し、胸を起こしながら肩を手前へ逃がす。
+                    pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, 1f, shoulderRecoil);
+                    pose.TorsoYaw += side * (5f * shoulderRecoil + 3f * faceFlick);
+                    pose.TorsoRoll -= side * 7f * shoulderRecoil;
                     pose.HeadPitch -= 5f * faceFlick;
-                    pose.HeadYaw = Mathf.Lerp(pose.HeadYaw, toCamera * 0.95f, faceFlick);
-                    pose.HeadRoll = Mathf.Lerp(pose.HeadRoll, -side * 9f, faceFlick);
+                    pose.HeadYaw = Mathf.Lerp(pose.HeadYaw, Mathf.Clamp(toCamera * 1.15f, -42f, 42f), faceFlick);
+                    pose.HeadRoll = Mathf.Lerp(pose.HeadRoll, -side * 13f, faceFlick);
                 }
 
                 return pose;
@@ -1972,7 +1976,6 @@ namespace Ryona.Game
             float leftFootHeight = Rig.LFoot.position.y;
             float rightFootHeight = Rig.RFoot.position.y;
             bool pulledLeft = mount.RollLeftShoulder;
-            Vector3 plantedHand = (pulledLeft ? Rig.RHand : Rig.LHand).position;
 
             // The grabbed shoulder leads. Keep the pelvis and legs in their own phases
             // so they do not inherit the shoulder's turn as a single rigid pose.
@@ -2010,18 +2013,154 @@ namespace Ryona.Game
             KeepRollFootLow(true, leftFootHeight, pulledLeft ? 0.42f * leadingPlant : 0.85f * trailingPlant);
             KeepRollFootLow(false, rightFootHeight, pulledLeft ? 0.85f * trailingPlant : 0.42f * leadingPlant);
 
-            Vector3 pullSide = across * mount.Side;
-            float armBend = mount.RollPhase(0.24f, 0.53f);
-            if (armBend <= 0.001f)
-                return;
+            // --- 腕 ------------------------------------------------------
+            // ロール中は「体の外側」と「床」を基準に手を置く。
+            // ワールド座標へ手を固定すると、体が回るにつれて肩がその点へ近づき、
+            // 肘が畳み切られる（実測: 肘 19°・手が肩の 17cm まで寄り、腕が一瞬
+            // 折り畳まれて見える）。手先の距離を固定して解けば、その破綻は起きない。
+            //
+            // 入りは「いま体に付いてきた腕の位置」から始める。伏せダウン中のマウントは
+            // ガードを出さない（`GroundMountAttack.Fear` はうつ伏せでは 0）ので、
+            // 守りの手を入りの基準にすると 1 フレームで 40cm 飛ぶ。
+            Vector3 carriedLeftHand = Rig.LHand.position;
+            Vector3 carriedRightHand = Rig.RHand.position;
+            Vector3 carriedLeftElbow = Rig.LLowerArm.position;
+            Vector3 carriedRightElbow = Rig.RLowerArm.position;
 
+            // 体の左右は「右肩 → 左肩」の向きをそのまま使う。ワールドの `across` と肩の位置で
+            // 符号を決めると、体が 90° 回ったところで符号が反転し、手が体の反対側へ飛ぶ
+            // （実測: 0.5 秒の時点で片手が 70cm 飛んだ）。肩の線はロールと一緒に回るので途切れない。
+            Vector3 shoulderLine = Rig.LUpperArm.position - Rig.RUpperArm.position;
+            Vector3 left = shoulderLine.sqrMagnitude > 1e-6f ? shoulderLine.normalized : Rig.Chest.right;
+            float groundY = Stats.transform.position.y;
+
+            // ロール明けは次の Windup の「守り」へ戻す（そちらはガードが出る）。
+            // 戻さないと、ロール最後の 1 フレームからガードへ腕が飛ぶ。
+            bool rightNearCamera = Vector3.Dot(-left, mount.ShotOffset) > 0f;
+            float nearHand = rightNearCamera ? 1f : 0f;
+            Vector3 guardRight = Rig.Head.position
+                - left * (0.14f + 0.05f * nearHand)
+                - axis * (0.085f + 0.05f * nearHand)
+                + Vector3.up * (0.06f - 0.02f * nearHand);
+            Vector3 guardRightPole = Rig.RUpperArm.position - left * 0.34f
+                - axis * 0.24f + Vector3.up * 0.02f;
+            Vector3 shoulderMid = (Rig.LUpperArm.position + Rig.RUpperArm.position) * 0.5f;
+            Vector3 guardLeft = MirrorPoint(guardRight, shoulderMid, left);
+            Vector3 guardLeftPole = MirrorPoint(guardRightPole, shoulderMid, left);
+
+            // 掴まれた肩の腕は体側へ抱え、反対の腕は床へ逃がす。
+            Vector3 pulledOut = pulledLeft ? left : -left;
+            Vector3 freeOut = pulledLeft ? -left : left;
             Transform pulledShoulder = pulledLeft ? Rig.LUpperArm : Rig.RUpperArm;
             Transform freeShoulder = pulledLeft ? Rig.RUpperArm : Rig.LUpperArm;
-            Vector3 tuckedHand = pulledShoulder.position - axis * 0.22f + pullSide * 0.13f + Vector3.up * 0.06f;
-            Vector3 releasedHand = freeShoulder.position - axis * 0.12f - pullSide * 0.23f + Vector3.up * 0.06f;
-            AimMountHand(pulledLeft, pullSide, axis, tuckedHand, armBend);
-            AimMountHand(!pulledLeft, -pullSide, axis, Vector3.Lerp(plantedHand, releasedHand,
-                mount.RollPhase(0.49f, 0.89f)), armBend);
+
+            // 掴まれた肩の腕も、反対の腕も、ロール中は床の側へ垂らす。
+            // 手先は「肩から固定距離」で置き、床へ潜る分だけ向きを上へ回す（距離は保つ）。
+            // 向きには必ず「頭（+axis）」成分を入れる。体が真横を向くと体の外向きが
+            // 真上・真下になり、床へ向ける水平の方位が定まらず手が大きく振れる
+            // （実測: 0.5 秒で片手が 67cm 飛ぶ）。頭側成分があれば方位は常に決まる。
+            Vector3 pulledHand = ArmGoalAboveFloor(pulledShoulder.position,
+                Vector3.down * 0.55f + pulledOut * 0.25f + axis * 0.30f, 0.28f, groundY + 0.05f);
+            Vector3 pulledPole = pulledShoulder.position + pulledOut * 0.25f
+                + axis * 0.22f + Vector3.down * 0.08f;
+
+            Vector3 freeHand = ArmGoalAboveFloor(freeShoulder.position,
+                Vector3.down * 0.50f + freeOut * 0.30f + axis * 0.30f, 0.40f, groundY + 0.05f);
+            Vector3 freePole = freeShoulder.position + freeOut * 0.25f
+                + axis * 0.22f + Vector3.down * 0.08f;
+
+            Vector3 leftRollHand = pulledLeft ? pulledHand : freeHand;
+            Vector3 rightRollHand = pulledLeft ? freeHand : pulledHand;
+            Vector3 leftRollPole = pulledLeft ? pulledPole : freePole;
+            Vector3 rightRollPole = pulledLeft ? freePole : pulledPole;
+
+            // 入りは「体に付いてきた手」から、終わりは次の Windup のガード位置へ。
+            // 位置をそのまま Lerp すると肩の近くを横切って肘が畳まれる（実測: 肘 28°）ので、
+            // 肩を中心に「向き」と「距離」を別々に補間する。
+            float enter = mount.RollPhase(0.04f, 0.34f);
+            float exit = mount.RollPhase(0.86f, 0.995f);
+
+            BlendRollArm(Rig.LUpperArm, carriedLeftHand, carriedLeftElbow,
+                leftRollHand, leftRollPole, guardLeft, guardLeftPole, enter, exit,
+                out Vector3 leftGoal, out Vector3 leftPole);
+            BlendRollArm(Rig.RUpperArm, carriedRightHand, carriedRightElbow,
+                rightRollHand, rightRollPole, guardRight, guardRightPole, enter, exit,
+                out Vector3 rightGoal, out Vector3 rightPole);
+
+            AimRollHand(true, leftGoal, leftPole);
+            AimRollHand(false, rightGoal, rightPole);
+        }
+
+        /// <summary>
+        /// 腕の目標を「肩からの向き」と「距離」に分けて補間する。
+        /// 手先の座標をそのまま Lerp すると、肩の近くを通る軌道で肘が畳み切られる。
+        /// </summary>
+        static void BlendRollArm(Transform shoulder, Vector3 carriedHand, Vector3 carriedElbow,
+            Vector3 rollHand, Vector3 rollPole, Vector3 guardHand, Vector3 guardPole,
+            float enter, float exit, out Vector3 goal, out Vector3 pole)
+        {
+            Vector3 origin = shoulder.position;
+            Vector3 baseOffset = carriedHand - origin;
+            Vector3 rollOffset = rollHand - origin;
+            Vector3 guardOffset = guardHand - origin;
+
+            float baseDistance = baseOffset.magnitude;
+            float rollDistance = rollOffset.magnitude;
+            float guardDistance = guardOffset.magnitude;
+
+            Vector3 direction = rollDistance > 1e-4f ? rollOffset / rollDistance : Vector3.down;
+            if (baseDistance > 1e-4f)
+                direction = Vector3.Slerp(baseOffset / baseDistance, direction, enter);
+            float distance = Mathf.Lerp(baseDistance, rollDistance, enter);
+
+            if (guardDistance > 1e-4f)
+                direction = Vector3.Slerp(direction, guardOffset / guardDistance, exit);
+            distance = Mathf.Lerp(distance, guardDistance, exit);
+
+            goal = origin + direction * distance;
+            pole = Vector3.Lerp(Vector3.Lerp(carriedElbow, rollPole, enter), guardPole, exit);
+        }
+
+        /// <summary>点を、指定した平面（点と法線）で鏡映する。</summary>
+        static Vector3 MirrorPoint(Vector3 point, Vector3 planePoint, Vector3 normal)
+        {
+            return point - 2f * Vector3.Dot(point - planePoint, normal) * normal;
+        }
+
+        /// <summary>
+        /// 肩から <paramref name="reach"/> の距離を保ったまま、手先が床より下へ行かない
+        /// 目標位置を作る。y をクランプすると肩の真下へ手が寄り、肘が畳み切られる
+        /// （実測: 肘 14°）。向きだけを上へ回せば距離が変わらない。
+        /// </summary>
+        static Vector3 ArmGoalAboveFloor(Vector3 shoulder, Vector3 direction, float reach, float floorY)
+        {
+            direction = direction.sqrMagnitude > 1e-8f ? direction.normalized : Vector3.down;
+            float minY = Mathf.Clamp((floorY - shoulder.y) / Mathf.Max(0.01f, reach), -1f, 1f);
+            if (direction.y < minY)
+            {
+                float flatLength = Mathf.Sqrt(Mathf.Max(0f, 1f - minY * minY));
+                Vector3 flat = new Vector3(direction.x, 0f, direction.z);
+                direction = flat.sqrMagnitude > 1e-6f
+                    ? flat.normalized * flatLength + Vector3.up * minY
+                    : Vector3.up;
+            }
+
+            return shoulder + direction * reach;
+        }
+
+        /// <summary>
+        /// ロール中の腕。手先の目標と肘の向きを直接指定して 2 ボーン IK で解く。
+        /// 極（肘の曲がる面）は体の向きから作った点を渡す。ワールドの上を極にすると、
+        /// 体が横を向くロール中は肘が床を抜ける向きに解けて腕が反転しうる。
+        /// </summary>
+        void AimRollHand(bool leftSide, Vector3 goal, Vector3 pole)
+        {
+            Transform shoulder = leftSide ? Rig.LUpperArm : Rig.RUpperArm;
+            Transform elbow = leftSide ? Rig.LLowerArm : Rig.RLowerArm;
+            Transform hand = leftSide ? Rig.LHand : Rig.RHand;
+            ProceduralRig.SolveTwoBone(shoulder, elbow, hand, goal, pole);
+            Rig.SetArm(leftSide, elbow.position - shoulder.position,
+                hand.position - elbow.position, 0f);
         }
 
         void KeepRollFootLow(bool left, float floorHeight, float weight)

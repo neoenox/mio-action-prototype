@@ -121,7 +121,7 @@ namespace Ryona.Game
         public float HeldThrowLead => _heldThrowLead;
 
         /// <summary>
-        /// 拘束中に顔面を殴られたときの首の振れ（0..1）。入り 0.05 秒、保持、戻り 0.22 秒。
+        /// 拘束中に顔面を殴られたときの首の振れ（0..1）。当たった瞬間から動き、約 0.03 秒で振り切る。
         /// 通常の顔面パンチ（<see cref="ApplyFaceFlick"/>）と同じ向き＝カメラ側へ顔を背ける。
         /// テストと Editor 診断が数値で確認できるように公開している。
         /// </summary>
@@ -133,15 +133,15 @@ namespace Ryona.Game
                     return 0f;
 
                 float t = _heldFacePunchTotal - _heldFacePunchRemaining;
-                float inT = Mathf.SmoothStep(0f, 1f, t / 0.05f);
-                float outT = 1f - Mathf.SmoothStep(0f, 1f, (t - 0.20f) / 0.22f);
+                float inT = Mathf.SmoothStep(0.28f, 1f, t / 0.032f);
+                float outT = 1f - Mathf.SmoothStep(0f, 1f, (t - 0.10f) / 0.25f);
                 return Mathf.Clamp01(inT * outT);
             }
         }
 
         /// <summary>
-        /// 拘束中に顔面を殴られた反応。腹パンの「く」の字とは別で、上体は折らずに
-        /// 首だけ手前（カメラ側）へ振る。呼んでも状態は Grabbed のまま。
+        /// 拘束中に顔面を殴られた反応。頭が手前へ振れ、続いて肩が短く揺れる。
+        /// 呼んでも状態は Grabbed のまま。
         /// </summary>
         public void PlayHeldFacePunch(float seconds)
         {

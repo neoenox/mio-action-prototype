@@ -125,6 +125,76 @@ namespace Ryona.Tests
             Assert.IsFalse(_stats.IsDown);
         }
 
+        /// <summary>
+        /// うつ伏せから仰向けへ返すとき、腕が畳み切られたり飛んだりしない。
+        ///
+        /// 修正前の実測: ロール半ばで肘が 19° まで畳まれ、手が肩の 17cm まで寄っていた。
+        /// さらにロール開始の 1 フレームで片手が 0.42m 飛んでいた（伏せダウン中のマウントは
+        /// ガード姿勢を出さないため、ガードを入りの基準にすると飛ぶ）。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator RollingFromProneToSupineDoesNotFoldTheArmsUp()
+        {
+            yield return LoadPlayer(holdEnemies: false);
+            PrepareMount(forward: true);
+
+            var mount = _stats.GetComponent("GroundMountAttack");
+            Assert.IsNotNull(mount, "GroundMountAttack が無い");
+            const System.Reflection.BindingFlags members = System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.NonPublic;
+            var stage = mount.GetType().GetProperty("Stage", members);
+            var progress = mount.GetType().GetProperty("Progress", members);
+            Assert.IsNotNull(stage, "Stage が取れない");
+            Assert.IsNotNull(progress, "Progress が取れない");
+
+            float deadline = Time.realtimeSinceStartup + 8f;
+            while (stage.GetValue(mount).ToString() != "Roll" && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.AreEqual("Roll", stage.GetValue(mount).ToString(), "ロールが始まらない");
+
+            var rig = _anim.Rig;
+            Assert.IsNotNull(rig, "リグが無い");
+
+            float tightest = 180f;
+            float minReach = 10f;
+            float lowestHand = 10f;
+            int samples = 0;
+
+            while (stage.GetValue(mount).ToString() == "Roll" && Time.realtimeSinceStartup < deadline)
+            {
+                float roll = (float)progress.GetValue(mount);
+                // 入りと終わりはガード姿勢へ寄せる区間なので、判定は中盤だけにする。
+                if (roll > 0.12f && roll < 0.88f)
+                {
+                    tightest = Mathf.Min(tightest,
+                        ElbowBend(rig.LUpperArm, rig.LLowerArm, rig.LHand));
+                    tightest = Mathf.Min(tightest,
+                        ElbowBend(rig.RUpperArm, rig.RLowerArm, rig.RHand));
+                    minReach = Mathf.Min(minReach,
+                        Vector3.Distance(rig.LUpperArm.position, rig.LHand.position));
+                    minReach = Mathf.Min(minReach,
+                        Vector3.Distance(rig.RUpperArm.position, rig.RHand.position));
+                    lowestHand = Mathf.Min(lowestHand,
+                        Mathf.Min(rig.LHand.position.y, rig.RHand.position.y) - rig.transform.position.y);
+                }
+
+                samples++;
+                yield return null;
+            }
+
+            Assert.Greater(samples, 5, "ロール中に姿勢をサンプルできない");
+            Assert.Greater(tightest, 40f, $"ロール中に肘が畳み切られている（{tightest:F0}°）");
+            Assert.Greater(minReach, 0.18f, $"手が肩に寄りすぎている（{minReach:F2}m）");
+            Assert.Greater(lowestHand, -0.05f, $"手が床に潜っている（y={lowestHand:F2}m）");
+        }
+
+        static float ElbowBend(Transform upper, Transform lower, Transform hand)
+        {
+            Vector3 a = upper.position - lower.position;
+            Vector3 b = hand.position - lower.position;
+            return a.sqrMagnitude > 1e-8f && b.sqrMagnitude > 1e-8f ? Vector3.Angle(a, b) : 180f;
+        }
+
         [UnityTest]
         public IEnumerator StayingDownAfterMountLetsTheEnemyAttackAgain()
         {

@@ -413,12 +413,9 @@ namespace Ryona.Game
         /// 腹と顔が混ざるコンボでも腕の形が入れ替わらないよう、振り抜きまで true を保つ。
         /// </summary>
         public bool IsTagPunch => _tagPunchSwing;
-        internal bool IsTagFaceHook => _tagPunchSwing && Zone == PunchZone.Face;
-        internal bool UsesLeftPunch => IsTagFaceHook && _tagHookLeft;
-        internal float FaceHookSweep => Phase == EnemyPhase.Windup
-            ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.52f, 0.90f, WindupProgress))
-            : 1f;
-        bool _tagHookLeft;
+        internal bool IsTagFacePunch => _tagPunchSwing && Zone == PunchZone.Face;
+        public bool UsesLeftPunch => IsTagFacePunch && _tagFaceLeft;
+        bool _tagFaceLeft;
         internal bool IsOpeningBellyPunch => _run.FromHeldThrow && _tagPunchSwing;
 
         public float PunchPoseWeight
@@ -434,8 +431,8 @@ namespace Ryona.Game
 
                 if (Phase == EnemyPhase.Windup)
                 {
-                    if (IsTagFaceHook)
-                        return Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.08f, 0.44f, WindupProgress));
+                    if (IsTagFacePunch)
+                        return Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.61f, 0.92f, WindupProgress));
                     if (IsBellyPunch)
                         return Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.02f, 0.34f, WindupProgress));
 
@@ -448,7 +445,11 @@ namespace Ryona.Game
                     return Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((WindupProgress - start) / span));
                 }
                 if (Phase == EnemyPhase.Attack) return 1f;
-                if (Phase == EnemyPhase.Recover) return Mathf.Clamp01(_punchVisualTimer / 0.18f);
+                if (Phase == EnemyPhase.Recover)
+                {
+                    float weight = Mathf.Clamp01(_punchVisualTimer / 0.18f);
+                    return IsTagFacePunch ? Mathf.SmoothStep(0f, 1f, weight) : weight;
+                }
                 return 0f;
             }
         }
@@ -1445,7 +1446,7 @@ namespace Ryona.Game
             _tagPunchPending = true;
             _tagPunchSwing = true;
             Camera camera = Camera.main;
-            _tagHookLeft = zone == PunchZone.Face && camera != null &&
+            _tagFaceLeft = zone == PunchZone.Face && camera != null &&
                 Vector3.Dot(camera.transform.position - transform.position, transform.right) > 0f;
             ForceZone = null;
 

@@ -23,6 +23,7 @@
 | Capture Grabbed | `grabbed_sheet.png` | 掴まれて もがく姿勢を正面・真横 × 5 時刻。2・4 列目はもがきの脈 1（肘が開く）。手の高さ・腰高をログ出力 |
 | Capture Guard Strip | `guard_strip.png` | ガード姿勢のプレビュー（ゲーム中はガードなし） |
 | Capture Down Sheet | `down_sheet.png` | ダウンの倒れ方と着地 |
+| Check Joint ROM | （ログ） | プレイヤー全状態＋敵全フェーズ（330 姿勢）の関節角度を測り、人体の可動域を超えた曲がりを警告。実測レンジも出す。詳細は [Joint-ROM.md](Joint-ROM.md) |
 | Scan Sfx | （波形ログ） | 効果音の長さ・ピークの確認 |
 
 実行方法（コマンドから）:
@@ -50,6 +51,9 @@
 | `-holdmash` | もがき入力を自動で入れる |
 | `-grappletest [-holdmash] [-grappleback\|-grapplefront\|-grappleside]` | 数秒ごとに最寄りの敵を彼女の**背後 1m**（既定）に立たせて掴みを指示する。後ろ拘束は時間切れで解けない。付けなければ **1.6 秒後に腹パン5連続 → くの字 → 3 秒のクールタイム → また 5 連続**を、**振りほどく（`-holdmash`）まで繰り返す**。`-grapplefront` は「正面からでは掴めない」ことの確認用（掴みは背後からのみ成立する）。掴まれている間は `[GrappleContact]` を 0.25 秒ごとに出力（敵ローカル座標で手首・胸・肩・彼女の両手） |
 | `-heldpunchshot=<png>` | 腹パン演出の開始 0.12 秒後を撮影（`-grappletest` と併用） |
+| `-heldpunchshotdelay=<秒>` | `-heldpunchshot` の撮影をコンボ開始から指定の秒数だけ遅らせる（既定 0.12 秒） |
+| `-heldpunchburst=<png>` | 最初のコンボ開始から実時間 0.05 秒ごとに 30 枚を連番で保存して終了（`-grappletest` と併用） |
+| `-tagcam` | タッグ技の演出中だけ真横から撮る。打つ敵の腰・脚・肘を見るときに `-heldpunchburst` と併用 |
 | `-heldpunchcamdist=` / `-heldpunchcampivot=` / `-heldpunchcampitch=` / `-heldpunchcamyaw=` | 腹パン中のカメラ値を起動時だけ差し替える（顔が入る構図の撮り比べ用）。既定は 0.28 / 0.27 / −12 / −40 |
 | `-heldpunchface=<0〜1>` | タッグ技が顔面を狙う確率を差し替える（既定 0.5）。`1` で顔面のみ、`0` で腹パンのみ |
 | `-tagarmL=` / `-tagelbowL=` / `-tagspreadL=` | タッグ技のあいだ、打たない左腕の角度を差し替える（既定 −12 / 126 / 2）。構えの撮り比べ用 |
@@ -58,6 +62,9 @@
 | `-pinshot=<png>` | 押さえつけ開始から 0.30 秒後を撮影（`-pintest` と併用）。`-pinshotdelay=` で秒数を差し替え |
 | `-pinburst=<prefix>` | 押さえつけ開始から 0.05 秒ごとに 40 枚（2.0 秒ぶん）。膝蹴り（1.5 秒）の前後を追う |
 | `-downburst=<prefix> [-downhits=light\|heavy\|break\|belly]` | 起動 1.5 秒後から 0.30 秒おきに彼女へ攻撃を当て、**ダウンした瞬間**から 0.05 秒ごとに 40 枚（2.0 秒ぶん）撮る。撮影中は AI の攻撃を止める（当てるのはドライバだけ）。`belly` は腹ヒット扱い（前へ崩れるダウンの確認用） |
+| `-mountburst=<prefix>` | 地面マウント（跨ってのパンチ）の姿勢確認用。起動 2 秒後に最寄りの敵の前で彼女をダウンさせ、マウント開始から 0.05 秒ごとに 60 枚（3 秒ぶん）撮って終了する。撮影中の腕の角度・手の高さ・1 フレームの移動量を `[MountArm]` で出力 |
+| `-mountprone` | `-mountburst` と併用。**うつ伏せ**（前へ崩れる）ダウンで試す。仰向けに返すロール（HUD は「仰向けに返される」）も撮れる |
+| `-mountwide` / `-mountsolo` / `-mounttop` | `-mountburst` の撮影カメラ。`wide`＝体の真横寄り、`solo`＝敵を非表示（彼女の腕だけ見る）、`top`＝真上から。ロール中の彼女の腕を読むときは `-mountwide -mountsolo -mounttop` |
 | `-nofeint` | 敵のフェイントを切る。掴みもフェイント対象（22%）なので、数秒の検証では「掴めなかった」のか「引かれた」のか区別できない。切ってから回す |
 | `-encountertest [-encounterkills=N]` | 2秒ごとに敵を1体倒して決着と波の進行を回す |
 | `-screenspan=N` | 波の「1画面ぶんの距離」を起動時だけ差し替える（既定 8）。7/9/11 を再ビルドなしで撮り比べられる |
@@ -69,6 +76,8 @@
 | `-statlog` | HP/ひるみ/部位ダメージを毎秒ログ |
 | `-camlog` | カメラ追尾の実測（彼女のX / カメラ中心X / 画面内の横位置 / ロック状態 / 歩ける範囲）を 0.25 秒ごとログ |
 | `-vrmlog` | プリミティブの手首と VRM の手の骨の距離を 0.25 秒ごとログ（敵 VRM の追従確認） |
+| `-jointrom` | 実行版でも関節の可動域警告を出す（Editor では既定で有効）。`-nojointrom` で無効 |
+| `-jointlog` | 関節の可動域の逸脱を 5 秒ごとにまとめて 1 行ログ（計測も有効になる）。詳細は [Joint-ROM.md](Joint-ROM.md) |
 | `-hudshot <png> [-hudshotdelays 6.5,7,7.5]` | 指定のゲーム内時刻で画面を保存（`_1` 連番） |
 | `-attacktest [-attacktestdist=N]` | 最寄りの敵を彼女の N m 前（既定 1.15）に固定し、攻撃を封じて殴られ役にする。他の敵は 12m 以上後ろへ退避。彼女が攻撃中は置き直さない（踏み込みで詰めた距離を戻さないため）。`-holdattack` と併用 |
 | `-hitlog` | 攻撃 1 フレームごとに `[Fist]`（拳の z / 高さ / アニメ経過 / 肩・肘の位置 / 打っていない手の位置）を出力。腹パン中は `[BellyHit]`（攻撃者の位置・向き、拳と手首から腹の狙いまでの距離・bias）も出力 |
@@ -76,6 +85,21 @@
 | `-sfxaudition` | 効果音を1つずつ試聴（数字キーで単発再生、Spaceで自動送り停止） |
 
 ログ: `C:\Users\neoen\AppData\LocalLow\DefaultCompany\MioPrototype\Player.log`
+
+## 可動域の警告（関節が人体の範囲を超えて曲がったとき）
+
+プレイヤーと敵の実際の骨を測り、人体の可動域を超えた曲がりを `[JointROM]` の警告として出す。
+**角度の設定を変えたら** `Ryona/Diagnostics/Check Joint ROM` を回して、警告が増えていないか見る。
+
+```
+[JointROM] プレイヤー 右ひじ 168°（可動域 0〜145°・曲げすぎ）23° 超過 [Attack]
+```
+
+- Editor では既定で有効（Console に警告）。実行版は `-jointrom` を付けたときだけ
+- プレイ中の値をまとめて見る: `-jointlog`（5 秒ごとに 1 行）
+- 総当たり: メニュー `Ryona/Diagnostics/Check Joint ROM`（330 姿勢・描画なし）。
+  逸脱が無くても実測レンジ（各関節の最大角度）を出すので、計測が壊れていないかも分かる
+- 関節の一覧・角度の向き・余裕の調整方法は [Joint-ROM.md](Joint-ROM.md)
 
 ## 計測のコツ
 
