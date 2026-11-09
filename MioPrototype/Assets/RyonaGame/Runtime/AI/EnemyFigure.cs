@@ -385,6 +385,45 @@ namespace Ryona.Game
         public Transform ElbowBone(bool left) => left ? _elbowL : _elbowR;
 
         /// <summary>
+        /// IK で置いた腕を、肘が「ちょうつがい」で曲がる形に収める。
+        ///
+        /// 敵の肘はローカル X 軸まわりにしか曲がらない（<c>Euler(-角度, 0, 0)</c>、正 = 前腕が前へ）。
+        /// 2 ボーン IK は上腕のひねり（ロール）を決めないので、肘と手首の位置は合っていても
+        /// 曲がる軸が X 軸と逆を向くことがある。その腕は可動域チェックで「逆方向に折れた」と
+        /// 測られ、肘のローカル回転にも横ひねりが乗る。
+        ///
+        /// 上腕を自分の軸まわりに回して軸を合わせ、肘は純粋な曲げだけにする。
+        /// 肘も手首も動かさない（上腕の軸まわりの回転は肘の位置を変えない）ので、見た目の形は同じ。
+        /// <paramref name="upper"/> の子が <paramref name="elbow"/>、その子が <paramref name="wrist"/>。
+        /// </summary>
+        internal static void SettleElbowHinge(Transform upper, Transform elbow, Transform wrist)
+        {
+            if (upper == null || elbow == null || wrist == null)
+                return;
+
+            Vector3 a = elbow.position - upper.position;
+            Vector3 f = wrist.position - elbow.position;
+            if (a.sqrMagnitude < 1e-8f || f.sqrMagnitude < 1e-8f)
+                return;
+
+            float bend = Vector3.Angle(a, f);
+            // ほぼ伸びている（曲げ面が定まらない）、または畳みきり（面が不安定）は触らない。
+            if (bend < 1f || bend > 175f)
+                return;
+
+            // 前腕は法線 n のまわりを +bend だけ振れている。
+            // ローカル X まわりの -bend は「-X 軸まわりの +bend」なので、ローカル X が -n を向けばよい。
+            Vector3 n = Vector3.Cross(a, f).normalized;
+            Vector3 axisX = Vector3.ProjectOnPlane(upper.rotation * Vector3.right, a);
+            if (axisX.sqrMagnitude < 1e-6f)
+                return;
+
+            float roll = Vector3.SignedAngle(axisX, -n, a);
+            upper.rotation = Quaternion.AngleAxis(roll, a.normalized) * upper.rotation;
+            elbow.localRotation = Quaternion.Euler(-bend, 0f, 0f);
+        }
+
+        /// <summary>
         /// 手首の骨。ここから拳までの向きが「手の向き」になる。
         /// 無いと VRM の手が前腕と一直線のままになり、棒の先に塊が付いたように見える。
         /// </summary>
@@ -1515,6 +1554,7 @@ namespace Ryona.Game
                 + 2f * upperLength * lowerLength * Mathf.Cos(maxFlex * Mathf.Deg2Rad));
             Vector3 target = shoulder.position + toGoal.normalized * Mathf.Max(minReach, toGoal.magnitude);
             ProceduralRig.SolveTwoBone(shoulder, elbow, wrist, target, pole);
+            SettleElbowHinge(shoulder, elbow, wrist);
             // The proxy bones extend along -Y. Orient the shoulder to the bend plane,
             // then flex the elbow on its hinge instead of twisting it to aim the fist.
             Vector3 upper = (elbow.position - shoulder.position).normalized;
@@ -2118,6 +2158,7 @@ namespace Ryona.Game
             Quaternion previousUpper = upper.rotation;
             Quaternion previousElbow = elbow.rotation;
             ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);
+            EnemyFigure.SettleElbowHinge(upper, elbow, wrist);
             Quaternion aimedElbow = elbow.rotation;
             upper.rotation = Quaternion.Slerp(previousUpper, upper.rotation, weight);
             elbow.rotation = Quaternion.Slerp(previousElbow, aimedElbow, weight);
@@ -2183,6 +2224,7 @@ namespace Ryona.Game
             Quaternion oldUpper = upper.rotation;
             Quaternion oldElbow = elbow.rotation;
             ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);
+            EnemyFigure.SettleElbowHinge(upper, elbow, wrist);
             Quaternion aimedUpper = upper.rotation;
             Quaternion aimedElbow = elbow.rotation;
             upper.rotation = Quaternion.Slerp(oldUpper, aimedUpper, weight);
@@ -2293,6 +2335,7 @@ namespace Ryona.Game
             // IK の終点は手首。拳まで含めると腕がひと手ぶん短くなり、脇の下へ届かず
             // 背中側で止まって「抱いていない」画になる。
             ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);
+            EnemyFigure.SettleElbowHinge(upper, elbow, wrist);
         }
     }
 
@@ -2448,6 +2491,7 @@ namespace Ryona.Game
             goal = Vector3.Lerp(goal, shoulder.position - transform.forward * 0.045f, contact);
             pole = Vector3.Lerp(pole, upper.position + transform.right * (side * 0.25f) - transform.up * 0.24f, contact);
             ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);
+            EnemyFigure.SettleElbowHinge(upper, elbow, wrist);
         }
     }
 
@@ -2548,6 +2592,7 @@ namespace Ryona.Game
                 + player.forward * 0.10f;
 
             ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, player.right);
+            EnemyFigure.SettleElbowHinge(upper, elbow, wrist);
             Vector3 inward = -chest.forward - chest.right * (0.55f * side);
             _targetRig.AlignPalm(left, inward.normalized, chest.up);
         }
@@ -2571,6 +2616,7 @@ namespace Ryona.Game
                 + outward * 0.80f + player.up * 0.15f;
 
             ProceduralRig.SolveTwoBone(upper, elbow, wrist, behind + outward * spread, pole, player.up);
+            EnemyFigure.SettleElbowHinge(upper, elbow, wrist);
         }
     }
 
