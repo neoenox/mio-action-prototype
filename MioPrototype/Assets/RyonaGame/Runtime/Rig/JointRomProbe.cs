@@ -471,14 +471,35 @@ namespace Ryona.Game
             Vector3 local = ToBodyFrame(arm, up, right, forward);
             JointSide side = left ? JointSide.Left : JointSide.Right;
 
-            float flexion = Mathf.Atan2(local.z, -local.y) * Mathf.Rad2Deg;
-            results.Add(JointRom.Read(JointId.ShoulderFlexion, side, flexion));
+            // 前後（屈曲）は、腕の向きを体の前後面（上・前）へ落とした角度。
+            // 腕が真横に近いと、その射影が小さくなって角度が定まらない
+            // （水平より 14° 上・13° 後ろの腕が -138° と出た）。射影の長さが
+            // しきい値より短いときは前後を測らず、開き（下）だけを見る。
+            float sagittal = Mathf.Sqrt(local.y * local.y + local.z * local.z);
+            if (sagittal >= ShoulderSagittalMin)
+            {
+                float flexion = Mathf.Atan2(local.z, -local.y) * Mathf.Rad2Deg;
+
+                // 真上を越えて後ろ寄りへ上げた腕は atan2 が -180° 側へ折り返す
+                // （184° の屈曲が -176°）。伸展は -110° より深くならないので、
+                // それより下は折り返しとみなして 180° 超の屈曲へ戻す。
+                if (flexion < -110f)
+                    flexion += 360f;
+
+                results.Add(JointRom.Read(JointId.ShoulderFlexion, side, flexion));
+            }
 
             float abduction = Mathf.Asin(Mathf.Clamp(local.x, -1f, 1f)) * Mathf.Rad2Deg;
             if (left)
                 abduction = -abduction;
             results.Add(JointRom.Read(JointId.ShoulderAbduction, side, abduction));
         }
+
+        /// <summary>
+        /// 肩の前後を測る最小の射影の長さ（腕の単位ベクトルの上・前成分の長さ）。
+        /// 0.5 = 腕が体の左右の面から 30° 以内に入ったら前後は測らない。
+        /// </summary>
+        const float ShoulderSagittalMin = 0.5f;
 
         /// <summary>ワールドの向きを、体の (右, 上, 前) 成分へ落とす。</summary>
         static Vector3 ToBodyFrame(Vector3 worldDirection, Vector3 up, Vector3 right, Vector3 forward)

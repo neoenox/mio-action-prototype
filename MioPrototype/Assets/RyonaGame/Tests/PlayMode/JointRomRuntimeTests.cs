@@ -167,6 +167,86 @@ namespace Ryona.Tests
             Object.Destroy(monitor);
         }
 
+        /// <summary>左上腕を、体の (右, 上, 前) で指定した向きへ向けて測り、肩(前後)の読みを返す。</summary>
+        bool TryMeasureLeftShoulderFlexion(Vector3 bodyDirection, out JointRomReading flexion,
+            out JointRomMonitor monitor)
+        {
+            monitor = _rig.gameObject.AddComponent<JointRomMonitor>();
+            monitor.Bind(_rig, _anim, "テスト");
+            monitor.LogWarnings = false;
+
+            _anim.ForceState(CharacterAnimator.State.Idle, 0.5f, 1f, StaggerTier.None, log: false);
+
+            Transform shoulder = _rig.LUpperArm;
+            Transform elbow = _rig.LLowerArm;
+            Vector3 current = (elbow.position - shoulder.position).normalized;
+            Transform body = _anim.transform.root;
+            Vector3 target = body.right * bodyDirection.x + body.up * bodyDirection.y
+                + body.forward * bodyDirection.z;
+            shoulder.rotation = Quaternion.FromToRotation(current, target.normalized) * shoulder.rotation;
+
+            monitor.ResetReport();
+            Assert.IsTrue(monitor.SampleNow(false), "測り直せない");
+
+            foreach (JointRomReading reading in monitor.Readings)
+            {
+                if (reading.Joint == JointId.ShoulderFlexion && reading.Side == JointSide.Left)
+                {
+                    flexion = reading;
+                    return true;
+                }
+            }
+
+            flexion = default;
+            return false;
+        }
+
+        [UnityTest]
+        public IEnumerator 真横に近い腕は肩の前後で警告しない()
+        {
+            yield return LoadPlayer();
+
+            // 後ろ拘束で実測した向き。水平より約 14° 上・体の面より約 13° 後ろ。
+            // 前後面への射影が短く、前後の角度は定まらない（以前は -138° と出て警告していた）。
+            bool measured = TryMeasureLeftShoulderFlexion(new Vector3(-0.95f, 0.24f, -0.22f),
+                out JointRomReading flexion, out JointRomMonitor monitor);
+            if (measured)
+                Assert.IsFalse(flexion.IsViolation, $"真横の腕が前後で警告されている（{flexion.Degrees:F0}°）");
+
+            Object.Destroy(monitor);
+        }
+
+        [UnityTest]
+        public IEnumerator 頭上へ上げた腕は折り返さず屈曲として測る()
+        {
+            yield return LoadPlayer();
+
+            // うつ伏せマウントで実測した向き。真上近くへ上げて、わずかに後ろ。
+            // atan2 が -180° へ折り返して「-176° の伸展」と出ていたが、実際は約 184° の屈曲。
+            bool measured = TryMeasureLeftShoulderFlexion(new Vector3(-0.51f, 0.86f, -0.06f),
+                out JointRomReading flexion, out JointRomMonitor monitor);
+            Assert.IsTrue(measured, "頭上へ上げた腕の前後が測れていない");
+            Assert.Greater(flexion.Degrees, 150f, $"折り返して伸展として測られている（{flexion.Degrees:F0}°）");
+            Assert.IsFalse(flexion.IsViolation, $"可動域内の腕が警告されている（{flexion.Degrees:F0}°）");
+
+            Object.Destroy(monitor);
+        }
+
+        [UnityTest]
+        public IEnumerator 腕を後ろへ引きすぎると肩の前後で警告する()
+        {
+            yield return LoadPlayer();
+
+            // 腕を体の後ろへ強く引く。前後面への射影は十分に長く、伸展の限界（約 -70°）を大きく超える。
+            bool measured = TryMeasureLeftShoulderFlexion(new Vector3(-0.1f, 0.3f, -0.95f),
+                out JointRomReading flexion, out JointRomMonitor monitor);
+            Assert.IsTrue(measured, "後ろへ引いた腕の前後が測れていない");
+            Assert.IsTrue(flexion.IsViolation, $"伸展しすぎが警告されていない（{flexion.Degrees:F0}°）");
+            Assert.Less(flexion.Degrees, -70f, $"伸展として測られていない（{flexion.Degrees:F0}°）");
+
+            Object.Destroy(monitor);
+        }
+
         [UnityTest]
         public IEnumerator 逆方向に曲がったひざを検出する()
         {
