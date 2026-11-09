@@ -89,6 +89,7 @@ MioPrototype.exe -holdright -screenspan=7        右へ自動で歩き、波の�
 MioPrototype.exe -encountertest -holdright       敵を自動で倒して波の進行を確認
 MioPrototype.exe -maxwaves=3                     3 波でクリア（終わり方の確認）
 MioPrototype.exe -camdist=5.2                    カメラ距離を差し替える
+MioPrototype.exe -jointrom -jointlog             関節が人体の可動域を超えたら警告（Joint-ROM.md）
 ```
 
 引数を付けて起動した場合も、すぐ始まります。タイトルを出したいときだけ `-title` を付けます。
@@ -107,4 +108,5 @@ ryona-action/
   SFX-Audition.md                          効果音の聞き比べ
   Outfit-Fix.md                            衣装の露出修正
   Enemy-VRM-Spec.md                        敵 VRM の発注仕様
+  Joint-ROM.md                             関節の可動域チェック（プレイヤー・敵）
 ```

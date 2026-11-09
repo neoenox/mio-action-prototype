@@ -48,6 +48,14 @@ namespace Ryona.Game
         readonly Dictionary<Transform, (Vector3 pos, Quaternion rot)> _rest =
             new Dictionary<Transform, (Vector3, Quaternion)>();
 
+        /// <summary>
+        /// 初期姿勢（T ポーズ）の向きを、キャラクターの root から見た回転で持つ。
+        /// 関節の可動域チェック（<see cref="JointRomProbe"/>）が「初期姿勢から
+        /// どれだけ曲がったか」をモデル固有のボーン軸に依存せず測るために使う。
+        /// </summary>
+        readonly Dictionary<Transform, Quaternion> _restRelativeToRoot =
+            new Dictionary<Transform, Quaternion>();
+
         readonly Dictionary<Transform, Quaternion> _snapshot =
             new Dictionary<Transform, Quaternion>();
 
@@ -103,6 +111,14 @@ namespace Ryona.Game
             {
                 if (t != null)
                     _rest[t] = (t.localPosition, t.localRotation);
+            }
+
+            // 可動域チェック用に「root から見た初期姿勢の向き」も控える。
+            _restRelativeToRoot.Clear();
+            foreach (var t in All())
+            {
+                if (t != null)
+                    _restRelativeToRoot[t] = RelativeRotationToRoot(t);
             }
 
             _restHipHeight = Hips.position.y - transform.position.y;
@@ -200,6 +216,25 @@ namespace Ryona.Game
                 kv.Key.localPosition = kv.Value.pos;
                 kv.Key.localRotation = kv.Value.rot;
             }
+        }
+
+        /// <summary>
+        /// 初期姿勢でのボーンの向きを、キャラクターの root から見た回転で返す。
+        /// 関節の可動域チェックが「初期姿勢からどれだけ曲がったか」を測るのに使う。
+        /// 初期姿勢を控えていないボーン（指など）では false を返す。
+        /// </summary>
+        public bool TryGetRestRotation(Transform bone, out Quaternion restRotation)
+        {
+            restRotation = Quaternion.identity;
+            return bone != null && _restRelativeToRoot.TryGetValue(bone, out restRotation);
+        }
+
+        Quaternion RelativeRotationToRoot(Transform bone)
+        {
+            Quaternion rotation = Quaternion.identity;
+            for (Transform t = bone; t != null && t != transform; t = t.parent)
+                rotation = t.localRotation * rotation;
+            return rotation;
         }
 
         /// <summary>
