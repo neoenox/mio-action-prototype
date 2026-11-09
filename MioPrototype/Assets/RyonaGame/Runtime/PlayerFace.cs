@@ -680,21 +680,29 @@ namespace Ryona.Game
         {
             float worry = _grapple.FrontEscapePoseWeight;
             float effort = _grapple.FrontEscapeEffort * worry;
+            // 拘束中の顔面パンチ: 当たった直後に目を閉じ、そのあとは歯を食いしばって睨む。
+            float impulse = Anim != null ? Anim.HeldFacePunchImpulse : 0f;
+            float brace = Anim != null ? Anim.HeldFacePunchBrace : 0f;
             // 澪の眉専用シェイプなら、困り眉にしても目や口の形を変えずに済む。
             if (_worriedBrow != null)
             {
                 if (!_heldFaceActive)
                     _originalBrowWeight = _worriedBrow.GetBlendShapeWeight(_worriedBrowIndex);
-                _worriedBrow.SetBlendShapeWeight(_worriedBrowIndex, 65f + 17f * worry + 6f * effort);
+                _worriedBrow.SetBlendShapeWeight(_worriedBrowIndex,
+                    Mathf.Lerp(65f + 17f * worry + 6f * effort, 34f, brace));
             }
             _heldFaceActive = true;
 
-            bool reacting = _grapple.IsBearHugContact || Time.unscaledTime < _heldImpactUntil;
+            bool reacting = _grapple.IsBearHugContact || Time.unscaledTime < _heldImpactUntil
+                || impulse > 0.02f || brace > 0.02f;
             _heldImpact = Mathf.MoveTowards(_heldImpact, reacting ? 1f : 0f,
                 dt / (reacting ? 0.04f : 0.12f));
             float mouth = Mathf.Lerp(0.14f + 0.035f * worry + 0.035f * effort, 0.30f, _heldImpact);
             float sad = _worriedBrow != null ? 0f : 0.60f + 0.18f * worry;
-            WriteShape(new PainShape(0f, sad, mouth, 0f, _heldImpact), 1f, _heldImpact);
+            // 踏ん張っている間は眉と目に力を入れ、口を食いしばる（やられっぱなしに見せない）。
+            float angry = 0.62f * brace;
+            float grit = 0.70f * brace;
+            WriteShape(new PainShape(angry, sad, mouth + 0.10f * brace, grit, _heldImpact), 1f, _heldImpact);
         }
 
         void ApplyMountFear(float fear, float hit)

@@ -100,6 +100,16 @@ namespace Ryona.Game
         float _heldFacePunchRemaining;
         float _heldFacePunchTotal;
 
+        /// <summary>顔面パンチの強さ（0.2〜1.5）。姿勢と表情の振れ幅に掛ける。</summary>
+        float _heldFacePunchStrength = 1f;
+
+        /// <summary>パンチの向き（彼女のローカル XZ）が渡されているか。</summary>
+        bool _hasFacePunchDirection;
+
+        /// <summary>拳が頭を押す向き（彼女のローカル）。x=左右、z=前後。</summary>
+        float _facePunchLocalX;
+        float _facePunchLocalZ;
+
         // 投げられて、正面の敵に腹を差し出す体勢への移行（0..1）。
         // パンチの「く」の字とは別物で、折れはしない。コンボのあいだ保持する。
         bool _heldThrowLeadOn;
@@ -140,16 +150,67 @@ namespace Ryona.Game
         }
 
         /// <summary>
+        /// 顔面パンチの衝撃（0..1）。頭が一気に振れてから戻るまで。姿勢側がこれで頭・首を振る。
+        /// </summary>
+        public float HeldFacePunchImpulse
+        {
+            get
+            {
+                if (_heldFacePunchTotal <= 0f || _heldFacePunchRemaining <= 0f)
+                    return 0f;
+
+                float t = _heldFacePunchTotal - _heldFacePunchRemaining;
+                float inT = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.004f) / 0.030f));
+                float outT = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.13f) / 0.26f));
+                return Mathf.Clamp01(inT * outT) * _heldFacePunchStrength;
+            }
+        }
+
+        /// <summary>
+        /// 顔面パンチを受けたあと、次の一発まで歯を食いしばって踏ん張る（0..1）。
+        /// 「やられているだけ」に見えないよう、目を開けて睨み返す姿勢に使う。
+        /// </summary>
+        public float HeldFacePunchBrace
+        {
+            get
+            {
+                if (_heldFacePunchTotal <= 0f || _heldFacePunchRemaining <= 0f)
+                    return 0f;
+
+                float t = _heldFacePunchTotal - _heldFacePunchRemaining;
+                float up = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.16f) / 0.10f));
+                float down = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.36f) / 0.19f));
+                return Mathf.Clamp01(up * down);
+            }
+        }
+
+        /// <summary>
         /// 拘束中に顔面を殴られた反応。頭が手前へ振れ、続いて肩が短く揺れる。
         /// 呼んでも状態は Grabbed のまま。
         /// </summary>
-        public void PlayHeldFacePunch(float seconds)
+        /// <param name="punchDirection">
+        /// 拳が彼女の頭を押す向き（ワールド）。省くと従来どおりカメラ側へ背ける。
+        /// 渡すと、殴られた側と逆へ頭が振れて「どちらから来たか」が分かる。
+        /// </param>
+        /// <param name="strength">衝撃の強さ（0.5〜1.2 程度）。</param>
+        public void PlayHeldFacePunch(float seconds, Vector3 punchDirection = default, float strength = 1f)
         {
             if (seconds <= 0f)
                 return;
 
             _heldFacePunchTotal = seconds;
             _heldFacePunchRemaining = seconds;
+            _heldFacePunchStrength = Mathf.Clamp(strength, 0.2f, 1.5f);
+
+            Vector3 local = transform.InverseTransformDirection(punchDirection);
+            local.y = 0f;
+            _hasFacePunchDirection = local.sqrMagnitude > 1e-4f;
+            if (_hasFacePunchDirection)
+            {
+                local.Normalize();
+                _facePunchLocalX = local.x;
+                _facePunchLocalZ = local.z;
+            }
         }
 
         /// <summary>

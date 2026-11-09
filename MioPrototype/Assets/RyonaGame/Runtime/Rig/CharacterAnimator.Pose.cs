@@ -721,21 +721,53 @@ namespace Ryona.Game
                     pose.ArmRUpper.y += 0.36f * lift;
                 }
 
-                // 顔面パンチ: 頭の振れに続いて胸が起き、肩が短く揺れる。
-                float faceFlick = HeldFacePunchFlick;
-                if (faceFlick > 0f)
+                // 顔面パンチ: 頭が先行して振れ、胸・肩が少し遅れて付いてくる。
+                // 当たったあとは歯を食いしばって踏ん張り、次の一発を睨む。
+                float faceImpulse = HeldFacePunchImpulse;
+                float faceBrace = HeldFacePunchBrace;
+                if (faceImpulse > 0f || faceBrace > 0f)
                 {
-                    float side = toCamera >= 0f ? 1f : -1f;
                     float hitTime = _heldFacePunchTotal - _heldFacePunchRemaining;
-                    float shoulderRecoil = Mathf.SmoothStep(0.45f, 1f, (hitTime - 0.01f) / 0.035f)
-                        * (1f - Mathf.SmoothStep(0f, 1f, (hitTime - 0.045f) / 0.14f));
-                    // 腰を拘束位置に残し、胸を起こしながら肩を手前へ逃がす。
-                    pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, 1f, shoulderRecoil);
-                    pose.TorsoYaw += side * (5f * shoulderRecoil + 3f * faceFlick);
-                    pose.TorsoRoll -= side * 7f * shoulderRecoil;
-                    pose.HeadPitch -= 5f * faceFlick;
-                    pose.HeadYaw = Mathf.Lerp(pose.HeadYaw, Mathf.Clamp(toCamera * 1.15f, -42f, 42f), faceFlick);
-                    pose.HeadRoll = Mathf.Lerp(pose.HeadRoll, -side * 13f, faceFlick);
+                    float lateral = _hasFacePunchDirection
+                        ? Mathf.Clamp(_facePunchLocalX, -1f, 1f)
+                        : (toCamera >= 0f ? 1f : -1f);
+                    if (Mathf.Abs(lateral) < 0.15f)
+                        lateral = toCamera >= 0f ? 1f : -1f;
+
+                    // 頭は一気に振り切る。少し遅れて胸が付き、腰は拘束位置に残す。
+                    float torsoDelay = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((hitTime - 0.030f) / 0.045f))
+                        * (1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((hitTime - 0.18f) / 0.30f)));
+                    float shake = Mathf.Exp(-hitTime * 6.5f) * Mathf.Sin(hitTime * 38f);
+
+                    pose.HeadYaw += lateral * 52f * faceImpulse + shake * 6f * faceImpulse;
+                    pose.HeadPitch -= 16f * faceImpulse;
+                    pose.HeadRoll += -lateral * 20f * faceImpulse + shake * 5f * faceImpulse;
+
+                    pose.TorsoYaw += lateral * 14f * torsoDelay;
+                    pose.TorsoRoll += -lateral * 8f * torsoDelay;
+                    pose.TorsoPitch -= 9f * torsoDelay;
+
+                    // 打たれた方向へ腰が逃げ、膝が抜ける。足は一歩ぶん残る。
+                    pose.HipsOffset.x += lateral * 0.038f * torsoDelay;
+                    pose.HipsOffset.y -= 0.05f * faceImpulse;
+                    pose.FootL += new Vector3(lateral * 0.022f, 0f, -0.018f) * faceImpulse;
+                    pose.FootR += new Vector3(lateral * 0.028f, 0f, -0.012f) * faceImpulse;
+                    pose.FootPitchR += 16f * faceImpulse;
+                    pose.FootPitchL += 8f * faceImpulse;
+
+                    // 押さえられた腕は突かれて跳ねる（拘束は解けない）。
+                    pose.ArmLUpper.y += 0.10f * faceImpulse;
+                    pose.ArmRUpper.y += 0.10f * faceImpulse;
+                    pose.ArmLFore += new Vector3(0f, 0.12f, 0.05f) * faceImpulse;
+                    pose.ArmRFore += new Vector3(0f, 0.12f, 0.05f) * faceImpulse;
+                    pose.Grip = 1f;
+
+                    // 踏ん張り: 顎を引いて胸を起こし、相手を睨み返す。
+                    pose.TorsoPitch += 7f * faceBrace;
+                    pose.HeadPitch += 8f * faceBrace;
+                    pose.TorsoYaw -= lateral * 4f * faceBrace;
+                    pose.TorsoRoll += lateral * 3f * faceBrace;
+                    pose.HipsOffset.y -= 0.012f * faceBrace;
                 }
 
                 return pose;

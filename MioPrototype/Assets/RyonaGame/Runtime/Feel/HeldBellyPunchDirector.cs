@@ -482,8 +482,9 @@ namespace Ryona.Game
             _punchInFlight = false;
             _attempts = 0;
 
-            // 1 発を重く見せる。既存の被弾ヒットストップ（約 0.07 秒）より少し長く止める。
-            HitStop.Play(0.09f);
+            // 1 発を重く見せる。既存の被弾ヒットストップ（約 0.07 秒）より長く止める。
+            // 顔面は「当たった瞬間」が命なので、腹パンより少しだけ長く。
+            HitStop.Play(_stats.LastHitZone == PunchZone.Face ? 0.11f : 0.09f);
 
             // 狙いで見た目を分ける。
             //   腹: 腰が押し戻され、その上で上体が前に折れる
@@ -502,7 +503,14 @@ namespace Ryona.Game
                 if (zone == PunchZone.Face)
                 {
                     _anim.EndHeldThrowLead();
-                    _anim.PlayHeldFacePunch(HitPoseSeconds);
+                    // 拳が彼女の頭を押す向き。殴った腕の側と逆へ頭が振れるようにする。
+                    var attacker = _stats.LastAttacker;
+                    var puncherBrain = attacker != null ? attacker.GetComponent<EnemyBrain>() : null;
+                    Vector3 push = puncherBrain != null
+                        ? puncherBrain.transform.forward * 0.55f
+                          + puncherBrain.transform.right * (puncherBrain.UsesLeftPunch ? -1f : 1f)
+                        : _stats.transform.forward;
+                    _anim.PlayHeldFacePunch(HitPoseSeconds, push, 1f);
                 }
                 else
                 {

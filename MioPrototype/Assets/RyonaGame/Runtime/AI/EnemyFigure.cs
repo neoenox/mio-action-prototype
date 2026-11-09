@@ -985,25 +985,50 @@ namespace Ryona.Game
                 if (Brain.IsTagFacePunch)
                 {
                     float side = Brain.UsesLeftPunch ? -1f : 1f;
-                    float faceWeight = Brain.PunchPoseWeight;
-                    float load = phase == EnemyPhase.Windup
-                        ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.08f, 0.55f, WindupNow)) * (1f - faceWeight)
-                        : 0f;
-                    // 腰をわずかに引いて溜め、拳と一緒に打つ肩を前へ送る。
-                    armRPitch = armLPitch = 5f;
-                    if (Brain.UsesLeftPunch)
-                        armLPitch += 10f * load;
+                    float faceCoil = Brain.TagFaceCoil;
+                    float faceDrive = Brain.TagFaceDrive;
+
+                    // 腰 → 胸 → 肩の順にひねる。溜めは拳側へ、振り抜きは逆へ回す。
+                    torsoYaw = side * (22f * faceCoil - 28f * faceDrive);
+                    torsoPitch = -4f * faceCoil - 8f * faceDrive;
+                    torsoRoll = side * (-4f * faceCoil + 6f * faceDrive);
+
+                    // 溜めで後ろへ預けた体重を、踏み込みで拳へ乗せる。
+                    hipsZ = 0.16f * faceDrive - 0.05f * faceCoil;
+                    hipsY = restY - 0.05f * faceDrive + 0.008f * faceCoil;
+
+                    // 拳側（後ろ足）で踏ん張り、前足が体重を受けて曲がる。
+                    bool punchRight = side > 0f;
+                    legRPitch = punchRight ? (-3f - 9f * faceDrive) : (8f + 4f * faceDrive);
+                    legLPitch = punchRight ? (8f + 4f * faceDrive) : (-3f - 9f * faceDrive);
+                    kneeR = punchRight
+                        ? (16f + 6f * faceCoil - 6f * faceDrive)
+                        : (16f + 10f * faceDrive);
+                    kneeL = punchRight
+                        ? (16f + 10f * faceDrive)
+                        : (16f + 6f * faceCoil - 6f * faceDrive);
+
+                    // 打つ拳は頬の横へ引いて構える（振り抜きは BackHoldPose が実際の腕を解く）。
+                    // 反対の腕は顎の前に構え、振り抜きで引いて反動をつくる。
+                    float chamber = -36f - 12f * faceDrive;
+                    if (punchRight)
+                    {
+                        armRPitch = chamber;
+                        elbowR = 140f;
+                        armRSpread = -3f;
+                        armLPitch = -22f - 14f * faceDrive;
+                        elbowL = 128f;
+                        armLSpread = 6f;
+                    }
                     else
-                        armRPitch += 10f * load;
-                    elbowR = elbowL = 135f;
-                    armRSpread = -5f;
-                    armLSpread = 5f;
-                    torsoYaw = side * (7f * load - 15f * faceWeight);
-                    torsoPitch = -9f * faceWeight;
-                    hipsZ = 0.085f * faceWeight - 0.040f * load;
-                    legRPitch = -5f;
-                    legLPitch = 8f;
-                    kneeR = kneeL = 16f;
+                    {
+                        armLPitch = chamber;
+                        elbowL = 140f;
+                        armLSpread = 3f;
+                        armRPitch = -22f - 14f * faceDrive;
+                        elbowR = 128f;
+                        armRSpread = -6f;
+                    }
                 }
                 else
                 {
@@ -1250,7 +1275,7 @@ namespace Ryona.Game
             _hips.localPosition = new Vector3(_hipsX, _hipsY, _hipsZ);
             _hips.localRotation = Quaternion.Euler(0f, _torsoYaw * 0.45f, 0f);
             _chest.localRotation = Quaternion.Euler(-_torsoPitch, _torsoYaw * 0.55f, _torsoRoll);
-            float headCounterYaw = Brain != null && Brain.IsTagFacePunch ? 0.55f : 0.25f;
+            float headCounterYaw = Brain != null && Brain.IsTagFacePunch ? 0.90f : 0.25f;
             _head.localRotation = Quaternion.Euler(-_headPitch * 0.5f, -_torsoYaw * headCounterYaw, 0f);
             _shoulderR.localRotation = Quaternion.Euler(_armRPitch, 0f, _armRSpread);
             _shoulderL.localRotation = Quaternion.Euler(_armLPitch, 0f, _armLSpread);
@@ -1292,6 +1317,18 @@ namespace Ryona.Game
                 _kneeL.localRotation = Quaternion.Euler(_kneeLAngle, 0f, 0f);
                 _ankleR.localRotation = Quaternion.identity;
                 _ankleL.localRotation = Quaternion.identity;
+            }
+            // 拳側の足はかかとを上げて踏ん張る（体重が拳へ乗ったことが足元で分かる）。
+            if (Brain != null && Brain.IsTagFacePunch)
+            {
+                float heel = 26f * Brain.TagFaceDrive;
+                if (heel > 0.1f)
+                {
+                    if (Brain.UsesLeftPunch)
+                        _ankleL.localRotation = Quaternion.Euler(heel, 0f, 0f);
+                    else
+                        _ankleR.localRotation = Quaternion.Euler(heel, 0f, 0f);
+                }
             }
             // 前フレームの持ち上げを戻してから測る（残したまま測ると、
             // 沈みが小さく見えて補正が足りず、毎フレーム少しずつずれる）。
@@ -1335,9 +1372,11 @@ namespace Ryona.Game
             }
             else if (Brain != null && Brain.IsTagFacePunch && Brain.Player != null)
             {
+                // 顔面パンチは腕の軌道で届かせる。体で押し込む分だけ少し前へ出る
+                // （大きく踏み込むと拳が彼女へめり込み、腕が畳まれて見える）。
                 float gap = Vector3.Dot(Brain.Player.transform.position - transform.position, transform.forward);
-                lunge = Mathf.Clamp(gap - 0.67f, 0f, lunge);
-                drive = Brain.PunchPoseWeight;
+                lunge = Mathf.Clamp(gap - 0.70f, 0f, 0.06f);
+                drive = Brain.TagFaceDrive;
             }
             _lungeOffset = lunge * drive;
             _root.localPosition += Vector3.forward * _lungeOffset;
@@ -1984,8 +2023,6 @@ namespace Ryona.Game
         EnemyBrain _brain;
         ProceduralRig _targetRig;
         CharacterAnimator _targetAnimator;
-        Quaternion _faceImpactShoulder = Quaternion.identity;
-        Quaternion _faceImpactElbow = Quaternion.identity;
 
         void LateUpdate()
         {
@@ -2152,24 +2189,70 @@ namespace Ryona.Game
             elbow.rotation = Quaternion.Slerp(oldElbow, aimedElbow, weight);
         }
 
+        /// <summary>
+        /// 拘束中の顔面パンチ。
+        ///
+        /// 拳を「自分の頬の横」から「彼女の頬」へ、外側を通る弧で振り抜く。
+        /// 弧の進み具合を重みの 2 乗にして、当たる瞬間が一番速くなるようにする
+        /// （そのまま等速で伸ばすと、当たる直前に減速して「やる気のないパンチ」になる）。
+        /// </summary>
         void AimTagFacePunch(Transform upper, Transform elbow, Transform wrist,
             Vector3 target, Vector3 outside, float weight)
         {
+            if (upper == null || elbow == null || wrist == null)
+                return;
+
+            float w = Mathf.Clamp01(weight);
+            float s = w * w;
+
+            bool left = _brain.UsesLeftPunch;
+            Vector3 punchSide = outside.sqrMagnitude > 1e-4f
+                ? outside.normalized
+                : transform.right * (left ? -1f : 1f);
+            Transform fist = _figure.Fist(left);
+
+            // 溜め: 自分の頬の横（肩の後ろ外側）。拳は一度引いてから出る。
+            Vector3 chamber = upper.position
+                - transform.forward * 0.17f
+                + punchSide * 0.15f
+                + Vector3.up * 0.05f;
+
+            // 弧: 拳が彼女の顔の外側を通って回り込む。
+            Vector3 arc = upper.position
+                + transform.forward * 0.18f
+                + punchSide * 0.34f
+                + Vector3.up * 0.09f;
+
+            // 当たる場所: 彼女の頭の中心から拳 1 つぶん手前（頬の表面）。
+            Vector3 toHead = target - upper.position;
+            Vector3 contact = target - toHead.normalized * 0.10f + punchSide * 0.02f;
+
+            Vector3 point = (1f - s) * (1f - s) * chamber
+                + 2f * (1f - s) * s * arc
+                + s * s * contact;
+
+            // 肘は外へ張る（フックの形）。体の前へ回すと「押している」画になる。
+            Vector3 pole = upper.position
+                + punchSide * 0.42f
+                + Vector3.up * 0.18f
+                + transform.forward * 0.04f;
+
             Quaternion guardShoulder = upper.localRotation;
             Quaternion guardElbow = elbow.localRotation;
-            if (_brain.Phase != EnemyPhase.Recover)
+
+            // 手首ではなく拳を狙いに置きたいので、手首→拳のオフセットを引いて 2 回解く。
+            for (int i = 0; i < 2; i++)
             {
-                Vector3 contact = target - transform.forward * 0.08f + outside * 0.045f;
-                Vector3 pole = upper.position - transform.up * 0.30f + outside * 0.08f;
-                ProceduralRig.SolveTwoBone(upper, elbow, wrist, contact, pole, transform.right);
-                _faceImpactShoulder = upper.localRotation;
-                _faceImpactElbow = elbow.localRotation;
+                ProceduralRig.SolveTwoBone(upper, elbow, wrist, point, pole, transform.right);
+                if (fist == null)
+                    break;
+                point -= fist.position - wrist.position;
             }
 
-            // 相手がのけぞっても狙い直さず、打った瞬間の角度から構えへ引く。
-            // 肘は肩に対する角度で補間し、前腕だけが別方向へ回るのを防ぐ。
-            upper.localRotation = Quaternion.Slerp(guardShoulder, _faceImpactShoulder, weight);
-            elbow.localRotation = Quaternion.Slerp(guardElbow, _faceImpactElbow, weight);
+            // 構えから弧へ入るときの段差を消す（重みが小さいうちだけ混ぜる）。
+            float blend = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(w / 0.18f));
+            upper.localRotation = Quaternion.Slerp(guardShoulder, upper.localRotation, blend);
+            elbow.localRotation = Quaternion.Slerp(guardElbow, elbow.localRotation, blend);
         }
 
         /// <summary>

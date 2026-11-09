@@ -118,8 +118,26 @@ namespace Ryona.Game
 
         bool BeginOrderedAttack(EnemyBrain enemy, PunchZone zone, bool openingThrow)
         {
-            return openingThrow ? enemy.TryStartHeldThrow(positioned: true)
-                : enemy.TryStartTagPunch(zone, allowRecover: true, holdPoseSeconds: FistHoldSeconds);
+            if (openingThrow)
+                return enemy.TryStartHeldThrow(positioned: true);
+
+            bool? punchLeft = zone == PunchZone.Face ? ChooseFacePunchSide(enemy) : null;
+            return enemy.TryStartTagPunch(zone, allowRecover: true, holdPoseSeconds: FistHoldSeconds,
+                forceLeft: punchLeft);
+        }
+
+        /// <summary>
+        /// 顔面パンチを打つ腕。1 発目はカメラから遠い腕にして彼女の顔を隠さない。
+        /// 2 発目からは左右交互にして、連打が「同じ腕の連発」に見えないようにする。
+        /// </summary>
+        bool ChooseFacePunchSide(EnemyBrain enemy)
+        {
+            Camera cam = Camera.main;
+            bool cameraOnHisRight = cam != null &&
+                Vector3.Dot(cam.transform.position - enemy.transform.position, enemy.transform.right) > 0f;
+            // カメラが彼の右側なら、近い腕は右・遠い腕は左。
+            bool farSideLeft = cameraOnHisRight;
+            return farSideLeft ^ (_hits % 2 == 1);
         }
 
         bool CanContinuePlacement(EnemyBrain enemy, EnemyBrain captor, bool openingThrow)
