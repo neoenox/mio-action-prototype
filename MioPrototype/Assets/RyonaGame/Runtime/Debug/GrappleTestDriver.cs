@@ -48,6 +48,9 @@ namespace Ryona.Game
 
         /// <summary>タッグパンチ中の撮影カメラを真横へ固定する（<c>-tagcam</c>）。</summary>
         bool _tagCam;
+
+        /// <summary><c>-tagcamflip</c>。真横カメラを反対側へ回す（奥側の腕を見る）。</summary>
+        bool _tagCamFlip;
         HeldBellyPunchDirector _belly;
 
         /// <summary><c>-pinshot=</c>。押さえつけ開始から 0.3 秒後を撮る。</summary>
@@ -83,6 +86,7 @@ namespace Ryona.Game
             float pinShotDelay = 0.30f;
             string pinBurst = null;
             bool tagCam = false;
+            bool tagCamFlip = false;
 
             foreach (string a in System.Environment.GetCommandLineArgs())
             {
@@ -127,6 +131,8 @@ namespace Ryona.Game
                     pinBurst = a.Substring("-pinburst=".Length);
                 else if (string.Equals(a, "-tagcam", System.StringComparison.OrdinalIgnoreCase))
                     tagCam = true;
+                else if (string.Equals(a, "-tagcamflip", System.StringComparison.OrdinalIgnoreCase))
+                    tagCamFlip = true;
             }
 
             if (!wanted)
@@ -148,6 +154,7 @@ namespace Ryona.Game
             driver._pinShotDelaySeconds = pinShotDelay;
             driver._pinBurstPrefix = pinBurst;
             driver._tagCam = tagCam;
+            driver._tagCamFlip = tagCamFlip;
             driver._once = once;
             driver._hitAfterThrowOnly = hitAfterThrow;
         }
@@ -395,6 +402,8 @@ namespace Ryona.Game
                 ? axis.normalized
                 : new Vector3(_player.transform.forward.x, 0f, _player.transform.forward.z).normalized;
             Vector3 side = Vector3.Cross(Vector3.up, axis).normalized;
+            if (_tagCamFlip)
+                side = -side;
 
             // 殴る側と彼女の両方が入るよう、中点を写して少し引く。
             if (puncher != null)

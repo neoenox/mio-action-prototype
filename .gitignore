@@ -33,3 +33,6 @@ MioPrototype/Assets/RyonaGame/Resources/Voice/
 InitTestScene*.unity
 InitTestScene*.unity.meta
 
+
+# 検証用の montage 画像（プロジェクト直下）
+/montage-*.png
