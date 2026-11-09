@@ -59,6 +59,9 @@ namespace Ryona.Game
         readonly Dictionary<int, float> _lastWarnTime = new Dictionary<int, float>();
         readonly List<JointRomReading> _summaryBuffer = new List<JointRomReading>();
 
+        /// <summary>関節ごとの最悪値が出たときの状態（プレイヤーは状態名、敵はフェーズ）。</summary>
+        readonly Dictionary<int, string> _worstContext = new Dictionary<int, string>();
+
         JointSkeleton _skeleton;
         float _sampleTimer;
         float _summaryTimer;
@@ -112,6 +115,7 @@ namespace Ryona.Game
         public void ResetReport()
         {
             _tally.Clear();
+            _worstContext.Clear();
             _lastWarnTime.Clear();
             _warnings = 0;
             _samples = 0;
@@ -144,6 +148,9 @@ namespace Ryona.Game
                     continue;
 
                 _tally.Add(reading);
+                if (_tally.TryGetWorst(reading.Joint, reading.Side, out JointRomReading worst)
+                    && worst.Excess <= reading.Excess)
+                    _worstContext[(int)reading.Joint * 3 + (int)reading.Side] = ContextText;
 
                 if (!emitWarnings || !LogWarnings)
                     continue;
@@ -189,6 +196,34 @@ namespace Ryona.Game
 
             LastSummary = text.ToString();
             Debug.Log(LastSummary);
+            LogWorstNow();
+        }
+
+        /// <summary>
+        /// 逸脱した関節ごとに、これまでの最悪値と延べ回数を 1 行ずつ出す（<c>[JointROMWorst]</c>）。
+        ///
+        /// 警告は同じ関節につき <see cref="WarnInterval"/> 秒に 1 回なので、警告の最大値は
+        /// 最悪値とは限らない。この行は毎サンプルの集計から作るので、実行全体の最悪値になる。
+        /// 値は累積なので、同じ関節の行は後のものほど正しい（<c>tools/grapple_verify.py</c> は最後の行を使う）。
+        /// </summary>
+        public void LogWorstNow()
+        {
+            foreach (JointRomReading reading in _tally.WorstReadings)
+            {
+                _worstContext.TryGetValue((int)reading.Joint * 3 + (int)reading.Side, out string context);
+                string excess = reading.Verdict == JointRomVerdict.OverFlexed
+                    ? $"{reading.Excess:0}° 超過"
+                    : $"{reading.Excess:0}° 反対方向";
+                int count = _tally.CountOf(reading.Joint, reading.Side);
+                Debug.Log($"[JointROMWorst] {Subject} {reading.Describe()}{excess}{context} ×{count}");
+            }
+        }
+
+        void OnApplicationQuit()
+        {
+            // 終了の直前に、最後の集計を出す（まとめログの間隔に間に合わなかった分）。
+            if (LogSummary && _tally.TrackedKeys > 0)
+                LogWorstNow();
         }
 
         void LateUpdate()

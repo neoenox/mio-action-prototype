@@ -110,6 +110,12 @@
 実行版を決まった条件で動かし、撮影・可動域の一覧・前後比較をまとめて出す（`MioPrototype/` で実行。Unity Editor は閉じておく）。
 
 ```
+python tools/grapple_verify.py run --label after --baseline HEAD   # 直前のコミットと比べる（基準は自動）
+```
+
+基準を手動で撮るなら:
+
+```
 python tools/grapple_verify.py run --label before      # 直す前
 python tools/grapple_verify.py run --label after       # 直したあと
 python tools/grapple_verify.py compare before after    # 並べる
@@ -118,6 +124,7 @@ python tools/grapple_verify.py compare before after    # 並べる
 | 引数 | 意味 |
 |---|---|
 | `--scenarios` | 既定 `belly,face,mount`。全部は `belly,face,face_far,mount,mount_prone,pin` |
+| `--baseline REF` | `REF`（`HEAD`・`HEAD~3`・ハッシュ）を専用ワークツリー `.claude/worktrees/verify-baseline` へ出して自動でビルド・撮影し、最後に比べる。**作業ツリーの未コミットの変更には触れない**。基準は `Verify/base-<ハッシュ>/` に保存して使い回す（`--refresh-baseline` で撮り直し）。初回は Library のコピーとビルドで数分。不要になったら `git worktree remove --force .claude/worktrees/verify-baseline` |
 | `--no-build` / `--build` | ビルド確認を飛ばす / 必ずビルドする（既定はソースが新しければ自動でビルド） |
 | `--count` `--cols` `--tile` | montage のコマ数・列数・1コマの幅 |
 
@@ -125,8 +132,10 @@ python tools/grapple_verify.py compare before after    # 並べる
 `rom_report.md`（可動域を超えた関節を**超過の大きい順**に並べた表。上から直す）、`rom.json`。
 `compare` は `Verify/compare_<A>_vs_<B>/` に、上段 A・下段 B の画像と `rom_diff.md`（悪化・新規・改善・消えた）を出す。
 
-可動域は実行版を `-jointrom` で動かして拾うので、キャラ同士が絡む姿勢（Check Joint ROM の総当たりでは出ないもの）も入る。
-警告は同じ関節につき 2 秒に 1 回なので、「回数」は目安。
+可動域は実行版を `-jointrom -jointlog` で動かして拾うので、キャラ同士が絡む姿勢（Check Joint ROM の総当たりでは出ないもの）も入る。
+関節ごとの最悪値と延べ回数は、毎サンプルの集計から作る `[JointROMWorst]` 行を使う（表の精度は「集計」）。
+警告は同じ関節につき 2 秒に 1 回なので、警告だけからの値は最悪値を取り逃がす。この行が無い古いビルド
+（古いコミットを基準にしたとき）は警告行から集計し、精度は「目安」になる。目安と集計を比べた差には注記が付く。
 
 ## 計測のコツ
 
