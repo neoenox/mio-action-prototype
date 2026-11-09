@@ -283,11 +283,16 @@ namespace Ryona.Game
 
         /// <summary>
         /// 子ボーンの向きを親ボーン基準に直し、初期姿勢からの差を
-        /// キャラクター（root）の軸で前後・ひねり・左右に分解する。
+        /// 前後・ひねり・左右に分解する。
         ///
         /// 「親が動いた分」を差し引くのが要点。親（腰）が倒れたり回ったりしても、
         /// 子（胸）が付いてきただけなら曲がりではない。親の剛体回転で説明できる
-        /// 向きを基準にし、そこからの差だけを root の軸で表す。
+        /// 向きを基準にし、そこからの差だけを測る。
+        ///
+        /// 差は<b>親ボーン自身の軸</b>で表す（以前は root の軸だった）。root の軸だと、
+        /// 体が寝ているとき（ダウン・マウント）に、体の長軸まわりの頭のひねりが
+        /// 水平な軸まわりの回転になり、前後・左右の曲げとして測られていた
+        /// （頬を打たれて顔を横へ向けただけの首が、左右 83° と出た）。
         /// </summary>
         static Vector3 BendEuler(Transform root, Transform parent, Transform child,
             Quaternion restParent, Quaternion restChild)
@@ -296,11 +301,10 @@ namespace Ryona.Game
             Quaternion parentNow = rootInverse * parent.rotation;   // 親の今の向き（root 基準）
             Quaternion childNow = rootInverse * child.rotation;     // 子の今の向き（root 基準）
 
-            // 親が初期姿勢から動いたぶんを子に適用した「付いてきただけの向き」。
-            // 親が動いていなければ初期姿勢の子の向きそのもの。
-            Quaternion rigidFollow = parentNow * Quaternion.Inverse(restParent) * restChild;
-
-            Quaternion delta = childNow * Quaternion.Inverse(rigidFollow);
+            // 子の「親から見た今の向き」と「親から見た初期の向き」の差。
+            // 親が動いて子が付いてきただけなら単位回転になり、軸は親のローカル軸になる。
+            Quaternion delta = Quaternion.Inverse(parentNow) * childNow
+                * Quaternion.Inverse(restChild) * restParent;
             return BendAngles(delta);
         }
 

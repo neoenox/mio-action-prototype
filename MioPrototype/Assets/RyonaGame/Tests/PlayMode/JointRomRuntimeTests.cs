@@ -247,6 +247,52 @@ namespace Ryona.Tests
             Object.Destroy(monitor);
         }
 
+        static bool ReadNeck(JointRomMonitor monitor, out float yaw, out float roll)
+        {
+            yaw = roll = 0f;
+            bool hasYaw = false, hasRoll = false;
+            foreach (JointRomReading reading in monitor.Readings)
+            {
+                if (reading.Joint == JointId.NeckYaw) { yaw = reading.Degrees; hasYaw = true; }
+                if (reading.Joint == JointId.NeckRoll) { roll = reading.Degrees; hasRoll = true; }
+            }
+            return hasYaw && hasRoll;
+        }
+
+        [UnityTest]
+        public IEnumerator 前へ折れた胸の上で首をひねってもひねりとして測る()
+        {
+            yield return LoadPlayer();
+
+            var monitor = _rig.gameObject.AddComponent<JointRomMonitor>();
+            monitor.Bind(_rig, _anim, "テスト");
+            monitor.LogWarnings = false;
+            _anim.ForceState(CharacterAnimator.State.Idle, 0.5f, 1f, StaggerTier.None, log: false);
+
+            // 胸を前へ 80°倒し（寝ている姿勢に近い）、首をその胸の上軸まわりに 50°ひねる。
+            // 首の曲がりは親（胸）の軸で測るので、ひねり 50°・前後と左右はほぼ 0 になるはず。
+            // root の軸で測ると、ひねりが前後・左右の曲げに化ける。
+            // 待機姿勢の頭は元からわずかにひねってあるので、回す前の値を基準にして増えた分を見る。
+            Assert.IsTrue(monitor.SampleNow(false), "測り直せない");
+            Assert.IsTrue(ReadNeck(monitor, out float yaw0, out float roll0),
+                "首の読みが取れていない（初期姿勢が控えられていない？）");
+
+            Transform root = _anim.transform.root;
+            _rig.Chest.rotation = Quaternion.AngleAxis(80f, root.right) * _rig.Chest.rotation;
+            _rig.Head.rotation = Quaternion.AngleAxis(50f, _rig.Chest.up) * _rig.Head.rotation;
+
+            monitor.ResetReport();
+            Assert.IsTrue(monitor.SampleNow(false), "測り直せない");
+            Assert.IsTrue(ReadNeck(monitor, out float yaw, out float roll), "首の読みが取れていない");
+
+            float turned = Mathf.Abs(yaw - yaw0);
+            float tilted = Mathf.Abs(roll - roll0);
+            Assert.AreEqual(50f, turned, 6f, $"首のひねりとして測られていない（ひねり +{turned:F0}°）");
+            Assert.Less(tilted, 8f, $"ひねりが左右の曲げに化けている（左右 +{tilted:F0}°）");
+
+            Object.Destroy(monitor);
+        }
+
         [UnityTest]
         public IEnumerator 逆方向に曲がったひざを検出する()
         {
