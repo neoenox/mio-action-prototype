@@ -46,6 +46,10 @@ namespace Ryona.Game
         string _burstPrefix;
         bool _burstDone;
 
+        /// <summary>バーストの枚数と間隔（<c>-heldpunchburstframes=</c> / <c>-heldpunchburstinterval=</c>）。</summary>
+        int _burstFrames = 30;
+        float _burstInterval = 0.05f;
+
         /// <summary>タッグパンチ中の撮影カメラを真横へ固定する（<c>-tagcam</c>）。</summary>
         bool _tagCam;
 
@@ -81,6 +85,8 @@ namespace Ryona.Game
             string heldPunchShotPath = null;
             float heldPunchShotDelay = 0.12f;
             string heldPunchBurst = null;
+            int heldPunchBurstFrames = 30;
+            float heldPunchBurstInterval = 0.05f;
             bool pin = false;
             string pinShotPath = null;
             float pinShotDelay = 0.30f;
@@ -101,6 +107,20 @@ namespace Ryona.Game
                     heldPunchShotPath = a.Substring("-heldpunchshot=".Length);
                 else if (a.StartsWith("-heldpunchburst=", System.StringComparison.OrdinalIgnoreCase))
                     heldPunchBurst = a.Substring("-heldpunchburst=".Length);
+                else if (a.StartsWith("-heldpunchburstframes=", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    if (int.TryParse(a.Substring("-heldpunchburstframes=".Length), out int frames)
+                        && frames > 0)
+                        heldPunchBurstFrames = frames;
+                }
+                else if (a.StartsWith("-heldpunchburstinterval=", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    if (float.TryParse(a.Substring("-heldpunchburstinterval=".Length),
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out float interval)
+                        && interval > 0f)
+                        heldPunchBurstInterval = interval;
+                }
                 else if (a.StartsWith("-heldpunchshotdelay=", System.StringComparison.OrdinalIgnoreCase))
                 {
                     if (float.TryParse(a.Substring("-heldpunchshotdelay=".Length),
@@ -150,6 +170,8 @@ namespace Ryona.Game
             driver._heldPunchShotPath = heldPunchShotPath;
             driver._heldPunchShotDelaySeconds = heldPunchShotDelay;
             driver._burstPrefix = heldPunchBurst;
+            driver._burstFrames = heldPunchBurstFrames;
+            driver._burstInterval = heldPunchBurstInterval;
             driver._pinShotPath = pinShotPath;
             driver._pinShotDelaySeconds = pinShotDelay;
             driver._pinBurstPrefix = pinBurst;
@@ -347,8 +369,8 @@ namespace Ryona.Game
         /// </summary>
         IEnumerator BurstShots()
         {
-            const int count = 30;
-            const float interval = 0.05f;
+            int count = Mathf.Max(1, _burstFrames);
+            float interval = Mathf.Max(0.005f, _burstInterval);
 
             string dir = System.IO.Path.GetDirectoryName(_burstPrefix);
             string name = System.IO.Path.GetFileNameWithoutExtension(_burstPrefix);

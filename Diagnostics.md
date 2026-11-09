@@ -53,8 +53,12 @@
 | `-heldpunchshot=<png>` | 腹パン演出の開始 0.12 秒後を撮影（`-grappletest` と併用） |
 | `-heldpunchshotdelay=<秒>` | `-heldpunchshot` の撮影をコンボ開始から指定の秒数だけ遅らせる（既定 0.12 秒） |
 | `-heldpunchburst=<png>` | 最初のコンボ開始から実時間 0.05 秒ごとに 30 枚を連番で保存して終了（`-grappletest` と併用） |
+| `-heldpunchburstframes=N` / `-heldpunchburstinterval=秒` | バーストの枚数と間隔を差し替える（顔面パンチ 5 発を追うときは `150` / `0.04` など） |
 | `-tagcam` | タッグ技の演出中だけ真横から撮る。打つ敵の腰・脚・肘を見るときに `-heldpunchburst` と併用 |
+| `-tagcamflip` | `-tagcam` のカメラを反対側へ回す（奥側の腕・拳を見る） |
+| `-punchlog` | 拘束中の顔面パンチの動きを毎フレーム数値で出力（`[PunchLog]`）。1 発ごとに `[PunchSum]`（拳の最高速・移動・肘・胸のひねり・腰の前進・彼女の頭の振れ）。「当たる瞬間が一番速いか」を測る |
 | `-heldpunchcamdist=` / `-heldpunchcampivot=` / `-heldpunchcampitch=` / `-heldpunchcamyaw=` | 腹パン中のカメラ値を起動時だけ差し替える（顔が入る構図の撮り比べ用）。既定は 0.28 / 0.27 / −12 / −40 |
+| `-heldpunchfacedist=` / `-heldpunchfacepivot=` / `-heldpunchfacepitch=` / `-heldpunchfaceyaw=` | **顔面パンチ中**のカメラ値を差し替える。既定は 0.28 / 0.46 / −8 / −18。再ビルドせずに撮り比べられる |
 | `-heldpunchface=<0〜1>` | タッグ技が顔面を狙う確率を差し替える（既定 0.5）。`1` で顔面のみ、`0` で腹パンのみ |
 | `-tagarmL=` / `-tagelbowL=` / `-tagspreadL=` | タッグ技のあいだ、打たない左腕の角度を差し替える（既定 −12 / 126 / 2）。構えの撮り比べ用 |
 | `-pintest` | `-grappletest` と併用。押さえつけ（Pin）を正面から指示する（`CanPin` は既定 false） |
