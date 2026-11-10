@@ -939,9 +939,11 @@ namespace Ryona.Game
                         elbowL = 28f;
                         armRSpread = -28f;
                         armLSpread = 28f;
-                        // 彼女を引き込むので上体は軽く反らせる（前傾 -16° だと顔が彼女の
-                        // 頭の真後ろへ入り、髪と頭が重なって見える。実測: 頭中心 0.19m）。
-                        torsoPitch = 4f;
+                        // 彼女の肩の横へ覆いかぶさる形（参考: マネキン写真の「拘束＋腹パン」）。
+                        // 上体はわずかに前へ、頭を伏せて彼女の頭の横へ置く。前傾を深くすると
+                        // 頭が真後ろへ入って髪と重なるので、腰を落として高さと間隔を稼ぐ
+                        // （実測: 頭中心の距離 0.29m。前傾 -16° の旧姿勢は 0.19m で重なった）。
+                        torsoPitch = -2f;
                         hipsY = restY - 0.17f;
                         // 前後に足を割って踏ん張る（両足を揃えて沈むと「座っている」画になる）。
                         // 彼女に近い足を前へ、反対の足を後ろへ引く。
@@ -949,7 +951,7 @@ namespace Ryona.Game
                         kneeL = 40f;
                         legRPitch = -16f;
                         legLPitch = 14f;
-                        headPitch = 0f;
+                        headPitch = -22f;
                     }
                 }
 
@@ -2137,17 +2139,17 @@ namespace Ryona.Game
             float lift = _targetAnimator != null ? _targetAnimator.HeldBellyCaptorLift : 0f;
             float ready = _targetAnimator != null ? _targetAnimator.HeldFaceCaptorBrace : 0f;
             float impact = _targetAnimator != null ? Mathf.Clamp01(_targetAnimator.HeldFacePunchImpulse) : 0f;
-            // 顔パンチの合間も胸を引いて頭の間隔を保つ。命中時は膝を沈め、
-            // 澪の頭が横へ振れたところに拘束役の肩が来ないようにする。
+            // 羽交い締めの上体を基準に、顔パンチでは膝を沈めて肩を逃がす。
+            // 構えと命中時の反りは重ねず、大きい方だけを使う。
             if (_targetAnimator != null && (belly > 0f || impact > 0f || ready > 0f || Time.deltaTime <= 0f))
             {
                 float fold = belly * Mathf.SmoothStep(0f, 1f,
                     Mathf.InverseLerp(12f, 45f, _targetAnimator.DebugTorsoPitch));
                 Vector3 headOffset = _targetRig.Head.position - _brain.Player.transform.position;
                 float headSide = Mathf.Clamp(Vector3.Dot(headOffset, transform.right) / 0.08f, -1f, 1f);
-                float leanBack = 12f * impact + ready * (20f + impact);
+                float leanBack = Mathf.Max(3f * ready, 9f * impact);
                 _figure.PoseBackHold(fold, lift, impact * Mathf.Lerp(0.025f, 0.085f, ready),
-                    leanBack, 9f * impact * headSide, 6f * impact);
+                    leanBack, 9f * impact * headSide, 3f * impact);
             }
 
             // 胸が傾いても、そのフレームの肩幅と胴の向きに合わせて腕を回す。
@@ -2216,41 +2218,32 @@ namespace Ryona.Game
             toMe.y = 0f;
             toMe = toMe.sqrMagnitude > 1e-4f ? toMe.normalized : -transform.forward;
 
+            Transform end = wrist;
             Vector3 goal;
+            Vector3 pole;
             if (_brain.IsBellyPunch)
             {
-                // タッグ腹パンは「カメラ側の面」で止める。殴り手側（彼女の正面）で止めると
-                // 拳が体の奥に沈み、カメラからは当たっている場所が見えない。
-                // 画面の奥向き（カメラの forward）の逆へずらすと、拳が手前の面に出る。
-                Camera cam = Camera.main;
-                Vector3 screenIn = cam != null
-                    ? Vector3.ProjectOnPlane(cam.transform.forward, Vector3.up)
-                    : Vector3.zero;
-                screenIn = screenIn.sqrMagnitude > 1e-4f ? screenIn.normalized : -toMe;
+                // 腹の正面に拳の中心を合わせる。肘は下に残し、前腕を斜め上へ差し込む。
+                end = _figure.Fist(left);
                 Vector3 chamber = upper.position + outside * 0.12f
                     - transform.up * 0.30f - transform.forward * 0.14f;
-                Vector3 contact = target - screenIn * 0.11f;
+                Vector3 contact = target + _brain.Player.transform.forward * 0.13f;
                 goal = Vector3.Lerp(chamber, contact, _brain.BellyPunchDrive);
+                pole = upper.position + outside * 0.20f - transform.up * 0.52f;
             }
             else
             {
                 // 顔は手前の表面で止める。通常の腹パンチは少しめり込ませる。
                 float reach = zone == PunchZone.Face ? 0.09f : -0.03f;
                 goal = target + toMe * reach;
+                float down = zone == PunchZone.Face ? 0.30f : 0.50f;
+                pole = upper.position - transform.up * down + transform.right * 0.20f;
             }
 
-            // 肘は顔なら外へ、腹なら下・外へ向ける（腹を狙うときは肘が体の前に回らない）。
-            // タッグ腹パンは肘を高く外へ張り、前腕を腹へ水平気味に差し込む（ボディーブロー）。
-            float down = zone == PunchZone.Face ? 0.30f : (_brain.IsBellyPunch ? 0.28f : 0.50f);
-            float out_ = _brain.IsBellyPunch ? 0.34f : 0.20f;
-            Vector3 pole = upper.position - transform.up * down + transform.right * out_;
-            if (_brain.IsBellyPunch)
-                pole = upper.position + outside * 0.36f
-                    - transform.up * Mathf.Lerp(0.42f, 0.12f, _brain.BellyPunchDrive);
             Quaternion oldUpper = upper.rotation;
             Quaternion oldElbow = elbow.rotation;
-            ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);
-            EnemyFigure.SettleElbowHinge(upper, elbow, wrist);
+            ProceduralRig.SolveTwoBone(upper, elbow, end, goal, pole, transform.right);
+            EnemyFigure.SettleElbowHinge(upper, elbow, end);
             Quaternion aimedUpper = upper.rotation;
             Quaternion aimedElbow = elbow.rotation;
             upper.rotation = Quaternion.Slerp(oldUpper, aimedUpper, weight);
