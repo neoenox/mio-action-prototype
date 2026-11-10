@@ -116,6 +116,8 @@ namespace Ryona.Game
 
         IEnumerator ResumeRoutine()
         {
+            // 命中したフレームの経過時間は停止前のもの。次のフレームから計る。
+            yield return null;
             // timeScale が 0 でも yield return null は毎フレーム帰ってくるので、
             // 計時は unscaledDeltaTime で行う。
             while (HitStop.Tick(Time.unscaledDeltaTime))

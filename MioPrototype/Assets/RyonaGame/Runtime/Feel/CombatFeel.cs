@@ -113,7 +113,8 @@ namespace Ryona.Game
             Shake(ReceivedShake * (heldFace ? 1.55f : weight),
                 heldFace ? ReceivedShakeSeconds * 0.60f : ReceivedShakeSeconds);
             float stopSeconds = Stats != null && Stats.GroundMount.IsApplyingPunch ? 0.025f : ReceivedHitStop;
-            HitStop.Play(stopSeconds * weight);
+            // タッグ顔面は演出側の短いストップを汎用被弾の長さで上書きしない。
+            HitStop.Play(heldFace ? 0.035f : stopSeconds * weight);
 
             // 敵は素手。重い被弾も金属音ではなく打撃音を使う。
             PlaySfx(SfxId.Impact, heldFace || weight > 1.1f ? 1f : 0.8f);

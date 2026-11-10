@@ -100,12 +100,13 @@ namespace Ryona.Tests
         public IEnumerator RearCaptorFollowsBellyRecoilButStaysBracedForFacePunch()
         {
             yield return LoadAndGrab(waitForAnimator: true, directorEnabled: false);
+            yield return new WaitForSeconds(0.2f);
             Vector3 center = _player.transform.position;
             center.x = -3f;
             Quaternion facing = Quaternion.LookRotation(Vector3.right);
+            _captor.TakeOverHold(10f);
             _player.transform.SetPositionAndRotation(center, facing);
             _captor.transform.SetPositionAndRotation(center + Vector3.left * 0.34f, facing);
-            _captor.TakeOverHold(10f);
             yield return new WaitForSeconds(0.25f);
 
             var figure = _captor.GetComponent<EnemyFigure>();
@@ -544,9 +545,114 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator 顔面5連撃の首は拳が入る向きに振れる()
+        {
+            yield return LoadAndGrab(waitForAnimator: true);
+            yield return new WaitForSeconds(0.2f);
+            PrepareAttackerPoseTest(0.82f);
+            _director.FacePunchChance = 1f;
+            Assert.IsTrue(_anim.Rig.TryGetRestRotation(_anim.Rig.Head, out Quaternion restHead));
+            Vector3 right = _player.transform.right;
+            var figure = _captor.GetComponent<EnemyFigure>();
+            Transform captorSkull = figure.HeadBone.Find("Skull");
+            float nearestHeadGap = float.PositiveInfinity;
+            int nearestHeadHit = 0;
+            float restingHeadDepth = _captor.transform.InverseTransformPoint(captorSkull.position).z;
+            float smallestCaptorRetreat = float.PositiveInfinity;
+            float nearestArm = float.PositiveInfinity;
+            float nearestHeadBetweenHits = float.PositiveInfinity;
+            string nearestStance = null;
+            var contactDirections = new System.Collections.Generic.List<float>();
+            void RecordImpact(HitResult result)
+            {
+                if (result.Damage <= 0f || !_player.LastHitWasTagPunch || _player.LastHitZone != PunchZone.Face)
+                    return;
+                var attacker = _player.LastAttacker.GetComponent<EnemyBrain>();
+                Transform fist = attacker.GetComponent<EnemyFigure>().Fist(attacker.UsesLeftPunch);
+                contactDirections.Add(Vector3.Dot(_anim.Rig.Head.position - fist.position, right));
+            }
+
+            _player.HitReceived += RecordImpact;
+            try
+            {
+                LandOpeningThrow(positioned: true);
+                int verified = 0;
+                float comboStart = Time.time;
+                float deadline = Time.realtimeSinceStartup + 10f;
+                while ((verified < 5 || _director.IsPerforming) && Time.realtimeSinceStartup < deadline)
+                {
+                    // 投げが決まった直後は前フレームの通常拘束姿勢が残っている。
+                    bool inCloseUp = _camera.EffectDistanceScale <= 0.5f || contactDirections.Count > 0;
+                    if (_director.IsPerforming && inCloseUp)
+                    {
+                        // 首の付け根の距離ではなく、頭の形の中心同士を測る。
+                        Vector3 headCenter = _anim.Rig.Head.position + _anim.Rig.Head.up * 0.075f;
+                        float headGap = Vector3.Distance(headCenter, captorSkull.position);
+                        if (_anim.HeldFacePunchImpulse >= 0.18f)
+                        {
+                            if (headGap < nearestHeadGap)
+                            {
+                                nearestHeadGap = headGap;
+                                nearestHeadHit = contactDirections.Count;
+                            }
+                        }
+                        else if (headGap < nearestHeadBetweenHits)
+                        {
+                            nearestHeadBetweenHits = headGap;
+                            nearestStance = $"{contactDirections.Count}発, t={Time.time - comboStart:F2}, " +
+                                $"camera={_camera.EffectDistanceScale:F2}";
+                        }
+                        for (int side = 0; side < 2; side++)
+                        {
+                            bool left = side == 1;
+                            Vector3 shoulder = figure.ShoulderBone(left).position;
+                            Vector3 elbow = figure.ElbowBone(left).position;
+                            Vector3 fist = figure.Fist(left).position;
+                            nearestArm = Mathf.Min(nearestArm, DistanceToSegment(headCenter, shoulder, elbow),
+                                DistanceToSegment(headCenter, elbow, fist));
+                        }
+                    }
+                    if (contactDirections.Count > verified && _anim.HeldFacePunchImpulse > 0.65f)
+                    {
+                        float incoming = contactDirections[verified];
+                        Vector3 headForward = _anim.Rig.Head.rotation * Quaternion.Inverse(restHead) * Vector3.forward;
+                        float headSide = Vector3.Dot(headForward, right);
+                        float captorDepth = _captor.transform.InverseTransformPoint(captorSkull.position).z;
+                        smallestCaptorRetreat = Mathf.Min(smallestCaptorRetreat, restingHeadDepth - captorDepth);
+                        Assert.Greater(Mathf.Abs(incoming), 0.015f, $"{verified + 1}発目の拳は横から入る");
+                        Assert.Greater(headSide * Mathf.Sign(incoming), 0.20f,
+                            $"{verified + 1}発目の首は拳の入る側へ振れる (incoming={incoming:F3}, head={headSide:F3})");
+                        verified++;
+                    }
+                    yield return null;
+                }
+                Assert.AreEqual(5, verified);
+                string clearance = $"head={nearestHeadBetweenHits:F3} ({nearestStance}), " +
+                    $"recoil={nearestHeadGap:F3}, arm={nearestArm:F3}";
+                Assert.Greater(nearestHeadGap, 0.20f,
+                    $"頭の形が重ならない (最接近: {nearestHeadHit}発目, {clearance})");
+                Assert.Greater(smallestCaptorRetreat, 0.045f, "拘束役は毎回、澪の反動から頭を引く");
+                Assert.That(nearestHeadBetweenHits > 0.23f && nearestArm > 0.15f,
+                    $"構え直しの頭と命中時の腕が澪の頭に入らない ({clearance})");
+            }
+            finally
+            {
+                _player.HitReceived -= RecordImpact;
+            }
+        }
+
+        static float DistanceToSegment(Vector3 point, Vector3 start, Vector3 end)
+        {
+            Vector3 span = end - start;
+            float t = Mathf.Clamp01(Vector3.Dot(point - start, span) / span.sqrMagnitude);
+            return Vector3.Distance(point, start + span * t);
+        }
+
+        [UnityTest]
         public IEnumerator 投げから派生した連撃の顔面パンチで首が手前へ振れる()
         {
             yield return LoadAndGrab(waitForAnimator: true);
+            yield return new WaitForSeconds(0.2f);
             // 場面の端や他の敵の攻撃権に左右されず、実際の保持姿勢で連撃を測る。
             PrepareAttackerPoseTest(0.82f);
             _director.FacePunchChance = 1f;
@@ -568,6 +674,9 @@ namespace Ryona.Tests
             float nearestCaptorHead = float.PositiveInfinity;
             string nearestHeadPose = null;
             float widestStoppedShot = 0f;
+            float firstFaceStopAt = Time.unscaledTime;
+            float lastStoppedFrame = firstFaceStopAt;
+            float recoilWhileStopped = 0f;
             var captorFigure = _captor.GetComponent<EnemyFigure>();
             Transform captorHead = captorFigure.HeadBone;
             float recoilEnd = Time.time + 0.12f;
@@ -584,12 +693,18 @@ namespace Ryona.Tests
                         $"captorHead={captorHead.position}, captor={_captor.transform.position}";
                 }
                 if (HitStop.IsActive)
+                {
                     widestStoppedShot = Mathf.Max(widestStoppedShot, _camera.EffectDistanceScale);
+                    lastStoppedFrame = Time.unscaledTime;
+                    recoilWhileStopped = Mathf.Max(recoilWhileStopped, _anim.HeldFacePunchImpulse);
+                }
                 yield return null;
             }
 
             Assert.Less(lowestPitch, 3f, "命中直後だけ肩と胸も弾かれて上体が起きる");
             Assert.That(widestStoppedShot, Is.InRange(0.2f, 0.48f), "ヒットストップ中も顔と拳の寄りを保つ");
+            Assert.Less(lastStoppedFrame - firstFaceStopAt, 0.075f, "顔パンチで長く画面を止めない");
+            Assert.Greater(recoilWhileStopped, 0.12f, "止まっている画にも顔の反応が出る");
             Assert.Greater(_anim.HeldFacePunchFlick, 0.5f, "The head must snap away toward the camera");
             Assert.IsTrue(_grapple.IsGrappled, "The hold must remain during the combo");
 
@@ -1025,9 +1140,10 @@ namespace Ryona.Tests
             Vector3 center = _player.transform.position;
             center.x = -3f;
             Quaternion facing = Quaternion.LookRotation(Vector3.right);
+            // 引き継ぎ時に残っている踏み込みを消化してから、計測用の間隔に置く。
+            _captor.TakeOverHold(10f);
             _player.transform.SetPositionAndRotation(center, facing);
             _captor.transform.SetPositionAndRotation(center + Vector3.left * 0.34f, facing);
-            _captor.TakeOverHold(10f);
             // シーン開始時の AI が始めた攻撃を消し、毎回同じ状態から指示する。
             _attacker.LockForHandOff(0.1f);
             PlaceAttackerInFront(distance);
@@ -1128,7 +1244,6 @@ namespace Ryona.Tests
                         yield return null;
 
                     rounds++;
-                    // 倒れて、自然に起き上がるのを待つ（強制復帰すると敵の状態とずれる）
                     if (rounds == 4)
                         break;
 
@@ -1138,9 +1253,17 @@ namespace Ryona.Tests
                     foreach (var enemy in _enemies)
                         enemy.HoldFire(0.75f);
                     yield return new WaitForSeconds(0.5f);
+
+                    // ダウンは「操作があるまで続く」仕様（DownRuntimeTests の
+                    // 「ダウンは操作するまで続き…」と同じ）。自然復帰はしないので、
+                    // 起き上がりを要求しながら待つ。マウント中は RequestGetUp が
+                    // 弾かれるため、毎フレーム要求する（抜けた時点で効く）。
                     float up = Time.realtimeSinceStartup + 8f;
                     while ((_player.IsDown || _anim.IsDowned) && Time.realtimeSinceStartup < up)
+                    {
+                        _player.RequestGetUp();
                         yield return null;
+                    }
                     Assert.IsFalse(_player.IsDown || _anim.IsDowned, "掴み直す前に起き上がる");
                     _captor.transform.position = _player.transform.position + Vector3.left;
                     _grapple.Begin(_captor, GrappleKind.Back);

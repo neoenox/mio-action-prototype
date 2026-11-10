@@ -99,6 +99,7 @@ namespace Ryona.Game
 
         float _heldFacePunchRemaining;
         float _heldFacePunchTotal;
+        int _heldFacePunchStartFrame;
 
         /// <summary>顔面パンチの強さ（0.2〜1.5）。姿勢と表情の振れ幅に掛ける。</summary>
         float _heldFacePunchStrength = 1f;
@@ -160,7 +161,8 @@ namespace Ryona.Game
                     return 0f;
 
                 float t = _heldFacePunchTotal - _heldFacePunchRemaining;
-                float inT = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.004f) / 0.030f));
+                // 接触の静止画にも小さな反応を出し、再開後に残りの振れへつなげる。
+                float inT = Mathf.SmoothStep(0.24f, 1f, t / 0.034f);
                 float outT = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.13f) / 0.26f));
                 return Mathf.Clamp01(inT * outT) * _heldFacePunchStrength;
             }
@@ -200,6 +202,7 @@ namespace Ryona.Game
 
             _heldFacePunchTotal = seconds;
             _heldFacePunchRemaining = seconds;
+            _heldFacePunchStartFrame = Time.frameCount;
             _heldFacePunchStrength = Mathf.Clamp(strength, 0.2f, 1.5f);
 
             Vector3 local = transform.InverseTransformDirection(punchDirection);
@@ -723,17 +726,21 @@ namespace Ryona.Game
 
         /// <summary>殴りに来る敵を見ている重み（検証用）。</summary>
         public float DreadLook => _dreadLook;
+        internal float HeldFaceCaptorBrace { get; private set; }
 
         void UpdateDreadLook(float dt)
         {
             if (_punchDirector == null)
                 _punchDirector = FindFirstObjectByType<HeldBellyPunchDirector>();
 
-            EnemyBrain target = _punchDirector != null && _punchDirector.isActiveAndEnabled
+            bool backHold = _punchDirector != null && _punchDirector.isActiveAndEnabled
                 && Grapple != null && Grapple.IsGrappled && !Grapple.IsHandingOff
-                && Grapple.Kind == GrappleKind.Back
-                ? _punchDirector.DreadEnemy
-                : null;
+                && Grapple.Kind == GrappleKind.Back;
+            EnemyBrain target = backHold ? _punchDirector.DreadEnemy : null;
+
+            bool faceCombo = backHold && _punchDirector.IsFaceCombo;
+            HeldFaceCaptorBrace = Mathf.MoveTowards(HeldFaceCaptorBrace, faceCombo ? 1f : 0f,
+                Mathf.Max(0f, dt) / 0.14f);
 
             if (target != _dreadEnemy)
             {
@@ -913,7 +920,8 @@ namespace Ryona.Game
             _heldBellyPunchRemaining = Mathf.Max(0f, _heldBellyPunchRemaining - dt);
             if (Grapple != null && (!Grapple.IsGrappled || Grapple.IsHandingOff))
                 _heldBellyPunchRemaining = 0f;
-            _heldFacePunchRemaining = Mathf.Max(0f, _heldFacePunchRemaining - dt);
+            if (Time.frameCount != _heldFacePunchStartFrame)
+                _heldFacePunchRemaining = Mathf.Max(0f, _heldFacePunchRemaining - dt);
 
             // 投げの崩れ。引き込まれる動きなので、パンチの折れ（0.07 秒）よりゆっくり入れる。
             if (Grapple == null || !Grapple.IsGrappled)

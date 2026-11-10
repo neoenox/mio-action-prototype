@@ -415,6 +415,7 @@ namespace Ryona.Game
         public bool IsTagPunch => _tagPunchSwing;
         internal bool IsTagFacePunch => _tagPunchSwing && Zone == PunchZone.Face;
         public bool UsesLeftPunch => IsTagFacePunch && _tagFaceLeft;
+        internal Vector3 TagFaceOutside => transform.right * (UsesLeftPunch ? -1f : 1f);
         bool _tagFaceLeft;
 
         /// <summary>この顔面パンチの強さ（1 = 普通、1.25 = 決めの一発）。体の踏み込みに掛ける。</summary>

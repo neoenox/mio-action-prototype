@@ -122,6 +122,7 @@ namespace Ryona.Game
 
         /// <summary>腹パンのコンボ中か（投げが決まってから打数を数え終わるまで）。</summary>
         public bool IsPerforming => _phase == Phase.Combo;
+        internal bool IsFaceCombo => IsPerforming && _comboZone == PunchZone.Face;
 
         public bool IsThrowIncoming => _phase != Phase.Combo && _thrower != null &&
             _thrower.isActiveAndEnabled &&
@@ -511,18 +512,17 @@ namespace Ryona.Game
             _punchInFlight = false;
             _attempts = 0;
 
-            // 1 発を重く見せる。既存の被弾ヒットストップ（約 0.07 秒）より長く止める。
-            // 顔面は「当たった瞬間」が命なので、腹パンより少しだけ長く。決めの 5 発目はさらに長い。
-            HitStop.Play(_stats.LastHitZone == PunchZone.Face
-                ? (_hits >= ComboHitsTotal ? 0.13f : 0.11f)
+            PunchZone zone = _stats.LastHitZone ?? PunchZone.Body;
+            // 顔面は接触だけ短く止め、拳を引く動きと首の反動へつなげる。
+            HitStop.Play(zone == PunchZone.Face
+                ? (_hits >= ComboHitsTotal ? 0.060f : 0.045f)
                 : 0.09f);
-            if (_stats.LastHitZone == PunchZone.Face)
+            if (zone == PunchZone.Face)
                 _impactPulse = 1f;
 
             // 狙いで見た目を分ける。
             //   腹: 腰が押し戻され、その上で上体が前に折れる
             //   顔: 通常の顔面パンチと同じく、首が手前（カメラ側）へ振れる
-            PunchZone zone = _stats.LastHitZone ?? PunchZone.Body;
             LastLandedZone = zone;
             var puncher = _stats.LastAttacker.GetComponent<EnemyBrain>();
             if (zone == PunchZone.Body || puncher != _guardPuncher)
@@ -536,12 +536,9 @@ namespace Ryona.Game
                 if (zone == PunchZone.Face)
                 {
                     _anim.EndHeldThrowLead();
-                    // 拳が彼女の頭を押す向き。殴った腕の側と逆へ頭が振れるようにする。
-                    var attacker = _stats.LastAttacker;
-                    var puncherBrain = attacker != null ? attacker.GetComponent<EnemyBrain>() : null;
-                    Vector3 push = puncherBrain != null
-                        ? puncherBrain.transform.forward * 0.55f
-                          + puncherBrain.transform.right * (puncherBrain.UsesLeftPunch ? -1f : 1f)
+                    // フックは打つ腕の外側から内側へ入る。首も拳が進む側へ振る。
+                    Vector3 push = puncher != null
+                        ? puncher.transform.forward * 0.55f - puncher.TagFaceOutside
                         : _stats.transform.forward;
                     _anim.PlayHeldFacePunch(HitPoseSeconds, push,
                         FacePunchPower(Mathf.Max(0, _hits - 1)));
