@@ -2295,8 +2295,15 @@ namespace Ryona.Game
                 AimShoulderGrip(false, _targetRig.RUpperArm, touch * (1f - release), shove: true);
                 AimShoulderGrip(true, _targetRig.LUpperArm, touch * (1f - release), shove: true);
             }
-            if (!_brain.IsHolding && !_brain.IsCatching) return;
+            if (!_brain.IsHolding && !_brain.IsCatching && !_brain.IsHandOffLocked) return;
             var hold = _brain.Player.GetComponent<PlayerGrapple>();
+            float rearGrip = hold != null ? hold.PinHandOffGrip(_brain) : 0f;
+            if (rearGrip > 0f && _targetRig != null)
+            {
+                AimShoulderGrip(false, _targetRig.RUpperArm, rearGrip);
+                AimShoulderGrip(true, _targetRig.LUpperArm, rearGrip);
+            }
+            if (!_brain.IsHolding && !_brain.IsCatching) return;
             if (_brain.IsCatching && _targetRig != null && hold != null && hold.Captor == _brain)
             {
                 float support = (1f - _brain.CatchImpact) * (1f - Mathf.SmoothStep(0f, 1f, hold.HandOffTurn));
@@ -2595,6 +2602,7 @@ namespace Ryona.Game
 
         /// <summary>もがかれて肩が浮いた分（m）。手の狙いを上げる。</summary>
         float _lift;
+        float _rearFraming;
 
         void LateUpdate()
         {
@@ -2603,7 +2611,10 @@ namespace Ryona.Game
             if (_figure == null || _brain == null || _brain.Player == null)
                 return;
             if (!_brain.IsPinning)
+            {
+                _rearFraming = 0f;
                 return;
+            }
 
             var hold = _brain.Player.GetComponent<PlayerGrapple>();
             if (hold == null || !hold.IsGrappled || hold.Captor != _brain || hold.Kind != GrappleKind.Pin)
@@ -2655,7 +2666,16 @@ namespace Ryona.Game
                 // 正面に立つ相手と膝が入る余白ができる。
                 float x = player.position.x + sign * 0.30f;
 
-                if (Time.time < _kneeCamUntil)
+                _rearFraming = Mathf.MoveTowards(_rearFraming, hold.IsPreparingPinHandOff ? 1f : 0f,
+                    Time.unscaledDeltaTime * 3.5f);
+                if (_rearFraming > 0f)
+                {
+                    float frame = Mathf.SmoothStep(0f, 1f, _rearFraming);
+                    _camera.HoldFocus(Mathf.Lerp(KneeCamDistance, 0.50f, frame), KneeCamPivot,
+                        Mathf.Lerp(x, player.position.x, frame), 0.5f,
+                        KneeCamPitch, Mathf.Lerp(KneeCamYaw, -18f, frame) * sign);
+                }
+                else if (Time.time < _kneeCamUntil)
                 {
                     // 秒数は腹パンと同じ 0.5。短くすると減衰で寄りが薄まる
                     // （実測: 0.12 秒だと 0.28 指定でも実効 0.46 までしか寄らない）。

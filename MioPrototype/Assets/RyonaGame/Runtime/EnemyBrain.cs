@@ -1923,6 +1923,9 @@ namespace Ryona.Game
             PlaySfx(SfxId.Impact, 0.85f);
 
             Debug.Log($"[Pin] knee {name} left={_pinKneesLeft} hp={Player.State.Hp:F0}");
+
+            if (_pinKneesLeft == 0 && grapple.Captor == this)
+                FindFirstObjectByType<GrappleHandOff>()?.TryPinChain(grapple);
         }
 
         /// <summary>

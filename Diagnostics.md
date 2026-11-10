@@ -64,6 +64,7 @@
 | `-tagarmL=` / `-tagelbowL=` / `-tagspreadL=` | タッグ技のあいだ、打たない左腕の角度を差し替える（既定 −12 / 126 / 2）。構えの撮り比べ用 |
 | `-pintest` | `-grappletest` と併用。押さえつけ（Pin）を正面から指示する（`CanPin` は既定 false） |
 | `-pinnow` | 起動 1.5 秒後に、いちばん近い敵へ押さえつけを 1 回指示する（自動確認用） |
+| `-pinchain` | `-grappletest -pintest` と併用。最後の膝蹴りで背後に受け手を配置し、羽交い締めへの引き渡しを再現する（`-handoffburst=<png>` で撮影） |
 | `-pinshot=<png>` | 押さえつけ開始から 0.30 秒後を撮影（`-pintest` と併用）。`-pinshotdelay=` で秒数を差し替え |
 | `-pinburst=<prefix>` | 押さえつけ開始から 0.05 秒ごとに 40 枚（2.0 秒ぶん）。膝蹴り（1.5 秒）の前後を追う |
 | `-downburst=<prefix> [-downhits=light\|heavy\|break\|belly]` | 起動 1.5 秒後から 0.30 秒おきに彼女へ攻撃を当て、**ダウンした瞬間**から 0.05 秒ごとに 40 枚（2.0 秒ぶん）撮る。撮影中は AI の攻撃を止める（当てるのはドライバだけ）。`belly` は腹ヒット扱い（前へ崩れるダウンの確認用） |

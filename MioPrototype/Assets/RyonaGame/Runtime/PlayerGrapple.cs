@@ -58,7 +58,7 @@ namespace Ryona.Game
         const float BearHugDistance = 0.54f;
         // 羽交い締めは胸を相手の背中に付けて組む。離れていると腕が伸びきって
         // 「首へ手を伸ばしている」画になる（0.85m だった）。肘を畳んで脇の下へ入れる距離にする。
-        const float BackGrabDistance = 0.34f;
+        internal const float BackGrabDistance = 0.34f;
 
         /// <summary>掴まれているか。</summary>
         public bool IsGrappled { get; private set; }
@@ -329,8 +329,8 @@ namespace Ryona.Game
             // 後ろ拘束は時間切れで解けない。
             if (HasTimeLimit)
             {
-                _remaining -= Time.deltaTime;
-                if (_remaining <= 0f)
+                _remaining = Mathf.Max(0f, _remaining - Time.deltaTime);
+                if (_remaining <= 0f && _pinReceiver == null)
                 {
                     Fail();
                     return;
@@ -450,6 +450,79 @@ namespace Ryona.Game
             SnapToCaptor(next, kind);
             ApplyHandOffHold(kind);
             Started?.Invoke(kind);
+        }
+
+        EnemyBrain _pinReceiver;
+        float _pinReceiverGrip;
+
+        internal bool IsPreparingPinHandOff => _pinReceiver != null;
+
+        internal float PinHandOffGrip(EnemyBrain enemy) => _pinReceiver == enemy ? _pinReceiverGrip : 0f;
+
+        internal bool TryStartPinHandOff(EnemyBrain receiver)
+        {
+            if (_pinReceiver != null || IsHandingOff || Captor == null)
+                return false;
+
+            _pinReceiver = receiver;
+            receiver.LockForHandOff(1.2f);
+            StartCoroutine(ReceiveFromPin(Captor, receiver));
+            return true;
+        }
+
+        System.Collections.IEnumerator ReceiveFromPin(EnemyBrain sender, EnemyBrain receiver)
+        {
+            // 受け手が後ろから腕を取るまで、正面の押さえつけともがき入力を維持する。
+            float elapsed = 0f;
+            float grip = 0f;
+            while (_pinReceiver == receiver && IsGrappled && Kind == GrappleKind.Pin &&
+                   Captor == sender && sender != null && sender.isActiveAndEnabled && sender.IsAlive && sender.IsPinning &&
+                   receiver != null && receiver.isActiveAndEnabled && receiver.IsAlive &&
+                   receiver.Phase != EnemyPhase.Stagger && receiver.IsHandOffLocked &&
+                   Stats != null && !Stats.IsDead && !Stats.IsDown && !Stats.HasHeldBellyDown && elapsed < 1.05f)
+            {
+                Vector3 forward = transform.forward;
+                Vector3 spot = transform.position - forward * BackGrabDistance;
+                spot.y = receiver.transform.position.y;
+                receiver.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
+                receiver.transform.position = Vector3.MoveTowards(receiver.transform.position, spot,
+                    receiver.MoveSpeed * receiver.State.MoveSpeedMultiplier * Time.deltaTime);
+
+                if (elapsed >= KneeHoldSeconds && (receiver.transform.position - spot).sqrMagnitude < 0.0025f)
+                {
+                    grip += Time.deltaTime;
+                    _pinReceiverGrip = Mathf.SmoothStep(0f, 1f, grip / 0.16f);
+                    if (grip >= 0.23f)
+                    {
+                        // 両側から腕を取る短い間を置き、受け手だけの拘束へ切り替える。
+                        receiver.transform.position = spot;
+                        ClearPinHandOff();
+                        Captor = receiver;
+                        ApplyHandOffHold(GrappleKind.Back);
+                        _heldSeconds = 0f;
+                        FrontEscapeEffort = 0f;
+                        _frontEffortHold = 0f;
+                        _grabContactRemaining = 0f;
+                        receiver.TakeOverHold(CombatConstants.GrappleLimitSeconds + 4f);
+                        sender.LockForHandOff(0.24f);
+                        Debug.Log($"[HandOff] pin → back {sender.name} → {receiver.name}");
+                        Started?.Invoke(Kind);
+                        yield break;
+                    }
+                }
+
+                yield return null;
+                elapsed += Time.deltaTime;
+            }
+
+            if (_pinReceiver == receiver)
+                ClearPinHandOff();
+        }
+
+        void ClearPinHandOff()
+        {
+            _pinReceiver = null;
+            _pinReceiverGrip = 0f;
         }
 
         void ApplyHandOffHold(GrappleKind kind)
@@ -616,6 +689,7 @@ namespace Ryona.Game
         public void Release()
         {
             bool wasGrappled = IsGrappled;
+            ClearPinHandOff();
 
             if (IsHandingOff)
             {
@@ -784,6 +858,7 @@ namespace Ryona.Game
             int inputs = InputCount;
             float spent = _heldSeconds;
 
+            ClearPinHandOff();
             IsGrappled = false;
             _remaining = 0f;
             _suppressRemaining = 0f;

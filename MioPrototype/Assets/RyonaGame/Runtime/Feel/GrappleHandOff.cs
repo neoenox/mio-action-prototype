@@ -112,20 +112,56 @@ namespace Ryona.Game
             if (captor == null)
                 return false;
 
+            EnemyBrain best = FindReceiver(_grapple, behind: false);
+            if (best == null)
+                return false;
+
+            // 抽選: 正面拘束（膝蹴り派生）か背面拘束（羽交い締め→腹パン）か。
+            GrappleKind kind;
+            if (_forceKind == "pin")
+                kind = GrappleKind.Pin;
+            else if (_forceKind == "back")
+                kind = GrappleKind.Back;
+            else
+                kind = Random.value < 0.5f ? GrappleKind.Pin : GrappleKind.Back;
+
+            StartBurst();
+            _grapple.HandOff(best, kind, shove: true);
+            Debug.Log($"[HandOff] {captor.name} → {best.name} kind={kind} " +
+                      $"dist={Vector3.Distance(best.transform.position, _grapple.transform.position):F2}");
+            return true;
+        }
+
+        internal void TryPinChain(PlayerGrapple hold)
+        {
+            if (!isActiveAndEnabled || !hold.IsGrappled || hold.Kind != GrappleKind.Pin ||
+                hold.Stats == null || hold.Stats.IsDead || hold.Stats.IsDown || hold.Stats.HasHeldBellyDown)
+                return;
+
+            EnemyBrain receiver = FindReceiver(hold, behind: true);
+            if (receiver != null && hold.TryStartPinHandOff(receiver))
+                StartBurst();
+        }
+
+        EnemyBrain FindReceiver(PlayerGrapple hold, bool behind)
+        {
             EnemyBrain best = null;
             float bestDistance = Range;
 
             foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
             {
-                if (enemy == null || enemy == captor || !enemy.IsAlive || enemy.IsRising)
+                if (enemy == null || enemy == hold.Captor || !enemy.IsAlive || enemy.IsRising)
+                    continue;
+                if (behind && (!enemy.isActiveAndEnabled || enemy.IsHandOffLocked || enemy.IsFlanking ||
+                    enemy.IsPushing || enemy.IsCatching || enemy.MoveSpeed <= 0f))
                     continue;
                 if (enemy.Phase == EnemyPhase.Windup || enemy.Phase == EnemyPhase.Attack ||
                     enemy.Phase == EnemyPhase.Stagger || enemy.IsHolding)
                     continue;
 
-                Vector3 offset = enemy.transform.position - _grapple.transform.position;
-                // 背後の送り手から、澪を前へ押し出せる位置にいる相手を選ぶ。
-                if (Vector3.Dot(_grapple.transform.forward, offset) <= 0.05f)
+                Vector3 offset = enemy.transform.position - hold.transform.position;
+                float forward = Vector3.Dot(hold.transform.forward, offset);
+                if (behind ? forward > -PlayerGrapple.BackGrabDistance : forward <= 0.05f)
                     continue;
 
                 float d = offset.magnitude;
@@ -136,29 +172,16 @@ namespace Ryona.Game
                 bestDistance = d;
             }
 
-            if (best == null)
-                return false;
+            return best;
+        }
 
-            // 抽選: 正面拘束（膝蹴り派生）か背面拘束（羽交い締め→腹パン）か。
-            // 検証時は -handoffkind で固定できる（撮り比べ用）。
-            GrappleKind kind;
-            if (_forceKind == "pin")
-                kind = GrappleKind.Pin;
-            else if (_forceKind == "back")
-                kind = GrappleKind.Back;
-            else
-                kind = Random.value < 0.5f ? GrappleKind.Pin : GrappleKind.Back;
-
+        void StartBurst()
+        {
             if (_burstPrefix != null && !_burstDone)
             {
                 _burstDone = true;
                 StartCoroutine(BurstShots());
             }
-
-            // 受け手は PlayerGrapple 側で、到着 → 受け止め → 拘束の順に切り替える。
-            _grapple.HandOff(best, kind, shove: true);
-            Debug.Log($"[HandOff] {captor.name} → {best.name} kind={kind} dist={bestDistance:F2}");
-            return true;
         }
     }
 }

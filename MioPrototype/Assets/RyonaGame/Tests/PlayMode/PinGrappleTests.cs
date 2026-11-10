@@ -294,6 +294,70 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator 最後の膝蹴りは背後の敵にだけ拘束を引き継ぐ(
+            [Values(false, true)] bool receiverBehind)
+        {
+            yield return Load();
+            _captor.enabled = true;
+            _captor.QueuePin();
+            float deadline = Time.realtimeSinceStartup + 4f;
+            while (!_grapple.IsGrappled && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.AreEqual(GrappleKind.Pin, _grapple.Kind);
+            Assert.AreSame(_captor, _grapple.Captor);
+
+            int knees = 0;
+            _player.HitReceived += _ =>
+            {
+                knees++;
+                if (knees != CombatConstants.PinKneeCount)
+                    return;
+                float offset = receiverBehind ? -0.82f : 0.82f;
+                _other.transform.position = _player.transform.position + _player.transform.forward * offset;
+                _other.HoldFire(10f);
+                _other.enabled = true;
+            };
+
+            int releases = 0;
+            _grapple.Released += () => releases++;
+            deadline = Time.realtimeSinceStartup + 10f;
+            bool sawLastKneeWithSender = false;
+            while (_grapple.IsGrappled && _grapple.Captor == _captor &&
+                   Time.realtimeSinceStartup < deadline)
+            {
+                if (knees == CombatConstants.PinKneeCount)
+                {
+                    sawLastKneeWithSender = true;
+                    Assert.IsTrue(_captor.IsPinning, "受け手が近づく間は正面拘束を維持する");
+                }
+                yield return null;
+            }
+
+            Assert.AreEqual(CombatConstants.PinKneeCount, knees);
+            if (!receiverBehind)
+            {
+                Assert.IsFalse(_grapple.IsGrappled, "正面の敵だけなら従来どおり時間切れで解放する");
+                Assert.AreEqual(1, releases);
+                yield break;
+            }
+
+            Assert.IsTrue(sawLastKneeWithSender);
+            Assert.IsTrue(_grapple.IsGrappled);
+            Assert.AreSame(_other, _grapple.Captor);
+            Assert.AreEqual(GrappleKind.Back, _grapple.Kind);
+            Assert.AreEqual(0, releases, "引き渡しで拘束は途切れない");
+            Assert.IsTrue(_other.IsHolding);
+            Assert.IsFalse(_captor.IsHolding);
+            Assert.IsFalse(_grapple.IsStruggleSuppressed);
+            Assert.Greater(Object.FindFirstObjectByType<HeldBellyPunchDirector>().NextThrowRemaining, 0f,
+                "羽交い締めから通常の連携に入れる");
+            int inputs = Mathf.CeilToInt(_grapple.RequiredInputs);
+            for (int i = 0; i < inputs; i++)
+                _grapple.Struggle();
+            Assert.IsFalse(_grapple.IsGrappled, "引き渡し直後も連打で抜けられる");
+        }
+
+        [UnityTest]
         public IEnumerator 蹴り上げ中の膝が跳ねた腹へ届く()
         {
             yield return Load();

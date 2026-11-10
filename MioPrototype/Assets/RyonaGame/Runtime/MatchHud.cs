@@ -219,6 +219,11 @@ namespace Ryona.Game
                 tail = $"{attack}まで {_grapple.FrontEscapeRemaining:F1}s";
                 danger = _grapple.FrontEscapeRemaining <= 0.5f;
             }
+            else if (_grapple.IsPreparingPinHandOff)
+            {
+                tail = "背後から敵が来る";
+                danger = true;
+            }
             else if (_grapple.HasTimeLimit)
             {
                 tail = $"あと {_grapple.Remaining:F1}s で解放";

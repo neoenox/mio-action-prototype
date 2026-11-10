@@ -69,6 +69,8 @@ namespace Ryona.Game
         float _pinShotDelaySeconds = 0.30f;
         bool _once;
         bool _faceLeft;
+        bool _pinChain;
+        int _pinChainKnees;
         bool _grabbedOnce;
         bool _hitAfterThrowOnly;
         bool _holdFinished;
@@ -90,6 +92,7 @@ namespace Ryona.Game
             int heldPunchBurstFrames = 30;
             float heldPunchBurstInterval = 0.05f;
             bool pin = false;
+            bool pinChain = false;
             string pinShotPath = null;
             float pinShotDelay = 0.30f;
             string pinBurst = null;
@@ -142,6 +145,8 @@ namespace Ryona.Game
                     back = true;    // 既定と同じ。明示して読みやすくするため残す
                 else if (string.Equals(a, "-pintest", System.StringComparison.OrdinalIgnoreCase))
                     pin = true;
+                else if (string.Equals(a, "-pinchain", System.StringComparison.OrdinalIgnoreCase))
+                    pinChain = true;
                 else if (a.StartsWith("-pinshot=", System.StringComparison.OrdinalIgnoreCase))
                     pinShotPath = a.Substring("-pinshot=".Length);
                 else if (a.StartsWith("-pinshotdelay=", System.StringComparison.OrdinalIgnoreCase))
@@ -169,6 +174,7 @@ namespace Ryona.Game
             // 正面に立たせると「指示した敵が必ず空振りする」実行になってしまう。
             // 押さえつけ（Pin）は正面からなので、-pintest のときだけ正面に立たせる。
             driver.PinTest = pin;
+            driver._pinChain = pin && pinChain;
             driver.BackView = !pin && (back || !front);
             driver._hitShotPath = hitShotPath;
             driver._heldPunchShotPath = heldPunchShotPath;
@@ -221,9 +227,13 @@ namespace Ryona.Game
                 {
                     if (_player != null && _hitShotPath != null)
                         _player.HitReceived += CaptureHit;
+                    if (_pinChain)
+                        _player.HitReceived += PlacePinChainReceiver;
                     _grapple.Started += kind =>
                     {
                         _grabbedOnce = true;
+                        if (kind == GrappleKind.Pin)
+                            _pinChainKnees = 0;
                         Debug.Log($"[GrappleTest] 掴まれた kind={kind}");
                         if (kind == GrappleKind.Pin && _pinShotPath != null)
                             _pinShotDelay = Mathf.Max(0f, _pinShotDelaySeconds);
@@ -329,6 +339,29 @@ namespace Ryona.Game
 
             _orders++;
             Debug.Log($"[GrappleTest] #{_orders} {target.name} に掴みを指示 dist={best:F2}");
+        }
+
+        void PlacePinChainReceiver(HitResult hit)
+        {
+            var sender = _grapple.Captor;
+            if (hit.Damage <= 0f || !_grapple.IsGrappled || _grapple.Kind != GrappleKind.Pin ||
+                sender == null || _player.LastAttacker != sender.transform ||
+                ++_pinChainKnees != CombatConstants.PinKneeCount)
+                return;
+
+            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            {
+                if (enemy == sender || !enemy.IsAlive || !enemy.isActiveAndEnabled ||
+                    enemy.IsHolding || enemy.Phase == EnemyPhase.Windup || enemy.Phase == EnemyPhase.Attack ||
+                    enemy.Phase == EnemyPhase.Stagger)
+                    continue;
+
+                Vector3 forward = _player.transform.forward;
+                Vector3 spot = _player.transform.position - forward * 0.82f;
+                spot.y = enemy.transform.position.y;
+                enemy.transform.SetPositionAndRotation(spot, Quaternion.LookRotation(forward));
+                break;
+            }
         }
 
         /// <summary>
