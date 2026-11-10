@@ -162,6 +162,15 @@ namespace Ryona.Tests
                 InputSystem.Update();
                 yield return null;
                 Assert.That(camera.Distance, Is.EqualTo(camera.BeltMinZoomDistance));
+
+                camera.HoldFocus(0.4f, 0f, camera.Target.position.x, 2f);
+                yield return null;
+                yield return null;
+                float focusDistance = Mathf.Abs(camera.transform.position.z) /
+                    Mathf.Cos(camera.BeltPitch * Mathf.Deg2Rad);
+                Assert.That(focusDistance / camera.EffectDistanceScale,
+                    Is.EqualTo(distance * 0.85f).Within(0.01f),
+                    "最大ズームでも演出中は顔や拳のために余裕を残す");
             }
             finally
             {

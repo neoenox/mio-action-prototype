@@ -149,6 +149,7 @@ namespace Ryona.Game
 
         float _yaw;
         float _pitch = 10f;
+        const float ClosestShotZoom = 0.85f;
         float _initialDistance;
         float _targetDistance;
         Vector3 _smoothPivot;
@@ -357,7 +358,7 @@ namespace Ryona.Game
             _shotTarget = Vector3.Lerp(_shotTarget, _cinematicTarget, follow);
             // 固定ショットも、狙いと角度を保ったままホイールで距離を変える。
             Vector3 offset = _shotPosition - _shotTarget;
-            float zoom = Distance / Mathf.Max(0.01f, _initialDistance);
+            float zoom = Mathf.Max(ClosestShotZoom, Distance / Mathf.Max(0.01f, _initialDistance));
             Vector3 zoomedOffset = zoom < 1f
                 ? Vector3.ClampMagnitude(offset, Mathf.Max(0.75f, offset.magnitude * zoom))
                 : offset * zoom;
@@ -381,7 +382,11 @@ namespace Ryona.Game
 
             // 腹パン中は見下ろしを弱め、折れて下を向いた顔を画面に入れる。
             float pitch = BeltPitch + (focusing ? _focusPitch : 0f);
-            float distance = Mathf.Max(1f, Distance * _distanceScale);
+            // 通常時の最大ズームでも、演出で寄った画から顔や拳が大きく切れないようにする。
+            float baseDistance = focusing && _distanceScale < 1f
+                ? Mathf.Max(Distance, _initialDistance * ClosestShotZoom)
+                : Distance;
+            float distance = Mathf.Max(1f, baseDistance * _distanceScale);
             float height = BeltPivotHeight + _pivotOffsetY;
 
             // 倒れているあいだは少し引いて、体全体が入るようにする
