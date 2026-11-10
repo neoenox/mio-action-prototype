@@ -25,6 +25,7 @@ namespace Ryona.Game
         bool _wide;
         bool _solo;
         bool _top;
+        bool _entry;
         bool _hidden;
         bool _started;
         bool _capturing;
@@ -40,6 +41,7 @@ namespace Ryona.Game
             bool wide = false;
             bool solo = false;
             bool top = false;
+            bool entry = false;
             foreach (string a in Environment.GetCommandLineArgs())
             {
                 if (a.StartsWith("-mountburst=", StringComparison.OrdinalIgnoreCase))
@@ -52,6 +54,8 @@ namespace Ryona.Game
                     solo = true;
                 else if (string.Equals(a, "-mounttop", StringComparison.OrdinalIgnoreCase))
                     top = true;
+                else if (string.Equals(a, "-mountentry", StringComparison.OrdinalIgnoreCase))
+                    entry = true;
             }
 
             if (string.IsNullOrEmpty(prefix))
@@ -64,6 +68,7 @@ namespace Ryona.Game
             driver._wide = wide;
             driver._solo = solo;
             driver._top = top;
+            driver._entry = entry;
         }
 
         void Update()
@@ -84,9 +89,10 @@ namespace Ryona.Game
                 ForceDown();
             }
 
-            if (!_capturing && _mount != null && _mount.Attacker != null &&
-                _mount.Stage >= GroundMountAttack.Beat.Mount &&
-                _mount.Stage < GroundMountAttack.Beat.Dismount)
+            if (!_capturing && _mount != null && (_entry
+                ? _started && _player.IsDown
+                : _mount.Attacker != null && _mount.Stage >= GroundMountAttack.Beat.Mount &&
+                    _mount.Stage < GroundMountAttack.Beat.Dismount))
             {
                 _capturing = true;
                 _nextShotAt = Time.unscaledTime;
@@ -197,7 +203,7 @@ namespace Ryona.Game
 
             _shots++;
             _nextShotAt += ShotInterval;
-            if (_shots >= ShotCount)
+            if (_shots >= (_entry ? 110 : ShotCount))
             {
                 _capturing = false;
                 Application.Quit();

@@ -10,6 +10,7 @@ namespace Ryona.Game
         const int MaxPunches = 5;
         const int EscapeInputs = 6;
         const float RemountDelay = 2.5f;
+        const float FeetRadius = 1.02f;
 
         PlayerStats _player;
         CharacterAnimator _animator;
@@ -18,6 +19,9 @@ namespace Ryona.Game
         EnemyFigure _figure;
         Vector3 _fromPosition;
         Quaternion _fromRotation;
+        Vector3 _approachSpot;
+        float _approachDistance;
+        float _approachTravel;
         Vector3 _shotOffset;
         float _elapsed;
         float _duration;
@@ -31,7 +35,9 @@ namespace Ryona.Game
 
         internal EnemyBrain Attacker { get; private set; }
         internal Beat Stage { get; private set; }
-        internal float Progress => _duration > 0f ? Mathf.Clamp01(_elapsed / _duration) : 0f;
+        internal float Progress => Stage == Beat.Approach
+            ? Mathf.InverseLerp(0f, _approachDistance, _approachTravel)
+            : _duration > 0f ? Mathf.Clamp01(_elapsed / _duration) : 0f;
         internal bool BlocksGetUp => Attacker != null && Stage >= Beat.Mount;
         internal float Fear => Stage switch
         {
@@ -158,7 +164,19 @@ namespace Ryona.Game
 
             _elapsed += dt;
             if (Stage == Beat.Approach)
-                MoveAroundToFeet(Progress);
+            {
+                float speed = Attacker.MoveSpeed * Attacker.State.MoveSpeedMultiplier;
+                if (speed <= 0f)
+                {
+                    End();
+                    return;
+                }
+                _approachTravel = Mathf.Min(_approachTravel + speed * dt, _approachDistance);
+                WalkToMountSpot();
+                if (_approachTravel >= _approachDistance)
+                    Advance();
+                return;
+            }
             else if (Stage == Beat.Mount)
                 MoveTowardsPose(MountSpot(), TargetRig.Head.position, Mathf.InverseLerp(0.04f, 0.94f, Progress));
             else if (Stage == Beat.Dismount)
@@ -185,7 +203,7 @@ namespace Ryona.Game
             float best = 3f * 3f;
             foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
             {
-                if (enemy.Player != _player || !enemy.CanMountDownedPlayer ||
+                if (enemy.Player != _player || !enemy.CanMountDownedPlayer || enemy.MoveSpeed <= 0f ||
                     !enemy.TryGetComponent(out EnemyFigure figure))
                     continue;
 
@@ -201,7 +219,8 @@ namespace Ryona.Game
 
             _side = Vector3.Dot(Attacker.transform.position - TargetRig.Hips.position, transform.right) < 0f
                 ? -1f : 1f;
-            Begin(Beat.Approach, Mathf.Clamp(Mathf.Sqrt(best) / 3f, 0.30f, 0.85f));
+            SetApproachSpot();
+            Begin(Beat.Approach, 0f);
         }
 
         Vector3 BodyAxis()
@@ -211,23 +230,30 @@ namespace Ryona.Game
 
         Vector3 MountSpot() => TargetRig.Hips.position + BodyAxis() * 0.06f;
 
-        Vector3 FeetSpot() => TargetRig.Hips.position - BodyAxis() * 1.02f;
+        Vector3 FeetSpot() => TargetRig.Hips.position - BodyAxis() * FeetRadius;
 
-        void MoveAroundToFeet(float progress)
+        void SetApproachSpot()
         {
+            Vector3 start = Attacker.transform.position;
             Vector3 hips = TargetRig.Hips.position;
-            Vector3 feet = -BodyAxis();
-            Vector3 from = Vector3.ProjectOnPlane(_fromPosition - hips, Vector3.up);
-            float angle = Vector3.SignedAngle(from, feet, Vector3.up);
-            float t = Mathf.SmoothStep(0f, 1f, progress);
-            float radius = Mathf.Lerp(from.magnitude, 1.02f, t);
-            radius += Mathf.Max(0f, 0.86f - from.magnitude) * Mathf.Sin(Mathf.PI * t);
-            Vector3 direction = Quaternion.AngleAxis(angle * t, Vector3.up) * from.normalized;
-            if (from.sqrMagnitude < 0.001f)
-                direction = feet;
-            Vector3 spot = hips + direction * radius;
-            MoveTowardsPose(spot, TargetRig.Head.position, 1f);
-            Attacker.transform.rotation = Quaternion.Slerp(_fromRotation, Attacker.transform.rotation, t);
+            hips.y = start.y;
+            Vector3 from = start - hips;
+            // 今いる側から腰へ向かう。頭側と足側では体の端で止まり、跨る動きにつなげる。
+            float alongBody = Mathf.Abs(Vector3.Dot(from.normalized, BodyAxis()));
+            float clearance = Mathf.Lerp(0.60f, 0.86f, alongBody);
+            _approachSpot = hips + Vector3.ClampMagnitude(from, clearance);
+            _approachDistance = Vector3.Distance(start, _approachSpot);
+            _approachTravel = 0f;
+        }
+
+        void WalkToMountSpot()
+        {
+            if (_approachDistance <= 0.001f)
+                return;
+            Vector3 position = Vector3.Lerp(_fromPosition, _approachSpot, Progress);
+            Quaternion facing = Quaternion.LookRotation(_approachSpot - _fromPosition, Vector3.up);
+            Quaternion rotation = Quaternion.Slerp(_fromRotation, facing, Mathf.SmoothStep(0f, 1f, Progress));
+            Attacker.transform.SetPositionAndRotation(position, rotation);
         }
 
         void MoveTowardsPose(Vector3 spot, Vector3 lookAt, float progress)

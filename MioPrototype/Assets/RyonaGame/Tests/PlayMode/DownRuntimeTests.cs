@@ -76,6 +76,47 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator MountApproachIsDirectAtNormalEnemyMovementSpeed([Values(false, true)] bool forward)
+        {
+            yield return LoadPlayer(holdEnemies: false);
+            var attacker = PrepareMount(forward);
+            if (forward)
+                attacker.MoveSpeed = 1.65f;
+            float expectedSpeed = attacker.MoveSpeed * attacker.State.MoveSpeedMultiplier;
+            var mount = _stats.GetComponent("GroundMountAttack");
+            const System.Reflection.BindingFlags members = System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.NonPublic;
+            var stage = mount.GetType().GetProperty("Stage", members);
+            Vector3 approachStart = _stats.transform.position + Vector3.right * 1.9f;
+            float deadline = Time.realtimeSinceStartup + 8f;
+            while (stage.GetValue(mount).ToString() != "Approach" && Time.realtimeSinceStartup < deadline)
+            {
+                // 通常 AI に先に接近されると、移動なしで跨る配置になる。
+                attacker.transform.position = approachStart;
+                yield return null;
+            }
+            Assert.AreEqual("Approach", stage.GetValue(mount).ToString());
+
+            float peakSpeed = 0f;
+            Vector3 start = attacker.transform.position;
+            Vector3 direction = Vector3.ProjectOnPlane(_anim.Rig.Hips.position - start, Vector3.up).normalized;
+            Vector3 previous = start;
+            while (stage.GetValue(mount).ToString() == "Approach" && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+                Vector3 step = Vector3.ProjectOnPlane(attacker.transform.position - previous, Vector3.up);
+                if (Time.deltaTime > 0f)
+                    peakSpeed = Mathf.Max(peakSpeed, step.magnitude / Time.deltaTime);
+                float detour = Vector3.Cross(
+                    Vector3.ProjectOnPlane(attacker.transform.position - start, Vector3.up), direction).magnitude;
+                Assert.Less(detour, 0.06f, "敵は今いる側から澪へまっすぐ近づく");
+                previous = attacker.transform.position;
+            }
+            Assert.AreEqual("Mount", stage.GetValue(mount).ToString());
+            Assert.AreEqual(expectedSpeed, peakSpeed, 0.12f, "接近を通常の移動速度に合わせる");
+        }
+
+        [UnityTest]
         public IEnumerator PronePlayerIsMountedThenRolledBeforeFiveAlternatingPunches()
         {
             yield return LoadPlayer(holdEnemies: false);
