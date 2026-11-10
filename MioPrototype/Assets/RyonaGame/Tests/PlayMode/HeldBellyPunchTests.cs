@@ -565,9 +565,8 @@ namespace Ryona.Tests
             Transform captorSkull = figure.HeadBone.Find("Skull");
             float nearestHeadGap = float.PositiveInfinity;
             int nearestHeadHit = 0;
-            float restingHeadDepth = _captor.transform.InverseTransformPoint(captorSkull.position).z;
-            float smallestCaptorRetreat = float.PositiveInfinity;
             float nearestArm = float.PositiveInfinity;
+            float maxBackLean = 0f;
             float nearestHeadBetweenHits = float.PositiveInfinity;
             string nearestStance = null;
             var contactDirections = new System.Collections.Generic.List<float>();
@@ -593,6 +592,8 @@ namespace Ryona.Tests
                     bool inCloseUp = _camera.EffectDistanceScale <= 0.5f || contactDirections.Count > 0;
                     if (_director.IsPerforming && inCloseUp)
                     {
+                        maxBackLean = Mathf.Max(maxBackLean,
+                            Vector3.Dot(figure.ChestBone.up, -_captor.transform.forward));
                         // 首の付け根の距離ではなく、頭の形の中心同士を測る。
                         Vector3 headCenter = _anim.Rig.Head.position + _anim.Rig.Head.up * 0.075f;
                         float headGap = Vector3.Distance(headCenter, captorSkull.position);
@@ -625,8 +626,6 @@ namespace Ryona.Tests
                         float incoming = contactDirections[verified];
                         Vector3 headForward = _anim.Rig.Head.rotation * Quaternion.Inverse(restHead) * Vector3.forward;
                         float headSide = Vector3.Dot(headForward, right);
-                        float captorDepth = _captor.transform.InverseTransformPoint(captorSkull.position).z;
-                        smallestCaptorRetreat = Mathf.Min(smallestCaptorRetreat, restingHeadDepth - captorDepth);
                         Assert.Greater(Mathf.Abs(incoming), 0.015f, $"{verified + 1}発目の拳は横から入る");
                         Assert.Greater(headSide * Mathf.Sign(incoming), 0.20f,
                             $"{verified + 1}発目の首は拳の入る側へ振れる (incoming={incoming:F3}, head={headSide:F3})");
@@ -635,11 +634,12 @@ namespace Ryona.Tests
                     yield return null;
                 }
                 Assert.AreEqual(5, verified);
+                Assert.Less(maxBackLean, Mathf.Sin(14f * Mathf.Deg2Rad),
+                    "顔パンの合間や命中時に拘束役が大きく反らない");
                 string clearance = $"head={nearestHeadBetweenHits:F3} ({nearestStance}), " +
                     $"recoil={nearestHeadGap:F3}, arm={nearestArm:F3}";
                 Assert.Greater(nearestHeadGap, 0.20f,
                     $"頭の形が重ならない (最接近: {nearestHeadHit}発目, {clearance})");
-                Assert.Greater(smallestCaptorRetreat, 0.045f, "拘束役は毎回、澪の反動から頭を引く");
                 Assert.That(nearestHeadBetweenHits > 0.23f && nearestArm > 0.15f,
                     $"構え直しの頭と命中時の腕が澪の頭に入らない ({clearance})");
             }
@@ -1076,11 +1076,50 @@ namespace Ryona.Tests
             Transform hips = figure.ChestBone.parent;
             float maxLean = 0f;
             float maxHipAdvance = 0f;
+            float fistLead = 0f;
+            float elbowDrop = 0f;
+            float fistGap = float.PositiveInfinity;
+            float maxWristBend = 0f;
+            float maxElbowSwing = 0f;
+            Vector3 previousElbowPlane = Vector3.zero;
+            var offShoulder = figure.ShoulderBone(true);
+            var offElbow = figure.ElbowBone(true);
+            float shoulderChamber = 0f;
+            float elbowChamber = 0f;
+            float shoulderDraw = 0f;
+            float elbowRelease = 0f;
             float deadline = Time.realtimeSinceStartup + 3f;
             while (_attacker.Phase != EnemyPhase.Recover && Time.realtimeSinceStartup < deadline)
             {
                 maxLean = Mathf.Max(maxLean, Vector3.Dot(figure.ChestBone.up, _attacker.transform.forward));
                 maxHipAdvance = Mathf.Max(maxHipAdvance, hips.localPosition.z);
+                Vector3 fist = figure.Fist(false).position;
+                Vector3 elbow = figure.ElbowBone(false).position;
+                fistLead = Vector3.Dot(fist - elbow, _attacker.transform.forward);
+                elbowDrop = figure.ShoulderBone(false).position.y - elbow.y;
+                Vector3 target = EnemyBrain.PunchTarget(_player, PunchZone.Body, _attacker.BodyTargetBias)
+                    + _player.transform.forward * 0.13f;
+                fistGap = Vector3.Distance(fist, target);
+                if (_attacker.Phase == EnemyPhase.Windup && _attacker.WindupProgress >= 0.35f)
+                {
+                    Vector3 elbowPlane = Vector3.Cross(elbow - figure.ShoulderBone(false).position, fist - elbow);
+                    if (previousElbowPlane != Vector3.zero && Time.deltaTime < 0.035f)
+                        maxElbowSwing = Mathf.Max(maxElbowSwing, Vector3.Angle(previousElbowPlane, elbowPlane));
+                    previousElbowPlane = elbowPlane;
+                    float wristAngle = figure.WristBone(false).localEulerAngles.x;
+                    maxWristBend = Mathf.Max(maxWristBend, Mathf.Abs(Mathf.DeltaAngle(0f, wristAngle)));
+                }
+                float offElbowBend = Quaternion.Angle(Quaternion.identity, offElbow.localRotation);
+                if (_attacker.Phase == EnemyPhase.Windup && _attacker.WindupProgress <= 0.40f)
+                {
+                    shoulderChamber = offShoulder.localPosition.z;
+                    elbowChamber = offElbowBend;
+                }
+                else
+                {
+                    shoulderDraw = Mathf.Max(shoulderDraw, shoulderChamber - offShoulder.localPosition.z);
+                    elbowRelease = Mathf.Max(elbowRelease, elbowChamber - offElbowBend);
+                }
                 yield return null;
             }
 
@@ -1088,6 +1127,12 @@ namespace Ryona.Tests
             Assert.Less(_player.State.Hp, startingHp, "腹パンが命中する");
             Assert.Greater(maxLean, 0.40f, "胸の骨が相手側へ約24度以上傾く");
             Assert.Greater(maxHipAdvance, 0.06f, "拳を伸ばすときに腰も前に入る");
+            string contact = $"拳の先行={fistLead:F2}m, 肘の下がり={elbowDrop:F2}m, 腹表面まで={fistGap:F2}m";
+            Assert.That(fistLead > 0.15f && elbowDrop > 0.12f && fistGap < 0.08f, contact);
+            Assert.Less(maxElbowSwing, 32f, "拳を出す前に肘の曲がる面が急に回らない");
+            Assert.Less(maxWristBend, 8f, "拳を出す前に手首が反らない");
+            Assert.Greater(shoulderDraw, 0.025f, "打ち込むときに反対の肩が胸に対して後ろへ動く");
+            Assert.Greater(elbowRelease, 9f, "反対の肘が溜めから打ち込みに合わせてほどける");
         }
 
         [UnityTest]
