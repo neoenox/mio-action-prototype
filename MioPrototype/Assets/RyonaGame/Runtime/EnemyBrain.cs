@@ -2110,6 +2110,11 @@ namespace Ryona.Game
             }
 
             Phase = EnemyPhase.Windup;
+
+            // 攻撃は画面の左右（ベルト軸）へ出す。旋回の途中で殴り始めても、
+            // 予備動作から振り抜きまで斜めを向いたまま固まらないよう、ここで向きを揃える。
+            SnapToLaneFacing();
+
             // 投げから続けて打つ一発目は、伸ばした手からすぐ拳へつなぐ。
             if (fromThrow)
                 return;
@@ -2508,6 +2513,24 @@ namespace Ryona.Game
             Quaternion look = Quaternion.LookRotation(forward, Vector3.up);
             float t = Mathf.Clamp01(Mathf.Max(0f, TurnSpeed) * dt);
             transform.rotation = Quaternion.Slerp(transform.rotation, look, t);
+        }
+
+        /// <summary>
+        /// ベルト（1 ライン）の左右へ向きを揃える。攻撃の予備動作に入るときに呼ぶ。
+        /// 彼女はレーン上に固定されているので、向きは ±X のどちらかへ倒せばよい。
+        /// ここで揃えないと、彼女が目の前を通り過ぎた直後（旋回の途中）に殴り始めたとき、
+        /// 最大 26°（<see cref="TryBeginAttack"/> の 0.9 判定）斜めを向いたまま振り抜く。
+        /// </summary>
+        void SnapToLaneFacing()
+        {
+            if (Player == null)
+                return;
+
+            float dx = Player.transform.position.x - transform.position.x;
+            if (Mathf.Abs(dx) < 0.001f)
+                return;
+
+            transform.rotation = Quaternion.LookRotation(Vector3.right * Mathf.Sign(dx), Vector3.up);
         }
 
         // --- テレグラフ ----------------------------------------------------------

@@ -169,6 +169,62 @@ namespace Ryona.Tests
             Assert.Less(player.State.Hp, hp, "Enemy should turn around and eventually hit the player");
         }
 
+        /// <summary>
+        /// 攻撃はベルトの左右（画面の左右）へ出す。彼女が目の前を通り過ぎた直後など、
+        /// 旋回の途中（26° 以内）で殴り始めても、斜めを向いたまま振り抜かない。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 攻撃の向きはベルトの左右へ揃う()
+        {
+            yield return LoadPrototype();
+            var player = Object.FindFirstObjectByType<PlayerStats>();
+            var brains = Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None);
+            for (int i = 1; i < brains.Length; i++) brains[i].enabled = false;
+            var enemy = brains[0];
+            enemy.FeintChance = 0f;
+            enemy.transform.position = player.transform.position + Vector3.right * 1.0f;
+
+            // 旋回の途中で予備動作に入る状況（レーンから 20° ずれて向いている）。
+            Vector3 toPlayer = player.transform.position - enemy.transform.position;
+            toPlayer.y = 0f;
+            enemy.transform.rotation =
+                Quaternion.LookRotation(toPlayer.normalized, Vector3.up) * Quaternion.Euler(0f, 20f, 0f);
+            Assert.Greater(FlatAngle(enemy.transform.forward, toPlayer), 10f, "前提: 斜めを向いている");
+
+            var begin = typeof(EnemyBrain).GetMethod(
+                "BeginWindup", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(begin);
+            begin.Invoke(enemy, new object[] { EnemyBrain.AttackId.Jab });
+
+            Vector3 to = player.transform.position - enemy.transform.position;
+            Assert.Less(FlatAngle(enemy.transform.forward, to), 2f,
+                "予備動作に入った瞬間、向きが左右へ揃う");
+
+            float strikeErr = -1f;
+            float deadline = Time.realtimeSinceStartup + 3f;
+            while (Time.realtimeSinceStartup < deadline && enemy.Phase != EnemyPhase.Recover)
+            {
+                if (enemy.Phase == EnemyPhase.Attack)
+                {
+                    to = player.transform.position - enemy.transform.position;
+                    strikeErr = FlatAngle(enemy.transform.forward, to);
+                }
+                yield return null;
+            }
+
+            Assert.GreaterOrEqual(strikeErr, 0f, "攻撃の判定フレームを見られなかった");
+            Assert.Less(strikeErr, 2f, "振り抜きも左右を向く");
+        }
+
+        static float FlatAngle(Vector3 a, Vector3 b)
+        {
+            a.y = 0f;
+            b.y = 0f;
+            if (a.sqrMagnitude < 1e-6f || b.sqrMagnitude < 1e-6f)
+                return 0f;
+            return Vector3.Angle(a.normalized, b.normalized);
+        }
+
         [UnityTest]
         public IEnumerator 後ろ拘束は時間切れで解けず振りほどくと敵が攻撃を再開する()
         {

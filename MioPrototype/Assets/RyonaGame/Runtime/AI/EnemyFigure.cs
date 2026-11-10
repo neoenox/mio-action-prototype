@@ -2196,6 +2196,13 @@ namespace Ryona.Game
 
             PunchZone zone = _brain.Zone;
             Vector3 target = EnemyBrain.PunchTarget(_brain.Player, zone, _brain.BodyTargetBias);
+
+            // 通常のパンチはベルトの左右へ振る。彼女の体（頭・腹）が呼吸や怯みで
+            // 前後へ揺れても、拳の狙いをレーンへ寄せて斜めに振らない。
+            // タッグ技（腹 / 顔）は演出側が位置と弧を決めているので触らない。
+            if (!_brain.IsTagPunch)
+                target.z = transform.position.z;
+
             if (_brain.IsTagFacePunch)
             {
                 AimTagFacePunch(upper, elbow, wrist, target, weight);
