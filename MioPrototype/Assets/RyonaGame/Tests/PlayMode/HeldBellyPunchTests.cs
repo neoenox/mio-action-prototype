@@ -114,6 +114,14 @@ namespace Ryona.Tests
             Vector3 hipsBefore = _anim.Rig.Hips.position;
             AssertCaptorArmsHugFromBehind(figure, "後ろ拘束");
 
+            // 拘束役の頭が彼女の頭に重ならない。上体を前に倒したまま抱くと、
+            // 彼の顔が彼女の頭の真後ろへ入り、髪と頭が重なって見える（実測: 頭中心 0.19m）。
+            Transform captorSkull = figure.HeadBone.Find("Skull");
+            Assert.IsNotNull(captorSkull, "拘束役の頭（Skull）が無い");
+            Vector3 herHeadCenter = _anim.Rig.Head.position + _anim.Rig.Head.up * 0.075f;
+            float headGap = Vector3.Distance(herHeadCenter, captorSkull.position);
+            Assert.Greater(headGap, 0.26f, $"拘束役の頭が被っている（頭中心 {headGap:F3}m）");
+
             _anim.PlayHeldBellyPunch(0.55f);
             yield return new WaitForSeconds(0.14f);
             float bellyDepth = _captor.transform.InverseTransformPoint(figure.HeadBone.position).z;

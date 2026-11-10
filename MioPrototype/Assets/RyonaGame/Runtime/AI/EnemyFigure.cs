@@ -939,7 +939,9 @@ namespace Ryona.Game
                         elbowL = 28f;
                         armRSpread = -28f;
                         armLSpread = 28f;
-                        torsoPitch = -16f;
+                        // 彼女を引き込むので上体は軽く反らせる（前傾 -16° だと顔が彼女の
+                        // 頭の真後ろへ入り、髪と頭が重なって見える。実測: 頭中心 0.19m）。
+                        torsoPitch = 4f;
                         hipsY = restY - 0.17f;
                         // 前後に足を割って踏ん張る（両足を揃えて沈むと「座っている」画になる）。
                         // 彼女に近い足を前へ、反対の足を後ろへ引く。
