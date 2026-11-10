@@ -171,6 +171,36 @@ namespace Ryona.Tests
             }
         }
 
+        [UnityTest]
+        public IEnumerator 拘束の案内は連打を受け付けるときだけ操作を促す()
+        {
+            yield return TestScene.LoadPrototype();
+            var hud = Object.FindFirstObjectByType<MatchHud>();
+            var grapple = hud.Player.GetComponent<PlayerGrapple>();
+            var enemies = Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None);
+            foreach (var enemy in enemies)
+                enemy.enabled = false;
+            grapple.Begin(enemies[0], GrappleKind.Back);
+            var label = Field<Text>(hud, "_grappleText");
+
+            grapple.SuppressStruggle(1f);
+            yield return null;
+            yield return null;
+            Assert.That(label.text, Does.Contain("連打は一時停止中"));
+            int before = grapple.InputCount;
+            grapple.Struggle();
+            Assert.AreEqual(before, grapple.InputCount);
+
+            grapple.ClearStruggleSuppression();
+            yield return null;
+            yield return null;
+            Assert.That(label.text, Does.Contain("J / K / L を連打して脱出"));
+            grapple.Struggle();
+            Assert.Greater(grapple.InputCount, before);
+            Assert.LessOrEqual(label.preferredWidth, label.rectTransform.rect.width);
+            Assert.LessOrEqual(label.preferredHeight, label.rectTransform.rect.height);
+        }
+
         // --- ポーズ -------------------------------------------------------------
 
         [UnityTest]

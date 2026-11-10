@@ -230,7 +230,7 @@ namespace Ryona.Game
             }
             else if (_bellyPunch.IsPerforming)
             {
-                string what = _bellyPunch.LastLandedZone == PunchZone.Face ? "顔面！" : "腹パン！";
+                string what = _bellyPunch.IsFaceCombo ? "顔面！" : "腹パン！";
                 tail = $"{what} {_bellyPunch.ComboHitsLanded}/{_bellyPunch.ComboHitsTotal}";
                 danger = true;
             }
@@ -251,8 +251,11 @@ namespace Ryona.Game
                 tail = "連打で逃げる";
             }
 
+            string escapeHint = _grapple.IsStruggleSuppressed
+                ? "連打は一時停止中"
+                : "J / K / L を連打して脱出";
             _grappleText.text =
-                $"掴まれている{where} ─ 連打！  {_grapple.InputCount}/{need}　{tail}";
+                $"拘束中{where}　{tail}\n{escapeHint}　{_grapple.InputCount}/{need}";
 
             _grappleText.color = danger
                 ? new Color(1f, 0.40f, 0.32f, 0.98f)
@@ -431,19 +434,19 @@ namespace Ryona.Game
             _bannerRoot.gameObject.SetActive(false);
 
             // 掴まれている間の表示（中央下）。通常は非表示
-            _grappleRoot = NewRect("GrappleBlock", root, 0f, 232f, 520f, 56f,
+            _grappleRoot = NewRect("GrappleBlock", root, 0f, 232f, 560f, 84f,
                 new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
 
             // 文字がキャラクターに重なると読みにくいので、薄い下地を敷く
-            var grappleBack = NewRect("Back", _grappleRoot, 0f, 0f, 520f, 56f,
+            var grappleBack = NewRect("Back", _grappleRoot, 0f, 0f, 560f, 84f,
                 new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
             var grappleBackImage = grappleBack.gameObject.AddComponent<Image>();
             grappleBackImage.sprite = WhiteSprite;
-            grappleBackImage.color = new Color(0f, 0f, 0f, 0.35f);
+            grappleBackImage.color = new Color(0f, 0f, 0f, 0.65f);
             grappleBackImage.raycastTarget = false;
 
-            _grappleText = NewText(_grappleRoot, 0f, 6f, 520f, 26f, string.Empty, 20, TextAnchor.UpperCenter);
-            _grappleFill = NewBar(_grappleRoot, 0f, 34f, 520f, 10f, new Color(0.95f, 0.45f, 0.35f));
+            _grappleText = NewText(_grappleRoot, 0f, 4f, 560f, 60f, string.Empty, 24, TextAnchor.UpperCenter);
+            _grappleFill = NewBar(_grappleRoot, 0f, 66f, 560f, 10f, new Color(0.95f, 0.45f, 0.35f));
             _grappleRoot.gameObject.SetActive(false);
 
             // 操作の説明（右下）。タイトルを出さないので、プレイ画面に常に置く。
@@ -457,7 +460,7 @@ namespace Ryona.Game
             help.raycastTarget = false;
             help.horizontalOverflow = HorizontalWrapMode.Overflow;
             help.verticalOverflow = VerticalWrapMode.Overflow;
-            help.text = "A / D　移動\nJ 弱　K 強　L 崩し\nG ゴッドモード\n掴まれたら J / K / L 連打\nEsc 一時停止";
+            help.text = "A / D　移動\nJ 弱　K 強　L 崩し\nG ゴッドモード\nホイール ズーム\nEsc 一時停止";
 
             // 画面ロック中の案内（右端）。通常は非表示
             var lockRect = NewRect("LockHint", root, 26f, 0f, 460f, 36f,
