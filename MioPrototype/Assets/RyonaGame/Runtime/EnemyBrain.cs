@@ -416,7 +416,8 @@ namespace Ryona.Game
         /// </summary>
         public bool IsTagPunch => _tagPunchSwing;
         internal bool IsTagFacePunch => _tagPunchSwing && Zone == PunchZone.Face;
-        public bool UsesLeftPunch => IsTagFacePunch && _tagFaceLeft;
+        public bool UsesLeftPunch => IsTagFacePunch ? _tagFaceLeft
+            : (IsTagPunch || KeepsBellyPunchArm) && Player != null && Player.transform.forward.x < -0.1f;
         internal Vector3 TagFaceOutside => transform.right * (UsesLeftPunch ? -1f : 1f);
         bool _tagFaceLeft;
 
@@ -1521,7 +1522,7 @@ namespace Ryona.Game
 
             Debug.Log($"[HeldPunch] order {name} zone={zone} dist={distance:F2} " +
                       $"pos=({transform.position.x:F2},{transform.position.z:F2}) " +
-                      $"side={(_tagFaceLeft ? "L" : "R")} power={_tagFacePower:F2}");
+                      $"side={(UsesLeftPunch ? "L" : "R")} power={_tagFacePower:F2}");
             return true;
         }
 

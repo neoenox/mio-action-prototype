@@ -691,6 +691,7 @@ namespace Ryona.Game
 
                 // 腹パン: 腹で一度折れた後、胸を起こそうとする間に膝が折れて腰が沈む。
                 float toCamera = CameraYawToMe();
+                bool bodyCombo = _punchDirector != null && _punchDirector.IsBodyCombo;
                 float recoil = HeldBellyPunchFold;
                 if (recoil > 0f)
                 {
@@ -699,11 +700,11 @@ namespace Ryona.Game
                     float fold = Mathf.Lerp(_heldBellyCarry, recoil, bendIn);
                     float straighten = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.15f, 0.32f, hitTime));
                     fold *= Mathf.Lerp(1f, 0.27f + 0.09f * _heldBellyFatigue, straighten);
-                    pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, 52f, fold);
+                    pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, bodyCombo ? 43f : 52f, fold);
                     pose.TorsoYaw = Mathf.Lerp(pose.TorsoYaw, 0f, recoil);
                     // 胴の前傾を首で打ち消し、腹で折れても顔は前に残す。
-                    pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -72f, fold);
-                    pose.HeadYaw = Mathf.Lerp(pose.HeadYaw, Mathf.Clamp(toCamera, -35f, 35f) * 0.35f, fold);
+                    pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, bodyCombo ? -60f : -72f, fold);
+
                     // 足の IK 目標は床に残し、左右どちらかへ重さが偏りながら膝を折る。
                     float buckle = recoil * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.07f, 0.23f, hitTime));
                     pose.HipsOffset.y = Mathf.Lerp(pose.HipsOffset.y, StanceHipsY - 0.055f, recoil)
@@ -743,7 +744,9 @@ namespace Ryona.Game
                     // 「振れ幅を足す」のではなく、当たった形へ寄せる（直前の「目を逸らす」
                     // 角度が残ると、うつむいたまま髪で顔が隠れて何が起きたか読めない）。
                     float snap = Mathf.Clamp01(faceImpulse * 1.25f);
-                    pose.HeadYaw = Mathf.Lerp(pose.HeadYaw, lateral * 46f, snap);
+                    // 奥へ振れる側も頬が見える角度で止める。打たれた方向には振る。
+                    float snapYaw = lateral * (lateral * toCamera < 0f ? 34f : 46f);
+                    pose.HeadYaw = Mathf.Lerp(pose.HeadYaw, snapYaw, snap);
                     pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -14f, snap);
                     pose.HeadRoll = Mathf.Lerp(pose.HeadRoll, -lateral * 18f, snap);
                     pose.HeadYaw += shake * 6f * faceImpulse;
@@ -776,6 +779,17 @@ namespace Ryona.Game
                     pose.TorsoYaw -= lateral * 4f * faceBrace;
                     pose.TorsoRoll += lateral * 3f * faceBrace;
                     pose.HipsOffset.y -= 0.012f * faceBrace;
+                }
+
+                // 腹パン中は胸と顔を打ち手へ向けたまま、前後の反動で見せる。
+                if (bodyCombo)
+                {
+                    var puncher = _punchDirector.BellyPuncher;
+                    Vector3 toPuncher = puncher != null
+                        ? transform.InverseTransformPoint(puncher.transform.position)
+                        : Vector3.forward;
+                    pose.TorsoYaw = 0f;
+                    pose.HeadYaw = Mathf.Atan2(toPuncher.x, toPuncher.z) * Mathf.Rad2Deg;
                 }
 
                 return pose;

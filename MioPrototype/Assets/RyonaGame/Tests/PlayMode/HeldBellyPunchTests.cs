@@ -997,33 +997,77 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator 左向きでもカメラは正面側に来る()
+        public IEnumerator 左右どちらでもカメラは正面側に来る(
+            [Values(PunchZone.Body, PunchZone.Face)] PunchZone zone, [Values(false, true)] bool facingLeft)
         {
-            yield return LoadAndGrab();
+            yield return LoadAndGrab(waitForAnimator: zone == PunchZone.Body, throwDelay: 5f);
 
-            // 左向きで組み直す（拘束者は +X 側＝背中側）
+            Vector3 forward = facingLeft ? Vector3.left : Vector3.right;
             _grapple.Release();
-            _player.transform.rotation = Quaternion.LookRotation(Vector3.left);
-            _captor.transform.position = _player.transform.position + Vector3.right;
-            _captor.transform.rotation = Quaternion.LookRotation(Vector3.left);
+            _player.transform.rotation = Quaternion.LookRotation(forward);
+            _captor.transform.position = _player.transform.position - forward;
+            _captor.transform.rotation = Quaternion.LookRotation(forward);
             _grapple.Begin(_captor, GrappleKind.Back);
             yield return null;
 
             PlaceAttackerInFront();
+            _director.FacePunchChance = zone == PunchZone.Face ? 1f : 0f;
+            var screenLock = Object.FindFirstObjectByType<BeltScreenLock>();
+            Assert.IsNotNull(screenLock);
+            screenLock.enabled = false;
+            _camera.GateMinX = _camera.GateMaxX = _player.transform.position.x - forward.x * 0.85f;
             LandOpeningThrow();
             float deadline = Time.realtimeSinceStartup + 3f;
             while (!_camera.IsFocusing && Time.realtimeSinceStartup < deadline)
                 yield return null;
-            yield return null;
+            yield return new WaitForSecondsRealtime(0.25f);
 
             Assert.IsTrue(_camera.IsFocusing, "Camera must focus during the combo");
 
             Vector3 toCamera = _camera.transform.position - _player.transform.position;
             toCamera.y = 0f;
-            // 腹パンの構図は正面斜め前（彼女の顔が見える）。左を向いたときも
-            // 同じ側（正面）へ回り込むこと。
-            Assert.Greater(Vector3.Dot(_player.transform.forward, toCamera.normalized), 0.3f,
-                "Camera must stay on the player's front side when facing left");
+            float front = Vector3.Dot(_player.transform.forward, toCamera.normalized);
+            Assert.That(front, zone == PunchZone.Face ? Is.InRange(0.68f, 0.88f) : Is.InRange(0.37f, 0.55f),
+                "腹パンは斜め横から、顔パンはより正面寄りから撮る");
+            Camera view = _camera.GetComponent<Camera>();
+            float playerX = view.WorldToViewportPoint(_player.transform.position + Vector3.up * 1.1f).x;
+            float attackerX = view.WorldToViewportPoint(_attacker.transform.position + Vector3.up * 1.25f).x;
+            Assert.That(playerX, Is.InRange(0.36f, 0.64f), "画面ロックの端でも澪を中央付近に保つ");
+            Assert.That(attackerX, Is.InRange(0.05f, 0.95f), "打ち手も画面に入る");
+            Assert.Greater((attackerX - playerX) * forward.x, 0.08f, "打ち手と澪を横に並べる");
+            if (zone == PunchZone.Face)
+            {
+                // カメラの補間はフレーム時間で変わるため、寄り切るまで待つ。
+                deadline = Time.realtimeSinceStartup + 1f;
+                while (_camera.IsFocusing && _camera.EffectDistanceScale >= 0.34f &&
+                       Time.realtimeSinceStartup < deadline)
+                    yield return null;
+
+                Assert.IsTrue(_camera.IsFocusing);
+                Assert.Less(_camera.EffectDistanceScale, 0.34f, "顔パンは前の構図よりも寄る");
+                yield break;
+            }
+
+            var head = _anim.Rig.Head;
+            Assert.IsTrue(_anim.Rig.TryGetRestRotation(head, out Quaternion restHead));
+            bool checkedRecoil = false;
+            deadline = Time.realtimeSinceStartup + 2f;
+            while (_director.IsPerforming && Time.realtimeSinceStartup < deadline)
+            {
+                Vector3 headForward = head.rotation * Quaternion.Inverse(restHead) * Vector3.forward;
+                Vector3 toPuncher = _attacker.transform.position - head.position;
+                headForward.y = toPuncher.y = 0f;
+                Assert.Less(Vector3.Angle(headForward, toPuncher), 12f,
+                    "腹パンの構えと被弾中は打ち手の方を向く");
+                if (_anim.HeldBellyPunchFold > 0.60f)
+                {
+                    checkedRecoil = true;
+                    break;
+                }
+                yield return null;
+            }
+            Assert.IsTrue(checkedRecoil, "腹パンの反動まで顔の向きを確認する");
+
         }
 
         [UnityTest]
@@ -1065,12 +1109,14 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator 腹パンは命中に向けて胸と腰を前に入れる()
+        public IEnumerator 腹パンは命中に向けて胸と腰を前に入れる([Values(false, true)] bool facingLeft)
         {
             yield return LoadAndGrab(waitForAnimator: true, directorEnabled: false);
-            PrepareAttackerPoseTest(1.15f);
+            PrepareAttackerPoseTest(1.15f, facingLeft);
             float startingHp = _player.State.Hp;
             Assert.IsTrue(_attacker.TryStartTagPunch(PunchZone.Body, allowRecover: true, holdPoseSeconds: 0.3f));
+
+            Assert.AreEqual(facingLeft, _attacker.UsesLeftPunch);
 
             var figure = _attacker.GetComponent<EnemyFigure>();
             Transform hips = figure.ChestBone.parent;
@@ -1082,8 +1128,8 @@ namespace Ryona.Tests
             float maxWristBend = 0f;
             float maxElbowSwing = 0f;
             Vector3 previousElbowPlane = Vector3.zero;
-            var offShoulder = figure.ShoulderBone(true);
-            var offElbow = figure.ElbowBone(true);
+            var offShoulder = figure.ShoulderBone(!facingLeft);
+            var offElbow = figure.ElbowBone(!facingLeft);
             float shoulderChamber = 0f;
             float elbowChamber = 0f;
             float shoulderDraw = 0f;
@@ -1093,20 +1139,20 @@ namespace Ryona.Tests
             {
                 maxLean = Mathf.Max(maxLean, Vector3.Dot(figure.ChestBone.up, _attacker.transform.forward));
                 maxHipAdvance = Mathf.Max(maxHipAdvance, hips.localPosition.z);
-                Vector3 fist = figure.Fist(false).position;
-                Vector3 elbow = figure.ElbowBone(false).position;
+                Vector3 fist = figure.Fist(facingLeft).position;
+                Vector3 elbow = figure.ElbowBone(facingLeft).position;
                 fistLead = Vector3.Dot(fist - elbow, _attacker.transform.forward);
-                elbowDrop = figure.ShoulderBone(false).position.y - elbow.y;
+                elbowDrop = figure.ShoulderBone(facingLeft).position.y - elbow.y;
                 Vector3 target = EnemyBrain.PunchTarget(_player, PunchZone.Body, _attacker.BodyTargetBias)
                     + _player.transform.forward * 0.13f;
                 fistGap = Vector3.Distance(fist, target);
                 if (_attacker.Phase == EnemyPhase.Windup && _attacker.WindupProgress >= 0.35f)
                 {
-                    Vector3 elbowPlane = Vector3.Cross(elbow - figure.ShoulderBone(false).position, fist - elbow);
+                    Vector3 elbowPlane = Vector3.Cross(elbow - figure.ShoulderBone(facingLeft).position, fist - elbow);
                     if (previousElbowPlane != Vector3.zero && Time.deltaTime < 0.035f)
                         maxElbowSwing = Mathf.Max(maxElbowSwing, Vector3.Angle(previousElbowPlane, elbowPlane));
                     previousElbowPlane = elbowPlane;
-                    float wristAngle = figure.WristBone(false).localEulerAngles.x;
+                    float wristAngle = figure.WristBone(facingLeft).localEulerAngles.x;
                     maxWristBend = Mathf.Max(maxWristBend, Mathf.Abs(Mathf.DeltaAngle(0f, wristAngle)));
                 }
                 float offElbowBend = Quaternion.Angle(Quaternion.identity, offElbow.localRotation);
@@ -1187,16 +1233,17 @@ namespace Ryona.Tests
                 "命中直後に腕を手前へ引く");
         }
 
-        void PrepareAttackerPoseTest(float distance)
+        void PrepareAttackerPoseTest(float distance, bool facingLeft = false)
         {
             // 壁際だと拘束役が境界で押し戻され、正面側の攻撃権を塞ぐことがある。
             Vector3 center = _player.transform.position;
             center.x = -3f;
-            Quaternion facing = Quaternion.LookRotation(Vector3.right);
+            Vector3 forward = facingLeft ? Vector3.left : Vector3.right;
+            Quaternion facing = Quaternion.LookRotation(forward);
             // 引き継ぎ時に残っている踏み込みを消化してから、計測用の間隔に置く。
             _captor.TakeOverHold(10f);
             _player.transform.SetPositionAndRotation(center, facing);
-            _captor.transform.SetPositionAndRotation(center + Vector3.left * 0.34f, facing);
+            _captor.transform.SetPositionAndRotation(center - forward * 0.34f, facing);
             // シーン開始時の AI が始めた攻撃を消し、毎回同じ状態から指示する。
             _attacker.LockForHandOff(0.1f);
             PlaceAttackerInFront(distance);
@@ -1392,35 +1439,21 @@ namespace Ryona.Tests
 
             var figure = _attacker.GetComponent<EnemyFigure>();
             Vector3 target = EnemyBrain.PunchTarget(_player, PunchZone.Body, _attacker.BodyTargetBias);
-            var fistR = figure.Fist(false);
             var fistL = figure.Fist(true);
 
-            // 右の拳が一番伸びた瞬間の、左の拳の位置を測る
-            float bestRight = float.MaxValue;
-            float leftHeight = 0f;
-            float leftForward = 0f;
+            // 溜めができたところで構えを測る。打ち込むときは反対の肩と拳を引く。
             float deadline = Time.realtimeSinceStartup + 3f;
-            while (Time.realtimeSinceStartup < deadline)
-            {
-                float r = Vector3.Distance(fistR.position, target);
-                if (r < bestRight)
-                {
-                    bestRight = r;
-                    Vector3 local = _attacker.transform.InverseTransformPoint(fistL.position);
-                    leftHeight = local.y;
-                    leftForward = local.z;
-                }
-
-                if (bestRight < 0.30f)
-                    break;
-
+            while (_attacker.Phase == EnemyPhase.Windup && _attacker.WindupProgress < 0.35f &&
+                   Time.realtimeSinceStartup < deadline)
                 yield return null;
-            }
 
+            Assert.AreEqual(EnemyPhase.Windup, _attacker.Phase);
+            Assert.GreaterOrEqual(_attacker.WindupProgress, 0.35f);
+            Vector3 offHand = _attacker.transform.InverseTransformPoint(fistL.position);
             Vector3 hip = _attacker.transform.InverseTransformPoint(figure.HipBone(false).position);
 
-            Assert.Greater(leftForward, 0.20f, "打たない腕は胴の前（拳を構える位置）へ出すこと");
-            Assert.Greater(leftHeight - hip.y, 0.25f, "打たない腕は腰まで下ろさず、胸の高さに構えること");
+            Assert.Greater(offHand.z - hip.z, 0.20f, "打たない腕は溜めで胴の前へ出すこと");
+            Assert.Greater(offHand.y - hip.y, 0.12f, "打たない腕は腰の高さまで下げないこと");
             Assert.Greater(Vector3.Distance(fistL.position, target), 0.45f,
                 "打たない腕は狙いへ届かせない（両手で押している画になる）");
         }

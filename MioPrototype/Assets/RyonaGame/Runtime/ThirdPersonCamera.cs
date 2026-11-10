@@ -411,7 +411,7 @@ namespace Ryona.Game
             }
 
             Vector3 pivot = new Vector3(
-                Mathf.Clamp(_beltX, minX, maxX),
+                _beltX,
                 height,
                 0f);
 
@@ -547,7 +547,7 @@ namespace Ryona.Game
 
         /// <summary>
         /// 画面の中心を一時的に指定した X へ寄せる（腹パン演出でプレイヤーを中央に置く）。
-        /// <see cref="BeltScreenLock"/> の範囲内の X を渡すこと。時間は実時間で数える。
+        /// 演出中はステージ端で制限する。時間は実時間で数える。
         /// </summary>
         public void PushFocus(float x, float seconds, float pitchOffset = 0f, float yawOffset = 0f)
         {

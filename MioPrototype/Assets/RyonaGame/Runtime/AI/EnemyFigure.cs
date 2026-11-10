@@ -94,7 +94,7 @@ namespace Ryona.Game
         float _hipsX;   // 軸足側への体重移動（横歩きで足だけ滑って見えるのを防ぐ）
         float _torsoPitch, _torsoYaw, _torsoRoll, _headPitch;
         float _armRPitch, _armLPitch, _elbowRAngle, _elbowLAngle;
-        Vector3 _shoulderLRest, _shoulderLOffset;
+        Vector3 _shoulderRRest, _shoulderLRest, _shoulderROffset, _shoulderLOffset;
 
         /// <summary>手首の折り（+ で拳が前へ）とひねり（前腕の軸まわり）。</summary>
         float _wristRBend, _wristLBend, _wristRTwist, _wristLTwist;
@@ -1309,6 +1309,22 @@ namespace Ryona.Game
                 wristR = 0f;
                 wristL = 0f;
             }
+            // Author the belly punch on the right, then mirror the whole pose for a left strike.
+            Vector3 shoulderROffset = Vector3.zero;
+            if (Brain != null && !Brain.IsTagFacePunch && Brain.UsesLeftPunch)
+            {
+                (armRPitch, armLPitch) = (armLPitch, armRPitch);
+                (armRSpread, armLSpread) = (-armLSpread, -armRSpread);
+                (elbowR, elbowL) = (elbowL, elbowR);
+                (wristR, wristL) = (wristL, wristR);
+                (twistR, twistL) = (-twistL, -twistR);
+                (legRPitch, legLPitch) = (legLPitch, legRPitch);
+                (kneeR, kneeL) = (kneeL, kneeR);
+                (shoulderROffset, shoulderLOffset) = (shoulderLOffset, shoulderROffset);
+                torsoYaw = -torsoYaw;
+                torsoRoll = -torsoRoll;
+                hipsX = -hipsX;
+            }
             // --- なめらかに適用 ---------------------------------------
             float k2 = instant ? 1f : 1f - Mathf.Exp(-14f * dt);
             _hipsY = Mathf.Lerp(_hipsY, hipsY, k2);
@@ -1322,6 +1338,7 @@ namespace Ryona.Game
             _armLPitch = Mathf.Lerp(_armLPitch, armLPitch, k2);
             _armRSpread = Mathf.Lerp(_armRSpread, armRSpread, k2);
             _armLSpread = Mathf.Lerp(_armLSpread, armLSpread, k2);
+            _shoulderROffset = Vector3.Lerp(_shoulderROffset, shoulderROffset, k2);
             _shoulderLOffset = Vector3.Lerp(_shoulderLOffset, shoulderLOffset, k2);
             _elbowRAngle = Mathf.Lerp(_elbowRAngle, elbowR, k2);
             _elbowLAngle = Mathf.Lerp(_elbowLAngle, elbowL, k2);
@@ -1351,6 +1368,7 @@ namespace Ryona.Game
             float headCounterYaw = Brain != null && Brain.IsTagFacePunch ? 0.90f : 0.25f;
             _head.localRotation = Quaternion.Euler(-_headPitch * 0.5f, -_torsoYaw * headCounterYaw, 0f);
             _shoulderR.localRotation = Quaternion.Euler(_armRPitch, 0f, _armRSpread);
+            _shoulderR.localPosition = _shoulderRRest + _shoulderROffset;
             _shoulderL.localPosition = _shoulderLRest + _shoulderLOffset;
             _shoulderL.localRotation = Quaternion.Euler(_armLPitch, 0f, _armLSpread);
             _elbowR.localRotation = Quaternion.Euler(-_elbowRAngle, 0f, 0f);
@@ -1440,7 +1458,8 @@ namespace Ryona.Game
             if (Brain != null && Brain.IsTagPunch && Brain.Zone == PunchZone.Body && Brain.Player != null)
             {
                 float gap = Vector3.Dot(Brain.Player.transform.position - transform.position, transform.forward);
-                lunge = Mathf.Clamp(gap - 0.50f, 0f, lunge);
+                // 左向きの構図では打ち手が手前に入る。顔の前まで上体を運ばず、拳を伸ばして届かせる。
+                lunge = Mathf.Clamp(gap - 0.70f, 0f, lunge);
                 if (phase == EnemyPhase.Recover && _swingTime >= 0f)
                     drive = 1f - Mathf.SmoothStep(0f, 1f, (_swingTime - 0.20f) / 0.17f);
             }
@@ -1864,7 +1883,8 @@ namespace Ryona.Game
                 new Vector3(h * 0.030f, h * 0.007f, h * 0.012f), visor);
             Blob("Nose", _head, new Vector3(0f, h * 0.055f, h * 0.060f),
                 new Vector3(h * 0.020f, h * 0.020f, h * 0.022f), skin);
-            _shoulderR = Child("ShoulderR", _chest, new Vector3(shoulderX, shoulderY, 0f));
+            _shoulderRRest = new Vector3(shoulderX, shoulderY, 0f);
+            _shoulderR = Child("ShoulderR", _chest, _shoulderRRest);
             _shoulderLRest = new Vector3(-shoulderX, shoulderY, 0f);
             _shoulderL = Child("ShoulderL", _chest, _shoulderLRest);
             _elbowR = Arm(_shoulderR, upperArm, lowerArm, h, armor, joint, true);

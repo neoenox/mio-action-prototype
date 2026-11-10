@@ -62,29 +62,29 @@ namespace Ryona.Game
 
         [Header("Camera")]
         [Tooltip("腹パン中のカメラ距離倍率（1 未満で寄る）。0.30 で約 1.6m（基本距離 5.2m × 0.30）")]
-        public float CameraDistanceScale = 0.30f;
+        public float CameraDistanceScale = 0.32f;
 
         [Tooltip("腹パン中のピボット上下（正で上がる）。脚を切って腹と顔を入れる高さ")]
         public float CameraPivotOffset = 0.34f;
 
         [Tooltip("腹パン中の俯角オフセット（負で見上げる）")]
-        public float CameraPitchOffset = -12f;
+        public float CameraPitchOffset = -18f;
 
         [Tooltip("腹パン中のヨーオフセット（負で彼女の正面側へ回り込み、顔が見える）。殴る腕が体の奥に隠れない角度にする")]
-        public float CameraYawOffset = -35f;
+        public float CameraYawOffset = -23f;
 
         [Header("Camera (face)")]
         [Tooltip("顔面パンチ中のカメラ距離倍率（1 未満で寄る）")]
-        public float FaceCameraDistanceScale = 0.28f;
+        public float FaceCameraDistanceScale = 0.31f;
 
         [Tooltip("顔面パンチ中のピボット上下。顔と拳が同じ画に入る高さ")]
         public float FaceCameraPivotOffset = 0.50f;
 
         [Tooltip("顔面パンチ中の俯角オフセット。見上げ気味にすると顔が見える")]
-        public float FaceCameraPitchOffset = -6f;
+        public float FaceCameraPitchOffset = -11f;
 
         [Tooltip("顔面パンチ中のヨーオフセット。腹パンと同程度に回り込んで、彼女の顔と拳を同時に見せる")]
-        public float FaceCameraYawOffset = -40f;
+        public float FaceCameraYawOffset = -50f;
 
         [Header("Aim")]
         [Tooltip("腹パン役を立たせる、プレイヤーの腹からの前方距離（m）。離して踏み込ませると拳の移動が見える")]
@@ -123,6 +123,8 @@ namespace Ryona.Game
         /// <summary>腹パンのコンボ中か（投げが決まってから打数を数え終わるまで）。</summary>
         public bool IsPerforming => _phase == Phase.Combo;
         internal bool IsFaceCombo => IsPerforming && _comboZone == PunchZone.Face;
+        internal bool IsBodyCombo => IsPerforming && _comboZone == PunchZone.Body;
+        internal EnemyBrain BellyPuncher => DreadEnemy != null ? DreadEnemy : _thrower;
 
         public bool IsThrowIncoming => _phase != Phase.Combo && _thrower != null &&
             _thrower.isActiveAndEnabled &&

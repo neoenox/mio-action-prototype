@@ -18,6 +18,9 @@ namespace Ryona.Game
         float ZonePitch => _comboZone == PunchZone.Face ? FaceCameraPitchOffset : CameraPitchOffset;
 
         float ZoneYaw => _comboZone == PunchZone.Face ? FaceCameraYawOffset : CameraYawOffset;
+        float FacingSign => _stats.transform.forward.x < -0.1f ? -1f : 1f;
+        float FocusX => _stats.transform.position.x
+            + FacingSign * (_comboZone == PunchZone.Face ? 0.38f : 0.18f);
 
         /// <summary>当たった瞬間だけ少し寄る（顔面パンチの衝撃を画で押す）。</summary>
         float EffectiveDistanceScale =>
@@ -69,7 +72,7 @@ namespace Ryona.Game
             _camera.PushPivot(pivot, hold);
 
             float yaw = FocusYaw();
-            _camera.PushFocus(_stats.transform.position.x, hold, ZonePitch, yaw);
+            _camera.PushFocus(FocusX, hold, ZonePitch, yaw);
 
             // ヒット時に押した値だけ出す（毎フレームの保持はログに出さない）
             if (hold >= 1.5f)
@@ -89,15 +92,13 @@ namespace Ryona.Game
                 return;
 
             _camera.HoldFocus(EffectiveDistanceScale, ComboCameraPivot,
-                _stats.transform.position.x, 0.5f, CameraPitchOffset, FocusYaw());
+                FocusX, 0.5f, ZonePitch, FocusYaw());
         }
 
-        /// <summary>腹パン中に回り込む向き。左向きのときに背中側へ回らないよう符号を合わせる。</summary>
+        /// <summary>左右どちらでも澪の正面側から撮る。</summary>
         float FocusYaw()
         {
-            float facing = _stats.transform.forward.x;
-            float sign = Mathf.Abs(facing) > 0.1f ? Mathf.Sign(facing) : 1f;
-            return ZoneYaw * sign;
+            return ZoneYaw * FacingSign;
         }
 
         bool ResolveCamera()

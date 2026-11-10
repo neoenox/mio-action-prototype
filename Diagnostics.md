@@ -50,6 +50,7 @@
 | `-holdright` / `-holdmove` | 右へ歩き続ける（波の進行確認） |
 | `-holdmash` | もがき入力を自動で入れる |
 | `-grappletest [-holdmash] [-grappleback\|-grapplefront\|-grappleside]` | 数秒ごとに最寄りの敵を彼女の**背後 1m**（既定）に立たせて掴みを指示する。後ろ拘束は時間切れで解けない。付けなければ **1.6 秒後に腹パン5連続 → くの字 → 3 秒のクールタイム → また 5 連続**を、**振りほどく（`-holdmash`）まで繰り返す**。`-grapplefront` は「正面からでは掴めない」ことの確認用（掴みは背後からのみ成立する）。掴まれている間は `[GrappleContact]` を 0.25 秒ごとに出力（敵ローカル座標で手首・胸・肩・彼女の両手） |
+| `-grappleleft` | `-grappletest` で澪を左向きにして拘束させる。左向きの演出カメラを確認する用途 |
 | `-heldpunchshot=<png>` | 腹パン演出の開始 0.12 秒後を撮影（`-grappletest` と併用） |
 | `-heldpunchshotdelay=<秒>` | `-heldpunchshot` の撮影をコンボ開始から指定の秒数だけ遅らせる（既定 0.12 秒） |
 | `-heldpunchburst=<png>` | 最初のコンボ開始から実時間 0.05 秒ごとに 30 枚を連番で保存して終了（`-grappletest` と併用） |

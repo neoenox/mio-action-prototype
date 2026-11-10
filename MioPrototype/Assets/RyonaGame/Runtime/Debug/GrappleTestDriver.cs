@@ -68,6 +68,7 @@ namespace Ryona.Game
         /// <summary>押さえつけ開始から撮影までの秒数（<c>-pinshotdelay=</c>）。</summary>
         float _pinShotDelaySeconds = 0.30f;
         bool _once;
+        bool _faceLeft;
         bool _grabbedOnce;
         bool _hitAfterThrowOnly;
         bool _holdFinished;
@@ -80,6 +81,7 @@ namespace Ryona.Game
             bool front = false;
             bool back = false;
             bool once = false;
+            bool faceLeft = false;
             bool hitAfterThrow = false;
             string hitShotPath = null;
             string heldPunchShotPath = null;
@@ -130,6 +132,8 @@ namespace Ryona.Game
                 }
                 else if (string.Equals(a, "-grappletest", System.StringComparison.OrdinalIgnoreCase))
                     wanted = true;
+                else if (string.Equals(a, "-grappleleft", System.StringComparison.OrdinalIgnoreCase))
+                    faceLeft = true;
                 else if (string.Equals(a, "-grappleside", System.StringComparison.OrdinalIgnoreCase))
                     side = true;
                 else if (string.Equals(a, "-grapplefront", System.StringComparison.OrdinalIgnoreCase))
@@ -178,6 +182,7 @@ namespace Ryona.Game
             driver._tagCam = tagCam;
             driver._tagCamFlip = tagCamFlip;
             driver._once = once;
+            driver._faceLeft = faceLeft;
             driver._hitAfterThrowOnly = hitAfterThrow;
         }
 
@@ -285,6 +290,9 @@ namespace Ryona.Game
 
             if (target == null)
                 return;
+
+            if (_faceLeft)
+                _player.transform.rotation = Quaternion.LookRotation(Vector3.left);
 
             // 正面 1m（-grappleside なら右真横 1m）に立たせて、掴みを指示する
             Vector3 forward = _player.transform.forward;
