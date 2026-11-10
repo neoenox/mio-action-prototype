@@ -78,14 +78,20 @@ namespace Ryona.Tests
         {
             yield return Load();
 
+            // 彼女のリグ（VRM 読み込み後に組み上がる）が出来てから測る。
+            // 読み込み途中のリグを掴むと、腕の位置が実際と違って「肘が内側」に見える。
             float rigDeadline = Time.realtimeSinceStartup + 8f;
-            var rig = _player.GetComponentInChildren<ProceduralRig>();
-            while (rig == null && Time.realtimeSinceStartup < rigDeadline)
+            CharacterAnimator anim = null;
+            while (Time.realtimeSinceStartup < rigDeadline)
             {
+                anim = _player.GetComponentInChildren<CharacterAnimator>();
+                if (anim != null && anim.Rig != null && anim.Rig.Ready)
+                    break;
                 yield return null;
-                rig = _player.GetComponentInChildren<ProceduralRig>();
             }
-            Assert.IsNotNull(rig);
+            Assert.IsTrue(anim != null && anim.Rig != null && anim.Rig.Ready,
+                "彼女のリグが組み上がらない（VRM の読み込み待ちで時間切れ）");
+            var rig = anim.Rig;
             var figure = _captor.GetComponent<EnemyFigure>();
 
             _captor.enabled = true;
