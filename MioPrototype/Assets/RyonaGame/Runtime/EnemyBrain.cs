@@ -407,6 +407,8 @@ namespace Ryona.Game
             ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.40f, 0.86f, WindupProgress))
             : 1f;
         internal bool HoldsBellyPunchGuard { get; set; }
+        internal bool KeepsBellyPunchArm => HoldsBellyPunchGuard && !IsTagFacePunch
+            && (IsBellyPunch || Phase == EnemyPhase.Recover || Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe);
 
         /// <summary>
         /// この一振りがタッグ技（腹 / 顔）か。見た目側が片手打ちの姿勢を組むのに使う。
