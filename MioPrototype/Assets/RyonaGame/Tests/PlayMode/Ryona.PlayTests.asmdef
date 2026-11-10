@@ -4,6 +4,7 @@
     "references": [
         "Ryona.Core",
         "Ryona.Game",
+        "Unity.InputSystem",
         "VRM10",
         "UniGLTF",
         "UniGLTF.Utils",

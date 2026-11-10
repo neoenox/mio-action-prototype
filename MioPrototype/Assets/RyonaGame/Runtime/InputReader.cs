@@ -268,6 +268,21 @@ namespace Ryona.Game
 #endif
         }
 
+        /// <summary>縦のマウスホイール入力。上が正、下が負。</summary>
+        public static float ScrollDelta()
+        {
+#if ENABLE_INPUT_SYSTEM
+            var mouse = UnityEngine.InputSystem.Mouse.current;
+            if (mouse != null)
+                return mouse.scroll.ReadValue().y;
+#endif
+#if ENABLE_LEGACY_INPUT_MANAGER
+            return Input.mouseScrollDelta.y;
+#else
+            return 0f;
+#endif
+        }
+
         /// <summary>押さえつけの確認用（P キー）。新 Input System 専用。</summary>
         public static bool PinTestPressed()
         {

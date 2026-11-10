@@ -27,6 +27,9 @@ namespace Ryona.Game
         [Tooltip("ベルトアクション用の固定カメラ。マウスでは回さず、ステージ軸（X）に沿ってだけ追う")]
         public bool BeltMode = true;
 
+        [Tooltip("移動中や戦闘中に敵が見切れすぎないよう、ベルトカメラの手動ズームをここまでにする（m）")]
+        public float BeltMinZoomDistance = 3.8f;
+
         [Tooltip("見下ろし角。0 で真横、大きいほど俯瞰")]
         public float BeltPitch = 18f;
 
@@ -146,6 +149,7 @@ namespace Ryona.Game
 
         float _yaw;
         float _pitch = 10f;
+        float _initialDistance;
         float _targetDistance;
         Vector3 _smoothPivot;
         readonly RaycastHit[] _hits = new RaycastHit[8];
@@ -218,6 +222,7 @@ namespace Ryona.Game
                 Debug.Log($"[Cam] Distance={Distance:F2}");
 
             _beltX = Target != null ? Target.position.x : transform.position.x;
+            _initialDistance = Distance;
             _targetDistance = Distance;
             _smoothPivot = Pivot();
         }
@@ -235,6 +240,10 @@ namespace Ryona.Game
 
             if (Target == null)
                 return;
+
+            float scroll = InputReader.ScrollDelta();
+            if (scroll != 0f)
+                SetDistance(Distance * Mathf.Pow(0.90f, scroll));
 
             // 固定カメラ（ベルト）: マウスでは回さない。
             if (BeltMode)
@@ -346,7 +355,13 @@ namespace Ryona.Game
                 ? 1f - Mathf.Exp(-13f * Time.unscaledDeltaTime) : 1f;
             _shotPosition = Vector3.Lerp(_shotPosition, _cinematicPosition, follow);
             _shotTarget = Vector3.Lerp(_shotTarget, _cinematicTarget, follow);
-            transform.SetPositionAndRotation(_shotPosition, Quaternion.LookRotation(_shotTarget - _shotPosition));
+            // 固定ショットも、狙いと角度を保ったままホイールで距離を変える。
+            Vector3 offset = _shotPosition - _shotTarget;
+            float zoom = Distance / Mathf.Max(0.01f, _initialDistance);
+            Vector3 zoomedOffset = zoom < 1f
+                ? Vector3.ClampMagnitude(offset, Mathf.Max(0.75f, offset.magnitude * zoom))
+                : offset * zoom;
+            transform.SetPositionAndRotation(_shotTarget + zoomedOffset, Quaternion.LookRotation(-offset));
             _cinematicActive = true;
             _cinematicRequested = false;
         }
@@ -464,10 +479,11 @@ namespace Ryona.Game
             _downBlend = Mathf.MoveTowards(_downBlend, down ? 1f : 0f, step);
         }
 
-        /// <summary>被弾時に一時的に寄るための距離指定。</summary>
+        /// <summary>ホイールなどで指定する基本のカメラ距離。</summary>
         public void SetDistance(float distance)
         {
-            Distance = Mathf.Clamp(distance, MinDistance, MaxDistance);
+            float minimum = BeltMode ? Mathf.Max(MinDistance, BeltMinZoomDistance) : MinDistance;
+            Distance = Mathf.Clamp(distance, Mathf.Min(minimum, MaxDistance), MaxDistance);
         }
 
         /// <summary>演出で掛かっている距離倍率（1 が通常）。</summary>

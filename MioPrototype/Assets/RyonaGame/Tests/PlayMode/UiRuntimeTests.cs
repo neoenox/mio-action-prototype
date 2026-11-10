@@ -3,6 +3,7 @@ using System.Reflection;
 using NUnit.Framework;
 using Ryona.Game;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.TestTools;
 using UnityEngine.UI;
 
@@ -104,6 +105,70 @@ namespace Ryona.Tests
 
             Assert.AreEqual(1f, Time.timeScale, 1e-4f, "開始しても時間が戻っていない");
             Assert.IsTrue(gate == null, "タイトルが消えていない");
+        }
+
+        [UnityTest]
+        public IEnumerator ホイールで通常時と演出中のカメラをズームできる()
+        {
+            yield return TestScene.LoadPrototype();
+            var camera = Camera.main.GetComponent<ThirdPersonCamera>();
+            var settings = InputSystem.settings;
+            var background = settings.backgroundBehavior;
+            var editorInput = settings.editorInputBehaviorInPlayMode;
+            settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus;
+            settings.editorInputBehaviorInPlayMode =
+                InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
+            var mouse = InputSystem.AddDevice<Mouse>();
+            try
+            {
+                float distance = camera.Distance;
+                float depth = Mathf.Abs(camera.transform.position.z);
+                const float tick = 1f;
+                InputSystem.QueueDeltaStateEvent(mouse.scroll, Vector2.up * tick);
+                InputSystem.Update();
+                yield return null;
+
+                Assert.Less(camera.Distance, distance, "上に回すと寄る");
+                Assert.Less(Mathf.Abs(camera.transform.position.z), depth, "描画位置にも反映される");
+
+                camera.HoldFocus(0.4f, 0f, camera.Target.position.x, 2f);
+                yield return null;
+                yield return null;
+                float focusedDepth = Mathf.Abs(camera.transform.position.z);
+                InputSystem.QueueDeltaStateEvent(mouse.scroll, Vector2.down * tick);
+                InputSystem.Update();
+                yield return null;
+
+                Assert.IsTrue(camera.IsFocusing);
+                Assert.That(camera.Distance, Is.EqualTo(distance).Within(0.001f), "下に回すと元の距離に戻る");
+                Assert.Greater(Mathf.Abs(camera.transform.position.z), focusedDepth, "演出中も引ける");
+
+                camera.HoldFocus(1f, 0f, 0f, 0f);
+                Vector3 shotTarget = camera.Target.position + Vector3.up;
+                Vector3 shotPosition = shotTarget + Vector3.back * 2f;
+                Call(camera, "RequestCinematicShot", shotPosition, shotTarget, true);
+                InputSystem.QueueDeltaStateEvent(mouse.scroll, Vector2.up * tick);
+                InputSystem.Update();
+                yield return null;
+                Assert.That(Vector3.Distance(camera.transform.position, shotTarget), Is.EqualTo(1.8f).Within(0.001f),
+                    "マウントの固定ショットも狙いを保ったまま寄る");
+
+                InputSystem.QueueDeltaStateEvent(mouse.scroll, Vector2.down * tick * 40f);
+                InputSystem.Update();
+                yield return null;
+                Assert.That(camera.Distance, Is.EqualTo(camera.MaxDistance));
+
+                InputSystem.QueueDeltaStateEvent(mouse.scroll, Vector2.up * tick * 40f);
+                InputSystem.Update();
+                yield return null;
+                Assert.That(camera.Distance, Is.EqualTo(camera.BeltMinZoomDistance));
+            }
+            finally
+            {
+                InputSystem.RemoveDevice(mouse);
+                settings.editorInputBehaviorInPlayMode = editorInput;
+                settings.backgroundBehavior = background;
+            }
         }
 
         // --- ポーズ -------------------------------------------------------------
