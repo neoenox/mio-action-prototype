@@ -128,6 +128,8 @@ namespace Ryona.Game
                 gameObject.AddComponent<PinHoldPose>();
             if (GetComponent<BearHugPose>() == null)
                 gameObject.AddComponent<BearHugPose>();
+            if (GetComponent<OverheadHoldPose>() == null)
+                gameObject.AddComponent<OverheadHoldPose>();
             // 最初のフレームから正しい立ち姿勢にしておく
             // （補間値が 0 のままだと 1 フレームだけ体が潰れて見える）
             Step(0f, true);
@@ -1200,6 +1202,18 @@ namespace Ryona.Game
                 kneeR += 10f;
                 kneeL += 10f;
 
+                // 壁押さえつけは、壁へ体重を預けて押し込む。上体を起こしたまま前へ出る。
+                if (Brain.IsWallPinning)
+                {
+                    torsoPitch += 9f;
+                    hipsZ += 0.06f;
+                    float reachDown = pin != null ? pin.WallSlideWeight * pin.WallGripWeight : 0f;
+                    hipsY -= 0.14f * reachDown;
+                    torsoPitch += 17f * reachDown;
+                    kneeR += 22f * reachDown;
+                    kneeL += 22f * reachDown;
+                }
+
                 // 膝蹴り。カメラ側の脚で入れる（奥の脚だと彼の体に隠れて見えない）。
                 float knee = pin != null ? pin.KneePulse : 0f;
                 if (knee > 0f)
@@ -1324,6 +1338,49 @@ namespace Ryona.Game
                 torsoYaw = -torsoYaw;
                 torsoRoll = -torsoRoll;
                 hipsX = -hipsX;
+            }
+            if (Brain != null && Brain.IsWallPinning && holdState != null)
+            {
+                float progress = Mathf.SmoothStep(0f, 1f, holdState.WallPhaseProgress);
+                if (holdState.WallPhase == PlayerGrapple.WallStage.Throw)
+                {
+                    torsoPitch = 18f * progress;
+                    armRPitch = armLPitch = Mathf.Lerp(-48f, -72f, progress);
+                    elbowR = elbowL = Mathf.Lerp(65f, 22f, progress);
+                    armRSpread = -12f;
+                    armLSpread = 12f;
+                }
+                else if (holdState.IsWallToss)
+                {
+                    float side = holdState.WallTossSide;
+                    if (holdState.WallPhase == PlayerGrapple.WallStage.TossWindup)
+                    {
+                        torsoYaw = -side * 24f * progress;
+                        torsoPitch = Mathf.Lerp(9f, -6f, progress);
+                        hipsY -= 0.08f * progress;
+                    }
+                    else
+                    {
+                        float follow = holdState.WallPhase == PlayerGrapple.WallStage.TossAir
+                            ? 1f - progress : 0f;
+                        torsoYaw = side * 42f * follow;
+                        torsoPitch = 16f * follow;
+                        armRPitch = armLPitch = Mathf.Lerp(-18f, -75f, follow);
+                        armRSpread = -12f - side * 32f * follow;
+                        armLSpread = 12f - side * 32f * follow;
+                        elbowR = elbowL = Mathf.Lerp(44f, 15f, follow);
+                    }
+                }
+                else if (holdState.WallPhase == PlayerGrapple.WallStage.Slam ||
+                    holdState.WallPhase == PlayerGrapple.WallStage.Lean)
+                {
+                    // 壁に当たったら手を離し、ずり落ちる間に腕を下ろす。
+                    float release = holdState.WallPhase == PlayerGrapple.WallStage.Slam
+                        ? progress * 0.55f : Mathf.Lerp(0.55f, 1f, progress);
+                    torsoPitch = Mathf.Lerp(18f, 6f, release);
+                    armRPitch = armLPitch = Mathf.Lerp(-72f, -14f, release);
+                    elbowR = elbowL = Mathf.Lerp(22f, 42f, release);
+                }
             }
             // --- なめらかに適用 ---------------------------------------
             float k2 = instant ? 1f : 1f - Mathf.Exp(-14f * dt);
@@ -2626,6 +2683,39 @@ namespace Ryona.Game
                 _targetRig.LUpperArm == null || _targetRig.RUpperArm == null)
                 return;
 
+            if (hold.IsWallTransition)
+            {
+                if (hold.WallPhase == PlayerGrapple.WallStage.Grab ||
+                    hold.WallPhase == PlayerGrapple.WallStage.Rise)
+                {
+                    Solve(false, _targetRig.LUpperArm, _targetRig.LLowerArm, _targetRig.LHand, 0f);
+                    Solve(true, _targetRig.RUpperArm, _targetRig.RLowerArm, _targetRig.RHand, 0f);
+                }
+                if (_camera == null)
+                    _camera = FindFirstObjectByType<ThirdPersonCamera>();
+                if (_camera != null)
+                {
+                    Vector3 player = _brain.Player.transform.position;
+                    Vector3 target = new Vector3(player.x, 1.02f - 0.19f * hold.WallSlideWeight,
+                        (player.z + hold.WallFaceZ - 0.4f) * 0.5f);
+                    float close = hold.WallPhase == PlayerGrapple.WallStage.Restrain
+                        ? Mathf.SmoothStep(0f, 1f, hold.WallPhaseProgress) : 0f;
+                    Vector3 offset = Vector3.Lerp(new Vector3(-2.75f, 0.48f, -1.35f),
+                        new Vector3(-2.25f, 0.47f, -1.75f), close);
+                    if (hold.IsWallToss)
+                    {
+                        float wide = hold.WallPhase == PlayerGrapple.WallStage.TossWindup
+                            ? hold.WallTossLower : 1f;
+                        target = Vector3.Lerp(player, transform.position, 0.40f);
+                        target.y = transform.position.y + Mathf.Lerp(1.02f, 0.86f, wide);
+                        offset = Vector3.Lerp(new Vector3(-2.25f, 0.47f, -1.75f),
+                            new Vector3(-2.70f, 0.52f, -2.20f), wide);
+                    }
+                    _camera.RequestCinematicShot(target + offset, target);
+                }
+                return;
+            }
+
             // 折れた胴に沿って腹の正面を取り直し、膝頭の表面が当たる位置に関節を置く。
             if (hold.KneePulse > 0f && _targetRig.Spine != null && _targetRig.Chest != null)
             {
@@ -2643,8 +2733,11 @@ namespace Ryona.Game
 
             // 彼は彼女と正面で向かい合っている。彼の右手は彼女の左腕、左手は右腕を掴む。
             // 同じ側（右→右）にすると腕が交差して「左右が逆」に見える（実測）。
-            Solve(false, _targetRig.LUpperArm, _targetRig.LLowerArm, _targetRig.LHand, hold.GrabContactWeight);
-            Solve(true, _targetRig.RUpperArm, _targetRig.RLowerArm, _targetRig.RHand, hold.GrabContactWeight);
+            if (!hold.IsWallPin)
+            {
+                Solve(false, _targetRig.LUpperArm, _targetRig.LLowerArm, _targetRig.LHand, hold.GrabContactWeight);
+                Solve(true, _targetRig.RUpperArm, _targetRig.RLowerArm, _targetRig.RHand, hold.GrabContactWeight);
+            }
 
             // もがかれるほど彼女の肩が浮く（押し返されている）。手は毎フレーム腕を追う。
             _lift = 0.12f * Mathf.Clamp01(hold.Progress);
@@ -2655,6 +2748,22 @@ namespace Ryona.Game
                 _camera = FindFirstObjectByType<ThirdPersonCamera>();
             if (_camera != null)
             {
+                // 壁押さえつけは、部屋側（-Z）から斜めに覗く固定ショット。
+                // レーンのカメラのままだと、壁が奥に隠れて「押し付けている」ことが読めない。
+                if (hold.IsWallPin)
+                {
+                    Transform pinned = _brain.Player.transform;
+                    Vector3 her = pinned.position + Vector3.up * 1.02f;
+                    Vector3 him = transform.position + Vector3.up * 1.02f;
+                    Vector3 mid = Vector3.Lerp(her, him, 0.45f);
+                    float knee = Mathf.SmoothStep(0f, 1f, hold.KneePulse);
+                    Vector3 offset = Vector3.Lerp(
+                        new Vector3(-2.25f, 0.47f, -1.75f),
+                        new Vector3(-1.35f, 0.32f, -1.65f), knee);
+                    _camera.RequestCinematicShot(mid + offset, mid);
+                    return;
+                }
+
                 if (hold.KneePulse > 0f)
                     _kneeCamUntil = Time.time + 0.30f;
 
@@ -2878,6 +2987,119 @@ namespace Ryona.Game
 
             ProceduralRig.SolveTwoBone(upper, elbow, wrist, behind + outward * spread, pole, player.up);
             EnemyFigure.SettleElbowHinge(upper, elbow, wrist);
+        }
+    }
+
+    /// <summary>
+    /// 頭上拘束。背後から彼女の両手首を掴み、頭の上へ固定する。
+    /// 彼女の腕は <see cref="CharacterAnimator"/> が頭上へ IK する。こちらは
+    /// 相手（押さえ役）の両腕を、その手首へ毎フレーム合わせる。
+    /// </summary>
+    [DefaultExecutionOrder(21000)]
+    public sealed class OverheadHoldPose : MonoBehaviour
+    {
+        EnemyFigure _figure;
+        EnemyBrain _brain;
+        ProceduralRig _targetRig;
+
+        bool _log;
+        float _logAt;
+
+        void Awake()
+        {
+            foreach (string a in System.Environment.GetCommandLineArgs())
+            {
+                if (string.Equals(a, "-overheadlog", System.StringComparison.OrdinalIgnoreCase))
+                    _log = true;
+            }
+        }
+
+        void LateUpdate()
+        {
+            if (_figure == null) _figure = GetComponent<EnemyFigure>();
+            if (_brain == null) _brain = GetComponent<EnemyBrain>();
+            if (_figure == null || _brain == null || _brain.Player == null)
+                return;
+
+            var hold = _brain.Player.GetComponent<PlayerGrapple>();
+            if (hold == null || !hold.IsGrappled || hold.Captor != _brain ||
+                !hold.IsWallPin)
+                return;
+
+            if (_targetRig == null)
+                _targetRig = _brain.Player.GetComponentInChildren<ProceduralRig>();
+            if (_targetRig == null || !_targetRig.Ready ||
+                _targetRig.LHand == null || _targetRig.RHand == null)
+                return;
+
+            // 壁へ寄る間に腕を上げ、押さえつけ中は手首に追従する。
+            float weight = hold.WallGripWeight;
+            if (weight <= 0f)
+                return;
+
+            float lift = hold.WallPhase == PlayerGrapple.WallStage.TossWindup
+                ? 1f - hold.WallTossLower : hold.WallRestraintWeight;
+            Solve(true, _targetRig.RHand, weight, lift);
+            Solve(false, _targetRig.LHand, weight, lift);
+
+            // 頭が壁側へ揺れた分は、敵が届いた位置へ澪の手首を寄せて接触を保つ。
+            if (weight >= 0.99f)
+            {
+                SettlePlayerWrist(_targetRig.LUpperArm, _targetRig.LLowerArm, _targetRig.LHand,
+                    _figure.WristBone(false), -_targetRig.transform.right);
+                SettlePlayerWrist(_targetRig.RUpperArm, _targetRig.RLowerArm, _targetRig.RHand,
+                    _figure.WristBone(true), _targetRig.transform.right);
+            }
+
+            if (_log && Time.time - _logAt > 0.25f)
+            {
+                _logAt = Time.time;
+                Vector3 head = _targetRig.Head != null ? _targetRig.Head.position : Vector3.zero;
+                Vector3 pl = _targetRig.LHand.position;
+                Vector3 pr = _targetRig.RHand.position;
+                Vector3 cl = _figure.WristBone(true).position;
+                Vector3 cr = _figure.WristBone(false).position;
+                Debug.Log($"[OverheadPose] w={weight:F2} headY={head.y:F2} " +
+                          $"playerL=({pl.x:F2},{pl.y:F2},{pl.z:F2}) playerR=({pr.x:F2},{pr.y:F2},{pr.z:F2}) " +
+                          $"captorL=({cl.x:F2},{cl.y:F2},{cl.z:F2}) captorR=({cr.x:F2},{cr.y:F2},{cr.z:F2})");
+            }
+
+        }
+
+        static void SettlePlayerWrist(Transform upper, Transform elbow, Transform hand,
+            Transform captorWrist, Vector3 outward)
+        {
+            if (elbow == null || captorWrist == null ||
+                (hand.position - captorWrist.position).sqrMagnitude <= 0.000625f)
+                return;
+
+            ProceduralRig.SolveTwoBone(upper, elbow, hand, captorWrist.position,
+                elbow.position + outward * 0.20f, outward);
+        }
+
+        /// <summary>相手の腕を彼女の手首へ。肘は外・上へ開く。</summary>
+        void Solve(bool left, Transform playerHand, float weight, float lift)
+        {
+            if (weight <= 0f)
+                return;
+
+            var upper = _figure.ShoulderBone(left);
+            var elbow = _figure.ElbowBone(left);
+            var wrist = _figure.WristBone(left);
+            if (upper == null || elbow == null || wrist == null || playerHand == null)
+                return;
+
+            Vector3 outward = transform.right * (left ? -1f : 1f);
+            Vector3 goal = playerHand.position;
+            Vector3 pole = upper.position + Vector3.up * Mathf.Lerp(-0.40f, 0.55f, lift) + outward * 0.45f;
+
+            Quaternion previousUpper = upper.rotation;
+            Quaternion previousElbow = elbow.rotation;
+            ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);
+            EnemyFigure.SettleElbowHinge(upper, elbow, wrist);
+            Quaternion aimedElbow = elbow.rotation;
+            upper.rotation = Quaternion.Slerp(previousUpper, upper.rotation, weight);
+            elbow.rotation = Quaternion.Slerp(previousElbow, aimedElbow, weight);
         }
     }
 

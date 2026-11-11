@@ -17,6 +17,9 @@ namespace Ryona.Game
         PlayerStats _player;
         float _autoAt = -1f;
 
+        /// <summary>壁の前へ移動してから指示する（<c>-wallpinnow</c>）。</summary>
+        bool _wall;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         static void InstallSceneHook()
         {
@@ -34,18 +37,26 @@ namespace Ryona.Game
                 return;
 
             bool auto = false;
+            bool wall = false;
             foreach (string a in System.Environment.GetCommandLineArgs())
             {
                 if (string.Equals(a, "-pinnow", System.StringComparison.OrdinalIgnoreCase))
                     auto = true;
+                else if (string.Equals(a, "-wallpinnow", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    auto = true;
+                    wall = true;
+                }
             }
 
             var go = new GameObject("Pin Hotkey");
             var hotkey = go.AddComponent<PinHotkey>();
+            hotkey._wall = wall;
             if (auto)
             {
                 hotkey._autoAt = Time.time + 1.5f;
-                Debug.Log("[Pin] -pinnow: 1.5 秒後に押さえつけを 1 回指示します");
+                Debug.Log($"[Pin] {(wall ? "-wallpinnow" : "-pinnow")}: " +
+                          "1.5 秒後に押さえつけを 1 回指示します");
             }
         }
 
@@ -74,6 +85,20 @@ namespace Ryona.Game
             {
                 Debug.Log("[Pin] ホットキー: すでに掴まれているので指示しない");
                 return;
+            }
+
+            if (_wall)
+            {
+                var site = WallPinSites.Nearest(_player.transform.position);
+                if (site != null)
+                {
+                    var place = _player.transform.position;
+                    place.x = site.CenterX;
+                    place.z = 0f;
+                    _player.transform.position = place;
+                    _player.transform.rotation = Quaternion.LookRotation(Vector3.right);
+                    Debug.Log($"[Pin] 壁の前へ移動 x={place.x:F2}");
+                }
             }
 
             // 一番近い敵を彼女の正面 1.0m へ立たせて、押さえつけを指示する。

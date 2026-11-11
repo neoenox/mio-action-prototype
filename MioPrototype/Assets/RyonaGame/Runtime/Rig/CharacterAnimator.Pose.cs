@@ -87,7 +87,47 @@ namespace Ryona.Game
                 _ => PoseDefaults(),
             };
 
+            // 壁から戻るあいだは掴みが解けて Idle などへ移っている。
+            // 壁の反りは重みで抜く（PoseGrabbed の中では膝蹴りの前後関係を保つため
+            // 先に掛けているので、二重に掛けない）。倒れ姿勢には掛けない。
+            if (_state != State.Grabbed && _state != State.Down && _state != State.GetUp
+                && Grapple != null)
+                ApplyWallBrace(ref pose, Grapple.WallPinWeight);
+
             ApplyPoseToRig(pose);
+        }
+
+        /// <summary>
+        /// 壁押さえつけの姿勢（背中を壁に付けて上体を反らせる）。
+        /// 前へ折れる通常の押さえつけと逆の形にする（折れると「壁に押し付けられた」に見えない）。
+        /// <para>
+        /// 状態ではなく <paramref name="weight"/> だけで効かせる。壁から戻るあいだは
+        /// 掴みが解けて <see cref="State.Grabbed"/> を離れているので、状態で切ると
+        /// 位置が戻りきる前に立ち姿勢へ戻って横滑りして見える（実測）。
+        /// </para>
+        /// </summary>
+        void ApplyWallBrace(ref PoseValues pose, float weight)
+        {
+            if (weight <= 0.001f)
+                return;
+
+            float w = Mathf.SmoothStep(0f, 1f, weight);
+
+            // 引き起こした高さで両手首を固定する。
+            pose.HipsOffset.y = Mathf.Lerp(pose.HipsOffset.y, -0.12f, w);
+            pose.HipsOffset.z = Mathf.Lerp(pose.HipsOffset.z, -0.04f, w);
+
+            // 反りは小さく。反らせすぎると頭が壁へ入る。
+            pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, -7f, w);
+            // 頭は反らせず、むしろ少しうつむかせる（首の付け根が壁へ残らない）。
+            pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, 6f, w);
+            pose.HeadRoll += 3f * w;
+
+            // 足は相手側（前）へ踏ん張る。押し込まれるほど前へ残る。
+            pose.FootL += new Vector3(0f, 0f, 0.06f * w);
+            pose.FootR += new Vector3(0f, 0f, 0.04f * w);
+            pose.FootPitchL += 10f * w;
+            pose.FootPitchR += 6f * w;
         }
 
         /// <summary>どの状態でも共通の初期値（立ち姿勢と構えの腕）。</summary>
@@ -605,6 +645,77 @@ namespace Ryona.Game
             float strain = Mathf.Clamp01(ramp * 0.6f + pulse * 0.55f) * pull;
             strain *= 1f - 0.8f * frontWait;
 
+            if (Grapple != null && Grapple.IsWallTransition)
+            {
+                float t = Mathf.SmoothStep(0f, 1f, Grapple.WallPhaseProgress);
+                var stage = Grapple.WallPhase;
+                pose.FootL += StanceFootL;
+                pose.FootR += StanceFootR;
+                pose.TorsoPitch = 8f;
+                pose.HeadPitch = 6f;
+                pose.HeadYaw = 0f;
+                pose.TorsoYaw = 0f;
+                pose.ArmLUpper = pose.ArmRUpper = new Vector3(0.50f, -0.20f, 0.55f);
+                pose.ArmLFore = pose.ArmRFore = new Vector3(-0.15f, 0.25f, 0.80f);
+                if (stage == PlayerGrapple.WallStage.Throw)
+                {
+                    float flight = Mathf.Sin(Mathf.PI * t);
+                    pose.TorsoPitch = -14f * flight - 8f * t;
+                    pose.HeadPitch = 12f * flight + 10f * t;
+                    pose.HipsOffset.y += 0.04f * flight;
+                    pose.FootL += new Vector3(0f, 0.12f * flight, -0.10f * flight);
+                    pose.FootR += new Vector3(0f, 0.08f * flight, -0.14f * flight);
+                    pose.ArmLUpper.y = pose.ArmRUpper.y = 0.20f;
+                }
+                else if (stage == PlayerGrapple.WallStage.TossWindup)
+                {
+                    pose.TorsoPitch = Mathf.Lerp(-7f, 12f, t);
+                    pose.HeadPitch = Mathf.Lerp(6f, 16f, t);
+                    pose.HipsOffset.y = -0.12f;
+                    pose.HipsOffset.z = -0.04f;
+                }
+                else if (stage == PlayerGrapple.WallStage.TossAir)
+                {
+                    float hang = Mathf.Sin(Mathf.PI * Grapple.WallPhaseProgress);
+                    pose.TorsoPitch = Mathf.Lerp(12f, 24f, t) - 31f * hang;
+                    pose.TorsoRoll = -Grapple.WallTossSide * 17f * hang;
+                    pose.HeadPitch = 12f + 9f * hang;
+                    pose.HipsOffset.y = -0.12f + 0.10f * hang;
+                    pose.FootL += new Vector3(0f, 0.12f * hang, 0.18f * t);
+                    pose.FootR += new Vector3(0f, 0.19f * hang, -0.12f * t);
+                    pose.ArmLUpper.x += 0.36f * hang;
+                    pose.ArmRUpper.x += 0.52f * hang;
+                }
+                else if (stage == PlayerGrapple.WallStage.TossLand)
+                {
+                    float absorb = Mathf.Sin(Mathf.PI * t);
+                    pose.TorsoPitch = Mathf.Lerp(24f, 6f, t) + 14f * absorb;
+                    pose.HeadPitch = Mathf.Lerp(12f, 4f, t);
+                    pose.HipsOffset.y = Mathf.Lerp(-0.12f, StanceHipsY, t) - 0.14f * absorb;
+                    pose.FootL.z += 0.18f;
+                    pose.FootR.z -= 0.12f;
+                }
+                else if (stage >= PlayerGrapple.WallStage.Slam)
+                {
+                    float slide = Grapple.WallSlideWeight;
+                    float lift = Grapple.WallRestraintWeight;
+                    float impact = stage == PlayerGrapple.WallStage.Slam ? Mathf.Sin(Mathf.PI * t) : 0f;
+                    pose.TorsoPitch = Mathf.Lerp(-8f, -2f, slide) - 10f * impact;
+                    pose.HeadPitch = Mathf.Lerp(Mathf.Lerp(10f, 6f, lift), 24f, slide) + 12f * impact;
+                    pose.HipsOffset.y -= Mathf.Lerp(0.06f, 0.38f, slide) + 0.04f * impact;
+                    pose.HipsOffset.z -= 0.04f + 0.05f * slide;
+                    float armsDrop = stage == PlayerGrapple.WallStage.Slam ? t : 1f;
+                    pose.ArmLUpper = pose.ArmRUpper = Vector3.Lerp(
+                        new Vector3(0.50f, 0.20f, 0.55f), new Vector3(0.30f, -0.75f, 0.10f), armsDrop);
+                    pose.ArmLFore = pose.ArmRFore = Vector3.Lerp(
+                        new Vector3(-0.15f, 0.25f, 0.80f), new Vector3(-0.10f, -0.75f, 0.45f), armsDrop);
+                    pose.HipsOffset.y -= 0.06f * lift;
+                    pose.FootL.z += 0.08f + 0.16f * slide;
+                    pose.FootR.z += 0.05f + 0.20f * slide;
+                }
+                return pose;
+            }
+
             // 掴まれた向きで姿勢を作り替える。背後は羽交い締め（Back）、
             // 正面の押さえつけ（Pin）、正面から胴を抱えるベアハッグ。
             if (Grapple != null && Grapple.Kind == GrappleKind.Back)
@@ -882,6 +993,10 @@ namespace Ryona.Game
             pose.ArmRUpper += new Vector3(0f, -0.16f * give, 0f);
             pose.ArmLFore += new Vector3(0f, -0.12f * give, 0f);
             pose.ArmRFore += new Vector3(0f, -0.12f * give, 0f);
+
+            // 壁押さえつけ: 背中を壁に付けて押されるので、上体を反らせて耐える。
+            // 膝蹴りより先に置くこと。後に置くと、膝で折れた上体をこの反りが打ち消す。
+            ApplyWallBrace(ref pose, Grapple != null ? Grapple.WallPinWeight : 0f);
 
             // 膝に押された腹を引き、みぞおちから上を前へ折る。足は一瞬だけ浮く。
             float knee = Grapple != null ? Grapple.KneePulse : 0f;
@@ -1646,6 +1761,49 @@ namespace Ryona.Game
             return pose;
         }
 
+        /// <summary>
+        /// 頭上拘束の腕IK。両手首を頭の上へ置く。
+        /// 伸びきらないよう、頭の中心から 0.32m 上を狙う（腕の長さの内側）。
+        /// </summary>
+        void SolveOverheadArms()
+        {
+            if (Rig.LUpperArm == null || Rig.LLowerArm == null || Rig.LHand == null ||
+                Rig.RUpperArm == null || Rig.RLowerArm == null || Rig.RHand == null ||
+                Rig.Head == null)
+                return;
+
+            // 拘束に入った直後は今の手首位置からブレンドする（腕が瞬間移動しない）。
+            float w = Grapple.WallRestraintWeight;
+
+            Vector3 head = Rig.Head.position + transform.forward * 0.09f;
+            Vector3 right = transform.right;
+            float half = 0.10f;
+            float lift = 0.24f;
+
+            Vector3 goalL = head + Vector3.up * lift - right * half;
+            Vector3 goalR = head + Vector3.up * lift + right * half;
+            if (Grapple.WallPhase == PlayerGrapple.WallStage.TossWindup && Rig.Chest != null)
+            {
+                Vector3 reach = Rig.Chest.position + transform.forward * 0.28f - Vector3.up * 0.12f
+                    + Vector3.right * (Grapple.WallTossSide * 0.16f);
+                goalL = Vector3.Lerp(goalL, reach - right * 0.18f, Grapple.WallTossLower);
+                goalR = Vector3.Lerp(goalR, reach + right * 0.18f, Grapple.WallTossLower);
+            }
+            goalL = Vector3.Lerp(Rig.LHand.position, goalL, w);
+            goalR = Vector3.Lerp(Rig.RHand.position, goalR, w);
+
+            // 肘は外へ開き、**少し後ろ**へ。前へ出すと腕が顔の前に来て表情が隠れる
+            // （実測: 正面寄りのカメラで腕が顔を覆った）。後ろへ逃がすと腕が頭の枠になる。
+            Vector3 poleBase = head + Vector3.up * 0.02f - transform.forward * 0.10f;
+            Vector3 poleL = poleBase - right * 0.50f;
+            Vector3 poleR = poleBase + right * 0.50f;
+
+            ProceduralRig.SolveTwoBone(Rig.LUpperArm, Rig.LLowerArm, Rig.LHand, goalL, poleL, right);
+            ProceduralRig.SolveTwoBone(Rig.RUpperArm, Rig.RLowerArm, Rig.RHand, goalR, poleR, right);
+            Rig.CurlFingers(true, 0.55f);
+            Rig.CurlFingers(false, 0.55f);
+        }
+
         /// <summary>組み立てた姿勢をリグへ流し込む（IK・倒れ・指・かかと）。</summary>
         void ApplyPoseToRig(PoseValues pose)
         {
@@ -1735,6 +1893,14 @@ namespace Ryona.Game
                 ArmDirection(true, pose.ArmLFore).normalized, pose.HandRollL);
             Rig.SetArm(false, ArmDirection(false, pose.ArmRUpper).normalized,
                 ArmDirection(false, pose.ArmRFore).normalized, pose.HandRollR);
+
+            // 頭上拘束は手首の位置そのものが見せ場なので、方向ベクトルではなく IK で
+            // 頭の上へ置く（前腕は方向ベクトルに反応しない。docs/GRAPPLE_NOTES.md §2）。
+            if (Grapple != null && !Grapple.IsHandingOff && Grapple.IsWallPin && Grapple.WallRestraintWeight > 0f
+                && _state == State.Grabbed)
+            {
+                SolveOverheadArms();
+            }
 
             if (pose.HandOffBrace > 0f && Grapple.Captor != null
                 && Grapple.Captor.TryGetComponent<EnemyFigure>(out var receiverFigure)

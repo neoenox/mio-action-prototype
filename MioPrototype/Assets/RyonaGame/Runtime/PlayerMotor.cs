@@ -31,6 +31,31 @@ namespace Ryona.Game
         [System.NonSerialized]
         public float BackLimitX = float.NegativeInfinity;
 
+        /// <summary>
+        /// レーン（奥行き）の一時的な上書き。壁押さえつけで壁へ押し出されている間だけ使う。
+        /// false のあいだは通常どおり <see cref="_laneZ"/> に固定する。
+        /// </summary>
+        [System.NonSerialized]
+        public bool HasLaneZOverride;
+
+        /// <summary>上書き中の Z。壁押さえつけの押し出しと戻りに使う。</summary>
+        [System.NonSerialized]
+        public float LaneZOverride;
+
+        public void SetLaneZOverride(float z)
+        {
+            HasLaneZOverride = true;
+            LaneZOverride = z;
+        }
+
+        public void ClearLaneZOverride()
+        {
+            HasLaneZOverride = false;
+        }
+
+        /// <summary>レーン（奥行き）の本来の Z。壁から戻すときの戻り先。</summary>
+        public float LaneZ => _laneZ;
+
         float _laneZ;
         CharacterController _controller;
         Vector3 _velocity;
@@ -157,7 +182,7 @@ namespace Ryona.Game
         void LateUpdate()
         {
             var position = transform.position;
-            position.z = _laneZ;
+            position.z = HasLaneZOverride ? LaneZOverride : _laneZ;
             transform.position = position;
         }
 
