@@ -379,11 +379,11 @@ namespace Ryona.Game
                 Quaternion aimed = Quaternion.FromToRotation(knee.position - hip.position, toBelly) * hip.rotation;
                 hip.rotation = Quaternion.Slerp(hip.rotation, aimed, weight);
                 Vector3 moved = belly - knee.position;
-                moved.y = Mathf.Clamp(moved.y, -0.10f, 0.02f);
+                moved.y = Mathf.Clamp(moved.y, -0.10f, 0.06f);
                 float flat = new Vector2(moved.x, moved.z).magnitude;
-                if (flat > 0.18f)
+                if (flat > 0.40f)
                 {
-                    float scale = 0.18f / flat;
+                    float scale = 0.40f / flat;
                     moved.x *= scale;
                     moved.z *= scale;
                 }
@@ -1271,7 +1271,7 @@ namespace Ryona.Game
                     // 持ち上げることになって彼が浮き上がる（実測）。しゃがんで膝を入れる。
                     bool wallKnee = Brain != null && Brain.IsWallPinning;
                     if (wallKnee)
-                        hipsY -= 0.30f * knee;
+                        hipsY -= 0.26f * knee;
                     hipsZ += (wallKnee ? 0f : 0.08f) * knee;
                     float raise = wallKnee ? 70f : 105f;
                     float swing = wallKnee ? -85f : -115f;
@@ -2767,7 +2767,15 @@ namespace Ryona.Game
             {
                 Vector3 spine = _targetRig.Spine.position;
                 Vector3 chest = _targetRig.Chest.position;
-                Vector3 front = Vector3.ProjectOnPlane(_brain.Player.transform.forward, chest - spine).normalized;
+                // 腹の正面。壁では**水平**に取る。胴の線（chest - spine）へ射影すると、
+                // 彼女が前傾しているときに狙いが下がり、膝が股間の高さへ落ちる（実測: 0.91m）。
+                // レーンの押さえつけは従来どおり胴の線基準（既存の合わせを変えない）。
+                Vector3 front = hold.IsWallPin
+                    ? Vector3.ProjectOnPlane(_brain.Player.transform.forward, Vector3.up)
+                    : Vector3.ProjectOnPlane(_brain.Player.transform.forward, chest - spine);
+                if (front.sqrMagnitude < 1e-4f)
+                    front = Vector3.ProjectOnPlane(_brain.Player.transform.forward, Vector3.up);
+                front.Normalize();
 
                 // 腹の表面。膝の関節（骨）ではなく**膝頭の球の表面**を当てる。
                 // 関節をそのまま表面に置くと、膝球の半径（h*0.039）ぶん腹へ入って
@@ -2778,7 +2786,13 @@ namespace Ryona.Game
                 float kneeRadius = _figure.Height * 0.039f;
                 const float squash = 0.015f;
                 float reach = hold.IsWallPin ? surface + kneeRadius - squash : surface;
-                Vector3 belly = Vector3.Lerp(spine, chest, 0.60f) + front * reach;
+
+                // 当てる高さ。腰（spine）の少し上を腹とする。spine と chest の間を
+                // そのまま使うと、前傾したときに股間の高さまで下がる（実測 0.91m）。
+                Vector3 axis = Vector3.Lerp(spine, chest, 0.60f);
+                if (hold.IsWallPin)
+                    axis.y = spine.y - 0.03f;
+                Vector3 belly = axis + front * reach;
 
                 var cam = Camera.main;
                 bool left = cam != null && Vector3.Dot(cam.transform.position - transform.position, transform.right) < 0f;
@@ -2796,6 +2810,7 @@ namespace Ryona.Game
                     Debug.Log($"[Knee] pulse={hold.KneePulse:F2} depth={depth:F3} pre={preDepth:F3} pen={penetration:F3} " +
                               $"reach={_figure.LastPinKneeReach:F3} shift={_figure.LastPinKneeShift:F3} " +
                               $"hipsY={_figure.HipsBone.position.y - transform.position.y:F2} " +
+                              $"kneeY={knee.y:F2} spineY={spine.y:F2} chestY={chest.y:F2} bellyY={belly.y:F2} " +
                               $"surface={surface:F3} kneeR={kneeRadius:F3}");
                 }
                 // 膝を届かせる骨盤の踏み込みと同じフレームに、跳ね上がる顔から胸と顎を引く。

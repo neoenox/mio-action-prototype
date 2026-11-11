@@ -104,29 +104,41 @@ namespace Ryona.Tests
 
             float worst = float.NegativeInfinity;
             float highestHips = float.NegativeInfinity;
+            float hitY = float.NegativeInfinity;
+            float chestY = 0f;
+            float hipsBoneY = 0f;
             float deadline = Time.realtimeSinceStartup + 8f;
             while (Time.realtimeSinceStartup < deadline && _grapple.IsGrappled)
             {
                 float hipsY = figure.HipsBone.position.y - _captor.transform.position.y;
                 highestHips = Mathf.Max(highestHips, hipsY);
 
-                if (_grapple.KneePulse > 0.10f && anim.Rig != null && anim.Rig.Ready &&
+                if (_grapple.KneePulse > 0.80f && anim.Rig != null && anim.Rig.Ready &&
                     anim.Rig.Spine != null && anim.Rig.Chest != null)
                 {
                     Vector3 spine = anim.Rig.Spine.position;
                     Vector3 chest = anim.Rig.Chest.position;
-                    Vector3 front = Vector3.ProjectOnPlane(_player.transform.forward, chest - spine).normalized;
+                    // 実装と同じく水平の正面で測る（胴の線へ射影すると前傾で下がる）。
+                    Vector3 front = Vector3.ProjectOnPlane(_player.transform.forward, Vector3.up).normalized;
                     Vector3 axis = Vector3.Lerp(spine, chest, 0.60f);
+                    chestY = chest.y;
+                    if (anim.Rig.Hips != null)
+                        hipsBoneY = anim.Rig.Hips.position.y;
 
-                    for (int side = 0; side < 2; side++)
+                    // 実装と同じく、蹴る脚（カメラ側）だけを見る。軸足の膝は
+                    // 彼女の脚の近くに来るので、両方見ると誤検知する（実測）。
+                    var cam = Camera.main;
+                    bool left = cam != null &&
+                        Vector3.Dot(cam.transform.position - _captor.transform.position,
+                            _captor.transform.right) < 0f;
+                    var knee = figure.KneeBone(left);
+                    if (knee != null)
                     {
-                        var knee = figure.KneeBone(side == 0);
-                        if (knee == null)
-                            continue;
-
                         float depth = Vector3.Dot(knee.position - axis, front);
                         float penetration = surface + kneeRadius - depth;
                         worst = Mathf.Max(worst, penetration);
+                        // 振り上げの初速では脚がまだ下にある。当たる瞬間の高さ（最大）を見る。
+                        hitY = Mathf.Max(hitY, knee.position.y);
                     }
                 }
 
@@ -137,6 +149,13 @@ namespace Ryona.Tests
             Assert.Less(worst, 0.05f, $"膝頭が腹にめり込んでいる（{worst:F3}m）");
             Assert.Less(highestHips, restHipsY + 0.05f,
                 $"膝蹴りのあと押さえ役が浮き上がっている（腰 {highestHips:F2}m / 立ち {restHipsY:F2}m）");
+
+            // 当たる高さが腹（股間より上、胸より下）であること。
+            // 彼女の Hips は骨盤の中心（実測 0.95m）。股間はその下なので、少し上を腹とみなす。
+            Assert.Greater(hitY, hipsBoneY + 0.02f,
+                $"膝が股間の高さに当たっている（膝 {hitY:F2}m / 彼女の腰 {hipsBoneY:F2}m）");
+            Assert.Less(hitY, chestY + 0.06f,
+                $"膝が胸より上に当たっている（膝 {hitY:F2}m / 胸 {chestY:F2}m）");
         }
 
         [UnityTest]
