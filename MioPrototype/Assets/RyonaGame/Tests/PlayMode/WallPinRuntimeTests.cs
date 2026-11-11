@@ -99,10 +99,17 @@ namespace Ryona.Tests
             float surface = 0.085f + figure.Height * 0.039f;
             float kneeRadius = figure.Height * 0.039f;
 
+            // 立ち姿勢の腰の高さ。膝蹴りでこれより上へ跳ね上がったら「飛んでいる」。
+            float restHipsY = figure.Height * 0.515f;
+
             float worst = float.NegativeInfinity;
+            float highestHips = float.NegativeInfinity;
             float deadline = Time.realtimeSinceStartup + 8f;
             while (Time.realtimeSinceStartup < deadline && _grapple.IsGrappled)
             {
+                float hipsY = figure.HipsBone.position.y - _captor.transform.position.y;
+                highestHips = Mathf.Max(highestHips, hipsY);
+
                 if (_grapple.KneePulse > 0.10f && anim.Rig != null && anim.Rig.Ready &&
                     anim.Rig.Spine != null && anim.Rig.Chest != null)
                 {
@@ -128,6 +135,8 @@ namespace Ryona.Tests
 
             Assert.Greater(worst, float.NegativeInfinity, "膝蹴りが一度も起きていない");
             Assert.Less(worst, 0.05f, $"膝頭が腹にめり込んでいる（{worst:F3}m）");
+            Assert.Less(highestHips, restHipsY + 0.05f,
+                $"膝蹴りのあと押さえ役が浮き上がっている（腰 {highestHips:F2}m / 立ち {restHipsY:F2}m）");
         }
 
         [UnityTest]

@@ -366,20 +366,41 @@ namespace Ryona.Game
             float thighLength = Vector3.Distance(hip.position, knee.position);
             if (thighLength < 0.0001f) return;
 
-            // 膝は常に腹の表面を狙う。脚の振り上げ（EnemyFigure の姿勢）は控えめにしておき、
-            // ここで骨盤を回して膝関節をそのまま腹の表面へ載せる。
-            // 回転だけでは膝は球面を動くので、腿の長さと腹までの距離の差だけ届かない／
-            // 突き抜ける。平行移動で膝を goal に載せると、深さが毎フレーム一致する。
-            Vector3 goal = belly;
-            Vector3 dir = goal - hip.position;
-            if (dir.sqrMagnitude < 0.0001f) return;
+            // 壁押さえつけは彼女との距離が近く、腿のほうが長い。回転だけでは膝が腹を突き抜け、
+            // 骨盤を持ち上げると足が床を離れて彼が浮く。壁中だけ「回転＋平行移動」で
+            // 膝関節を腹の表面へ正確に載せる（上下は制限し、しゃがみで高さを合わせる）。
+            // レーンの押さえつけは距離があるので、従来どおり回転と小さな踏み込みで合わせる。
+            bool wall = Brain != null && Brain.IsWallPinning;
+            Vector3 toBelly = belly - hip.position;
+            if (toBelly.sqrMagnitude < 0.0001f) return;
 
-            Quaternion aimed = Quaternion.FromToRotation(knee.position - hip.position, dir) * hip.rotation;
-            hip.rotation = Quaternion.Slerp(hip.rotation, aimed, weight);
-            Vector3 moved = goal - knee.position;
-            LastPinKneeReach = Vector3.Distance(goal, hip.position) - thighLength;
-            LastPinKneeShift = moved.magnitude;
-            _hips.position += moved;
+            if (wall)
+            {
+                Quaternion aimed = Quaternion.FromToRotation(knee.position - hip.position, toBelly) * hip.rotation;
+                hip.rotation = Quaternion.Slerp(hip.rotation, aimed, weight);
+                Vector3 moved = belly - knee.position;
+                moved.y = Mathf.Clamp(moved.y, -0.10f, 0.02f);
+                float flat = new Vector2(moved.x, moved.z).magnitude;
+                if (flat > 0.18f)
+                {
+                    float scale = 0.18f / flat;
+                    moved.x *= scale;
+                    moved.z *= scale;
+                }
+
+                LastPinKneeReach = toBelly.magnitude - thighLength;
+                LastPinKneeShift = moved.magnitude;
+                _hips.position += moved;
+            }
+            else
+            {
+                Vector3 shift = toBelly.normalized * Mathf.Max(-0.065f, toBelly.magnitude - thighLength);
+                LastPinKneeReach = toBelly.magnitude - thighLength;
+                LastPinKneeShift = shift.magnitude;
+                _hips.position += shift * weight;
+                Quaternion aimed = Quaternion.FromToRotation(knee.position - hip.position, toBelly) * hip.rotation;
+                hip.rotation = Quaternion.Slerp(hip.rotation, aimed, weight);
+            }
 
             // 膝頭を当て、脛と足先は相手と反対側へ畳む。
             Vector3 shin = -transform.up - transform.forward * 0.65f;
@@ -1246,7 +1267,11 @@ namespace Ryona.Game
                     // 壁押さえつけは彼女との距離が近い（腹の表面まで 0.14m）。脚を大きく前へ
                     // 振り上げると、腿のほうが長いぶん膝が腹を突き抜ける（実測）。
                     // 腰を前へ押さず、膝は低めに上げて、深さは PinHoldPose の合わせに任せる。
+                    // さらに骨盤を沈める。腰が高いまま膝を腹へ合わせると、骨盤を上へ
+                    // 持ち上げることになって彼が浮き上がる（実測）。しゃがんで膝を入れる。
                     bool wallKnee = Brain != null && Brain.IsWallPinning;
+                    if (wallKnee)
+                        hipsY -= 0.30f * knee;
                     hipsZ += (wallKnee ? 0f : 0.08f) * knee;
                     float raise = wallKnee ? 70f : 105f;
                     float swing = wallKnee ? -85f : -115f;
@@ -2748,11 +2773,12 @@ namespace Ryona.Game
                 // 関節をそのまま表面に置くと、膝球の半径（h*0.039）ぶん腹へ入って
                 // 「膝が貫通している」画になる（実測）。球の半径ぶん手前で止め、
                 // 1.5cm だけ沈ませて当たった感じを出す。
+                // 壁以外の押さえつけは、この合わせ（関節を表面へ）で従来どおり決まる。
                 float surface = 0.085f + _figure.Height * 0.039f;
                 float kneeRadius = _figure.Height * 0.039f;
                 const float squash = 0.015f;
-                Vector3 belly = Vector3.Lerp(spine, chest, 0.60f)
-                    + front * (surface + kneeRadius - squash);
+                float reach = hold.IsWallPin ? surface + kneeRadius - squash : surface;
+                Vector3 belly = Vector3.Lerp(spine, chest, 0.60f) + front * reach;
 
                 var cam = Camera.main;
                 bool left = cam != null && Vector3.Dot(cam.transform.position - transform.position, transform.right) < 0f;
@@ -2769,6 +2795,7 @@ namespace Ryona.Game
                     float penetration = surface + kneeRadius - depth;
                     Debug.Log($"[Knee] pulse={hold.KneePulse:F2} depth={depth:F3} pre={preDepth:F3} pen={penetration:F3} " +
                               $"reach={_figure.LastPinKneeReach:F3} shift={_figure.LastPinKneeShift:F3} " +
+                              $"hipsY={_figure.HipsBone.position.y - transform.position.y:F2} " +
                               $"surface={surface:F3} kneeR={kneeRadius:F3}");
                 }
                 // 膝を届かせる骨盤の踏み込みと同じフレームに、跳ね上がる顔から胸と顎を引く。
