@@ -167,6 +167,104 @@ namespace Ryona.Tests
         }
 
         /// <summary>
+        /// うつ伏せダウン → 跨る → 仰向けに返す → 5 発、の各パンチが**彼女の頭へ向く**こと。
+        ///
+        /// 寝返りで体の向きが 180° 変わる（仰向け姿が逆端向きに作られているため、ロール明けに
+        /// リグが反転される）。跨ったままの向きのままだと頭と逆を殴って見えるので、
+        /// 敵の forward と頭方向の dot、拳と頭の距離、跨る位置（頭側か）を見張る。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator MountedPunchesAfterProneRollFaceHerHead([Values(false, true)] bool attackerFromFeetSide)
+        {
+            yield return LoadPlayer(holdEnemies: false);
+            var attacker = PrepareMount(forward: true);
+            if (attackerFromFeetSide)
+                attacker.transform.position = _stats.transform.position - Vector3.right * 1.6f;
+
+            var mount = _stats.GetComponent("GroundMountAttack");
+            const System.Reflection.BindingFlags members = System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.NonPublic;
+            var leftPunch = mount.GetType().GetProperty("LeftPunch", members);
+            var rig = _anim.Rig;
+            var figure = attacker.GetComponent<EnemyFigure>();
+
+            int hits = 0;
+            bool straddlesHeadSide = false;
+            float worstFacing = 1f;
+            float worstFist = 0f;
+            _stats.HitReceived += result =>
+            {
+                if (_stats.LastAttacker != attacker.transform || result.Damage <= 0f)
+                    return;
+
+                hits++;
+                Vector3 axis = Vector3.ProjectOnPlane(rig.Head.position - rig.Hips.position, Vector3.up).normalized;
+                bool left = (bool)leftPunch.GetValue(mount);
+                worstFacing = Mathf.Min(worstFacing, Vector3.Dot(attacker.transform.forward, axis));
+                worstFist = Mathf.Max(worstFist,
+                    Vector3.Distance(figure.Fist(left).position, rig.Head.position));
+                if (hits == 1)
+                    straddlesHeadSide =
+                        Vector3.Dot(attacker.transform.position - rig.Hips.position, axis) > 0f;
+            };
+
+            float deadline = Time.realtimeSinceStartup + 10f;
+            while (hits < 5 && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            yield return null;
+
+            Assert.AreEqual(5, hits, "5 発そろわない");
+            Assert.IsTrue(straddlesHeadSide, "跨る位置が頭側でない（足側から殴っている）");
+            Assert.Greater(worstFacing, 0.5f,
+                $"ロール後に敵が頭と逆を向いて殴った（最小 dot={worstFacing:F2}）");
+            Assert.Less(worstFist, 0.25f, $"拳が頭から離れている（最大 {worstFist:F2}m）");
+        }
+
+        /// <summary>
+        /// ロール明けの「跨り直し」が実際に効いていることの検証。
+        ///
+        /// 実際の不具合（敵が頭と逆を向く）は現行ビルドでは再現しないため、上のテストだけだと
+        /// 保険を外しても通ってしまう。ここでは Windup に入った瞬間に敵の向きを 180° 反転させ、
+        /// 0.30 秒以内に頭方向へ戻る（dot &gt; 0.8）ことを見る。跨り直しが無ければ反転したままになる。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator MountResettleTurnsAttackerBackToHerHead()
+        {
+            yield return LoadPlayer(holdEnemies: false);
+            var attacker = PrepareMount(forward: true);
+
+            var mount = _stats.GetComponent("GroundMountAttack");
+            const System.Reflection.BindingFlags members = System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.NonPublic;
+            var stage = mount.GetType().GetProperty("Stage", members);
+            Assert.IsNotNull(stage, "Stage が取れない");
+            var rig = _anim.Rig;
+
+            float DotToHead()
+            {
+                Vector3 axis = Vector3.ProjectOnPlane(rig.Head.position - rig.Hips.position, Vector3.up).normalized;
+                return Vector3.Dot(attacker.transform.forward, axis);
+            }
+
+            // ロールが終わって Windup に入るまで待つ（跨り直しはこの瞬間から 0.18 秒）。
+            float deadline = Time.realtimeSinceStartup + 10f;
+            while (stage.GetValue(mount).ToString() != "Windup" && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.AreEqual("Windup", stage.GetValue(mount).ToString(), "ロール明けの Windup に入らない");
+
+            // 敵の向きを 180° 反転させる（頭と逆を向いた状態を作る）。
+            attacker.transform.rotation = Quaternion.AngleAxis(180f, Vector3.up) * attacker.transform.rotation;
+            yield return null;
+
+            float recoveryDeadline = Time.realtimeSinceStartup + 0.30f;
+            while (Time.realtimeSinceStartup < recoveryDeadline)
+                yield return null;
+
+            Assert.Greater(DotToHead(), 0.8f,
+                $"跨り直しが効かず、反転した向きのまま（dot={DotToHead():F2}）");
+        }
+
+        /// <summary>
         /// うつ伏せから仰向けへ返すとき、腕が畳み切られたり飛んだりしない。
         ///
         /// 修正前の実測: ロール半ばで肘が 19° まで畳まれ、手が肩の 17cm まで寄っていた。

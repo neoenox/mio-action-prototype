@@ -33,6 +33,15 @@ namespace Ryona.Game
         int _struggles;
         float _reactionAge = float.PositiveInfinity;
 
+        /// <summary>ロール明けに頭側へ跨り直している最中か。</summary>
+        bool _resettling;
+        float _resettleElapsed;
+        Vector3 _resettleFromPosition;
+        Quaternion _resettleFromRotation;
+
+        /// <summary>跨り直しにかける秒数。アニメ側の反転ブレンド（0.15 秒）に合わせる。</summary>
+        const float ResettleSeconds = 0.18f;
+
         internal EnemyBrain Attacker { get; private set; }
         internal Beat Stage { get; private set; }
         internal float Progress => Stage == Beat.Approach
@@ -163,6 +172,9 @@ namespace Ryona.Game
                 Struggle();
 
             _elapsed += dt;
+            if (_resettling && Stage >= Beat.Windup && Stage < Beat.Dismount)
+                TickResettle(dt);
+
             if (Stage == Beat.Approach)
             {
                 float speed = Attacker.MoveSpeed * Attacker.State.MoveSpeedMultiplier;
@@ -267,6 +279,44 @@ namespace Ryona.Game
                 Quaternion.Slerp(_fromRotation, rotation, blend));
         }
 
+        /// <summary>
+        /// ロール明けに新しい頭側へ跨り直す。
+        /// 伏せダウンを仰向けに返すと、仰向け姿が逆端を向いて作られているためアニメ側が
+        /// リグを 180° 反転する。跨ったままの向きだと頭と逆を向いて殴ることになるので、
+        /// 実際の頭の位置を取り直しながら短時間で向き（と僅かな位置）を合わせる。
+        /// </summary>
+        void BeginResettle()
+        {
+            _resettling = true;
+            _resettleElapsed = 0f;
+            _resettleFromPosition = Attacker.transform.position;
+            _resettleFromRotation = Attacker.transform.rotation;
+        }
+
+        void TickResettle(float dt)
+        {
+            if (Attacker == null || TargetRig == null)
+            {
+                _resettling = false;
+                return;
+            }
+
+            _resettleElapsed += dt;
+            float blend = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_resettleElapsed / ResettleSeconds));
+            Vector3 spot = MountSpot();
+            spot.y = _resettleFromPosition.y;
+            Vector3 lookAt = TargetRig.Head.position - spot;
+            lookAt.y = 0f;
+            Quaternion rotation = lookAt.sqrMagnitude > 0.0004f
+                ? Quaternion.LookRotation(lookAt.normalized, Vector3.up)
+                : _resettleFromRotation;
+            Attacker.transform.SetPositionAndRotation(
+                Vector3.Lerp(_resettleFromPosition, spot, blend),
+                Quaternion.Slerp(_resettleFromRotation, rotation, blend));
+            if (blend >= 1f)
+                _resettling = false;
+        }
+
         void Begin(Beat stage, float duration)
         {
             Stage = stage;
@@ -295,6 +345,10 @@ namespace Ryona.Game
                 case Beat.Roll:
                     FinishRoll();
                     Begin(Beat.Windup, 0.53f);
+                    // 寝返りで彼女の体の向きが変わる（仰向け姿は逆端を向いて作られているため
+                    // ロール明けにリグが 180° 反転される）。跨っている側のままだと頭と逆向きに
+                    // なるので、次の 1 発を振るまでに新しい頭側へ跨り直す。
+                    BeginResettle();
                     break;
                 case Beat.Windup:
                     StrikeTarget = TargetRig.Head.position;
@@ -418,6 +472,7 @@ namespace Ryona.Game
             ImpactSide = Vector3.zero;
             ImpactWasLeftPunch = false;
             _shotOffset = Vector3.zero;
+            _resettling = false;
         }
     }
 }
