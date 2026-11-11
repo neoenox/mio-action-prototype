@@ -145,11 +145,17 @@ namespace Ryona.Game
 
             var mount = _brain != null && _brain.Player != null ? _brain.Player.GroundMount : null;
             bool inMountShot = mount != null && mount.Attacker == _brain && mount.BlocksGetUp;
-            float target = !inMountShot && IsOccluding() ? MinAlpha : 1f;
+            var hold = _brain != null && _brain.Player != null
+                ? _brain.Player.GetComponent<PlayerGrapple>() : null;
+            bool wallShot = hold != null && hold.IsWallPin;
+            bool inFrontOfWallShot = wallShot && hold.Captor != _brain && InFrontOfWallShot(hold);
+            float target = inFrontOfWallShot ? 0f : 1f;
+            if (!wallShot && !inMountShot && IsOccluding())
+                target = MinAlpha;
             if (Mathf.Approximately(target, _alpha) && _applied)
                 return;
 
-            _alpha = inMountShot || FadeSeconds <= 0.001f
+            _alpha = inFrontOfWallShot || inMountShot || FadeSeconds <= 0.001f
                 ? target
                 : Mathf.MoveTowards(_alpha, target, Time.deltaTime / FadeSeconds);
 
@@ -268,6 +274,18 @@ namespace Ryona.Game
             return screenGap < allowed;
         }
 
+        bool InFrontOfWallShot(PlayerGrapple hold)
+        {
+            var cam = Camera.main;
+            if (cam == null || hold.Captor == null)
+                return false;
+
+            Vector3 middle = (_player.position + hold.Captor.transform.position) * 0.5f;
+            Vector3 cameraForward = cam.transform.forward;
+            // 腕や胴が画面を塞ぐので、敵の中心が画面外でも奥行きで判定する。
+            return Vector3.Dot(transform.position - middle, cameraForward) < 0.45f;
+        }
+
         void Apply(float alpha)
         {
             bool faded = alpha < 0.995f;
@@ -278,6 +296,7 @@ namespace Ryona.Game
                 if (renderer == null)
                     continue;
 
+                renderer.forceRenderingOff = alpha <= 0.05f;
                 if (!faded)
                 {
                     if (_applied)
@@ -328,6 +347,13 @@ namespace Ryona.Game
             mat.EnableKeyword("_ALPHABLEND_ON");
             mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
             return mat;
+        }
+
+        void OnDisable()
+        {
+            if (_applied)
+                Apply(1f);
+            _alpha = 1f;
         }
 
         void OnDestroy()

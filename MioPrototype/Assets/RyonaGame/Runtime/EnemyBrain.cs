@@ -657,6 +657,21 @@ namespace Ryona.Game
         /// <summary>押さえつけ中の相手か（掴んでいる本人）。見た目側が姿勢を組むのに使う。</summary>
         public bool IsPinning { get; private set; }
 
+        /// <summary>壁へ押し出して押さえつけている最中か。</summary>
+        public bool IsWallPinning { get; private set; }
+
+        // 壁押さえつけの押し出し（両者を 0.18 秒で壁際へ移す）。
+        Vector3 _wallFromPos;
+        Vector3 _wallToPos;
+        Quaternion _wallFromRot;
+        Quaternion _wallToRot;
+
+        // 壁からレーンへ戻る（掴みが解けたあと）。
+        const float WallReturnSeconds = 0.25f;
+        float _wallReturn;
+        float _wallReturnX;
+        float _wallReturnZ;
+
         /// <summary>掴まれ状態を見るためだけに持つプレイヤー側の参照。</summary>
         PlayerGrapple _grapple;
 
@@ -959,6 +974,22 @@ namespace Ryona.Game
             if (Player.GroundMount.Attacker == this)
                 return;
 
+            if (_grapple == null)
+                _grapple = Player.GetComponent<PlayerGrapple>();
+            bool waitingForWallPin = _grapple != null && _grapple.IsWallPin && _grapple.Captor != this;
+            if (waitingForWallPin)
+            {
+                if (Phase == EnemyPhase.Windup || Phase == EnemyPhase.Attack)
+                    CancelWindup();
+
+                if (Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe)
+                {
+                    StopFlanking();
+                    MoveAsideForWallPin();
+                    return;
+                }
+            }
+
             if ((Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe) && !IsFlanking && TryApproachForPin())
                 return;
             if ((Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe) && TryFlank(dt))
@@ -1008,7 +1039,7 @@ namespace Ryona.Game
                     _punchVisualTimer = Mathf.Max(0f, _punchVisualTimer - dt);
                     var frontHold = IsPinning || IsBearHugging ? Player.GetComponent<PlayerGrapple>() : null;
                     bool canHitHeld = frontHold != null && frontHold.IsGrappled &&
-                        !frontHold.IsHandingOff && frontHold.Captor == this && frontHold.FrontEscapeRemaining <= 0f;
+                        !frontHold.IsHandingOff && !frontHold.IsWallTransition && frontHold.Captor == this && frontHold.FrontEscapeRemaining <= 0f;
 
                     // 押さえつけ中の膝蹴り（5 発）
                     if (canHitHeld && IsPinning && _pinKneesLeft > 0 && Time.time >= _pinNextKneeAt)
@@ -1066,11 +1097,97 @@ namespace Ryona.Game
                     break;
             }
 
-            KeepSpacing();
+            if (!waitingForWallPin)
+                KeepSpacing();
+        }
+
+        void MoveAsideForWallPin()
+        {
+            float center = _grapple.transform.position.x;
+            float offset = transform.position.x - center;
+            float side = offset < 0f ? -1f : 1f;
+
+            // 壁カメラは -X 側にある。その側の敵は画角の外まで下がり、
+            // +X 側の敵は奥で待つ。どちらも二人の前を横切らない。
+            float clearance = side < 0f ? 4f : 1.85f;
+            if (Group != null)
+            {
+                foreach (var other in Group.Members)
+                {
+                    if (other == null || other == this || other == _grapple.Captor || !other.IsAlive)
+                        continue;
+
+                    float otherOffset = (other.transform.position.x - center) * side;
+                    if (otherOffset >= 0f && (otherOffset < Mathf.Abs(offset) ||
+                        (otherOffset == Mathf.Abs(offset) && other.GetInstanceID() < GetInstanceID())))
+                        clearance += 0.85f;
+                }
+            }
+
+            if (Mathf.Abs(offset) < clearance)
+            {
+                var position = transform.position;
+                float speed = MoveSpeed * State.MoveSpeedMultiplier;
+                position.x = Mathf.MoveTowards(position.x, center + side * clearance, speed * Time.deltaTime);
+                transform.position = position;
+            }
+
+            Vector3 toPlayer = _grapple.transform.position - transform.position;
+            toPlayer.y = 0f;
+            if (toPlayer.sqrMagnitude > 0.001f)
+                Face(toPlayer.normalized, Time.deltaTime);
         }
 
         void LateUpdate()
         {
+            // 壁押さえつけ: 相手は「彼女の手前（-Z）」に立つ。彼女はレーンの外へ
+            // 押し出されているので、通常の「彼女の z に合わせる」処理は使わない。
+            if (IsWallPinning)
+            {
+                var wallHold = Player.GetComponent<PlayerGrapple>();
+                float t = wallHold != null ? wallHold.WallCaptorTravel : 1f;
+                transform.position = Vector3.Lerp(_wallFromPos, _wallToPos, t);
+                transform.rotation = Quaternion.Slerp(_wallFromRot, _wallToRot, t);
+                return;
+            }
+
+            // 拘束が解けたあと、壁際からレーンへ戻る。
+            if (_wallReturn > 0f)
+            {
+                _wallReturn = Mathf.Max(0f, _wallReturn - Time.deltaTime);
+                float targetZ = Target != null ? Target.position.z : 0f;
+                float t = Mathf.Clamp01(_wallReturn / WallReturnSeconds);
+                float eased = Mathf.SmoothStep(0f, 1f, t);
+
+                // X も正面の間合いへ戻す。壁の前では彼女と同じ x に立っているので、
+                // そのままレーンへ戻すと体が重なる。
+                float facing = Target != null && Mathf.Abs(Target.forward.x) > 0.01f
+                    ? Mathf.Sign(Target.forward.x)
+                    : 1f;
+                float stopX = Target != null
+                    ? Target.position.x + facing * CombatConstants.PinMinDistance
+                    : transform.position.x;
+
+                var returned = transform.position;
+                returned.x = Mathf.Lerp(stopX, _wallReturnX, eased);
+                returned.z = Mathf.Lerp(targetZ, _wallReturnZ, eased);
+                transform.position = returned;
+                return;
+            }
+
+            // 誰かが壁押さえつけしている間、他の敵はレーン（z=0）に留める。
+            // 彼女の z に合わせると、全員が壁の前に押し寄せて壁へめり込む。
+            if (_grapple == null && Player != null)
+                _grapple = Player.GetComponent<PlayerGrapple>();
+            if (_grapple != null && _grapple.IsGrappled && _grapple.IsWallPin &&
+                _grapple.Captor != this)
+            {
+                var lane = transform.position;
+                lane.z = 0f;
+                transform.position = lane;
+                return;
+            }
+
             if (Target == null || (Player != null && Player.GroundMount.Attacker == this))
                 return;
             var position = transform.position;
@@ -1642,6 +1759,14 @@ namespace Ryona.Game
         /// </summary>
         void ClearGrappleState(bool clearAttackState = false, bool resetKneeTimer = false)
         {
+            if (IsWallPinning)
+            {
+                IsWallPinning = false;
+                _wallReturn = WallReturnSeconds;
+                _wallReturnX = transform.position.x;
+                _wallReturnZ = transform.position.z;
+            }
+
             IsPinning = false;
             IsBearHugging = false;
             _pinKneesLeft = 0;
@@ -1700,20 +1825,26 @@ namespace Ryona.Game
             bool bearHug = false;
 
             bool fromBehind = Vector3.Dot(Player.transform.forward, transform.position - Player.transform.position) < -0.25f;
+
             if (_grapple != null && !_grapple.IsGrappled && fromBehind && distance <= RangeOf(AttackId.Grab)
                 && Time.time >= _grabReadyAt && (!_hasLast || _lastAttack != AttackId.Grab)
                 && UnityEngine.Random.value < 0.65f)
+            {
                 id = AttackId.Grab;
+
+            }
             else if (_pinOrder && CanStartPin(distance))
             {
                 // 指示（-pintest）は必ず押さえつけにする。
                 id = AttackId.Grab;
                 pin = true;
             }
-            else if (CanStartBearHug(distance)
+            else if (CanStartBearHug(distance) && !CanStartWallPin(distance)
                 && (_bearHugOrder || UnityEngine.Random.value < CombatConstants.BearHugChance))
             {
                 // 正面から胴を抱えるベアハッグ。同じ正面の掴みでも Pin とは形が違う。
+                // 壁の前では選ばない。壁押さえつけの機会をベアハッグが食うと、
+                // 壁際で正面から掴まれても壁へ押し出されない（実測: テストで Pin が選ばれなかった）。
                 id = AttackId.Grab;
                 bearHug = true;
             }
@@ -1764,6 +1895,15 @@ namespace Ryona.Game
         /// </summary>
         public bool CanStartPin(float distance) =>
             (CanPin || _pinOrder) && CanStartFrontGrapple(distance);
+
+        /// <summary>
+        /// 壁の近くで押さえつけられる状態か。壁押さえつけは正面 0.80〜1.30m の
+        /// 入口条件こそ通常の Pin と同じだが、壁が無ければ成立しない。
+        /// ベアハッグの抽選から壁押さえつけの機会を守るために使う。
+        /// </summary>
+        bool CanStartWallPin(float distance) =>
+            CanStartPin(distance) && Player != null &&
+            WallPinSites.Find(Player.transform.position) != null;
 
         /// <summary>
         /// ベアハッグを始めてよいか。正面・間合い・クールダウンは Pin と同じ。
@@ -1835,6 +1975,11 @@ namespace Ryona.Game
         /// </summary>
         bool TryPin()
         {
+            // 壁の近くで正面から掴めたときは、レーンから壁へ押し出す（壁押さえつけ）。
+            WallPinSite site = Player != null ? WallPinSites.Find(Player.transform.position) : null;
+            if (site != null)
+                return TryWallPin(site);
+
             if (!TryBeginFrontGrapple(GrappleKind.Pin, out float distance))
                 return false;
 
@@ -1844,6 +1989,59 @@ namespace Ryona.Game
             _pinKneesLeft = Mathf.Max(1, CombatConstants.PinKneeCount);
             _pinNextKneeAt = Time.time + CombatConstants.FrontGrappleEscapeSeconds;
             Debug.Log($"[Pin] begin {name} dist={distance:F2} knees={_pinKneesLeft}");
+            return true;
+        }
+
+        /// <summary>
+        /// 壁へ押し出して押さえつける。彼女は壁に背を向けて立たせ、相手はその手前（-Z）から
+        /// 肩を押さえる。距離と膝蹴り・制限時間は通常の押さえつけと同じ。
+        /// </summary>
+        bool TryWallPin(WallPinSite site)
+        {
+            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            if (grapple == null || grapple.IsGrappled)
+                return false;
+
+            // 彼女のカプセル半径は 0.30 だが、背中を壁の表面ちょうどに付けると、
+            // 反った上体の表面（肩甲骨・後頭部）と後ろ髪が壁へ入る。
+            // 描画メッシュの実測で、体は -0.006m・髪は +0.004m まで来ていた。
+            // 髪は毛束の面が関節より外へ張り出すため、関節の押し戻しだけでは数 mm 残る。
+            // 立ち位置そのものを離し、見た目で確実に手前に収める。
+            const float playerRadius = 0.46f;
+            // 頭上の手首に両手が届く距離で押さえる。
+            const float captorGap = 0.55f;
+
+            float playerZ = site.FaceZ - playerRadius;
+            float captorZ = playerZ - captorGap;
+
+            Vector3 playerSpot = new Vector3(
+                Player.transform.position.x, Player.transform.position.y, playerZ);
+            Quaternion playerRotation = Quaternion.LookRotation(Vector3.back, Vector3.up);
+
+            Vector3 captorSpot = new Vector3(
+                Player.transform.position.x, transform.position.y, captorZ);
+            Quaternion captorRotation = Quaternion.LookRotation(Vector3.forward, Vector3.up);
+
+            _wallFromPos = transform.position;
+            _wallToPos = captorSpot;
+            _wallFromRot = transform.rotation;
+            _wallToRot = captorRotation;
+
+            ClearGrappleState();
+            IsPinning = true;
+            IsWallPinning = true;
+            _wallReturn = 0f;
+
+            grapple.BeginWallPin(this, playerSpot, playerRotation, Vector3.back, site.FaceZ, site);
+
+            _lastPinAt = Time.time;
+            _pinOrder = false;
+            _bearHugOrder = false;
+            _pinKneesLeft = Mathf.Max(1, CombatConstants.PinKneeCount);
+            _pinNextKneeAt = Time.time + CombatConstants.FrontGrappleEscapeSeconds;
+
+            Debug.Log($"[WallPin] begin {name} x={Player.transform.position.x:F2} " +
+                      $"playerZ={playerZ:F2} captorZ={captorZ:F2} wall={site.name}");
             return true;
         }
 

@@ -33,6 +33,10 @@ namespace Ryona.Tests
         {
             yield return TestScene.LoadPrototype();
 
+            // 通常の正面拘束を検証する。壁版は WallPinRuntimeTests で検証する。
+            foreach (var wall in Object.FindObjectsByType<WallPinSite>(FindObjectsSortMode.None))
+                wall.enabled = false;
+
             _player = Object.FindFirstObjectByType<PlayerStats>();
             Assert.IsNotNull(_player, "PlayerStats がシーンに無い");
 

@@ -60,6 +60,69 @@ namespace Ryona.Game
         // 「首へ手を伸ばしている」画になる（0.85m だった）。肘を畳んで脇の下へ入れる距離にする。
         const float BackGrabDistance = 0.34f;
 
+        /// <summary>壁押さえつけ中か。押さえつけ（Pin）の一種だが、レーンの外の壁へ押し出される。</summary>
+        public bool IsWallPin { get; private set; }
+        public enum WallStage { None, Grab, Rise, Throw, Slam, Lean, Regrip, Restrain, Held, TossWindup, TossAir, TossLand }
+        public WallStage WallPhase { get; private set; }
+        public float WallPhaseProgress { get; private set; }
+        public bool IsWallTransition => IsWallPin && WallPhase != WallStage.Held;
+        public float WallRestraintWeight => WallPhase == WallStage.Restrain
+            ? Mathf.SmoothStep(0f, 1f, WallPhaseProgress)
+            : WallPhase == WallStage.Held || WallPhase == WallStage.TossWindup ? 1f : 0f;
+        internal bool IsWallToss => IsWallPin && WallPhase >= WallStage.TossWindup;
+        internal float WallTossLower => Mathf.SmoothStep(0f, 1f, WallPhaseProgress);
+        internal float WallTossSide => Mathf.Sign(_wallTossLanding.x - _wallPinSpot.x);
+
+        internal float WallGripWeight => WallPhase == WallStage.Regrip
+            ? Mathf.SmoothStep(0f, 1f, WallPhaseProgress)
+            : WallRestraintWeight > 0f || WallPhase == WallStage.Restrain ? 1f : 0f;
+
+        internal float WallSlideWeight => WallPhase switch
+        {
+            WallStage.Lean => Mathf.SmoothStep(0f, 1f, WallPhaseProgress),
+            WallStage.Regrip => 1f,
+            WallStage.Restrain => 1f - WallRestraintWeight,
+            _ => 0f
+        };
+
+        internal float WallCaptorTravel => WallPhase switch
+        {
+            WallStage.Throw => 0.55f * WallPhaseProgress,
+            WallStage.Slam or WallStage.Lean => 0.55f,
+            WallStage.Regrip => Mathf.Lerp(0.55f, 0.90f, WallGripWeight),
+            WallStage.Restrain => Mathf.Lerp(0.90f, 1f, WallRestraintWeight),
+            WallStage.Held or WallStage.TossWindup or WallStage.TossAir or WallStage.TossLand => 1f,
+            _ => 0f
+        };
+        WallPinSite _wallSite;
+        float _wallPhaseTime;
+        Vector3 _wallStartPosition;
+        Quaternion _wallStartRotation;
+        Vector3 _wallTossLanding;
+
+
+        /// <summary>壁押さえつけの見た目 0..1。姿勢のブレンドに使う。</summary>
+        public float WallPinWeight { get; private set; }
+
+        /// <summary>壁の表面から室内側へ向く法線（world）。姿勢の反らせ方向に使う。</summary>
+        public Vector3 WallPinNormal => _wallPinNormal;
+
+        /// <summary>壁の表面 Z（基準位置）。髪の押し戻しに使う。</summary>
+        public float WallFaceZ { get; private set; }
+
+        /// <summary>壁の表面が有効か（押し出し中・戻り中の見た目が残っている間）。</summary>
+        public bool HasWallFace => IsWallPin || WallPinWeight > 0.001f;
+
+        Vector3 _wallPinSpot;
+        Quaternion _wallPinRotation;
+        Vector3 _wallPinNormal = Vector3.back;
+
+        /// <summary>壁からレーンへ戻るまでの秒数。</summary>
+        const float WallExitSeconds = 0.25f;
+        float _wallExitRemaining;
+        float _wallExitFromZ;
+        PlayerMotor _motor;
+
         /// <summary>掴まれているか。</summary>
         public bool IsGrappled { get; private set; }
 
@@ -73,7 +136,9 @@ namespace Ryona.Game
         public float Remaining =>
             HasTimeLimit ? Mathf.Max(0f, _remaining) : 0f;
 
-        /// <summary>時間切れで解ける拘束か。後ろ拘束（Back）だけが false。</summary>
+        /// <summary>
+        /// 時間切れで解ける拘束か。後ろ拘束（Back）だけが false。
+        /// </summary>
         public bool HasTimeLimit => Kind != GrappleKind.Back;
 
         /// <summary>掴まれてからの経過秒。ログとテスト用。</summary>
@@ -90,7 +155,8 @@ namespace Ryona.Game
         float _frontEffortHold;
 
         /// <summary>腹パン演出などで、もがき入力を一時的に止めているか。</summary>
-        public bool IsStruggleSuppressed => IsHandingOff || _suppressRemaining > 0f;
+        public bool IsStruggleSuppressed => IsHandingOff || _suppressRemaining > 0f ||
+            IsWallToss || (IsWallTransition && WallPhase >= WallStage.Throw && WallPhase <= WallStage.Lean);
 
         /// <summary>もがき入力を止めている残り秒。</summary>
         public float SuppressRemaining => Mathf.Max(0f, _suppressRemaining);
@@ -249,6 +315,38 @@ namespace Ryona.Game
 
         void Update()
         {
+            // 壁押さえつけの見た目は、掴まれていなくても抜けきるまで減衰させる。
+            // 減衰は戻り（WallExitSeconds）と同じ速さにする。姿勢だけ先に抜けると、
+            // 位置が壁際に残っているのに立ち姿で横滑りして見える（実測）。
+            float wallTarget = IsGrappled && IsWallPin &&
+                WallPhase >= WallStage.Slam ? 1f : 0f;
+            WallPinWeight = Mathf.MoveTowards(WallPinWeight, wallTarget,
+                Time.deltaTime / WallExitSeconds);
+
+            // 壁からレーンへ戻る。掴みが解けたあとも z を滑らかに戻さないと、
+            // 1.4m 横へ瞬間移動したように見える。
+            // 引き渡し（HandOff）は掴まれたままなので、IsGrappled では切らない。
+            // 切ると戻りが一度も走らず、壁際の z を固定したまま次の拘束へ入る。
+            if (_wallExitRemaining > 0f)
+            {
+                _wallExitRemaining = Mathf.Max(0f, _wallExitRemaining - Time.deltaTime);
+                float t = Mathf.Clamp01(_wallExitRemaining / WallExitSeconds);
+                var motor = Motor();
+                if (motor != null)
+                {
+                    if (_wallExitRemaining > 0f)
+                    {
+                        // 戻り先はレーン（PlayerMotor が持つ本来の z）。0 を決め打ちすると、
+                        // レーンが 0 以外になったときに壁際から別の場所へ滑る。
+                        float lane = motor.LaneZ;
+                        motor.SetLaneZOverride(Mathf.Lerp(lane, _wallExitFromZ,
+                            Mathf.SmoothStep(0f, 1f, t)));
+                    }
+                    else
+                        motor.ClearLaneZOverride();
+                }
+            }
+
             if (StrugglePulse > 0f)
                 StrugglePulse = Mathf.Max(0f, StrugglePulse - Time.deltaTime * 4f);
 
@@ -299,6 +397,20 @@ namespace Ryona.Game
             if (IsHandingOff)
                 return;
 
+            if (IsWallToss)
+            {
+                TickWallToss();
+                return;
+            }
+
+            if (IsWallTransition)
+            {
+                TickWallTransition();
+                if (!IsStruggleSuppressed && InputReader.StrugglePressed())
+                    Struggle();
+                return;
+            }
+
             // ベアハッグ: 体を引き寄せて密着させ、少し離してからまた締める。
             if (_grabContactRemaining > 0f)
             {
@@ -310,6 +422,14 @@ namespace Ryona.Game
             }
             else if (Kind == GrappleKind.BearHug)
                 TickBearHugBody(Time.deltaTime);
+
+            // 押し出しのブレンドで動いた z を、レーン固定（PlayerMotor.LateUpdate）にも渡す。
+            if (IsWallPin)
+            {
+                var motor = Motor();
+                if (motor != null)
+                    motor.SetLaneZOverride(transform.position.z);
+            }
 
             _heldSeconds += Time.deltaTime;
             _frontEffortHold = Mathf.Max(0f, _frontEffortHold - Time.deltaTime);
@@ -365,10 +485,181 @@ namespace Ryona.Game
         internal void BeginContact(EnemyBrain captor, GrappleKind kind) =>
             BeginHold(captor, kind, blendContact: true);
 
+        /// <summary>
+        /// 壁へ押し出しながら押さえつける。掴み方は <see cref="GrappleKind.Pin"/> と同じで、
+        /// 立つ位置だけ壁の前に差し替える（もがき・膝蹴り・制限時間はそのまま）。
+        /// </summary>
+        internal void BeginWallPin(EnemyBrain captor, Vector3 spot, Quaternion rotation,
+            Vector3 wallNormal, float faceZ, WallPinSite site)
+        {
+            if (IsGrappled || Stats == null || Stats.IsDead)
+                return;
+
+            _wallSite = site;
+            _wallStartPosition = transform.position;
+            _wallStartRotation = transform.rotation;
+            _wallPinSpot = spot;
+            _wallPinRotation = rotation;
+            WallFaceZ = faceZ;
+            _wallPinNormal = wallNormal.sqrMagnitude > 0.001f
+                ? wallNormal.normalized
+                : Vector3.back;
+            IsWallPin = true;
+            WallPinWeight = 0f;
+            _wallExitRemaining = 0f;
+
+            // 押し出しの初速は今のレーン。接触のブレンドに合わせて少しずつ壁へ寄せる。
+            var motor = Motor();
+            if (motor != null)
+                motor.SetLaneZOverride(transform.position.z);
+
+            BeginHold(captor, GrappleKind.Pin, blendContact: true);
+            _grabContactRemaining = 0f;
+            _wallSite.BeginRise();
+            SetWallStage(WallStage.Grab);
+        }
+
+        void SetWallStage(WallStage stage)
+        {
+            WallPhase = stage;
+            WallPhaseProgress = 0f;
+            _wallPhaseTime = 0f;
+            Debug.Log($"[WallSequence] {stage}");
+        }
+
+        void TickWallTransition()
+        {
+            _wallPhaseTime += Time.deltaTime;
+            float seconds = WallPhase switch
+            {
+                WallStage.Grab => 0.22f,
+                WallStage.Rise => 0.46f,
+                WallStage.Throw => 0.30f,
+                WallStage.Slam => 0.13f,
+                WallStage.Lean => 0.57f,
+                WallStage.Regrip => 0.28f,
+                _ => 0.52f
+            };
+            WallPhaseProgress = Mathf.Clamp01(_wallPhaseTime / seconds);
+            float progress = Mathf.SmoothStep(0f, 1f, WallPhaseProgress);
+            if (_wallSite == null)
+            {
+                Release();
+                return;
+            }
+            if (WallPhase == WallStage.Rise)
+                _wallSite.SetRise(progress);
+
+            const float wallContactDepth = 0.10f;
+            Vector3 contactSpot = _wallPinSpot + Vector3.forward * wallContactDepth;
+            if (WallPhase == WallStage.Throw)
+            {
+                float flight = WallPhaseProgress * (0.40f + 0.60f * WallPhaseProgress);
+                transform.position = Vector3.Lerp(_wallStartPosition, contactSpot, flight)
+                    + Vector3.up * (0.10f * Mathf.Sin(Mathf.PI * WallPhaseProgress));
+                transform.rotation = Quaternion.Slerp(_wallStartRotation, _wallPinRotation, progress);
+            }
+            else if (WallPhase >= WallStage.Slam)
+            {
+                Vector3 spot = Vector3.Lerp(contactSpot, _wallPinSpot, WallRestraintWeight);
+                transform.SetPositionAndRotation(spot, _wallPinRotation);
+            }
+
+            Motor()?.SetLaneZOverride(transform.position.z);
+            if (WallPhaseProgress < 1f)
+                return;
+
+            if (WallPhase == WallStage.Restrain)
+            {
+                SetWallStage(WallStage.Held);
+                _heldSeconds = 0f;
+                Captor.TakeOverHold(CombatConstants.GrappleLimitSeconds + 4f);
+                return;
+            }
+
+            SetWallStage((WallStage)((int)WallPhase + 1));
+            if (WallPhase == WallStage.Slam)
+            {
+                WallPinWeight = 1f;
+                PlaySfx(SfxId.WallSlam, 1f);
+                FindFirstObjectByType<CombatFeel>()?.OnWallSlam();
+            }
+        }
+
+        void BeginWallToss()
+        {
+            const float sideDistance = 1.20f;
+            float preferred = -Mathf.Sign((_wallStartRotation * Vector3.forward).x);
+            float preferredX = _wallPinSpot.x + preferred * sideDistance;
+            float oppositeX = _wallPinSpot.x - preferred * sideDistance;
+            var motor = Motor();
+            if (motor != null)
+            {
+                preferredX = Mathf.Clamp(preferredX, motor.BackLimitX, motor.ForwardLimitX);
+                oppositeX = Mathf.Clamp(oppositeX, motor.BackLimitX, motor.ForwardLimitX);
+            }
+
+            _wallTossLanding = _wallPinSpot;
+            _wallTossLanding.z = _wallStartPosition.z;
+            _wallTossLanding.x = Mathf.Abs(preferredX - _wallPinSpot.x) >= 0.9f ||
+                Mathf.Abs(preferredX - _wallPinSpot.x) >= Mathf.Abs(oppositeX - _wallPinSpot.x)
+                ? preferredX : oppositeX;
+            SetWallStage(WallStage.TossWindup);
+        }
+
+        void TickWallToss()
+        {
+            float seconds = WallPhase switch
+            {
+                WallStage.TossWindup => 0.26f,
+                WallStage.TossAir => 0.44f,
+                _ => 0.28f
+            };
+            _wallPhaseTime += Time.deltaTime;
+            float t = WallPhaseProgress = Mathf.Clamp01(_wallPhaseTime / seconds);
+            var motor = Motor();
+            Vector3 launch = _wallPinSpot + (_wallPinRotation * Vector3.forward) * 0.10f;
+            if (WallPhase == WallStage.TossWindup)
+                transform.position = Vector3.Lerp(_wallPinSpot, launch, WallTossLower);
+            else if (WallPhase == WallStage.TossAir)
+            {
+                // 投げ手をすり抜けないよう、奥行きより先に横へ逃がす。
+                Vector3 position = Vector3.Lerp(launch, _wallTossLanding, t);
+                position.x = Mathf.Lerp(launch.x, _wallTossLanding.x, t * (2f - t));
+                position.y += 1.12f * t * (1f - t);
+                Quaternion facing = Quaternion.LookRotation(Vector3.left * WallTossSide);
+                transform.SetPositionAndRotation(position, Quaternion.Slerp(_wallPinRotation, facing,
+                    Mathf.SmoothStep(0f, 1f, t)));
+            }
+            motor?.SetLaneZOverride(transform.position.z);
+
+            if (t < 1f)
+                return;
+
+            switch (WallPhase)
+            {
+                case WallStage.TossWindup:
+                    SetWallStage(WallStage.TossAir);
+                    PlaySfx(SfxId.Swing, 0.95f);
+                    break;
+                case WallStage.TossAir:
+                    SetWallStage(WallStage.TossLand);
+                    PlaySfx(SfxId.BodyDrop, 0.65f);
+                    break;
+                case WallStage.TossLand:
+                    Fail();
+                    break;
+            }
+        }
+
         void BeginHold(EnemyBrain captor, GrappleKind kind, bool blendContact)
         {
             if (IsGrappled || Stats == null || Stats.IsDead)
                 return;
+
+            // 前の壁押さえつけから戻っている途中なら、ここでレーンへ戻しきる。
+            if (!IsWallPin && _wallExitRemaining > 0f)
+                ClearWallExit();
 
             Captor = captor;
 
@@ -425,6 +716,8 @@ namespace Ryona.Game
                 next == Captor || Stats == null || Stats.IsDead)
                 return;
 
+            EndWallPin();
+
             var previous = Captor;
             if (shove && (previous == null || !previous.IsAlive))
                 return;
@@ -446,6 +739,11 @@ namespace Ryona.Game
                 StartCoroutine(Shove(next, kind));
                 return;
             }
+
+            // 押し出しの経路は戻り補間へ任せる（壁から剥がれながら受け手の前へ運ばれる）。
+            // 即座に寄せる経路は SnapToCaptor が位置を決めるので、戻り補間が残ると
+            // 置いた位置から壁際へ引き戻される。ここで打ち切る。
+            ClearWallExit();
 
             SnapToCaptor(next, kind);
             ApplyHandOffHold(kind);
@@ -479,8 +777,9 @@ namespace Ryona.Game
             toNext.y = 0f;
             // どちらの拘束でも、受け手に正面から当たってから掴みに移る。
             Vector3 towardReceiver = toNext.normalized;
-            Vector3 catchPos = toPos + towardReceiver * (kind == GrappleKind.Back ? -0.015f : 0.24f);
-            Vector3 lookDir = kind == GrappleKind.Back ? -toNext : toNext;
+            bool behindHold = kind == GrappleKind.Back;
+            Vector3 catchPos = toPos + towardReceiver * (behindHold ? -0.015f : 0.24f);
+            Vector3 lookDir = behindHold ? -toNext : toNext;
 
             Quaternion fromRot = transform.rotation;
             Quaternion targetRot = lookDir.sqrMagnitude > 1e-4f
@@ -491,7 +790,7 @@ namespace Ryona.Game
             const float pushSeconds = 0.18f;
             const float impactSeconds = 0.13f;
             const float supportedSeconds = 0.22f;
-            float catchSeconds = kind == GrappleKind.Back ? 0.45f : 0.32f;
+            float catchSeconds = behindHold ? 0.45f : 0.32f;
             if (toNext.sqrMagnitude > 1e-4f)
                 next.transform.rotation = Quaternion.LookRotation(-toNext, Vector3.up);
 
@@ -565,7 +864,7 @@ namespace Ryona.Game
 
                 // 衝突後はまず踏ん張って支える。後ろ拘束への回転は、それから二人で行う。
                 float settle = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(supportedSeconds, catchSeconds, t));
-                HandOffTurn = kind == GrappleKind.Back ? settle : 0f;
+                HandOffTurn = behindHold ? settle : 0f;
                 Quaternion pivot = Quaternion.AngleAxis(18f * HandOffTurn, Vector3.up);
                 next.transform.rotation = pivot * receiverRot;
                 Vector3 offset = Vector3.Lerp(catchPos, toPos, settle) - receiverStart;
@@ -615,6 +914,7 @@ namespace Ryona.Game
         /// </summary>
         public void Release()
         {
+            EndWallPin();
             bool wasGrappled = IsGrappled;
 
             if (IsHandingOff)
@@ -650,10 +950,19 @@ namespace Ryona.Game
             if (captor == null)
                 return;
 
+            // 壁押さえつけは「捕まえた相手の前」ではなく「壁の前」に立つ。
+            // 向きも -Z（室内側）で固定する。レーンへ戻すときに PlayerMotor が ±X へ直す。
+            if (IsWallPin)
+            {
+                transform.position = _wallPinSpot;
+                transform.rotation = _wallPinRotation;
+                return;
+            }
+
             Vector3 spot = GrabSpot(captor, kind);
             transform.position = spot;
 
-            // 羽交い締めは背中を向けたまま掴まれる（向きは変えない）。
+            // 羽交い締め・頭上拘束は背中を向けたまま掴まれる（向きは変えない）。
             // 押さえつけ / ベアハッグは正面から掴まれるので、相手の方を向かせる。
             if (kind != GrappleKind.Back)
             {
@@ -688,6 +997,7 @@ namespace Ryona.Game
             // ベアハッグは胴を抱えるので少しだけ近い。
             float distance = kind switch
             {
+                // 頭上拘束も背後から密着して掴む（腕を上げる余地を残し、羽交い締めより少し離す）。
                 GrappleKind.Back => BackGrabDistance,
                 GrappleKind.BearHug => BearHugDistance,
                 _ => GrabDistance
@@ -780,6 +1090,7 @@ namespace Ryona.Game
 
         void Escape()
         {
+            EndWallPin();
             var captor = Captor;
             int inputs = InputCount;
             float spent = _heldSeconds;
@@ -804,10 +1115,16 @@ namespace Ryona.Game
 
         /// <summary>
         /// 押さえつけ（Pin）の時間切れ。後ろ拘束では呼ばない。
-        /// 投げや追加ダメージは無く、腹ダメージが上限に達していればうつ伏せに倒れる。
+        /// 壁では投げてから解放する。腹ダメージが上限に達していればうつ伏せに倒れる。
         /// </summary>
         void Fail()
         {
+            if (IsWallPin && WallPhase == WallStage.Held && !Stats.IsDown)
+            {
+                BeginWallToss();
+                return;
+            }
+
             var captor = Captor;
 
             int inputs = InputCount;
@@ -829,6 +1146,52 @@ namespace Ryona.Game
             Debug.Log($"[Grapple] release kind={Kind} inputs={inputs} need={RequiredInputs:F1}");
 
             Failed?.Invoke();
+        }
+
+        /// <summary>
+        /// 壁押さえつけを終える。すぐにレーンへ戻さず、<see cref="WallExitSeconds"/> かけて
+        /// z を 0 へ戻す（戻りの姿勢は <see cref="CharacterAnimator"/> が壁の重みで作る）。
+        /// </summary>
+        void EndWallPin()
+        {
+            if (!IsWallPin)
+                return;
+
+            bool arrived = WallPhase == WallStage.TossLand;
+            _wallSite?.RetractAfterRelease();
+            _wallSite = null;
+            WallPhase = WallStage.None;
+            WallPhaseProgress = 0f;
+            IsWallPin = false;
+            _wallExitFromZ = transform.position.z;
+            _wallExitRemaining = arrived ? 0f : WallExitSeconds;
+
+            var motor = Motor();
+            if (motor != null)
+            {
+                if (arrived)
+                    motor.ClearLaneZOverride();
+                else
+                    motor.SetLaneZOverride(_wallExitFromZ);
+                motor.SnapToLaneFacing();
+            }
+        }
+
+        /// <summary>
+        /// 壁からレーンへの戻りを打ち切る。引き渡しのように、掴まれたまま
+        /// 別の移動（押し出し・寄せ）が始まるときに使う。
+        /// </summary>
+        void ClearWallExit()
+        {
+            _wallExitRemaining = 0f;
+            Motor()?.ClearLaneZOverride();
+        }
+
+        PlayerMotor Motor()
+        {
+            if (_motor == null)
+                _motor = GetComponent<PlayerMotor>();
+            return _motor;
         }
 
         static void PlaySfx(SfxId id, float volume)

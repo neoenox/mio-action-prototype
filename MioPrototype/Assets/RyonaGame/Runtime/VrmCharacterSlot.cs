@@ -180,6 +180,10 @@ namespace Ryona.Game
             if (Instance.GetComponent<VrmHairSpring>() == null)
                 Instance.AddComponent<VrmHairSpring>();
 
+            // 壁押さえつけ中、壁を突き抜けた髪を壁の手前へ押し戻す
+            if (Instance.GetComponent<VrmHairWallClamp>() == null)
+                Instance.AddComponent<VrmHairWallClamp>();
+
             // 殴られたら顔を歪ませる（眉・口・目を重ねて苦悶を作る）
             var face = Instance.AddComponent<PlayerFace>();
             face.Vrm = vrm;

@@ -37,7 +37,8 @@ namespace Ryona.Game
         HurtLarge = 12,
 
         /// <summary>被弾の声（録音素材 hurt_belly）。腹への一撃に使う。</summary>
-        HurtBelly = 13
+        HurtBelly = 13,
+        WallSlam = 14
     }
 
     /// <summary>
@@ -72,6 +73,7 @@ namespace Ryona.Game
             // 数値上も打撃（-24.2 dBFS）より 3 dB 下げて、当たった音が前に出るようにする。
             SfxId.Swing => 0.38f,
             SfxId.Impact => 0.95f,
+            SfxId.WallSlam => 1f,
             SfxId.Guard => 0.80f,
 
             // のけぞり音は波形の RMS が小さく、0.45 では -32.8 dBFS になり
@@ -273,6 +275,7 @@ namespace Ryona.Game
         {
             _clips[SfxId.Swing] = MakeClip("Sfx_Swing", BuildSwing());
             _clips[SfxId.Impact] = MakeClip("Sfx_Impact", BuildImpact());
+            _clips[SfxId.WallSlam] = MakeClip("Sfx_WallSlam", BuildWallSlam());
             _clips[SfxId.Guard] = MakeClip("Sfx_Guard", BuildGuard());
             _clips[SfxId.Stagger] = MakeClip("Sfx_Stagger", BuildStagger());
             _clips[SfxId.Break] = MakeClip("Sfx_Break", BuildBreak());
@@ -459,6 +462,23 @@ namespace Ryona.Game
             }
 
             Finish(data, 0.003f);
+            return data;
+        }
+
+        static float[] BuildWallSlam()
+        {
+            var data = NewBuffer(0.29f);
+            var rng = new System.Random(2014);
+            for (int i = 0; i < data.Length; i++)
+            {
+                float t = (float)i / SampleRate;
+                float thud = Mathf.Sin(2f * Mathf.PI * (87f * t - 95f * t * t)) * Mathf.Exp(-25f * t);
+                float panel = (0.32f * Mathf.Sin(2f * Mathf.PI * 143f * t) +
+                               0.18f * Mathf.Sin(2f * Mathf.PI * 231f * t)) * Mathf.Exp(-17f * t);
+                float crack = 0.8f * Noise(rng) * Mathf.Exp(-105f * t);
+                data[i] = thud + panel + crack;
+            }
+            Finish(data, 0.002f);
             return data;
         }
 

@@ -204,7 +204,7 @@ namespace Ryona.Game
             string where = _grapple.Kind switch
             {
                 GrappleKind.Back => "（後ろから）",
-                GrappleKind.Pin => "（押さえつけ）",
+                GrappleKind.Pin => _grapple.IsWallPin ? "（壁に押さえつけ）" : "（押さえつけ）",
                 GrappleKind.BearHug => "（ベアハッグ）",
                 _ => string.Empty
             };
@@ -213,7 +213,24 @@ namespace Ryona.Game
             string tail;
             bool danger = false;
 
-            if (_grapple.FrontEscapeRemaining > 0f)
+            if (_grapple.IsWallTransition)
+            {
+                tail = _grapple.WallPhase switch
+                {
+                    PlayerGrapple.WallStage.Grab => "掴まれた",
+                    PlayerGrapple.WallStage.Rise => "壁がせり上がる",
+                    PlayerGrapple.WallStage.Throw => "壁へ投げられる",
+                    PlayerGrapple.WallStage.Slam => "壁に叩きつけられた",
+                    PlayerGrapple.WallStage.Lean => "壁をずり落ちる",
+                    PlayerGrapple.WallStage.Regrip => "両腕を掴まれる",
+                    PlayerGrapple.WallStage.Restrain => "引き起こされる",
+                    PlayerGrapple.WallStage.TossWindup or PlayerGrapple.WallStage.TossAir => "レーンへ投げられる",
+                    PlayerGrapple.WallStage.TossLand => "着地",
+                    _ => "両手首を押さえられる"
+                };
+                danger = true;
+            }
+            else if (_grapple.FrontEscapeRemaining > 0f)
             {
                 string attack = _grapple.Kind == GrappleKind.BearHug ? "締め付け" : "膝蹴り";
                 tail = $"{attack}まで {_grapple.FrontEscapeRemaining:F1}s";
