@@ -252,12 +252,26 @@ footPitchL = Mathf.Max(footPitchL, 18f * stepL);   // 踏み直す足はつま�
 - `WallPinSite` を付けたオブジェクトが壁。無ければ `WallPinProps` が実行時に 4 か所作る
   （x=-6 / 4 / 14 / 24、`FaceZ=1.78`、幅 2.6m、高さ 2.18m）。
 - 壁の描画は通常は地面の下。掴み後にせり上がり、解除後に地面へ戻る。投げと拘束の段階は `PlayerGrapple.WallPhase` が管理する。
-- **拘束の終わりは投げ捨ててダウン**。最後の膝蹴りのあと `TossWindup` → `TossAir` でレーンへ投げ、
-  着地の瞬間に `PlayerStats.ForceDown`（`reason="wall-toss"`、飛距離 0）で倒す。
-  以前は着地して立ったままレーンへ戻っていたため「滑り戻る」ように見えた（実測）。
-  仰向け（`forward=false`）／うつ伏せ（`forward=true`）は 50% ずつ。
-  撮影・テストでは `PlayerGrapple.ForcedWallTossForward` か `-walldown=prone|supine` で固定する。
-  ダウン中も `EndWallPin` の z 戻しは走るが、着地点の z は元のレーンなので実質動かない。
+- **拘束の終わりは投げ捨ててダウン**。最後の膝蹴りのあと `TossWindup` で引き上げ、
+  その終わりに `PlayerStats.ForceDown`（`reason="wall-toss"`）で**放物線を投げる**。
+  空中の弧・着地・倒れはダウン側（`PlayerMotor.LaunchBack`）に任せる。
+  台本でレーンへ運んでから倒すと「レーンに戻ってから急に倒れる」ように見えた（実測）。
+  - 投げる向きは**アリーナの内側**（`_wallStartRotation` の前方向の X 符号）。
+    壁の左右へ投げると画面外・ステージ端へ飛ぶ（実測）。拘束役ののけぞりと彼女の手の
+    逃がし先もこの向きに合わせるため、`WallTossSide` は台本上の着地点ではなく
+    **実際の投げ方向**（`_wallTossSide`）を返す。X 成分が無いときは +X を内側とみなす。
+  - 飛距離 1.7m・高さ 0.95m（滞空 0.59s）。壁の z は 0.34s でレーンへ抜く
+    （`_wallThrowExitSeconds`）。滞空より遅いと壁の上をすり抜けて見える。
+  - 仰向け（`forward=false`）／うつ伏せ（`forward=true`）は 50% ずつ。
+    撮影・テストでは `PlayerGrapple.ForcedWallTossForward` か `-walldown=prone|supine` で固定する。
+  - **うつ伏せでも放物線で飛ばす**。`PlayerStats.ForceDown` は「前へ崩れるダウン」では
+    飛ばさない（腹を抱えて膝から落ちる動き）が、壁の投げ捨ては「崩れ落ち」ではなく
+    「投げ捨て」なので `launchWhenForward: true` を渡す。既定の false では従来どおり
+    （腹ダウン等は飛ばない）。これが無いうつ伏せ側だけ壁際で崩れ、z が横滑りして見えた（実測）。
+  - 空中姿勢（`CharacterAnimator._downLaunched`）は**仰向けのダウン分岐にだけ効く**。
+    うつ伏せの投げ捨ては「前へ崩れる」ダウン姿勢のまま飛び、着地でうつ伏せになる（実測）。
+    うつ伏せ側で弧が出るかどうかは `launchWhenForward` が決める（姿勢側は変えていない）。
+  - 着地音（`SfxId.BodyDrop`）は滞空時間後に鳴らす。待つ間に掴み直されていたら鳴らさない。
 - 当たり判定は付けない。投げ先は `PlayerGrapple.BeginWallPin` が決める。
 - ジオメトリ側で置くときは `-nowallprops` で自動生成を止める。
 - 確認: `-wallpintest`（`-pinshot=` / `-pinburst=` 併用可）または `-wallpinnow`。

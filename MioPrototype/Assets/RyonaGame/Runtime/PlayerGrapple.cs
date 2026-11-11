@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using UnityEngine;
 
 namespace Ryona.Game
@@ -96,7 +97,13 @@ namespace Ryona.Game
             : WallPhase == WallStage.Held || WallPhase == WallStage.TossWindup ? 1f : 0f;
         internal bool IsWallToss => IsWallPin && WallPhase >= WallStage.TossWindup;
         internal float WallTossLower => Mathf.SmoothStep(0f, 1f, WallPhaseProgress);
-        internal float WallTossSide => Mathf.Sign(_wallTossLanding.x - _wallPinSpot.x);
+
+        /// <summary>
+        /// 投げ捨てる向き（X の符号）。<see cref="BeginWallToss"/> が実際の投げ方向から決める。
+        /// 拘束役ののけぞり（<see cref="EnemyFigure"/>）と彼女の手の逃がし先
+        /// （<see cref="CharacterAnimator"/>）がこれを見る。
+        /// </summary>
+        internal float WallTossSide => _wallTossSide;
 
         internal float WallGripWeight => WallPhase == WallStage.Regrip
             ? Mathf.SmoothStep(0f, 1f, WallPhaseProgress)
@@ -123,7 +130,7 @@ namespace Ryona.Game
         float _wallPhaseTime;
         Vector3 _wallStartPosition;
         Quaternion _wallStartRotation;
-        Vector3 _wallTossLanding;
+        float _wallTossSide = 1f;
 
 
         /// <summary>壁押さえつけの見た目 0..1。姿勢のブレンドに使う。</summary>
@@ -151,6 +158,12 @@ namespace Ryona.Game
 
         /// <summary>壁からレーンへ戻るまでの秒数。</summary>
         const float WallExitSeconds = 0.25f;
+
+        /// <summary>今回の z 戻しにかける秒数（投げ捨てのときは飛んでいる間）。</summary>
+        float _wallExitSeconds = WallExitSeconds;
+
+        /// <summary>投げ捨てで使う z 戻しの秒数（<see cref="EndWallPin"/> が拾う）。</summary>
+        float _wallThrowExitSeconds;
 
         /// <summary>両手首が壁面へ貼り付くまでの秒数。</summary>
         const float WallAdhereSeconds = 0.40f;
@@ -372,7 +385,7 @@ namespace Ryona.Game
             if (_wallExitRemaining > 0f)
             {
                 _wallExitRemaining = Mathf.Max(0f, _wallExitRemaining - Time.deltaTime);
-                float t = Mathf.Clamp01(_wallExitRemaining / WallExitSeconds);
+                float t = Mathf.Clamp01(_wallExitRemaining / _wallExitSeconds);
                 var motor = Motor();
                 if (motor != null)
                 {
@@ -630,77 +643,65 @@ namespace Ryona.Game
 
         void BeginWallToss()
         {
-            const float sideDistance = 1.20f;
-            float preferred = -Mathf.Sign((_wallStartRotation * Vector3.forward).x);
-            float preferredX = _wallPinSpot.x + preferred * sideDistance;
-            float oppositeX = _wallPinSpot.x - preferred * sideDistance;
-            var motor = Motor();
-            if (motor != null)
-            {
-                preferredX = Mathf.Clamp(preferredX, motor.BackLimitX, motor.ForwardLimitX);
-                oppositeX = Mathf.Clamp(oppositeX, motor.BackLimitX, motor.ForwardLimitX);
-            }
-
-            _wallTossLanding = _wallPinSpot;
-            _wallTossLanding.z = _wallStartPosition.z;
-            _wallTossLanding.x = Mathf.Abs(preferredX - _wallPinSpot.x) >= 0.9f ||
-                Mathf.Abs(preferredX - _wallPinSpot.x) >= Mathf.Abs(oppositeX - _wallPinSpot.x)
-                ? preferredX : oppositeX;
+            // 投げる向きは「彼女が元いた向き（進行方向）」＝アリーナの内側。
+            // 壁の左右へ投げると、画面外やステージ端へ飛んでいく（実測）。
+            // 拘束役ののけぞりもこの向きに合わせる（逆だと投げた側と反対へ倒れて見える）。
+            float interior = (_wallStartRotation * Vector3.forward).x;
+            // 壁へ正面から向かっていて X 成分が無いときは向きが決められないので、
+            // +X をアリーナ内側とみなす（0 にすると投げ方向がゼロベクトルになる）。
+            _wallTossSide = Mathf.Abs(interior) > 0.1f ? Mathf.Sign(interior) : 1f;
             SetWallStage(WallStage.TossWindup);
         }
 
         void TickWallToss()
         {
-            float seconds = WallPhase switch
-            {
-                WallStage.TossWindup => 0.26f,
-                WallStage.TossAir => 0.44f,
-                _ => 0.28f
-            };
+            const float seconds = 0.26f;
             _wallPhaseTime += Time.deltaTime;
-            float t = WallPhaseProgress = Mathf.Clamp01(_wallPhaseTime / seconds);
-            var motor = Motor();
-            Vector3 launch = _wallPinSpot + (_wallPinRotation * Vector3.forward) * 0.10f;
-            if (WallPhase == WallStage.TossWindup)
-                transform.position = Vector3.Lerp(_wallPinSpot, launch, WallTossLower);
-            else if (WallPhase == WallStage.TossAir)
-            {
-                // 投げ手をすり抜けないよう、奥行きより先に横へ逃がす。
-                Vector3 position = Vector3.Lerp(launch, _wallTossLanding, t);
-                position.x = Mathf.Lerp(launch.x, _wallTossLanding.x, t * (2f - t));
-                position.y += 1.12f * t * (1f - t);
-                Quaternion facing = Quaternion.LookRotation(Vector3.left * WallTossSide);
-                transform.SetPositionAndRotation(position, Quaternion.Slerp(_wallPinRotation, facing,
-                    Mathf.SmoothStep(0f, 1f, t)));
-            }
-            motor?.SetLaneZOverride(transform.position.z);
+            WallPhaseProgress = Mathf.Clamp01(_wallPhaseTime / seconds);
 
-            if (t < 1f)
+            // 壁から 0.10m 手前まで引き上げる。ここから放物線で投げ捨てる。
+            Vector3 launch = _wallPinSpot + (_wallPinRotation * Vector3.forward) * 0.10f;
+            transform.position = Vector3.Lerp(_wallPinSpot, launch, WallTossLower);
+            Motor()?.SetLaneZOverride(transform.position.z);
+
+            if (WallPhaseProgress < 1f)
                 return;
 
-            switch (WallPhase)
-            {
-                case WallStage.TossWindup:
-                    SetWallStage(WallStage.TossAir);
-                    PlaySfx(SfxId.Swing, 0.95f);
-                    break;
-                case WallStage.TossAir:
-                {
-                    // 投げ捨てた着地点でダウンさせる。ここでレーンへ戻して立たせると、
-                    // 壁から滑り戻るだけの不自然な動きになる（実測）。
-                    // 仰向け（後ろへ倒れる）／うつ伏せ（前へ崩れる）はランダム。
-                    var attacker = Captor != null ? Captor.transform : null;
-                    PlaySfx(SfxId.BodyDrop, 0.65f);
-                    Fail();
-                    bool forward = ForcedWallTossForward ?? (UnityEngine.Random.value < 0.5f);
-                    Stats?.ForceDown(CombatConstants.DownDuration, "wall-toss", attacker,
-                        0f, 0f, forward);
-                    break;
-                }
-                case WallStage.TossLand:
-                    Fail();
-                    break;
-            }
+            // 引き上げてから投げ捨てる。空中の弧・着地・倒れはダウンの仕組み
+            // （PlayerStats.ForceDown → PlayerMotor.LaunchBack）に任せる。
+            // ここで台本どおりに運ぶと、レーンへ戻ってから急に倒れるように見えた（実測）。
+            var attacker = Captor != null ? Captor.transform : null;
+            Vector3 throwDirection = Vector3.right * _wallTossSide;
+            PlaySfx(SfxId.Swing, 0.95f);
+
+            // 飛んでいる間に z をレーンへ戻す。壁の真上を飛ぶと壁の見た目を
+            // すり抜けるので、離脱は速め（着地より先にレーンへ出る）。
+            _wallThrowExitSeconds = ThrowExitSeconds;
+            Fail();
+
+            // うつ伏せ着地でも投げ飛ばす（壁の投げ捨ては「崩れ落ち」ではない）。
+            bool forward = ForcedWallTossForward ?? (UnityEngine.Random.value < 0.5f);
+            Stats?.ForceDown(CombatConstants.DownDuration, "wall-toss", attacker,
+                1.7f, 0.95f, forward, throwDirection, launchWhenForward: true);
+            StartCoroutine(PlayBodyDropAfter(ThrowFlightSeconds));
+        }
+
+        /// <summary>投げ捨ての滞空時間（秒）。着地音の待ちに使う。</summary>
+        const float ThrowFlightSeconds = 0.62f;
+
+        /// <summary>投げ捨てで壁からレーンへ抜けるまでの秒数（滞空より短くする）。</summary>
+        const float ThrowExitSeconds = 0.34f;
+
+        IEnumerator PlayBodyDropAfter(float seconds)
+        {
+            yield return new WaitForSeconds(seconds);
+
+            // 待つ間に別の敵へ掴み直されたら、拘束中の効果音になるので鳴らさない。
+            // ダウンが解けている（着地ではない）ときも鳴らさない。
+            if (IsGrappled || Stats == null || !Stats.IsDown)
+                yield break;
+
+            PlaySfx(SfxId.BodyDrop, 0.8f);
         }
 
         void BeginHold(EnemyBrain captor, GrappleKind kind, bool blendContact)
@@ -1275,7 +1276,8 @@ namespace Ryona.Game
         }
 
         /// <summary>
-        /// 壁押さえつけを終える。すぐにレーンへ戻さず、<see cref="WallExitSeconds"/> かけて
+        /// 壁押さえつけを終える。すぐにレーンへ戻さず、戻りの秒数
+        /// （通常 <see cref="WallExitSeconds"/>、投げ捨ては <see cref="ThrowExitSeconds"/>）かけて
         /// z を 0 へ戻す（戻りの姿勢は <see cref="CharacterAnimator"/> が壁の重みで作る）。
         /// </summary>
         void EndWallPin()
@@ -1283,22 +1285,22 @@ namespace Ryona.Game
             if (!IsWallPin)
                 return;
 
-            bool arrived = WallPhase == WallStage.TossLand;
             _wallSite?.RetractAfterRelease();
             _wallSite = null;
             WallPhase = WallStage.None;
             WallPhaseProgress = 0f;
             IsWallPin = false;
             _wallExitFromZ = transform.position.z;
-            _wallExitRemaining = arrived ? 0f : WallExitSeconds;
+
+            // 投げ捨てのときは、飛んでいる間に z をレーンへ戻す（壁の上をすり抜けない）。
+            _wallExitSeconds = _wallThrowExitSeconds > 0f ? _wallThrowExitSeconds : WallExitSeconds;
+            _wallThrowExitSeconds = 0f;
+            _wallExitRemaining = _wallExitSeconds;
 
             var motor = Motor();
             if (motor != null)
             {
-                if (arrived)
-                    motor.ClearLaneZOverride();
-                else
-                    motor.SetLaneZOverride(_wallExitFromZ);
+                motor.SetLaneZOverride(_wallExitFromZ);
                 motor.SnapToLaneFacing();
             }
         }

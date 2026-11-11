@@ -213,8 +213,8 @@ namespace Ryona.Tests
             yield return WaitForGrapple();
 
             Vector3 start = _player.transform.position;
-            Vector3 thrower = _captor.transform.position;
             float peak = start.y;
+            bool airborne = false;
             var stages = new System.Collections.Generic.List<PlayerGrapple.WallStage>();
             float deadline = Time.realtimeSinceStartup + 10f;
             while (_grapple.IsGrappled && Time.realtimeSinceStartup < deadline)
@@ -222,21 +222,28 @@ namespace Ryona.Tests
                 var stage = _grapple.WallPhase;
                 if (stages.Count == 0 || stages[stages.Count - 1] != stage)
                     stages.Add(stage);
-                if (stage == PlayerGrapple.WallStage.TossAir)
-                {
-                    peak = Mathf.Max(peak, _player.transform.position.y);
-                    Assert.Less(Vector3.Distance(thrower, _captor.transform.position), 0.05f,
-                        "投げる側は飛んでいる相手について行かない");
-                }
+                yield return null;
+            }
+
+            // 投げられたあとは放物線で飛ぶ。着地まで見る。
+            var motor = _player.GetComponent<PlayerMotor>();
+            float flightDeadline = Time.realtimeSinceStartup + 2f;
+            while (Time.realtimeSinceStartup < flightDeadline)
+            {
+                peak = Mathf.Max(peak, _player.transform.position.y);
+                if (motor != null && motor.IsAirborne)
+                    airborne = true;
+                if (motor != null && !motor.IsAirborne && _player.transform.position.y < 0.3f)
+                    break;
                 yield return null;
             }
 
             yield return null;
-            yield return null;
 
             CollectionAssert.AreEqual(new[] { PlayerGrapple.WallStage.Held,
-                PlayerGrapple.WallStage.TossWindup, PlayerGrapple.WallStage.TossAir }, stages);
-            Assert.Greater(peak, start.y + 0.20f);
+                PlayerGrapple.WallStage.TossWindup }, stages);
+            Assert.IsTrue(airborne, "投げ捨てなのに浮いていない（その場で倒れただけ）");
+            Assert.Greater(peak, start.y + 0.30f, "投げ上げが低すぎる");
             Assert.AreEqual(80f, _player.State.Hp, 0.1f, "膝蹴り5発のあとに追加ダメージはない");
             Assert.IsFalse(_grapple.IsGrappled);
             Assert.IsTrue(_player.IsDown, "投げ捨てられたらダウンする（レーンで立ち直らない）");
@@ -252,16 +259,39 @@ namespace Ryona.Tests
             yield return Load();
             yield return WaitForGrapple();
 
+            Vector3 start = _player.transform.position;
+            float peak = start.y;
+            bool airborne = false;
+
             float deadline = Time.realtimeSinceStartup + 10f;
             while (_grapple.IsGrappled && Time.realtimeSinceStartup < deadline)
+            {
+                peak = Mathf.Max(peak, _player.transform.position.y);
                 yield return null;
+            }
+
+            // うつ伏せでも投げ捨ては放物線で飛ぶ（壁際で崩れ落ちるだけにしない）。
+            var motor = _player.GetComponent<PlayerMotor>();
+            float flightDeadline = Time.realtimeSinceStartup + 2f;
+            while (Time.realtimeSinceStartup < flightDeadline)
+            {
+                peak = Mathf.Max(peak, _player.transform.position.y);
+                if (motor != null && motor.IsAirborne)
+                    airborne = true;
+                if (motor != null && !motor.IsAirborne && _player.transform.position.y < 0.3f)
+                    break;
+                yield return null;
+            }
 
             yield return null;
             yield return null;
 
             Assert.IsFalse(_grapple.IsGrappled);
+            Assert.IsTrue(airborne, "うつ伏せの投げ捨てなのに浮いていない（壁際で崩れただけ）");
+            Assert.Greater(peak, start.y + 0.30f, "うつ伏せの投げ上げが低すぎる");
             Assert.IsTrue(_player.IsDown, "投げ捨てられたらダウンする");
             Assert.IsTrue(_player.DownIsForward, "うつ伏せに倒れる");
+            Assert.AreEqual(0f, _player.transform.position.z, 0.06f, "レーンへ戻っている");
         }
 
         [UnityTest]

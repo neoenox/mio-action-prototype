@@ -234,11 +234,17 @@ namespace Ryona.Game
         /// 攻撃者が背後なら前へ、正面なら後ろへ倒れる。腹ダウンでは前を指定する。
         /// 前へ崩れるときは飛ばさない（腹を抱えて膝から落ちる動きになる）。
         /// </para>
+        /// <para>
+        /// <paramref name="launchWhenForward"/> は前へ崩れる（うつ伏せ着地）ときも飛ばす。
+        /// 壁の投げ捨て専用（「崩れ落ちる」ではなく「投げ捨てられる」ので、うつ伏せでも放物線が要る）。
+        /// 既定の false では今までどおり飛ばない。
+        /// </para>
         /// </summary>
         public void ForceDown(float seconds, string reason, Transform attacker = null,
             float launchDistance = CombatConstants.DownLaunchDistance,
             float launchHeight = CombatConstants.DownLaunchHeight,
-            bool? forward = null)
+            bool? forward = null, Vector3? launchDirection = null,
+            bool launchWhenForward = false)
         {
             if (State == null || IsDead)
                 return;
@@ -257,7 +263,8 @@ namespace Ryona.Game
 
             // 前へ崩れるときは飛ばさない。腹を抱えたまま膝が抜ける動きなので、
             // 放物線で飛ぶと「腹を殴られたのに吹き飛んだ」ように見える。
-            if (DownIsForward)
+            // ただし壁の投げ捨てはうつ伏せ着地でも投げ飛ばす（launchWhenForward）。
+            if (DownIsForward && !launchWhenForward)
                 launchDistance = 0f;
 
             // 後ろへ放物線で飛ぶ。攻撃してきた相手が分かれば、その反対側へ飛ばす。
@@ -267,9 +274,8 @@ namespace Ryona.Game
 
             if (launchDistance > 0f)
             {
-                Vector3 dir = attacker != null
-                    ? transform.position - attacker.position
-                    : -transform.forward;
+                Vector3 dir = launchDirection ??
+                    (attacker != null ? transform.position - attacker.position : -transform.forward);
                 var motor = GetComponent<PlayerMotor>();
                 if (motor != null)
                     motor.LaunchBack(launchDistance, launchHeight, dir);
