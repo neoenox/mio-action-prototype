@@ -60,6 +60,31 @@ namespace Ryona.Game
         // 「首へ手を伸ばしている」画になる（0.85m だった）。肘を畳んで脇の下へ入れる距離にする。
         internal const float BackGrabDistance = 0.34f;
 
+        /// <summary>
+        /// 壁からの投げ捨てで、うつ伏せ（true）／仰向け（false）を固定する。
+        /// null ならランダム。撮影とテスト用。<c>-walldown=prone|supine</c> でも指定できる。
+        /// </summary>
+        public static bool? ForcedWallTossForward { get; set; }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        static void ParseWallDownFlag()
+        {
+            ForcedWallTossForward = null;
+            foreach (string a in Environment.GetCommandLineArgs())
+            {
+                if (!a.StartsWith("-walldown=", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                string v = a.Substring("-walldown=".Length);
+                if (v.Equals("prone", StringComparison.OrdinalIgnoreCase) ||
+                    v.Equals("forward", StringComparison.OrdinalIgnoreCase))
+                    ForcedWallTossForward = true;
+                else if (v.Equals("supine", StringComparison.OrdinalIgnoreCase) ||
+                         v.Equals("back", StringComparison.OrdinalIgnoreCase))
+                    ForcedWallTossForward = false;
+            }
+        }
+
         /// <summary>壁押さえつけ中か。押さえつけ（Pin）の一種だが、レーンの外の壁へ押し出される。</summary>
         public bool IsWallPin { get; private set; }
         public enum WallStage { None, Grab, Rise, Throw, Slam, Lean, Regrip, Restrain, Held, TossWindup, TossAir, TossLand }
@@ -660,9 +685,18 @@ namespace Ryona.Game
                     PlaySfx(SfxId.Swing, 0.95f);
                     break;
                 case WallStage.TossAir:
-                    SetWallStage(WallStage.TossLand);
+                {
+                    // 投げ捨てた着地点でダウンさせる。ここでレーンへ戻して立たせると、
+                    // 壁から滑り戻るだけの不自然な動きになる（実測）。
+                    // 仰向け（後ろへ倒れる）／うつ伏せ（前へ崩れる）はランダム。
+                    var attacker = Captor != null ? Captor.transform : null;
                     PlaySfx(SfxId.BodyDrop, 0.65f);
+                    Fail();
+                    bool forward = ForcedWallTossForward ?? (UnityEngine.Random.value < 0.5f);
+                    Stats?.ForceDown(CombatConstants.DownDuration, "wall-toss", attacker,
+                        0f, 0f, forward);
                     break;
+                }
                 case WallStage.TossLand:
                     Fail();
                     break;

@@ -252,6 +252,12 @@ footPitchL = Mathf.Max(footPitchL, 18f * stepL);   // 踏み直す足はつま�
 - `WallPinSite` を付けたオブジェクトが壁。無ければ `WallPinProps` が実行時に 4 か所作る
   （x=-6 / 4 / 14 / 24、`FaceZ=1.78`、幅 2.6m、高さ 2.18m）。
 - 壁の描画は通常は地面の下。掴み後にせり上がり、解除後に地面へ戻る。投げと拘束の段階は `PlayerGrapple.WallPhase` が管理する。
+- **拘束の終わりは投げ捨ててダウン**。最後の膝蹴りのあと `TossWindup` → `TossAir` でレーンへ投げ、
+  着地の瞬間に `PlayerStats.ForceDown`（`reason="wall-toss"`、飛距離 0）で倒す。
+  以前は着地して立ったままレーンへ戻っていたため「滑り戻る」ように見えた（実測）。
+  仰向け（`forward=false`）／うつ伏せ（`forward=true`）は 50% ずつ。
+  撮影・テストでは `PlayerGrapple.ForcedWallTossForward` か `-walldown=prone|supine` で固定する。
+  ダウン中も `EndWallPin` の z 戻しは走るが、着地点の z は元のレーンなので実質動かない。
 - 当たり判定は付けない。投げ先は `PlayerGrapple.BeginWallPin` が決める。
 - ジオメトリ側で置くときは `-nowallprops` で自動生成を止める。
 - 確認: `-wallpintest`（`-pinshot=` / `-pinburst=` 併用可）または `-wallpinnow`。

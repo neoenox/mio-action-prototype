@@ -26,6 +26,7 @@ namespace Ryona.Tests
         public void TearDown()
         {
             Time.timeScale = 1f;
+            PlayerGrapple.ForcedWallTossForward = null;
             if (_grapple != null && _grapple.IsGrappled)
                 _grapple.Release();
         }
@@ -205,8 +206,9 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator 最後の膝蹴りのあと元のレーンへ投げられて着地する()
+        public IEnumerator 最後の膝蹴りのあと投げ捨てられてダウンする()
         {
+            PlayerGrapple.ForcedWallTossForward = false;   // 仰向け
             yield return Load();
             yield return WaitForGrapple();
 
@@ -229,14 +231,37 @@ namespace Ryona.Tests
                 yield return null;
             }
 
+            yield return null;
+            yield return null;
+
             CollectionAssert.AreEqual(new[] { PlayerGrapple.WallStage.Held,
-                PlayerGrapple.WallStage.TossWindup, PlayerGrapple.WallStage.TossAir,
-                PlayerGrapple.WallStage.TossLand }, stages);
+                PlayerGrapple.WallStage.TossWindup, PlayerGrapple.WallStage.TossAir }, stages);
             Assert.Greater(peak, start.y + 0.20f);
             Assert.AreEqual(80f, _player.State.Hp, 0.1f, "膝蹴り5発のあとに追加ダメージはない");
             Assert.IsFalse(_grapple.IsGrappled);
-            Assert.AreEqual(0f, _player.transform.position.z, 0.02f);
-            Assert.AreEqual(start.y, _player.transform.position.y, 0.04f);
+            Assert.IsTrue(_player.IsDown, "投げ捨てられたらダウンする（レーンで立ち直らない）");
+            Assert.IsFalse(_player.DownIsForward, "仰向けに倒れる");
+            Assert.Greater(_player.DownRemaining, 0.5f, "すぐ起き上がってはいけない");
+            Assert.AreEqual(0f, _player.transform.position.z, 0.06f, "レーンへ戻っている");
+        }
+
+        [UnityTest]
+        public IEnumerator 投げ捨てのダウンはうつ伏せにもなる()
+        {
+            PlayerGrapple.ForcedWallTossForward = true;
+            yield return Load();
+            yield return WaitForGrapple();
+
+            float deadline = Time.realtimeSinceStartup + 10f;
+            while (_grapple.IsGrappled && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            yield return null;
+            yield return null;
+
+            Assert.IsFalse(_grapple.IsGrappled);
+            Assert.IsTrue(_player.IsDown, "投げ捨てられたらダウンする");
+            Assert.IsTrue(_player.DownIsForward, "うつ伏せに倒れる");
         }
 
         [UnityTest]
