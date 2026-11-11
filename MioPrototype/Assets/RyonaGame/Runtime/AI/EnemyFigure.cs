@@ -3039,11 +3039,27 @@ namespace Ryona.Game
 
             float lift = hold.WallPhase == PlayerGrapple.WallStage.TossWindup
                 ? 1f - hold.WallTossLower : hold.WallRestraintWeight;
-            Solve(true, _targetRig.RHand, weight, lift);
-            Solve(false, _targetRig.LHand, weight, lift);
+
+            // 壁へ貼り付いたあとも、彼は彼女の腕を掴んだままにする。
+            // 手首は壁の上（頭の上）まで上がるので、彼の腕では届かない（実測: 肩から 0.7m、腕は 0.55m）。
+            // 掴み所を手首から前腕（肘寄り）へ滑らせ、腕を押さえ込む形にする。
+            float adhere = hold.WallAdhereWeight;
+            Vector3 gripL = _targetRig.LHand.position;
+            Vector3 gripR = _targetRig.RHand.position;
+            if (adhere > 0f)
+            {
+                if (_targetRig.LLowerArm != null)
+                    gripL = Vector3.Lerp(gripL, _targetRig.LLowerArm.position, 0.22f * adhere);
+                if (_targetRig.RLowerArm != null)
+                    gripR = Vector3.Lerp(gripR, _targetRig.RLowerArm.position, 0.22f * adhere);
+            }
+
+            Solve(true, gripR, weight, lift, adhere);
+            Solve(false, gripL, weight, lift, adhere);
 
             // 頭が壁側へ揺れた分は、敵が届いた位置へ澪の手首を寄せて接触を保つ。
-            if (weight >= 0.99f)
+            // 貼り付いたあとは手首を手放しているので、手前に引き戻さない。
+            if (weight >= 0.99f && adhere <= 0.01f)
             {
                 SettlePlayerWrist(_targetRig.LUpperArm, _targetRig.LLowerArm, _targetRig.LHand,
                     _figure.WristBone(false), -_targetRig.transform.right);
@@ -3059,9 +3075,11 @@ namespace Ryona.Game
                 Vector3 pr = _targetRig.RHand.position;
                 Vector3 cl = _figure.WristBone(true).position;
                 Vector3 cr = _figure.WristBone(false).position;
-                Debug.Log($"[OverheadPose] w={weight:F2} headY={head.y:F2} " +
+                Debug.Log($"[OverheadPose] w={weight:F2} adhere={adhere:F2} headY={head.y:F2} " +
                           $"playerL=({pl.x:F2},{pl.y:F2},{pl.z:F2}) playerR=({pr.x:F2},{pr.y:F2},{pr.z:F2}) " +
-                          $"captorL=({cl.x:F2},{cl.y:F2},{cl.z:F2}) captorR=({cr.x:F2},{cr.y:F2},{cr.z:F2})");
+                          $"elbowL=({_targetRig.LLowerArm.position.x:F2},{_targetRig.LLowerArm.position.z:F2}) " +
+                          $"captorL=({cl.x:F2},{cl.y:F2},{cl.z:F2}) captorR=({cr.x:F2},{cr.y:F2},{cr.z:F2}) " +
+                          $"gripGapL={Vector3.Distance(cl, gripR):F2}");
             }
 
         }
@@ -3077,8 +3095,10 @@ namespace Ryona.Game
                 elbow.position + outward * 0.20f, outward);
         }
 
-        /// <summary>相手の腕を彼女の手首へ。肘は外・上へ開く。</summary>
-        void Solve(bool left, Transform playerHand, float weight, float lift)
+        /// <summary>
+        /// 相手の腕を狙いの位置へ。肘は外へ開く。壁へ押し込むときは肘を下げて体重を乗せる。
+        /// </summary>
+        void Solve(bool left, Vector3 goal, float weight, float lift, float press)
         {
             if (weight <= 0f)
                 return;
@@ -3086,12 +3106,14 @@ namespace Ryona.Game
             var upper = _figure.ShoulderBone(left);
             var elbow = _figure.ElbowBone(left);
             var wrist = _figure.WristBone(left);
-            if (upper == null || elbow == null || wrist == null || playerHand == null)
+            if (upper == null || elbow == null || wrist == null)
                 return;
 
             Vector3 outward = transform.right * (left ? -1f : 1f);
-            Vector3 goal = playerHand.position;
-            Vector3 pole = upper.position + Vector3.up * Mathf.Lerp(-0.40f, 0.55f, lift) + outward * 0.45f;
+            Vector3 pole = upper.position
+                + Vector3.up * Mathf.Lerp(-0.40f, 0.55f, lift)
+                + outward * Mathf.Lerp(0.45f, 0.30f, press)
+                - Vector3.up * 0.18f * press;
 
             Quaternion previousUpper = upper.rotation;
             Quaternion previousElbow = elbow.rotation;

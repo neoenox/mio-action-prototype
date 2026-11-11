@@ -82,6 +82,52 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator 壁押さえつけの両手首は壁面へ貼り付く()
+        {
+            yield return Load();
+
+            var site = WallPinSites.Nearest(_player.transform.position);
+            Assert.IsNotNull(site, "壁が無い");
+            float face = site.FaceZ;
+
+            _captor.QueuePin();
+            yield return WaitForGrapple();
+            Assert.IsTrue(_grapple.IsWallPin, "壁押さえつけが始まらない");
+
+            var anim = _player.GetComponentInChildren<CharacterAnimator>();
+            Assert.IsNotNull(anim, "CharacterAnimator が無い");
+            Assert.IsTrue(anim.Rig != null && anim.Rig.Ready, "リグが完成していない");
+
+            // 貼り付き（0.40 秒）と姿勢のブレンドが終わるまで待つ。
+            yield return WaitGameSeconds(0.7f);
+
+            Vector3 head = anim.Rig.Head.position;
+            float gapL = face - anim.Rig.LHand.position.z;
+            float gapR = face - anim.Rig.RHand.position.z;
+
+            Assert.Less(gapL, 0.12f, $"左手首が壁から離れている（{gapL:F2}m）");
+            Assert.Less(gapR, 0.12f, $"右手首が壁から離れている（{gapR:F2}m）");
+            Assert.Greater(anim.Rig.LHand.position.y, head.y, "左手首が頭の上に無い");
+            Assert.Greater(anim.Rig.RHand.position.y, head.y, "右手首が頭の上に無い");
+            Assert.Greater(anim.Rig.LHand.position.z, anim.Rig.Chest.position.z,
+                "左手首が壁側（胸より奥）に無い");
+            Assert.Greater(anim.Rig.RHand.position.z, anim.Rig.Chest.position.z,
+                "右手首が壁側（胸より奥）に無い");
+
+            // もがいても、壁に貼り付いた手首はその場に残る。
+            for (int i = 0; i < 4; i++)
+            {
+                _grapple.Struggle();
+                yield return WaitGameSeconds(0.05f);
+                Assert.IsTrue(_grapple.IsGrappled, "まだ抜けてはいけない");
+                Assert.Less(face - anim.Rig.LHand.position.z, 0.15f,
+                    $"もがき中に左手首が壁から浮いた（{face - anim.Rig.LHand.position.z:F2}m）");
+                Assert.Less(face - anim.Rig.RHand.position.z, 0.15f,
+                    $"もがき中に右手首が壁から浮いた（{face - anim.Rig.RHand.position.z:F2}m）");
+            }
+        }
+
+        [UnityTest]
         public IEnumerator 最後の膝蹴りのあと元のレーンへ投げられて着地する()
         {
             yield return Load();

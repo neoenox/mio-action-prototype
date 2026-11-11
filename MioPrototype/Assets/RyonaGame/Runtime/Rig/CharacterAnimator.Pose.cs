@@ -115,12 +115,13 @@ namespace Ryona.Game
 
             // 引き起こした高さで両手首を固定する。
             pose.HipsOffset.y = Mathf.Lerp(pose.HipsOffset.y, -0.12f, w);
-            pose.HipsOffset.z = Mathf.Lerp(pose.HipsOffset.z, -0.04f, w);
+            // 壁へ貼り付くので、腰ごと壁側へ寄せる。反り（TorsoPitch）を残すと
+            // 肩甲骨と後頭部だけが壁から離れて「背中が浮いた」画になる。
+            pose.HipsOffset.z = Mathf.Lerp(pose.HipsOffset.z, -0.07f, w);
 
             // 反りは小さく。反らせすぎると頭が壁へ入る。
-            pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, -7f, w);
-            // 頭は反らせず、むしろ少しうつむかせる（首の付け根が壁へ残らない）。
-            pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, 6f, w);
+            pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, -3f, w);
+            pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, 9f, w);
             pose.HeadRoll += 3f * w;
 
             // 足は相手側（前）へ踏ん張る。押し込まれるほど前へ残る。
@@ -1762,8 +1763,9 @@ namespace Ryona.Game
         }
 
         /// <summary>
-        /// 頭上拘束の腕IK。両手首を頭の上へ置く。
-        /// 伸びきらないよう、頭の中心から 0.32m 上を狙う（腕の長さの内側）。
+        /// 壁押さえつけの腕IK。両手首を頭の上へ置き、<see cref="PlayerGrapple.WallAdhereWeight"/>
+        /// が上がると壁の表面へ貼り付ける（手のひら 1 枚ぶんだけ離す）。
+        /// 壁へ貼り付いたあとは指を開かず、掌を壁へ向けて押し当てる形にする。
         /// </summary>
         void SolveOverheadArms()
         {
@@ -1774,14 +1776,35 @@ namespace Ryona.Game
 
             // 拘束に入った直後は今の手首位置からブレンドする（腕が瞬間移動しない）。
             float w = Grapple.WallRestraintWeight;
+            float adhere = Grapple.WallAdhereWeight;
 
             Vector3 head = Rig.Head.position + transform.forward * 0.09f;
             Vector3 right = transform.right;
-            float half = 0.10f;
-            float lift = 0.24f;
+            float half = 0.08f;
 
-            Vector3 goalL = head + Vector3.up * lift - right * half;
-            Vector3 goalR = head + Vector3.up * lift + right * half;
+            // 引き上げ中は頭の上。貼り付くと同時に、腕を上へ伸ばした位置へ移る。
+            Vector3 goalL = head + Vector3.up * 0.24f - right * half;
+            Vector3 goalR = head + Vector3.up * 0.24f + right * half;
+
+            Vector3 normal = Vector3.back;
+            bool hasWall = Grapple.HasWallFace;
+            if (hasWall)
+            {
+                Vector3 n = Grapple.WallPinNormal;
+                if (n.sqrMagnitude > 0.001f)
+                    normal = n.normalized;
+
+                // 壁へ貼り付いた手首は world 固定。頭を基準にすると、もがくたびに
+                // 上体が揺れて手首まで壁から浮く（実測: 0.11m → 0.31m まで動いた）。
+                // 体が揺れても手首は壁に残し、腕だけが伸び縮みする。
+                Vector3 root = transform.position;
+                Vector3 stuckBase = root + Vector3.up * WallStickHeight;
+                Vector3 stuckL = WallSurfacePoint(stuckBase - right * half, normal, WallHandGap);
+                Vector3 stuckR = WallSurfacePoint(stuckBase + right * half, normal, WallHandGap);
+                goalL = Vector3.Lerp(goalL, stuckL, adhere);
+                goalR = Vector3.Lerp(goalR, stuckR, adhere);
+            }
+
             if (Grapple.WallPhase == PlayerGrapple.WallStage.TossWindup && Rig.Chest != null)
             {
                 Vector3 reach = Rig.Chest.position + transform.forward * 0.28f - Vector3.up * 0.12f
@@ -1795,14 +1818,46 @@ namespace Ryona.Game
             // 肘は外へ開き、**少し後ろ**へ。前へ出すと腕が顔の前に来て表情が隠れる
             // （実測: 正面寄りのカメラで腕が顔を覆った）。後ろへ逃がすと腕が頭の枠になる。
             Vector3 poleBase = head + Vector3.up * 0.02f - transform.forward * 0.10f;
-            Vector3 poleL = poleBase - right * 0.50f;
-            Vector3 poleR = poleBase + right * 0.50f;
+            float poleSpread = Mathf.Lerp(0.50f, 0.62f, adhere);
+            Vector3 poleL = poleBase - right * poleSpread;
+            Vector3 poleR = poleBase + right * poleSpread;
 
             ProceduralRig.SolveTwoBone(Rig.LUpperArm, Rig.LLowerArm, Rig.LHand, goalL, poleL, right);
             ProceduralRig.SolveTwoBone(Rig.RUpperArm, Rig.RLowerArm, Rig.RHand, goalR, poleR, right);
-            Rig.CurlFingers(true, 0.55f);
-            Rig.CurlFingers(false, 0.55f);
+
+            // 壁へ貼り付いた手首は、掌を壁へ向けて押し当てる。手のひらが部屋側を向いたままだと
+            // 「壁へ手を突っ張っている」に見えない（実測）。
+            if (hasWall && adhere > 0.01f)
+            {
+                Vector3 intoWall = -normal;
+                Quaternion leftPose = Rig.LHand.rotation;
+                Quaternion rightPose = Rig.RHand.rotation;
+                Rig.AlignPalm(true, intoWall, Vector3.up);
+                Rig.AlignPalm(false, intoWall, Vector3.up);
+                Rig.LHand.rotation = Quaternion.Slerp(leftPose, Rig.LHand.rotation, adhere);
+                Rig.RHand.rotation = Quaternion.Slerp(rightPose, Rig.RHand.rotation, adhere);
+            }
+
+            // 手首が壁に付いている間は指を開く（掴む相手がいない）。
+            float grip = Mathf.Lerp(0.55f, 0.10f, adhere);
+            Rig.CurlFingers(true, grip);
+            Rig.CurlFingers(false, grip);
         }
+
+        /// <summary>壁の表面から <paramref name="gap"/> だけ部屋側へ離した点を返す。</summary>
+        Vector3 WallSurfacePoint(Vector3 point, Vector3 normal, float gap)
+        {
+            // 壁は Z に垂直な面（FaceZ）。法線方向の距離だけで寄せる。
+            Vector3 onFace = new Vector3(point.x, point.y, Grapple.WallFaceZ);
+            float distance = Vector3.Dot(point - onFace, normal);
+            return point + normal * (gap - distance);
+        }
+
+        /// <summary>壁へ貼り付く手首の高さ（キャラクターの足元から m）。頭より上に置く。</summary>
+        const float WallStickHeight = 1.62f;
+
+        /// <summary>壁の表面から手のひら中心までの距離（m）。</summary>
+        const float WallHandGap = 0.045f;
 
         /// <summary>組み立てた姿勢をリグへ流し込む（IK・倒れ・指・かかと）。</summary>
         void ApplyPoseToRig(PoseValues pose)

@@ -104,6 +104,13 @@ namespace Ryona.Game
         /// <summary>壁押さえつけの見た目 0..1。姿勢のブレンドに使う。</summary>
         public float WallPinWeight { get; private set; }
 
+        /// <summary>
+        /// 両手首を壁面へ貼り付けた見た目 0..1。<see cref="WallStage.Held"/> に入ってから
+        /// <see cref="WallAdhereSeconds"/> かけて立ち上がる。腕の IK と、押さえ役の手の置き先
+        /// （手首 → 胸）がこれで入れ替わる。
+        /// </summary>
+        public float WallAdhereWeight { get; private set; }
+
         /// <summary>壁の表面から室内側へ向く法線（world）。姿勢の反らせ方向に使う。</summary>
         public Vector3 WallPinNormal => _wallPinNormal;
 
@@ -119,6 +126,9 @@ namespace Ryona.Game
 
         /// <summary>壁からレーンへ戻るまでの秒数。</summary>
         const float WallExitSeconds = 0.25f;
+
+        /// <summary>両手首が壁面へ貼り付くまでの秒数。</summary>
+        const float WallAdhereSeconds = 0.40f;
         float _wallExitRemaining;
         float _wallExitFromZ;
         PlayerMotor _motor;
@@ -322,6 +332,13 @@ namespace Ryona.Game
                 WallPhase >= WallStage.Slam ? 1f : 0f;
             WallPinWeight = Mathf.MoveTowards(WallPinWeight, wallTarget,
                 Time.deltaTime / WallExitSeconds);
+
+            // 両手首を壁面へ貼り付ける見た目。引き上げ（Restrain）が終わってから
+            // ゆっくり立ち上げる。彼の手が彼女の手首を離れて胸へ移るのと同時に、
+            // 彼女の腕が頭上から壁面へ滑る（瞬間移動させない）。
+            float adhereTarget = IsWallPin && WallPhase == WallStage.Held ? 1f : 0f;
+            WallAdhereWeight = Mathf.MoveTowards(WallAdhereWeight, adhereTarget,
+                Time.deltaTime / WallAdhereSeconds);
 
             // 壁からレーンへ戻る。掴みが解けたあとも z を滑らかに戻さないと、
             // 1.4m 横へ瞬間移動したように見える。

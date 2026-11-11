@@ -2008,8 +2008,10 @@ namespace Ryona.Game
             // 髪は毛束の面が関節より外へ張り出すため、関節の押し戻しだけでは数 mm 残る。
             // 立ち位置そのものを離し、見た目で確実に手前に収める。
             const float playerRadius = 0.46f;
-            // 頭上の手首に両手が届く距離で押さえる。
-            const float captorGap = 0.55f;
+            // 頭上の手首を掴むには、腕の長さ（0.55m）の内側まで寄る必要がある。
+            // 0.55m 離すと手が 0.3m 届かず、彼女の胸の前で手が止まって「腹を掴んでいる」
+            // ように見えた（実測）。肩から手首まで 0.5m 以内になる距離にする。
+            const float captorGap = 0.38f;
 
             float playerZ = site.FaceZ - playerRadius;
             float captorZ = playerZ - captorGap;

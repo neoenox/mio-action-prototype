@@ -155,8 +155,8 @@ namespace Ryona.Tests
             yield return BeginWallHold();
             Assert.IsTrue(_grapple.IsGrappled);
 
-            // IK のブレンド（0.20 秒）が終わるまで待つ。
-            yield return WaitGameSeconds(0.4f);
+            // 貼り付き（0.40 秒）が終わるまで待つ。
+            yield return WaitGameSeconds(0.7f);
 
             Vector3 head = _animator.Rig.Head.position;
             Vector3 handL = _animator.Rig.LHand.position;
@@ -167,9 +167,26 @@ namespace Ryona.Tests
             Assert.Greater(handR.y, head.y + 0.10f,
                 $"右手首が頭の上に無い（head={head.y:F2} handR={handR.y:F2}）");
 
+            // 手首は壁の表面へ貼り付く。
+            float face = _grapple.WallFaceZ;
+            Assert.Less(face - handL.z, 0.12f, $"左手首が壁から離れている（{face - handL.z:F2}m）");
+            Assert.Less(face - handR.z, 0.12f, $"右手首が壁から離れている（{face - handR.z:F2}m）");
+
+            // 押さえ役は彼女の腕（前腕）を掴む。腹や胸ではなく腕に手があること。
             var figure = _captor.GetComponent<EnemyFigure>();
-            Assert.Less(Vector3.Distance(figure.WristBone(false).position, handL), 0.07f);
-            Assert.Less(Vector3.Distance(figure.WristBone(true).position, handR), 0.07f);
+            Vector3 chest = _animator.Rig.Chest.position;
+            Vector3 foreL = Vector3.Lerp(_animator.Rig.LLowerArm.position, handL, 0.22f);
+            Vector3 foreR = Vector3.Lerp(_animator.Rig.RLowerArm.position, handR, 0.22f);
+            float holdL = Vector3.Distance(figure.WristBone(false).position, foreL);
+            float holdR = Vector3.Distance(figure.WristBone(true).position, foreR);
+            Assert.Less(holdL, 0.22f, $"押さえ役の右手が彼女の左前腕に無い（{holdL:F2}m）");
+            Assert.Less(holdR, 0.22f, $"押さえ役の左手が彼女の右前腕に無い（{holdR:F2}m）");
+            Assert.Greater(foreL.y, chest.y, "掴む位置が腹ではなく腕（胸より上）に無い");
+            Assert.Greater(foreR.y, chest.y, "掴む位置が腹ではなく腕（胸より上）に無い");
+            Assert.Greater(handL.z, _animator.Rig.Chest.position.z,
+                "左手首が壁側（胸より奥）に無い");
+            Assert.Greater(handR.z, _animator.Rig.Chest.position.z,
+                "右手首が壁側（胸より奥）に無い");
 
             // 両手が揃っている（頭上で一箇所にまとめられている）。
             Assert.Less(Mathf.Abs(handL.x - handR.x), 0.35f,
