@@ -82,6 +82,55 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator 壁拘束の膝蹴りは腹にめり込まない()
+        {
+            yield return Load();
+
+            _captor.QueuePin();
+            yield return WaitForGrapple();
+            Assert.IsTrue(_grapple.IsWallPin, "壁押さえつけが始まらない");
+
+            var anim = _player.GetComponentInChildren<CharacterAnimator>();
+            var figure = _captor.GetComponent<EnemyFigure>();
+            Assert.IsNotNull(anim, "CharacterAnimator が無い");
+            Assert.IsNotNull(figure, "EnemyFigure が無い");
+
+            // 膝頭の球の半径と、彼女の腹の表面（実装と同じ式）。
+            float surface = 0.085f + figure.Height * 0.039f;
+            float kneeRadius = figure.Height * 0.039f;
+
+            float worst = float.NegativeInfinity;
+            float deadline = Time.realtimeSinceStartup + 8f;
+            while (Time.realtimeSinceStartup < deadline && _grapple.IsGrappled)
+            {
+                if (_grapple.KneePulse > 0.10f && anim.Rig != null && anim.Rig.Ready &&
+                    anim.Rig.Spine != null && anim.Rig.Chest != null)
+                {
+                    Vector3 spine = anim.Rig.Spine.position;
+                    Vector3 chest = anim.Rig.Chest.position;
+                    Vector3 front = Vector3.ProjectOnPlane(_player.transform.forward, chest - spine).normalized;
+                    Vector3 axis = Vector3.Lerp(spine, chest, 0.60f);
+
+                    for (int side = 0; side < 2; side++)
+                    {
+                        var knee = figure.KneeBone(side == 0);
+                        if (knee == null)
+                            continue;
+
+                        float depth = Vector3.Dot(knee.position - axis, front);
+                        float penetration = surface + kneeRadius - depth;
+                        worst = Mathf.Max(worst, penetration);
+                    }
+                }
+
+                yield return null;
+            }
+
+            Assert.Greater(worst, float.NegativeInfinity, "膝蹴りが一度も起きていない");
+            Assert.Less(worst, 0.05f, $"膝頭が腹にめり込んでいる（{worst:F3}m）");
+        }
+
+        [UnityTest]
         public IEnumerator 壁押さえつけの両手首は壁面へ貼り付く()
         {
             yield return Load();

@@ -359,18 +359,27 @@ namespace Ryona.Game
             Transform supportKnee = left ? _kneeR : _kneeL;
             Transform supportFoot = left ? _ankleR : _ankleL;
             if (hip == null || knee == null || supportFoot == null) return;
+            if (weight <= 0.001f) return;
 
             Vector3 planted = supportFoot.position;
             Quaternion plantedRotation = supportFoot.rotation;
             float thighLength = Vector3.Distance(hip.position, knee.position);
-            Vector3 toBelly = belly - hip.position;
-            if (toBelly.sqrMagnitude < 0.0001f) return;
+            if (thighLength < 0.0001f) return;
 
-            // 骨盤も合わせて動かし、腿の長さを保ったまま膝頭を腹の表面で止める。
-            Vector3 shift = toBelly.normalized * Mathf.Max(-0.065f, toBelly.magnitude - thighLength);
-            _hips.position += shift * weight;
-            Quaternion aimed = Quaternion.FromToRotation(knee.position - hip.position, belly - hip.position) * hip.rotation;
+            // 膝は常に腹の表面を狙う。脚の振り上げ（EnemyFigure の姿勢）は控えめにしておき、
+            // ここで骨盤を回して膝関節をそのまま腹の表面へ載せる。
+            // 回転だけでは膝は球面を動くので、腿の長さと腹までの距離の差だけ届かない／
+            // 突き抜ける。平行移動で膝を goal に載せると、深さが毎フレーム一致する。
+            Vector3 goal = belly;
+            Vector3 dir = goal - hip.position;
+            if (dir.sqrMagnitude < 0.0001f) return;
+
+            Quaternion aimed = Quaternion.FromToRotation(knee.position - hip.position, dir) * hip.rotation;
             hip.rotation = Quaternion.Slerp(hip.rotation, aimed, weight);
+            Vector3 moved = goal - knee.position;
+            LastPinKneeReach = Vector3.Distance(goal, hip.position) - thighLength;
+            LastPinKneeShift = moved.magnitude;
+            _hips.position += moved;
 
             // 膝頭を当て、脛と足先は相手と反対側へ畳む。
             Vector3 shin = -transform.up - transform.forward * 0.65f;
@@ -384,6 +393,12 @@ namespace Ryona.Game
         }
 
         public Transform ChestBone => _chest;
+
+        /// <summary>直近の膝合わせで「腹までの距離 − 腿の長さ」。正なら踏み込み、負なら届きすぎ。</summary>
+        public float LastPinKneeReach { get; private set; }
+
+        /// <summary>直近の膝合わせで骨盤を動かした距離（m）。診断用。</summary>
+        public float LastPinKneeShift { get; private set; }
 
         public Transform HeadBone => _head;
 
@@ -1228,21 +1243,27 @@ namespace Ryona.Game
                     }
 
                     hipsY += 0.02f * knee;
-                    hipsZ += 0.08f * knee;
+                    // 壁押さえつけは彼女との距離が近い（腹の表面まで 0.14m）。脚を大きく前へ
+                    // 振り上げると、腿のほうが長いぶん膝が腹を突き抜ける（実測）。
+                    // 腰を前へ押さず、膝は低めに上げて、深さは PinHoldPose の合わせに任せる。
+                    bool wallKnee = Brain != null && Brain.IsWallPinning;
+                    hipsZ += (wallKnee ? 0f : 0.08f) * knee;
+                    float raise = wallKnee ? 70f : 105f;
+                    float swing = wallKnee ? -85f : -115f;
                     if (leftKnee)
                     {
                         // 骨盤を右へずらして、左膝を彼女の腹の中心線へ入れる
                         // （そのまま上げると膝が彼女の脇腹の横を通って「当たっていない」画になる）
                         hipsX += 0.10f * knee;
-                        kneeL += 105f * knee;
-                        legLPitch -= 115f * knee;
+                        kneeL += raise * knee;
+                        legLPitch += swing * knee;
                         kneeR += 8f * knee;
                     }
                     else
                     {
                         hipsX -= 0.10f * knee;
-                        kneeR += 105f * knee;
-                        legRPitch -= 115f * knee;
+                        kneeR += raise * knee;
+                        legRPitch += swing * knee;
                         kneeL += 8f * knee;
                     }
                 }
@@ -2722,11 +2743,34 @@ namespace Ryona.Game
                 Vector3 spine = _targetRig.Spine.position;
                 Vector3 chest = _targetRig.Chest.position;
                 Vector3 front = Vector3.ProjectOnPlane(_brain.Player.transform.forward, chest - spine).normalized;
-                Vector3 belly = Vector3.Lerp(spine, chest, 0.60f) + front * (0.085f + _figure.Height * 0.039f);
+
+                // 腹の表面。膝の関節（骨）ではなく**膝頭の球の表面**を当てる。
+                // 関節をそのまま表面に置くと、膝球の半径（h*0.039）ぶん腹へ入って
+                // 「膝が貫通している」画になる（実測）。球の半径ぶん手前で止め、
+                // 1.5cm だけ沈ませて当たった感じを出す。
+                float surface = 0.085f + _figure.Height * 0.039f;
+                float kneeRadius = _figure.Height * 0.039f;
+                const float squash = 0.015f;
+                Vector3 belly = Vector3.Lerp(spine, chest, 0.60f)
+                    + front * (surface + kneeRadius - squash);
+
                 var cam = Camera.main;
                 bool left = cam != null && Vector3.Dot(cam.transform.position - transform.position, transform.right) < 0f;
                 float kick = Mathf.SmoothStep(0f, 1f, hold.KneePulse);
+                Vector3 preKnee = _figure.KneeBone(left).position;
                 _figure.AlignPinKnee(left, belly, kick);
+
+                if (_pinLog && hold.KneePulse > 0.02f)
+                {
+                    Vector3 axisPoint = Vector3.Lerp(spine, chest, 0.60f);
+                    Vector3 knee = _figure.KneeBone(left).position;
+                    float depth = Vector3.Dot(knee - axisPoint, front);
+                    float preDepth = Vector3.Dot(preKnee - axisPoint, front);
+                    float penetration = surface + kneeRadius - depth;
+                    Debug.Log($"[Knee] pulse={hold.KneePulse:F2} depth={depth:F3} pre={preDepth:F3} pen={penetration:F3} " +
+                              $"reach={_figure.LastPinKneeReach:F3} shift={_figure.LastPinKneeShift:F3} " +
+                              $"surface={surface:F3} kneeR={kneeRadius:F3}");
+                }
                 // 膝を届かせる骨盤の踏み込みと同じフレームに、跳ね上がる顔から胸と顎を引く。
                 _figure.BraceHoldUpperBody(33f * kick, 0f, 20f * kick);
             }
