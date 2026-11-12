@@ -18,7 +18,7 @@ PlayMode のテストを実行できます。
 
 ### 大きなファイルの分割（partial）
 
-読み切れない大きさだった 2 クラスは、責務ごとに partial で分けてあります。
+読み切れない大きさだったクラスは、責務ごとに partial で分けてあります。
 ファイル名で中身が分かるので、変更するときは該当ファイルだけを開けば足ります。
 
 - `EnemyBrain.cs`（コア: フィールド・ライフサイクル・Update の分岐）
@@ -38,6 +38,25 @@ PlayMode のテストを実行できます。
   - `EnemyFigure.Build.cs` / `.Primitives.cs` … プリミティブの組み立て
   - `BackHoldPose.cs` / `PinHoldPose.cs` / `BearHugPose.cs` / `OverheadHoldPose.cs` /
     `WallAssistPose.cs` / `WallSplitArm.cs` … 拘束ごとの腕ソルバ（それぞれ独立）
+- `PlayerGrapple.cs`（コア: 状態・入力・Update）
+  - `PlayerGrapple.Wall.cs` … 壁押さえつけ（掴み→壁→叩きつけ→手首固定→投げ捨て）
+  - `PlayerGrapple.Hold.cs` … 拘束開始（距離・制限時間・もがき必要数）
+  - `PlayerGrapple.HandOff.cs` … 引き渡し・押し出し（Shove）・ピン受け渡し
+  - `PlayerGrapple.Release.cs` … 解放・寄せ位置（SnapToCaptor / GrabSpot）
+  - `PlayerGrapple.BearHug.cs` / `.Escape.cs` … ベアハッグの締め付け・振りほどき/失敗
+- `CharacterAnimator.cs`（コア: フィールド・プレビュー補助）
+  - `CharacterAnimator.HeldPunch.cs` … 拘束中の腹パン/顔面パンチの被弾姿勢
+  - `CharacterAnimator.ArmAxes.cs` … 腕の向き（スケルトン差を吸収）
+  - `CharacterAnimator.Lifecycle.cs` … Awake/Bind/イベント購読
+  - `CharacterAnimator.Reaction.cs` … 被弾の向き・痛み顔・不安そうな視線
+  - `CharacterAnimator.State.cs` … 状態遷移とエイム
+  - `CharacterAnimator.LateUpdate.cs` … 毎フレームの姿勢適用と足音
+  - `CharacterAnimator.Pose*.cs` / `.ApplyPose.cs` / `.MountRoll.cs` /
+    `.OverheadArms.cs` … 姿勢の中身（別項のとおり）
+- `Editor/CharacterPreview.cs`（コア: 撮影の入口・共通処理）
+  - `.MeshDump.cs` / `.Stance.cs` / `.Motion.cs` / `.Hand.cs` / `.Face.cs` /
+    `.Hurt.cs` / `.Enemy.cs` / `.Joints.cs` / `.Sheets.cs` / `.Measure.cs`
+    … 検証用の撮影・計測コマンドを種類ごとに分割（Editor 専用）
 
 ### 拘束の状態（GrappleSession）
 
