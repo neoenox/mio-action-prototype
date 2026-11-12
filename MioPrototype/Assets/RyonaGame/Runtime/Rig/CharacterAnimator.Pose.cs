@@ -658,7 +658,7 @@ namespace Ryona.Game
                 pose.TorsoYaw = 0f;
                 pose.ArmLUpper = pose.ArmRUpper = new Vector3(0.50f, -0.20f, 0.55f);
                 pose.ArmLFore = pose.ArmRFore = new Vector3(-0.15f, 0.25f, 0.80f);
-                if (stage == PlayerGrapple.WallStage.Throw)
+                if (stage == WallStage.Throw)
                 {
                     float flight = Mathf.Sin(Mathf.PI * t);
                     pose.TorsoPitch = -14f * flight - 8f * t;
@@ -668,14 +668,14 @@ namespace Ryona.Game
                     pose.FootR += new Vector3(0f, 0.08f * flight, -0.14f * flight);
                     pose.ArmLUpper.y = pose.ArmRUpper.y = 0.20f;
                 }
-                else if (stage == PlayerGrapple.WallStage.TossWindup)
+                else if (stage == WallStage.TossWindup)
                 {
                     pose.TorsoPitch = Mathf.Lerp(-7f, 12f, t);
                     pose.HeadPitch = Mathf.Lerp(6f, 16f, t);
                     pose.HipsOffset.y = -0.12f;
                     pose.HipsOffset.z = -0.04f;
                 }
-                else if (stage == PlayerGrapple.WallStage.TossAir)
+                else if (stage == WallStage.TossAir)
                 {
                     float hang = Mathf.Sin(Mathf.PI * Grapple.WallPhaseProgress);
                     pose.TorsoPitch = Mathf.Lerp(12f, 24f, t) - 31f * hang;
@@ -687,7 +687,7 @@ namespace Ryona.Game
                     pose.ArmLUpper.x += 0.36f * hang;
                     pose.ArmRUpper.x += 0.52f * hang;
                 }
-                else if (stage == PlayerGrapple.WallStage.TossLand)
+                else if (stage == WallStage.TossLand)
                 {
                     float absorb = Mathf.Sin(Mathf.PI * t);
                     pose.TorsoPitch = Mathf.Lerp(24f, 6f, t) + 14f * absorb;
@@ -696,16 +696,16 @@ namespace Ryona.Game
                     pose.FootL.z += 0.18f;
                     pose.FootR.z -= 0.12f;
                 }
-                else if (stage >= PlayerGrapple.WallStage.Slam)
+                else if (stage >= WallStage.Slam)
                 {
                     float slide = Grapple.WallSlideWeight;
                     float lift = Grapple.WallRestraintWeight;
-                    float impact = stage == PlayerGrapple.WallStage.Slam ? Mathf.Sin(Mathf.PI * t) : 0f;
+                    float impact = stage == WallStage.Slam ? Mathf.Sin(Mathf.PI * t) : 0f;
                     pose.TorsoPitch = Mathf.Lerp(-8f, -2f, slide) - 10f * impact;
                     pose.HeadPitch = Mathf.Lerp(Mathf.Lerp(10f, 6f, lift), 24f, slide) + 12f * impact;
                     pose.HipsOffset.y -= Mathf.Lerp(0.06f, 0.38f, slide) + 0.04f * impact;
                     pose.HipsOffset.z -= 0.04f + 0.05f * slide;
-                    float armsDrop = stage == PlayerGrapple.WallStage.Slam ? t : 1f;
+                    float armsDrop = stage == WallStage.Slam ? t : 1f;
                     pose.ArmLUpper = pose.ArmRUpper = Vector3.Lerp(
                         new Vector3(0.50f, 0.20f, 0.55f), new Vector3(0.30f, -0.75f, 0.10f), armsDrop);
                     pose.ArmLFore = pose.ArmRFore = Vector3.Lerp(
@@ -1836,7 +1836,7 @@ namespace Ryona.Game
                 goalR = Vector3.Lerp(goalR, stuckR, adhere);
             }
 
-            if (Grapple.WallPhase == PlayerGrapple.WallStage.TossWindup && Rig.Chest != null)
+            if (Grapple.WallPhase == WallStage.TossWindup && Rig.Chest != null)
             {
                 Vector3 reach = Rig.Chest.position + transform.forward * 0.28f - Vector3.up * 0.12f
                     + Vector3.right * (Grapple.WallTossSide * 0.16f);
@@ -1941,15 +1941,9 @@ namespace Ryona.Game
 
         static float ReadWallHandGap()
         {
-            foreach (string a in System.Environment.GetCommandLineArgs())
-            {
-                const string key = "-wallhandgap=";
-                if (a.StartsWith(key, System.StringComparison.OrdinalIgnoreCase)
-                    && float.TryParse(a.Substring(key.Length),
-                        System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out float value))
-                    return Mathf.Clamp(value, 0.03f, 0.15f);
-            }
+            if (LaunchOptions.TryFloat("-wallhandgap", out float value))
+                return Mathf.Clamp(value, 0.03f, 0.15f);
+
             return 0.075f;
         }
 

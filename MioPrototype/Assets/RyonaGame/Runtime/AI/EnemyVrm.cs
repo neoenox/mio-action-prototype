@@ -73,11 +73,7 @@ namespace Ryona.Game
             if (Figure == null)
                 Figure = GetComponent<EnemyFigure>();
 
-            foreach (string a in System.Environment.GetCommandLineArgs())
-            {
-                if (string.Equals(a, "-vrmlog", System.StringComparison.OrdinalIgnoreCase))
-                    _vrmLog = true;
-            }
+            _vrmLog = LaunchOptions.Has("-vrmlog");
 
             _ = LoadAsync();
         }

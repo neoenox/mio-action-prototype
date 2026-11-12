@@ -24,6 +24,12 @@ namespace Ryona.Game
     {
         public PlayerStats Stats;
 
+        /// <summary>この拘束の状態（誰が・どの種類で・どの段階か）。</summary>
+        readonly GrappleSession _session = new GrappleSession();
+
+        /// <summary>拘束の状態。カメラ・ポーズ・HUD はここだけを見ればよい。</summary>
+        internal GrappleSession Session => _session;
+
         /// <summary>掴まれた瞬間。</summary>
         public event Action<GrappleKind> Started;
 
@@ -41,25 +47,14 @@ namespace Ryona.Game
         public event Action Released;
 
         GrappleResistance _resistance;
-        float _remaining;
-        float _heldSeconds;
-        float _suppressRemaining;
 
-        /// <summary>押さえつけ（Pin）/ ベアハッグで掴まれている間の、相手との距離（m）。</summary>
-        /// <remarks>
-        /// 敵カプセル 0.40 + 彼女 0.30 = 0.70 が体の重ならない下限。
-        /// 0.72 にすると敵が <see cref="EnemyBrain"/> 側の下限（0.95）まで押し戻され、
-        /// 伸ばした腕（肩から 0.62m）が彼女の 50cm 手前で止まって「宙に手を出す」画になる。
-        /// </remarks>
-        const float GrabDistance = 0.60f;
 
-        /// <summary>
-        /// ベアハッグの基準距離（離れ気味のとき）。締め付けでここから 0.16m 詰めて密着する。
-        /// </summary>
-        const float BearHugDistance = 0.54f;
-        // 羽交い締めは胸を相手の背中に付けて組む。離れていると腕が伸びきって
-        // 「首へ手を伸ばしている」画になる（0.85m だった）。肘を畳んで脇の下へ入れる距離にする。
-        internal const float BackGrabDistance = 0.34f;
+
+
+        // 拘束中の間合い（GrabStandoff / BearHugStandoff / BackGrabStandoff）は
+        // CombatConstants に置いた。EnemyBrain 側の間合い下限や腕の長さと同じ根拠で
+        // 決まるため、片方だけ動かすと「伸ばした腕が宙に浮く」画になる。
+        // 体が重ならない下限は CombatConstants.BodyGap（敵 0.40 + 彼女 0.30）。
 
         /// <summary>
         /// 壁からの投げ捨てで、うつ伏せ（true）／仰向け（false）を固定する。
@@ -71,26 +66,23 @@ namespace Ryona.Game
         static void ParseWallDownFlag()
         {
             ForcedWallTossForward = null;
-            foreach (string a in Environment.GetCommandLineArgs())
-            {
-                if (!a.StartsWith("-walldown=", StringComparison.OrdinalIgnoreCase))
-                    continue;
 
-                string v = a.Substring("-walldown=".Length);
-                if (v.Equals("prone", StringComparison.OrdinalIgnoreCase) ||
-                    v.Equals("forward", StringComparison.OrdinalIgnoreCase))
-                    ForcedWallTossForward = true;
-                else if (v.Equals("supine", StringComparison.OrdinalIgnoreCase) ||
-                         v.Equals("back", StringComparison.OrdinalIgnoreCase))
-                    ForcedWallTossForward = false;
-            }
+            string v = LaunchOptions.Value("-walldown");
+            if (v == null)
+                return;
+
+            if (v.Equals("prone", StringComparison.OrdinalIgnoreCase) ||
+                v.Equals("forward", StringComparison.OrdinalIgnoreCase))
+                ForcedWallTossForward = true;
+            else if (v.Equals("supine", StringComparison.OrdinalIgnoreCase) ||
+                     v.Equals("back", StringComparison.OrdinalIgnoreCase))
+                ForcedWallTossForward = false;
         }
 
         /// <summary>壁押さえつけ中か。押さえつけ（Pin）の一種だが、レーンの外の壁へ押し出される。</summary>
-        public bool IsWallPin { get; private set; }
-        public enum WallStage { None, Grab, Rise, Throw, Slam, Lean, Regrip, Restrain, Held, TossWindup, TossAir, TossLand }
-        public WallStage WallPhase { get; private set; }
-        public float WallPhaseProgress { get; private set; }
+        public bool IsWallPin => _session.IsWall;
+        public WallStage WallPhase => _session.Stage;
+        public float WallPhaseProgress => _session.StageProgress;
         public bool IsWallTransition => IsWallPin && WallPhase != WallStage.Held;
         public float WallRestraintWeight => WallPhase == WallStage.Restrain
             ? Mathf.SmoothStep(0f, 1f, WallPhaseProgress)
@@ -100,31 +92,26 @@ namespace Ryona.Game
 
         // --- 壁・二体がかり（Y 字拘束） -------------------------------
         /// <summary>もう一人の拘束役（アシスト）。居なければ null。</summary>
-        public EnemyBrain WallAssist { get; private set; }
+        public EnemyBrain WallAssist => _session.Assist;
 
         /// <summary>Y 字拘束の見た目 0..1（手首の開き・二人の腕の持ち方に使う）。</summary>
         internal float WallSplitWeight { get; private set; }
 
         /// <summary>二体目が横に着いて、二人で押さえ始めたか。</summary>
         public bool IsWallSplitActive => IsWallPin && WallPhase == WallStage.Held &&
-            WallAssist != null && _wallSplitReady && WallAssist.IsAlive && WallAssist.isActiveAndEnabled;
+            WallAssist != null && _session.SplitReady && WallAssist.IsAlive && WallAssist.isActiveAndEnabled;
 
         /// <summary>いま殴る側（拘束役かアシスト）。null なら待ち。</summary>
-        public EnemyBrain WallSplitPuncher { get; private set; }
+        public EnemyBrain WallSplitPuncher => _session.SplitPuncher;
 
         /// <summary>いまの 1 発の経過秒（0 = 振りかぶり開始、負 = 待ち）。</summary>
-        internal float WallSplitPunchAge { get; private set; } = -1f;
+        internal float WallSplitPunchAge => _session.SplitPunchAge;
 
         /// <summary>二人がかりで入った腹パンの数（HUD 用）。</summary>
-        internal int WallSplitHits => _wallSplitHits;
+        internal int WallSplitHits => _session.SplitHits;
 
         /// <summary>打つ手が左か（アシスト=右、拘束役=左）。ポーズ側が空き手を選ぶ。</summary>
-        public bool WallSplitPunchLeft { get; private set; }
-
-        bool _wallSplitStarted;
-        bool _wallSplitReady;
-        int _wallSplitHits;
-        float _wallSplitAssistAge;
+        public bool WallSplitPunchLeft => _session.SplitPunchLeft;
 
         /// <summary>
         /// 彼女のアニメータ。二体がかりの腹パンで被弾姿勢を重ねるのに使う
@@ -140,7 +127,11 @@ namespace Ryona.Game
         }
 
         /// <summary>壁拘束が始まった時点で横に残しておく二体目（いなければ null）。</summary>
-        internal EnemyBrain WallAssistCandidate { get; private set; }
+        internal EnemyBrain WallAssistCandidate
+        {
+            get => _session.AssistCandidate;
+            private set => _session.AssistCandidate = value;
+        }
 
         /// <summary>
         /// 投げ捨てる向き（X の符号）。<see cref="BeginWallToss"/> が実際の投げ方向から決める。
@@ -171,7 +162,6 @@ namespace Ryona.Game
             _ => 0f
         };
         WallPinSite _wallSite;
-        float _wallPhaseTime;
         Vector3 _wallStartPosition;
         Quaternion _wallStartRotation;
         float _wallTossSide = 1f;
@@ -226,7 +216,7 @@ namespace Ryona.Game
         /// （表示するときは <see cref="HasTimeLimit"/> で分岐する）。
         /// </summary>
         public float Remaining =>
-            HasTimeLimit ? Mathf.Max(0f, _remaining) : 0f;
+            HasTimeLimit ? Mathf.Max(0f, _session.LimitRemaining) : 0f;
 
         /// <summary>
         /// 時間切れで解ける拘束か。後ろ拘束（Back）だけが false。
@@ -234,24 +224,24 @@ namespace Ryona.Game
         public bool HasTimeLimit => Kind != GrappleKind.Back;
 
         /// <summary>掴まれてからの経過秒。ログとテスト用。</summary>
-        public float HeldSeconds => _heldSeconds;
+        public float HeldSeconds => _session.HeldSeconds;
 
         public float FrontEscapeRemaining => IsGrappled && !IsHandingOff && HasTimeLimit
-            ? Mathf.Max(0f, CombatConstants.FrontGrappleEscapeSeconds - _heldSeconds)
+            ? Mathf.Max(0f, CombatConstants.FrontGrappleEscapeSeconds - _session.HeldSeconds)
             : 0f;
 
         internal float FrontEscapePoseWeight => Mathf.SmoothStep(0f, 1f, Mathf.Min(
-            _heldSeconds / 0.18f, FrontEscapeRemaining / 0.20f));
+            _session.HeldSeconds / 0.18f, FrontEscapeRemaining / 0.20f));
 
         internal float FrontEscapeEffort { get; private set; }
         float _frontEffortHold;
 
         /// <summary>腹パン演出などで、もがき入力を一時的に止めているか。</summary>
-        public bool IsStruggleSuppressed => IsHandingOff || _suppressRemaining > 0f ||
+        public bool IsStruggleSuppressed => IsHandingOff || _session.SuppressRemaining > 0f ||
             IsWallToss || (IsWallTransition && WallPhase >= WallStage.Throw && WallPhase <= WallStage.Lean);
 
         /// <summary>もがき入力を止めている残り秒。</summary>
-        public float SuppressRemaining => Mathf.Max(0f, _suppressRemaining);
+        public float SuppressRemaining => Mathf.Max(0f, _session.SuppressRemaining);
 
         /// <summary>
         /// 指定秒だけ、もがき入力を受け付けない（腹パンで「く」の字になっている間）。
@@ -260,7 +250,7 @@ namespace Ryona.Game
         public void SuppressStruggle(float seconds)
         {
             if (seconds > 0f)
-                _suppressRemaining = Mathf.Max(_suppressRemaining, seconds);
+                _session.SuppressRemaining = Mathf.Max(_session.SuppressRemaining, seconds);
         }
 
         /// <summary>
@@ -269,11 +259,11 @@ namespace Ryona.Game
         /// </summary>
         public void ClearStruggleSuppression()
         {
-            _suppressRemaining = 0f;
+            _session.SuppressRemaining = 0f;
         }
 
         /// <summary>掴んだ相手。倒されたら掴みは解ける。</summary>
-        public EnemyBrain Captor { get; private set; }
+        public EnemyBrain Captor => _session.Captor;
 
         /// <summary>もがきの進み具合（0..1）。HUD のバーに出す。</summary>
         public float Progress => _resistance != null ? _resistance.Progress : 0f;
@@ -284,7 +274,7 @@ namespace Ryona.Game
         /// <summary>必要な入力回数（腕の損傷で増える）。</summary>
         public float RequiredInputs { get; private set; }
 
-        public GrappleKind Kind => _resistance != null ? _resistance.Kind : GrappleKind.Back;
+        public GrappleKind Kind => _session.Kind;
 
         /// <summary>もがいた瞬間の 0..1。見た目の震えに使う。</summary>
         public float StrugglePulse { get; private set; }
@@ -533,7 +523,7 @@ namespace Ryona.Game
                     motor.SetLaneZOverride(transform.position.z);
             }
 
-            _heldSeconds += Time.deltaTime;
+            _session.HeldSeconds += Time.deltaTime;
             _frontEffortHold = Mathf.Max(0f, _frontEffortHold - Time.deltaTime);
             bool pressing = _frontEffortHold > 0f && FrontEscapeRemaining > 0f;
             FrontEscapeEffort = Mathf.MoveTowards(FrontEscapeEffort, pressing ? 1f : 0f,
@@ -541,9 +531,9 @@ namespace Ryona.Game
 
             // 腹パンで「く」の字になっている間は、もがき入力を受け付けない。
             // 拘束は続くので、演出が終わればまた連打できる。
-            if (_suppressRemaining > 0f)
+            if (_session.SuppressRemaining > 0f)
             {
-                _suppressRemaining = Mathf.Max(0f, _suppressRemaining - Time.deltaTime);
+                _session.SuppressRemaining = Mathf.Max(0f, _session.SuppressRemaining - Time.deltaTime);
                 StrugglePulse = Mathf.Max(0f, StrugglePulse - Time.deltaTime * 6f);
                 return;
             }
@@ -551,8 +541,8 @@ namespace Ryona.Game
             // 後ろ拘束は時間切れで解けない。
             if (HasTimeLimit)
             {
-                _remaining = Mathf.Max(0f, _remaining - Time.deltaTime);
-                if (_remaining <= 0f && _pinReceiver == null)
+                _session.LimitRemaining = Mathf.Max(0f, _session.LimitRemaining - Time.deltaTime);
+                if (_session.LimitRemaining <= 0f && _pinReceiver == null)
                 {
                     Fail();
                     return;
@@ -606,7 +596,7 @@ namespace Ryona.Game
             _wallPinNormal = wallNormal.sqrMagnitude > 0.001f
                 ? wallNormal.normalized
                 : Vector3.back;
-            IsWallPin = true;
+            _session.IsWall = true;
             WallPinWeight = 0f;
             _wallExitRemaining = 0f;
 
@@ -652,15 +642,12 @@ namespace Ryona.Game
 
         void SetWallStage(WallStage stage)
         {
-            WallPhase = stage;
-            WallPhaseProgress = 0f;
-            _wallPhaseTime = 0f;
+            _session.SetStage(stage);
             Debug.Log($"[WallSequence] {stage}");
         }
 
         void TickWallTransition()
         {
-            _wallPhaseTime += Time.deltaTime;
             float seconds = WallPhase switch
             {
                 WallStage.Grab => 0.22f,
@@ -671,7 +658,7 @@ namespace Ryona.Game
                 WallStage.Regrip => 0.28f,
                 _ => 0.52f
             };
-            WallPhaseProgress = Mathf.Clamp01(_wallPhaseTime / seconds);
+            _session.AdvanceStage(Time.deltaTime, seconds);
             float progress = Mathf.SmoothStep(0f, 1f, WallPhaseProgress);
             if (_wallSite == null)
             {
@@ -703,7 +690,7 @@ namespace Ryona.Game
             if (WallPhase == WallStage.Restrain)
             {
                 SetWallStage(WallStage.Held);
-                _heldSeconds = 0f;
+                _session.HeldSeconds = 0f;
                 Captor.TakeOverHold(CombatConstants.GrappleLimitSeconds + 4f);
                 return;
             }
@@ -712,7 +699,11 @@ namespace Ryona.Game
             if (WallPhase == WallStage.Slam)
             {
                 WallPinWeight = 1f;
-                PlaySfx(SfxId.WallSlam, 1f);
+                // 壁へ叩きつける音は腹パンと同じ組み合わせ（打撃＋のけぞり＋腹の声）。
+                // 専用の WallSlam は「軽い」と言われたのでやめた。
+                PlaySfx(SfxId.Impact, 0.9f);
+                PlaySfx(SfxId.Stagger, 0.7f);
+                PlaySfx(SfxId.HurtBelly, 0.9f);
                 FindFirstObjectByType<CombatFeel>()?.OnWallSlam();
             }
         }
@@ -736,7 +727,7 @@ namespace Ryona.Game
         /// </summary>
         internal bool TryBeginWallSplit(EnemyBrain captor)
         {
-            if (!IsWallPin || WallPhase != WallStage.Held || _wallSplitStarted || IsHandingOff)
+            if (!IsWallPin || WallPhase != WallStage.Held || _session.SplitStarted || IsHandingOff)
                 return false;
             if (Captor != captor || Stats == null || Stats.IsDown || Stats.IsDead)
                 return false;
@@ -770,21 +761,21 @@ namespace Ryona.Game
                 return false;
 
             WallAssistCandidate = best;
-            WallAssist = best;
-            _wallSplitStarted = true;
-            _wallSplitReady = best.WallAssistReady;
-            _wallSplitHits = 0;
-            _wallSplitAssistAge = 0f;
+            _session.Assist = best;
+            _session.SplitStarted = true;
+            _session.SplitReady = best.WallAssistReady;
+            _session.SplitHits = 0;
+            _session.SplitAssistAge = 0f;
             WallSplitWeight = 0f;
-            WallSplitPunchAge = -1f;
+            _session.SplitPunchAge = -1f;
             // 二人がかりの間は拘束時間を延ばす（膝 5 発ぶんの時間を使うため）。
-            _remaining = Mathf.Max(_remaining, 4.6f);
+            _session.LimitRemaining = Mathf.Max(_session.LimitRemaining, 4.6f);
             RequiredInputs = CombatConstants.WallSplitEscapeInputs;
             if (!best.IsWallAssisting)
                 best.BeginWallAssist(this);
             StartCoroutine(WallSplitRoutine());
             Debug.Log($"[WallSplit] begin captor={captor.name} assist={best.name} " +
-                      $"dist={bestDistance:F2} ready={_wallSplitReady} need={RequiredInputs:F0}");
+                      $"dist={bestDistance:F2} ready={_session.SplitReady} need={RequiredInputs:F0}");
             return true;
         }
 
@@ -792,18 +783,18 @@ namespace Ryona.Game
         {
             // アシストが横へ着くまで待つ（来なければ通常の膝蹴りへ戻す）。
             // 二人は彼女の正面側まで回り込むので、横に並ぶより距離がある（実測 1.7〜2.2m）。
-            while (_wallSplitAssistAge < 2.4f && !_wallSplitReady &&
+            while (_session.SplitAssistAge < 2.4f && !_session.SplitReady &&
                    WallAssist != null && WallAssist.IsAlive && WallAssist.isActiveAndEnabled)
             {
-                _wallSplitAssistAge += Time.deltaTime;
+                _session.SplitAssistAge += Time.deltaTime;
                 if (WallAssist.WallAssistReady)
                 {
-                    _wallSplitReady = true;
+                    _session.SplitReady = true;
                     break;
                 }
                 yield return null;
             }
-            if (!_wallSplitReady)
+            if (!_session.SplitReady)
             {
                 Debug.Log("[WallSplit] assist could not arrive - fallback to knees");
                 var captor = Captor;
@@ -830,10 +821,10 @@ namespace Ryona.Game
                 }
 
                 EnemyBrain puncher = i % 2 == 0 ? Captor : WallAssist;
-                WallSplitPuncher = puncher;
+                _session.SplitPuncher = puncher;
                 // 拘束役は右で彼女の左腕を持つので空き手は左。アシストは左で右腕を持つので空き手は右。
-                WallSplitPunchLeft = puncher == Captor;
-                WallSplitPunchAge = 0f;
+                _session.SplitPunchLeft = puncher == Captor;
+                _session.SplitPunchAge = 0f;
 
                 // 振りかぶり（0.22 秒）
                 float t = 0f;
@@ -845,7 +836,7 @@ namespace Ryona.Game
                         yield break;
                     }
                     t += Time.deltaTime;
-                    WallSplitPunchAge = t;
+                    _session.SplitPunchAge = t;
                     yield return null;
                 }
 
@@ -853,9 +844,9 @@ namespace Ryona.Game
 
                 // 壁に両腕を固定されたまま、腹で折れる被弾姿勢を重ねる。
                 // 疲労（打った数）を渡すと、後半ほど戻りが遅く、折れが深くなる。
-                float fatigue = (float)_wallSplitHits / CombatConstants.WallSplitPunchCount;
+                float fatigue = (float)WallSplitHits / CombatConstants.WallSplitPunchCount;
                 Animator()?.PlayHeldBellyPunch(CombatConstants.WallSplitPunchInterval, fatigue);
-                _wallSplitHits++;
+                _session.SplitHits++;
 
                 // 戻り（合計 0.55 秒間隔）
                 while (t < CombatConstants.WallSplitPunchInterval)
@@ -866,10 +857,10 @@ namespace Ryona.Game
                         yield break;
                     }
                     t += Time.deltaTime;
-                    WallSplitPunchAge = t;
+                    _session.SplitPunchAge = t;
                     yield return null;
                 }
-                WallSplitPunchAge = -1f;
+                _session.SplitPunchAge = -1f;
             }
 
             // 6 発を打ち終えたらアシストを離し、既存の投げ捨てへ。
@@ -883,17 +874,12 @@ namespace Ryona.Game
         void EndWallSplit()
         {
             var assist = WallAssist;
-            WallAssist = null;
-            WallSplitPuncher = null;
-            WallSplitPunchAge = -1f;
-            _wallSplitStarted = false;
-            _wallSplitReady = false;
-            _wallSplitHits = 0;
+            var candidate = WallAssistCandidate;
+            _session.ClearSplit();
             if (assist != null)
                 assist.ReleaseWallAssist();
-            if (WallAssistCandidate != null && WallAssistCandidate != assist)
-                WallAssistCandidate.ReleaseWallAssist();
-            WallAssistCandidate = null;
+            if (candidate != null && candidate != assist)
+                candidate.ReleaseWallAssist();
 
             // もがき必要数を通常へ戻す（腕の負傷の扱いは BeginHold と同じ）。
             if (IsWallPin && Stats != null)
@@ -910,8 +896,7 @@ namespace Ryona.Game
         void TickWallToss()
         {
             const float seconds = 0.26f;
-            _wallPhaseTime += Time.deltaTime;
-            WallPhaseProgress = Mathf.Clamp01(_wallPhaseTime / seconds);
+            _session.AdvanceStage(Time.deltaTime, seconds);
 
             // 壁から 0.10m 手前まで引き上げる。ここから放物線で投げ捨てる。
             Vector3 launch = _wallPinSpot + (_wallPinRotation * Vector3.forward) * 0.10f;
@@ -967,7 +952,7 @@ namespace Ryona.Game
             if (!IsWallPin && _wallExitRemaining > 0f)
                 ClearWallExit();
 
-            Captor = captor;
+            _session.Captor = captor;
 
             if (blendContact)
             {
@@ -983,9 +968,10 @@ namespace Ryona.Game
             RequiredInputs = ResistanceMath.RequiredInputs(kind, 1f, armInjury);
 
             _resistance = new GrappleResistance(kind, RequiredInputs);
-            _remaining = HoldDuration(kind);
-            _heldSeconds = 0f;
-            _suppressRemaining = 0f;
+            _session.Kind = kind;
+            _session.LimitRemaining = HoldDuration(kind);
+            _session.HeldSeconds = 0f;
+            _session.SuppressRemaining = 0f;
             IsGrappled = true;
             StrugglePulse = 0f;
             FrontEscapeEffort = 0f;
@@ -1005,7 +991,7 @@ namespace Ryona.Game
 
             PlaySfx(SfxId.Impact, 0.9f);
 
-            string limit = HasTimeLimit ? $"{_remaining:F2}s" : "none";
+            string limit = HasTimeLimit ? $"{_session.LimitRemaining:F2}s" : "none";
             Debug.Log($"[Grapple] begin kind={kind} need={RequiredInputs:F1} " +
                       $"limit={limit} arm={armInjury:F0} captor={(captor != null ? captor.name : "none")}");
 
@@ -1028,7 +1014,7 @@ namespace Ryona.Game
             if (shove && (previous == null || !previous.IsAlive))
                 return;
 
-            Captor = next;
+            _session.Captor = next;
             FrontEscapeEffort = 0f;
             _frontEffortHold = 0f;
             _grabContactRemaining = 0f;
@@ -1086,7 +1072,7 @@ namespace Ryona.Game
                    Stats != null && !Stats.IsDead && !Stats.IsDown && !Stats.HasHeldBellyDown && elapsed < 1.05f)
             {
                 Vector3 forward = transform.forward;
-                Vector3 spot = transform.position - forward * BackGrabDistance;
+                Vector3 spot = transform.position - forward * CombatConstants.BackGrabStandoff;
                 spot.y = receiver.transform.position.y;
                 receiver.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
                 receiver.transform.position = Vector3.MoveTowards(receiver.transform.position, spot,
@@ -1101,9 +1087,9 @@ namespace Ryona.Game
                         // 両側から腕を取る短い間を置き、受け手だけの拘束へ切り替える。
                         receiver.transform.position = spot;
                         ClearPinHandOff();
-                        Captor = receiver;
+                        _session.Captor = receiver;
                         ApplyHandOffHold(GrappleKind.Back);
-                        _heldSeconds = 0f;
+                        _session.HeldSeconds = 0f;
                         FrontEscapeEffort = 0f;
                         _frontEffortHold = 0f;
                         _grabContactRemaining = 0f;
@@ -1133,8 +1119,9 @@ namespace Ryona.Game
         {
             RequiredInputs = ResistanceMath.RequiredInputs(kind, 1f, Stats.State.Body[BodyPart.Arms]);
             _resistance = new GrappleResistance(kind, RequiredInputs);
-            _remaining = HoldDuration(kind);
-            _suppressRemaining = 0f;
+            _session.Kind = kind;
+            _session.LimitRemaining = HoldDuration(kind);
+            _session.SuppressRemaining = 0f;
         }
 
         static float HoldDuration(GrappleKind kind) => kind switch
@@ -1254,7 +1241,7 @@ namespace Ryona.Game
 
             EndShove();
             ApplyHandOffHold(kind);
-            _heldSeconds = 0f;
+            _session.HeldSeconds = 0f;
             next.TakeOverHold(CombatConstants.GrappleLimitSeconds + 4f);
             IsHandingOff = false;
             Started?.Invoke(kind);
@@ -1310,9 +1297,9 @@ namespace Ryona.Game
             FrontEscapeEffort = 0f;
             _frontEffortHold = 0f;
             _grabContactRemaining = 0f;
-            _remaining = 0f;
-            _suppressRemaining = 0f;
-            Captor = null;
+            _session.LimitRemaining = 0f;
+            _session.SuppressRemaining = 0f;
+            _session.Captor = null;
             _hugStage = HugStage.Rest;
             _hugTime = 0f;
             _hugPhase = 0f;
@@ -1379,9 +1366,9 @@ namespace Ryona.Game
             float distance = kind switch
             {
                 // 頭上拘束も背後から密着して掴む（腕を上げる余地を残し、羽交い締めより少し離す）。
-                GrappleKind.Back => BackGrabDistance,
-                GrappleKind.BearHug => BearHugDistance,
-                _ => GrabDistance
+                GrappleKind.Back => CombatConstants.BackGrabStandoff,
+                GrappleKind.BearHug => CombatConstants.BearHugStandoff,
+                _ => CombatConstants.GrabStandoff
             };
             Vector3 spot = captor.transform.position + dir * distance;
             spot.y = transform.position.y;
@@ -1452,7 +1439,7 @@ namespace Ryona.Game
 
             SqueezePulse = Mathf.Clamp01(_hugPhase);
 
-            // 掴み位置の基準（BearHugDistance）から、密着度に応じて前後させる。
+            // 掴み位置の基準（CombatConstants.BearHugStandoff）から、密着度に応じて前後させる。
             // 方向は「相手から見た彼女」の向きを使い、横へは流れないようにする。
             Vector3 dir = transform.position - Captor.transform.position;
             dir.y = 0f;
@@ -1463,24 +1450,24 @@ namespace Ryona.Game
                 return;
             dir.Normalize();
 
-            float distance = BearHugDistance - HugTightInset * _hugPhase;
+            float distance = CombatConstants.BearHugStandoff - HugTightInset * _hugPhase;
             Vector3 spot = Captor.transform.position + dir * distance;
             spot.y = transform.position.y;
             transform.position = spot;
         }
 
-        void Escape()
+        internal void Escape()
         {
             EndWallPin();
             var captor = Captor;
             int inputs = InputCount;
-            float spent = _heldSeconds;
+            float spent = _session.HeldSeconds;
 
             ClearPinHandOff();
             IsGrappled = false;
-            _remaining = 0f;
-            _suppressRemaining = 0f;
-            Captor = null;
+            _session.LimitRemaining = 0f;
+            _session.SuppressRemaining = 0f;
+            _session.Captor = null;
             _hugStage = HugStage.Rest;
             _hugTime = 0f;
             _hugPhase = 0f;
@@ -1543,20 +1530,14 @@ namespace Ryona.Game
 
             _wallSite?.RetractAfterRelease();
             _wallSite = null;
-            WallPhase = WallStage.None;
-            WallPhaseProgress = 0f;
-            IsWallPin = false;
-            _wallExitFromZ = transform.position.z;
 
             // 二人がかりの途中で壁拘束が終わったら、二体目も持ち場から離す。
             if (WallAssistCandidate != null)
                 WallAssistCandidate.ReleaseWallAssist();
-            WallAssistCandidate = null;
-            WallAssist = null;
-            _wallSplitStarted = false;
-            _wallSplitReady = false;
-            WallSplitPunchAge = -1f;
-            WallSplitPuncher = null;
+
+            _session.ClearWall();
+            _session.ClearSplit();
+            _wallExitFromZ = transform.position.z;
 
             // 投げ捨てのときは、飛んでいる間に z をレーンへ戻す（壁の上をすり抜けない）。
             _wallExitSeconds = _wallThrowExitSeconds > 0f ? _wallThrowExitSeconds : WallExitSeconds;

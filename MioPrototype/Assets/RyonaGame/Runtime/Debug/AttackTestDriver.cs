@@ -21,18 +21,10 @@ namespace Ryona.Game
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
         {
-            bool wanted = false;
+            bool wanted = LaunchOptions.Has("-attacktest");
             float distance = 1.15f;
-
-            string[] args = System.Environment.GetCommandLineArgs();
-            for (int i = 0; i < args.Length; i++)
-            {
-                if (string.Equals(args[i], "-attacktest", System.StringComparison.OrdinalIgnoreCase))
-                    wanted = true;
-                else if (string.Equals(args[i], "-attacktestdist", System.StringComparison.OrdinalIgnoreCase)
-                    && i + 1 < args.Length && float.TryParse(args[i + 1], out float d))
-                    distance = d;
-            }
+            if (LaunchOptions.TryFloat("-attacktestdist", out float parsed))
+                distance = parsed;
 
             if (!wanted)
                 return;

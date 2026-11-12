@@ -81,8 +81,7 @@ namespace Ryona.Tests
             ProceduralSfx.LogPlays = true;
             try
             {
-                var method = typeof(CombatFeel).GetMethod("OnHitReceived", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-                method.Invoke(feel, new object[] { new HitResult(10f, StaggerTier.Large) });
+                feel.OnHitReceived(new HitResult(10f, StaggerTier.Large));
                 Assert.IsTrue(played.Exists(message => message.StartsWith("[Sfx] play Impact ")));
                 Assert.IsFalse(played.Exists(message => message.StartsWith("[Sfx] play Pipe ")));
             }

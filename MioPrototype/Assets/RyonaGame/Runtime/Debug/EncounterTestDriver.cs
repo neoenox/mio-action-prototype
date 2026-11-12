@@ -28,14 +28,7 @@ namespace Ryona.Game
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
         {
-            string[] args = System.Environment.GetCommandLineArgs();
-
-            bool wanted = false;
-            foreach (string a in args)
-            {
-                if (string.Equals(a, "-encountertest", System.StringComparison.OrdinalIgnoreCase))
-                    wanted = true;
-            }
+            bool wanted = LaunchOptions.Has("-encountertest");
 
             if (!wanted)
                 return;
@@ -43,7 +36,7 @@ namespace Ryona.Game
             var go = new GameObject("Encounter Test Driver");
             var driver = go.AddComponent<EncounterTestDriver>();
 
-            string limit = Value(args, "-encounterkills");
+            string limit = LaunchOptions.Value("-encounterkills");
             if (int.TryParse(limit, out int kills))
                 driver.MaxKills = kills;
         }
@@ -112,17 +105,6 @@ namespace Ryona.Game
                 _kills++;
                 return;   // 1 回に 1 体だけ
             }
-        }
-
-        static string Value(string[] args, string key)
-        {
-            for (int i = 0; i < args.Length - 1; i++)
-            {
-                if (string.Equals(args[i], key, System.StringComparison.OrdinalIgnoreCase))
-                    return args[i + 1];
-            }
-
-            return null;
         }
     }
 }

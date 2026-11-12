@@ -53,15 +53,8 @@ namespace Ryona.Game
             if (FindFirstObjectByType<GrappleHandOff>() != null)
                 return;
 
-            string burst = null;
-            string kind = null;
-            foreach (string a in System.Environment.GetCommandLineArgs())
-            {
-                if (a.StartsWith("-handoffburst=", System.StringComparison.OrdinalIgnoreCase))
-                    burst = a.Substring("-handoffburst=".Length);
-                else if (a.StartsWith("-handoffkind=", System.StringComparison.OrdinalIgnoreCase))
-                    kind = a.Substring("-handoffkind=".Length).Trim().ToLowerInvariant();
-            }
+            string burst = LaunchOptions.Value("-handoffburst");
+            string kind = LaunchOptions.Value("-handoffkind")?.Trim().ToLowerInvariant();
 
             _forceKind = kind;
             var go = new GameObject("Grapple Hand Off");
@@ -161,7 +154,7 @@ namespace Ryona.Game
 
                 Vector3 offset = enemy.transform.position - hold.transform.position;
                 float forward = Vector3.Dot(hold.transform.forward, offset);
-                if (behind ? forward > -PlayerGrapple.BackGrabDistance : forward <= 0.05f)
+                if (behind ? forward > -CombatConstants.BackGrabStandoff : forward <= 0.05f)
                     continue;
 
                 float d = offset.magnitude;

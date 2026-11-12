@@ -90,11 +90,7 @@ namespace Ryona.Game
 
             _motor = GetComponent<PlayerMotor>();
 
-            foreach (string a in System.Environment.GetCommandLineArgs())
-            {
-                if (string.Equals(a, "-hitlog", System.StringComparison.OrdinalIgnoreCase))
-                    TraceFist = true;
-            }
+            TraceFist = LaunchOptions.Has("-hitlog");
 
             // AttackOrigin は「攻撃の出る位置」を取るためだけの目印。
             // 球が赤く浮いているように見えるので、見た目は必ず消す。
@@ -269,7 +265,7 @@ namespace Ryona.Game
         /// 先行入力の段数をここで受け取らないと、時間切れした段数が残って
         /// 強攻撃の当たり判定が左拳の位置で取られる（実測）。
         /// </param>
-        void Begin(AttackData attack, int step = 0)
+        internal void Begin(AttackData attack, int step = 0)
         {
             _attack = attack;
             _elapsed = 0f;

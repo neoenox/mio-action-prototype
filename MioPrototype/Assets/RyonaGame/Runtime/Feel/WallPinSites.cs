@@ -158,7 +158,7 @@ namespace Ryona.Game
         {
             Hook();
 
-            if (HasFlag("-nowallprops"))
+            if (LaunchOptions.Has("-nowallprops"))
                 return;
 
             if (Object.FindFirstObjectByType<PlayerStats>() == null)
@@ -169,17 +169,6 @@ namespace Ryona.Game
 
             var root = new GameObject("Wall Pin Props");
             root.AddComponent<WallPinProps>().Build(root.transform);
-        }
-
-        static bool HasFlag(string flag)
-        {
-            foreach (string a in System.Environment.GetCommandLineArgs())
-            {
-                if (string.Equals(a, flag, System.StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-
-            return false;
         }
 
         void Build(Transform root)

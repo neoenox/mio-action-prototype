@@ -83,25 +83,22 @@ namespace Ryona.Tests
             if (forward)
                 attacker.MoveSpeed = 1.65f;
             float expectedSpeed = attacker.MoveSpeed * attacker.State.MoveSpeedMultiplier;
-            var mount = _stats.GetComponent("GroundMountAttack");
-            const System.Reflection.BindingFlags members = System.Reflection.BindingFlags.Instance
-                | System.Reflection.BindingFlags.NonPublic;
-            var stage = mount.GetType().GetProperty("Stage", members);
+            var mount = _stats.GetComponent<GroundMountAttack>();
             Vector3 approachStart = _stats.transform.position + Vector3.right * 1.9f;
             float deadline = Time.realtimeSinceStartup + 8f;
-            while (stage.GetValue(mount).ToString() != "Approach" && Time.realtimeSinceStartup < deadline)
+            while (mount.Stage.ToString() != "Approach" && Time.realtimeSinceStartup < deadline)
             {
                 // 通常 AI に先に接近されると、移動なしで跨る配置になる。
                 attacker.transform.position = approachStart;
                 yield return null;
             }
-            Assert.AreEqual("Approach", stage.GetValue(mount).ToString());
+            Assert.AreEqual("Approach", mount.Stage.ToString());
 
             float peakSpeed = 0f;
             Vector3 start = attacker.transform.position;
             Vector3 direction = Vector3.ProjectOnPlane(_anim.Rig.Hips.position - start, Vector3.up).normalized;
             Vector3 previous = start;
-            while (stage.GetValue(mount).ToString() == "Approach" && Time.realtimeSinceStartup < deadline)
+            while (mount.Stage.ToString() == "Approach" && Time.realtimeSinceStartup < deadline)
             {
                 yield return null;
                 Vector3 step = Vector3.ProjectOnPlane(attacker.transform.position - previous, Vector3.up);
@@ -112,7 +109,7 @@ namespace Ryona.Tests
                 Assert.Less(detour, 0.06f, "敵は今いる側から澪へまっすぐ近づく");
                 previous = attacker.transform.position;
             }
-            Assert.AreEqual("Mount", stage.GetValue(mount).ToString());
+            Assert.AreEqual("Mount", mount.Stage.ToString());
             Assert.AreEqual(expectedSpeed, peakSpeed, 0.12f, "接近を通常の移動速度に合わせる");
         }
 
@@ -121,11 +118,7 @@ namespace Ryona.Tests
         {
             yield return LoadPlayer(holdEnemies: false);
             var attacker = PrepareMount(forward: true);
-            var mount = _stats.GetComponent("GroundMountAttack");
-            const System.Reflection.BindingFlags members = System.Reflection.BindingFlags.Instance
-                | System.Reflection.BindingFlags.NonPublic;
-            var leftPunch = mount.GetType().GetProperty("LeftPunch", members);
-            var stage = mount.GetType().GetProperty("Stage", members);
+            var mount = _stats.GetComponent<GroundMountAttack>();
             bool mountedWhileProne = false;
             bool rolledWhileMounted = false;
             int hits = 0;
@@ -136,7 +129,7 @@ namespace Ryona.Tests
                     return;
                 Assert.IsFalse(_stats.DownIsForward, "The player is on her back before being punched.");
                 Assert.AreEqual(PunchZone.Face, _stats.LastHitZone);
-                Assert.AreEqual(hits % 2 == 1, leftPunch.GetValue(mount), "Hooks alternate right and left.");
+                Assert.AreEqual(hits % 2 == 1, mount.LeftPunch, "Hooks alternate right and left.");
                 headBeforeImpact = _anim.Rig.Head.rotation;
                 hits++;
             };
@@ -145,7 +138,7 @@ namespace Ryona.Tests
             float reaction = 0f;
             while (hits < 5 && Time.realtimeSinceStartup < deadline)
             {
-                string beat = stage.GetValue(mount).ToString();
+                string beat = mount.Stage.ToString();
                 if (beat == "Mount" && _stats.DownIsForward)
                     mountedWhileProne = true;
                 if (beat == "Roll")
@@ -181,10 +174,7 @@ namespace Ryona.Tests
             if (attackerFromFeetSide)
                 attacker.transform.position = _stats.transform.position - Vector3.right * 1.6f;
 
-            var mount = _stats.GetComponent("GroundMountAttack");
-            const System.Reflection.BindingFlags members = System.Reflection.BindingFlags.Instance
-                | System.Reflection.BindingFlags.NonPublic;
-            var leftPunch = mount.GetType().GetProperty("LeftPunch", members);
+            var mount = _stats.GetComponent<GroundMountAttack>();
             var rig = _anim.Rig;
             var figure = attacker.GetComponent<EnemyFigure>();
 
@@ -199,7 +189,7 @@ namespace Ryona.Tests
 
                 hits++;
                 Vector3 axis = Vector3.ProjectOnPlane(rig.Head.position - rig.Hips.position, Vector3.up).normalized;
-                bool left = (bool)leftPunch.GetValue(mount);
+                bool left = mount.LeftPunch;
                 worstFacing = Mathf.Min(worstFacing, Vector3.Dot(attacker.transform.forward, axis));
                 worstFist = Mathf.Max(worstFist,
                     Vector3.Distance(figure.Fist(left).position, rig.Head.position));
@@ -233,11 +223,7 @@ namespace Ryona.Tests
             yield return LoadPlayer(holdEnemies: false);
             var attacker = PrepareMount(forward: true);
 
-            var mount = _stats.GetComponent("GroundMountAttack");
-            const System.Reflection.BindingFlags members = System.Reflection.BindingFlags.Instance
-                | System.Reflection.BindingFlags.NonPublic;
-            var stage = mount.GetType().GetProperty("Stage", members);
-            Assert.IsNotNull(stage, "Stage が取れない");
+            var mount = _stats.GetComponent<GroundMountAttack>();
             var rig = _anim.Rig;
 
             float DotToHead()
@@ -248,9 +234,9 @@ namespace Ryona.Tests
 
             // ロールが終わって Windup に入るまで待つ（跨り直しはこの瞬間から 0.18 秒）。
             float deadline = Time.realtimeSinceStartup + 10f;
-            while (stage.GetValue(mount).ToString() != "Windup" && Time.realtimeSinceStartup < deadline)
+            while (mount.Stage.ToString() != "Windup" && Time.realtimeSinceStartup < deadline)
                 yield return null;
-            Assert.AreEqual("Windup", stage.GetValue(mount).ToString(), "ロール明けの Windup に入らない");
+            Assert.AreEqual("Windup", mount.Stage.ToString(), "ロール明けの Windup に入らない");
 
             // 敵の向きを 180° 反転させる（頭と逆を向いた状態を作る）。
             attacker.transform.rotation = Quaternion.AngleAxis(180f, Vector3.up) * attacker.transform.rotation;
@@ -277,19 +263,13 @@ namespace Ryona.Tests
             yield return LoadPlayer(holdEnemies: false);
             PrepareMount(forward: true);
 
-            var mount = _stats.GetComponent("GroundMountAttack");
+            var mount = _stats.GetComponent<GroundMountAttack>();
             Assert.IsNotNull(mount, "GroundMountAttack が無い");
-            const System.Reflection.BindingFlags members = System.Reflection.BindingFlags.Instance
-                | System.Reflection.BindingFlags.NonPublic;
-            var stage = mount.GetType().GetProperty("Stage", members);
-            var progress = mount.GetType().GetProperty("Progress", members);
-            Assert.IsNotNull(stage, "Stage が取れない");
-            Assert.IsNotNull(progress, "Progress が取れない");
 
             float deadline = Time.realtimeSinceStartup + 8f;
-            while (stage.GetValue(mount).ToString() != "Roll" && Time.realtimeSinceStartup < deadline)
+            while (mount.Stage.ToString() != "Roll" && Time.realtimeSinceStartup < deadline)
                 yield return null;
-            Assert.AreEqual("Roll", stage.GetValue(mount).ToString(), "ロールが始まらない");
+            Assert.AreEqual("Roll", mount.Stage.ToString(), "ロールが始まらない");
 
             var rig = _anim.Rig;
             Assert.IsNotNull(rig, "リグが無い");
@@ -299,9 +279,9 @@ namespace Ryona.Tests
             float lowestHand = 10f;
             int samples = 0;
 
-            while (stage.GetValue(mount).ToString() == "Roll" && Time.realtimeSinceStartup < deadline)
+            while (mount.Stage.ToString() == "Roll" && Time.realtimeSinceStartup < deadline)
             {
-                float roll = (float)progress.GetValue(mount);
+                float roll = mount.Progress;
                 // 入りと終わりはガード姿勢へ寄せる区間なので、判定は中盤だけにする。
                 if (roll > 0.12f && roll < 0.88f)
                 {
@@ -375,19 +355,15 @@ namespace Ryona.Tests
         {
             yield return LoadPlayer(holdEnemies: false);
             PrepareMount(forward: false);
-            var mount = _stats.GetComponent("GroundMountAttack");
+            var mount = _stats.GetComponent<GroundMountAttack>();
             Assert.IsNotNull(mount);
-            const System.Reflection.BindingFlags members = System.Reflection.BindingFlags.Instance
-                | System.Reflection.BindingFlags.NonPublic;
-            var stage = mount.GetType().GetProperty("Stage", members);
-            var struggle = mount.GetType().GetMethod("Struggle", members);
             float deadline = Time.realtimeSinceStartup + 5f;
-            while (stage.GetValue(mount).ToString() != "Windup" && Time.realtimeSinceStartup < deadline)
+            while (mount.Stage.ToString() != "Windup" && Time.realtimeSinceStartup < deadline)
                 yield return null;
-            Assert.AreEqual("Windup", stage.GetValue(mount).ToString());
+            Assert.AreEqual("Windup", mount.Stage.ToString());
             float hp = _stats.State.Hp;
             for (int i = 0; i < 6; i++)
-                struggle.Invoke(mount, null);
+                mount.Struggle();
 
             yield return new WaitForSeconds(1.5f);
             Assert.IsFalse(_stats.IsDown);

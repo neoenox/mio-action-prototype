@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Reflection;
 using NUnit.Framework;
 using Ryona.Game;
 using UnityEngine;
@@ -224,12 +223,9 @@ namespace Ryona.Tests
             _attacker.enabled = true;
             Assert.IsTrue(_attacker.TryStartHeldThrow(positioned));
             Assert.IsFalse(_director.IsPerforming, "The windup is not a landed throw.");
-            const BindingFlags privateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
-            typeof(EnemyBrain).GetMethod("TickWindup", privateInstance)
-                .Invoke(_attacker, new object[] { 10f });
+            _attacker.TickWindup(10f);
             Assert.AreEqual(EnemyPhase.Attack, _attacker.Phase);
-            typeof(EnemyBrain).GetMethod("Strike", privateInstance)
-                .Invoke(_attacker, new object[] { Vector3.Distance(_attacker.transform.position, _player.transform.position) });
+            _attacker.Strike(Vector3.Distance(_attacker.transform.position, _player.transform.position));
             Assert.IsTrue(_director.IsPerforming, "The landed throw opens the combo.");
             Assert.AreEqual(0, _director.ComboHitsLanded, "A throw does not count as a punch.");
         }
@@ -348,14 +344,11 @@ namespace Ryona.Tests
             _attacker.enabled = true;
             _attacker.FeintChance = 1f;
 
-            const BindingFlags privateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
-            var begin = typeof(EnemyBrain).GetMethod("TryBeginAttack", privateInstance);
-            Assert.IsTrue((bool)begin.Invoke(_attacker, new object[] { 0.82f }));
+            Assert.IsTrue(_attacker.TryBeginAttack(0.82f));
             Assert.AreEqual(EnemyPhase.Windup, _attacker.Phase);
             Assert.IsFalse(_attacker.IsTagPunch);
 
-            typeof(EnemyBrain).GetMethod("TickWindup", privateInstance)
-                .Invoke(_attacker, new object[] { 10f });
+            _attacker.TickWindup(10f);
 
             Assert.AreEqual(EnemyPhase.Attack, _attacker.Phase,
                 "A regular punch should follow through while another enemy holds the player.");
@@ -985,10 +978,7 @@ namespace Ryona.Tests
             _attacker.enabled = true;
             Assert.IsTrue(_attacker.TryStartHeldThrow());
 
-            var escape = typeof(PlayerGrapple).GetMethod("Escape",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.IsNotNull(escape, "Escape not found");
-            escape.Invoke(_grapple, null);
+            _grapple.Escape();
 
             yield return null;
             yield return null;
@@ -1402,8 +1392,7 @@ namespace Ryona.Tests
             _captor.TakeOverHold(10f);
             PlaceAttackerInFront(1.15f);
             _attacker.transform.position += _player.transform.right * 0.45f;
-            typeof(HeldBellyPunchDirector).GetMethod("SetDreadTarget", BindingFlags.Instance | BindingFlags.NonPublic)
-                .Invoke(_director, new object[] { _attacker });
+            _director.SetDreadTarget(_attacker);
 
             yield return new WaitForSeconds(0.25f);
             Assert.GreaterOrEqual(_anim.DreadLook, 0.95f, "最初に敵へ顔を向ける");
@@ -1416,13 +1405,10 @@ namespace Ryona.Tests
             Assert.AreEqual(firstYaw, _anim.DebugHeadYaw, 3f, "敵の移動に顔が追従する");
             Assert.AreEqual(firstPitch, _anim.DebugHeadPitch + _anim.DebugTorsoPitch, 5f);
 
-            const BindingFlags privateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
             _attacker.JabSeconds = 0.35f;
-            typeof(EnemyBrain).GetMethod("BeginWindup", privateInstance)
-                .Invoke(_attacker, new object[] { EnemyBrain.AttackId.Jab });
-            typeof(EnemyBrain).GetField("_tagPunchSwing", privateInstance).SetValue(_attacker, true);
-            typeof(EnemyBrain).GetMethod("TickWindup", privateInstance)
-                .Invoke(_attacker, new object[] { 0.24f });
+            _attacker.BeginWindup(EnemyBrain.AttackId.Jab);
+            _attacker.SetTagPunchSwingForTest(true);
+            _attacker.TickWindup(0.24f);
             yield return new WaitForSeconds(0.14f);
             Assert.AreEqual(EnemyPhase.Windup, _attacker.Phase);
             Assert.Less(_anim.DreadLook, 0.05f, "殴られる前に敵から視線を外す");

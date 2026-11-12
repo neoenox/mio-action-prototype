@@ -33,37 +33,24 @@ namespace Ryona.Game
 
         void ApplyCameraOverrides()
         {
-            foreach (string a in System.Environment.GetCommandLineArgs())
-            {
-                if (TryRead(a, "-heldpunchcamdist=", out float dist))
-                    CameraDistanceScale = dist;
-                else if (TryRead(a, "-heldpunchcampivot=", out float pivot))
-                    CameraPivotOffset = pivot;
-                else if (TryRead(a, "-heldpunchcampitch=", out float pitch))
-                    CameraPitchOffset = pitch;
-                else if (TryRead(a, "-heldpunchcamyaw=", out float yaw))
-                    CameraYawOffset = yaw;
-                else if (TryRead(a, "-heldpunchface=", out float face))
-                    FacePunchChance = Mathf.Clamp01(face);
-                else if (TryRead(a, "-heldpunchfaceyaw=", out float faceYaw))
-                    FaceCameraYawOffset = faceYaw;
-                else if (TryRead(a, "-heldpunchfacepitch=", out float facePitch))
-                    FaceCameraPitchOffset = facePitch;
-                else if (TryRead(a, "-heldpunchfacepivot=", out float facePivot))
-                    FaceCameraPivotOffset = facePivot;
-                else if (TryRead(a, "-heldpunchfacedist=", out float faceDist))
-                    FaceCameraDistanceScale = faceDist;
-            }
-        }
-
-        static bool TryRead(string arg, string key, out float value)
-        {
-            value = 0f;
-
-            return arg.StartsWith(key, System.StringComparison.OrdinalIgnoreCase)
-                && float.TryParse(arg.Substring(key.Length),
-                    System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out value);
+            if (LaunchOptions.TryFloat("-heldpunchcamdist", out float dist))
+                CameraDistanceScale = dist;
+            if (LaunchOptions.TryFloat("-heldpunchcampivot", out float pivot))
+                CameraPivotOffset = pivot;
+            if (LaunchOptions.TryFloat("-heldpunchcampitch", out float pitch))
+                CameraPitchOffset = pitch;
+            if (LaunchOptions.TryFloat("-heldpunchcamyaw", out float yaw))
+                CameraYawOffset = yaw;
+            if (LaunchOptions.TryFloat("-heldpunchface", out float face))
+                FacePunchChance = Mathf.Clamp01(face);
+            if (LaunchOptions.TryFloat("-heldpunchfaceyaw", out float faceYaw))
+                FaceCameraYawOffset = faceYaw;
+            if (LaunchOptions.TryFloat("-heldpunchfacepitch", out float facePitch))
+                FaceCameraPitchOffset = facePitch;
+            if (LaunchOptions.TryFloat("-heldpunchfacepivot", out float facePivot))
+                FaceCameraPivotOffset = facePivot;
+            if (LaunchOptions.TryFloat("-heldpunchfacedist", out float faceDist))
+                FaceCameraDistanceScale = faceDist;
         }
 
         void RefreshCamera(float seconds)

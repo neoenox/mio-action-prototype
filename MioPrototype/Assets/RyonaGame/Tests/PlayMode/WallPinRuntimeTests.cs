@@ -48,7 +48,7 @@ namespace Ryona.Tests
         {
             yield return Load();
             _captor.QueuePin();
-            var stages = new System.Collections.Generic.List<PlayerGrapple.WallStage>();
+            var stages = new System.Collections.Generic.List<WallStage>();
             float hp = _player.State.Hp;
             float deadline = Time.realtimeSinceStartup + 7f;
             while (Time.realtimeSinceStartup < deadline)
@@ -58,26 +58,26 @@ namespace Ryona.Tests
                     var stage = _grapple.WallPhase;
                     if (stages.Count == 0 || stages[stages.Count - 1] != stage)
                         stages.Add(stage);
-                    if (stage == PlayerGrapple.WallStage.Rise)
+                    if (stage == WallStage.Rise)
                         Assert.Less(Mathf.Abs(_player.transform.position.z), 0.1f,
                             "壁が出る間はまだ投げられない");
-                    if (stage == PlayerGrapple.WallStage.Throw)
+                    if (stage == WallStage.Throw)
                         Assert.AreEqual(1f, WallPinSites.Nearest(_player.transform.position).RiseProgress);
-                    if (stage == PlayerGrapple.WallStage.Slam)
+                    if (stage == WallStage.Slam)
                     {
                         var shake = Object.FindFirstObjectByType<CameraShake>();
                         Assert.IsTrue(shake != null && shake.IsShaking, "壁に当たった瞬間にカメラが揺れる");
                     }
-                    if (stage == PlayerGrapple.WallStage.Held)
+                    if (stage == WallStage.Held)
                         break;
                 }
                 yield return null;
             }
             CollectionAssert.AreEqual(new[] {
-                PlayerGrapple.WallStage.Grab, PlayerGrapple.WallStage.Rise,
-                PlayerGrapple.WallStage.Throw, PlayerGrapple.WallStage.Slam,
-                PlayerGrapple.WallStage.Lean, PlayerGrapple.WallStage.Regrip,
-                PlayerGrapple.WallStage.Restrain, PlayerGrapple.WallStage.Held
+                WallStage.Grab, WallStage.Rise,
+                WallStage.Throw, WallStage.Slam,
+                WallStage.Lean, WallStage.Regrip,
+                WallStage.Restrain, WallStage.Held
             }, stages);
             Assert.AreEqual(hp, _player.State.Hp, "拘束技は壁への接触と手首の固定が済んでから始まる");
             Assert.Greater(_grapple.FrontEscapeRemaining, 2.5f);
@@ -216,7 +216,7 @@ namespace Ryona.Tests
             Vector3 start = _player.transform.position;
             float peak = start.y;
             bool airborne = false;
-            var stages = new System.Collections.Generic.List<PlayerGrapple.WallStage>();
+            var stages = new System.Collections.Generic.List<WallStage>();
             float deadline = Time.realtimeSinceStartup + 10f;
             while (_grapple.IsGrappled && Time.realtimeSinceStartup < deadline)
             {
@@ -241,8 +241,8 @@ namespace Ryona.Tests
 
             yield return null;
 
-            CollectionAssert.AreEqual(new[] { PlayerGrapple.WallStage.Held,
-                PlayerGrapple.WallStage.TossWindup }, stages);
+            CollectionAssert.AreEqual(new[] { WallStage.Held,
+                WallStage.TossWindup }, stages);
             Assert.IsTrue(airborne, "投げ捨てなのに浮いていない（その場で倒れただけ）");
             Assert.Greater(peak, start.y + 0.30f, "投げ上げが低すぎる");
             Assert.AreEqual(80f, _player.State.Hp, 0.1f, "膝蹴り5発のあとに追加ダメージはない");
@@ -330,10 +330,10 @@ namespace Ryona.Tests
             yield return Load();
             _captor.QueuePin();
             float deadline = Time.realtimeSinceStartup + 5f;
-            while (_grapple.WallPhase != PlayerGrapple.WallStage.Rise &&
+            while (_grapple.WallPhase != WallStage.Rise &&
                    Time.realtimeSinceStartup < deadline)
                 yield return null;
-            Assert.AreEqual(PlayerGrapple.WallStage.Rise, _grapple.WallPhase);
+            Assert.AreEqual(WallStage.Rise, _grapple.WallPhase);
             var wall = WallPinSites.Nearest(_player.transform.position);
             int inputs = Mathf.CeilToInt(_grapple.RequiredInputs);
             for (int i = 0; i < inputs; i++)

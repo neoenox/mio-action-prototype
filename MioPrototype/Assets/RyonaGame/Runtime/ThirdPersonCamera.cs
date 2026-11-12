@@ -207,19 +207,10 @@ namespace Ryona.Game
             DownPitchBias = 20f;
 
             // 構図の比較用: -camdist=5.2 でカメラの距離だけ差し替える（既定は scene の値）
-            foreach (string a in System.Environment.GetCommandLineArgs())
+            if (LaunchOptions.TryFloat("-camdist", out float d) && d > 1f)
             {
-                const string key = "-camdist=";
-
-                if (a.StartsWith(key, System.StringComparison.OrdinalIgnoreCase)
-                    && float.TryParse(a.Substring(key.Length),
-                        System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out float d)
-                    && d > 1f)
-                {
-                    Distance = d;
-                    Debug.Log($"[Cam] Distance={Distance:F2}（起動引数で上書き）");
-                }
+                Distance = d;
+                Debug.Log($"[Cam] Distance={Distance:F2}（起動引数で上書き）");
             }
 
             // 実際に効いている距離を必ず出す（シーン値と起動引数のどちらが勝ったか分かるように）

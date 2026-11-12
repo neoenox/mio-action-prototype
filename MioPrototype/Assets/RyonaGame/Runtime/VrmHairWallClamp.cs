@@ -97,11 +97,7 @@ namespace Ryona.Game
 
         void Start()
         {
-            foreach (string a in System.Environment.GetCommandLineArgs())
-            {
-                if (string.Equals(a, "-walllog", System.StringComparison.OrdinalIgnoreCase))
-                    _log = true;
-            }
+            _log = LaunchOptions.Has("-walllog");
         }
 
         void Cache()

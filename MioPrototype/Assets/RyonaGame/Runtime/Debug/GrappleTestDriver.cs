@@ -86,108 +86,41 @@ namespace Ryona.Game
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
         {
-            bool wanted = false;
-            bool side = false;
-            bool front = false;
-            bool back = false;
-            bool once = false;
-            bool faceLeft = false;
-            bool hitAfterThrow = false;
-            string hitShotPath = null;
-            string heldPunchShotPath = null;
-            float heldPunchShotDelay = 0.12f;
-            string heldPunchBurst = null;
+            bool once = LaunchOptions.Has("-grappleonce");
+            bool hitAfterThrow = LaunchOptions.Has("-enemyhitafterthrow") ||
+                                 LaunchOptions.Has("-enemyhitafterhold");
+            string hitShotPath = LaunchOptions.Value("-enemyhitshot");
+            string heldPunchShotPath = LaunchOptions.Value("-heldpunchshot");
+            string heldPunchBurst = LaunchOptions.Value("-heldpunchburst");
             int heldPunchBurstFrames = 30;
+            if (LaunchOptions.TryInt("-heldpunchburstframes", out int frames) && frames > 0)
+                heldPunchBurstFrames = frames;
             float heldPunchBurstInterval = 0.05f;
-            bool pin = false;
-            bool pinChain = false;
-            bool wallPin = false;
-            bool wallLog = false;
-            string overheadBurst = null;
-            string pinShotPath = null;
-            float pinShotDelay = 0.30f;
-            string pinBurst = null;
-            bool tagCam = false;
-            bool tagCamFlip = false;
+            if (LaunchOptions.TryFloat("-heldpunchburstinterval", out float interval) && interval > 0f)
+                heldPunchBurstInterval = interval;
+            float heldPunchShotDelay = 0.12f;
+            if (LaunchOptions.TryFloat("-heldpunchshotdelay", out float shotDelay) && shotDelay >= 0f)
+                heldPunchShotDelay = shotDelay;
 
-            foreach (string a in System.Environment.GetCommandLineArgs())
-            {
-                if (string.Equals(a, "-grappleonce", System.StringComparison.OrdinalIgnoreCase))
-                    once = true;
-                else if (string.Equals(a, "-enemyhitafterthrow", System.StringComparison.OrdinalIgnoreCase) ||
-                         string.Equals(a, "-enemyhitafterhold", System.StringComparison.OrdinalIgnoreCase))
-                    hitAfterThrow = true;
-                else if (a.StartsWith("-enemyhitshot=", System.StringComparison.OrdinalIgnoreCase))
-                    hitShotPath = a.Substring("-enemyhitshot=".Length);
-                else if (a.StartsWith("-heldpunchshot=", System.StringComparison.OrdinalIgnoreCase))
-                    heldPunchShotPath = a.Substring("-heldpunchshot=".Length);
-                else if (a.StartsWith("-heldpunchburst=", System.StringComparison.OrdinalIgnoreCase))
-                    heldPunchBurst = a.Substring("-heldpunchburst=".Length);
-                else if (a.StartsWith("-heldpunchburstframes=", System.StringComparison.OrdinalIgnoreCase))
-                {
-                    if (int.TryParse(a.Substring("-heldpunchburstframes=".Length), out int frames)
-                        && frames > 0)
-                        heldPunchBurstFrames = frames;
-                }
-                else if (a.StartsWith("-heldpunchburstinterval=", System.StringComparison.OrdinalIgnoreCase))
-                {
-                    if (float.TryParse(a.Substring("-heldpunchburstinterval=".Length),
-                        System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out float interval)
-                        && interval > 0f)
-                        heldPunchBurstInterval = interval;
-                }
-                else if (a.StartsWith("-heldpunchshotdelay=", System.StringComparison.OrdinalIgnoreCase))
-                {
-                    if (float.TryParse(a.Substring("-heldpunchshotdelay=".Length),
-                        System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out float delay) && delay >= 0f)
-                        heldPunchShotDelay = delay;
-                }
-                else if (string.Equals(a, "-grappletest", System.StringComparison.OrdinalIgnoreCase))
-                    wanted = true;
-                else if (string.Equals(a, "-grappleleft", System.StringComparison.OrdinalIgnoreCase))
-                    faceLeft = true;
-                else if (string.Equals(a, "-grappleside", System.StringComparison.OrdinalIgnoreCase))
-                    side = true;
-                else if (string.Equals(a, "-grapplefront", System.StringComparison.OrdinalIgnoreCase))
-                    front = true;   // 掴めないことを確かめる用（背後に回れていない状態）
-                else if (string.Equals(a, "-grappleback", System.StringComparison.OrdinalIgnoreCase))
-                    back = true;    // 既定と同じ。明示して読みやすくするため残す
-                else if (string.Equals(a, "-pintest", System.StringComparison.OrdinalIgnoreCase))
-                    pin = true;
-                else if (string.Equals(a, "-pinchain", System.StringComparison.OrdinalIgnoreCase))
-                    pinChain = true;
-                else if (string.Equals(a, "-wallpintest", System.StringComparison.OrdinalIgnoreCase))
-                {
-                    pin = true;
-                    wallPin = true;
-                }
-                else if (string.Equals(a, "-walllog", System.StringComparison.OrdinalIgnoreCase))
-                    wallLog = true;
-                else if (string.Equals(a, "-overheadtest", System.StringComparison.OrdinalIgnoreCase))
-                {
-                    pin = true;
-                    wallPin = true;
-                }
-                else if (a.StartsWith("-overheadburst=", System.StringComparison.OrdinalIgnoreCase))
-                    overheadBurst = a.Substring("-overheadburst=".Length);
-                else if (a.StartsWith("-pinshot=", System.StringComparison.OrdinalIgnoreCase))
-                    pinShotPath = a.Substring("-pinshot=".Length);
-                else if (a.StartsWith("-pinshotdelay=", System.StringComparison.OrdinalIgnoreCase))
-                {
-                    if (float.TryParse(a.Substring("-pinshotdelay=".Length),
-                        System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out float d) && d >= 0f)
-                        pinShotDelay = d;
-                }
-                else if (a.StartsWith("-pinburst=", System.StringComparison.OrdinalIgnoreCase))
-                    pinBurst = a.Substring("-pinburst=".Length);
-                else if (string.Equals(a, "-tagcam", System.StringComparison.OrdinalIgnoreCase))
-                    tagCam = true;
-                else if (string.Equals(a, "-tagcamflip", System.StringComparison.OrdinalIgnoreCase))
-                    tagCamFlip = true;
-            }
+            bool wanted = LaunchOptions.Has("-grappletest");
+            bool faceLeft = LaunchOptions.Has("-grappleleft");
+            bool side = LaunchOptions.Has("-grappleside");
+            bool front = LaunchOptions.Has("-grapplefront");   // 掴めないことを確かめる用（背後に回れていない状態）
+            bool back = LaunchOptions.Has("-grappleback");     // 既定と同じ。明示して読みやすくするため残す
+            bool pin = LaunchOptions.Has("-pintest") ||
+                       LaunchOptions.Has("-wallpintest") ||
+                       LaunchOptions.Has("-overheadtest");
+            bool pinChain = LaunchOptions.Has("-pinchain");
+            bool wallPin = LaunchOptions.Has("-wallpintest") || LaunchOptions.Has("-overheadtest");
+            bool wallLog = LaunchOptions.Has("-walllog");
+            string overheadBurst = LaunchOptions.Value("-overheadburst");
+            string pinShotPath = LaunchOptions.Value("-pinshot");
+            float pinShotDelay = 0.30f;
+            if (LaunchOptions.TryFloat("-pinshotdelay", out float d) && d >= 0f)
+                pinShotDelay = d;
+            string pinBurst = LaunchOptions.Value("-pinburst");
+            bool tagCam = LaunchOptions.Has("-tagcam");
+            bool tagCamFlip = LaunchOptions.Has("-tagcamflip");
 
             if (!wanted)
                 return;

@@ -140,7 +140,7 @@ namespace Ryona.Game
         internal EnemyBrain DreadEnemy { get; private set; }
         internal Vector3 DreadStartPoint { get; private set; }
 
-        void SetDreadTarget(EnemyBrain enemy)
+        internal void SetDreadTarget(EnemyBrain enemy)
         {
             if (DreadEnemy == enemy)
                 return;

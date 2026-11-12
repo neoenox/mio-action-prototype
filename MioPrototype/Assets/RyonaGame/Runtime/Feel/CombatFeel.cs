@@ -96,7 +96,7 @@ namespace Ryona.Game
             HitStop.Play(HitHitStop * (heavy ? HeavyHitStopScale : 1f));
         }
 
-        void OnHitReceived(HitResult result)
+        internal void OnHitReceived(HitResult result)
         {
             // 強い一撃ほど重く止める。弱い一撃まで長く止めると、殴られるたびに操作が重くなる。
             float weight = result.Stagger switch

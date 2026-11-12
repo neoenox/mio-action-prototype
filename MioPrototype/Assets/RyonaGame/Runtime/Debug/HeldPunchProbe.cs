@@ -58,17 +58,7 @@ namespace Ryona.Game
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
         {
-            bool wanted = false;
-            foreach (string a in System.Environment.GetCommandLineArgs())
-            {
-                if (string.Equals(a, "-punchlog", System.StringComparison.OrdinalIgnoreCase))
-                {
-                    wanted = true;
-                    break;
-                }
-            }
-
-            if (!wanted)
+            if (!LaunchOptions.Has("-punchlog"))
                 return;
 
             var go = new GameObject("Held Punch Probe");

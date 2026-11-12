@@ -40,8 +40,8 @@ namespace Ryona.Game
         }
 
         Canvas _canvas;
-        Text _volumeValue;
-        Text _sensValue;
+        internal Text _volumeValue;
+        internal Text _sensValue;
         bool _paused;
 
         // タイトルの有無は毎フレーム探すと重いので 0.25 秒ごとに確認する
@@ -56,13 +56,7 @@ namespace Ryona.Game
         {
             _instance = this;
 
-            foreach (string a in System.Environment.GetCommandLineArgs())
-            {
-                const string key = "-pauseshot=";
-
-                if (a.StartsWith(key, System.StringComparison.OrdinalIgnoreCase))
-                    _shotPath = a.Substring(key.Length);
-            }
+            _shotPath = LaunchOptions.Value("-pauseshot");
 
             Build();
             SetVisible(false);
@@ -134,7 +128,7 @@ namespace Ryona.Game
                 Application.Quit();
         }
 
-        void Pause()
+        internal void Pause()
         {
             _paused = true;
             Time.timeScale = 0f;
@@ -145,7 +139,7 @@ namespace Ryona.Game
             Debug.Log("[Pause] 一時停止");
         }
 
-        void Resume()
+        internal void Resume()
         {
             _paused = false;
             // ヒットストップが残っているなら、そちらの復帰に任せる（ここで 1 にすると
@@ -178,7 +172,7 @@ namespace Ryona.Game
             }
         }
 
-        void StepVolume(float delta)
+        internal void StepVolume(float delta)
         {
             if (Sfx == null)
                 return;
@@ -188,7 +182,7 @@ namespace Ryona.Game
             RefreshStatus();
         }
 
-        void StepSensitivity(float delta)
+        internal void StepSensitivity(float delta)
         {
             var cam = Belt;
             if (cam == null)

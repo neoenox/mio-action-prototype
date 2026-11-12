@@ -21,23 +21,13 @@ namespace Ryona.Game
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Install()
         {
-            bool wanted = false;
-            foreach (string a in System.Environment.GetCommandLineArgs())
-            {
-                if (string.Equals(a, "-title", System.StringComparison.OrdinalIgnoreCase))
-                    wanted = true;
-            }
-
-            if (!wanted)
+            if (!LaunchOptions.Has("-title"))
                 return;
 
-            foreach (string a in System.Environment.GetCommandLineArgs())
+            foreach (string flag in SkipFlags)
             {
-                foreach (string flag in SkipFlags)
-                {
-                    if (a.StartsWith(flag, System.StringComparison.OrdinalIgnoreCase))
-                        return;
-                }
+                if (LaunchOptions.HasPrefix(flag))
+                    return;
             }
 
             var go = new GameObject("Title Gate");
@@ -59,13 +49,7 @@ namespace Ryona.Game
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
 
-            foreach (string a in System.Environment.GetCommandLineArgs())
-            {
-                const string key = "-titleshot=";
-
-                if (a.StartsWith(key, System.StringComparison.OrdinalIgnoreCase))
-                    _shotPath = a.Substring(key.Length);
-            }
+            _shotPath = LaunchOptions.Value("-titleshot");
 
             Build();
 

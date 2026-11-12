@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Reflection;
 using NUnit.Framework;
 using Ryona.Game;
 using UnityEngine;
@@ -15,11 +14,10 @@ namespace Ryona.Tests
             yield return TestScene.LoadPrototype();
             yield return new WaitForSeconds(0.3f);
             var first = Object.FindFirstObjectByType<EncounterDirector>();
-            var clock = typeof(EncounterDirector).GetField("_runSeconds", BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.Greater((float)clock.GetValue(first), 0.2f);
+            Assert.Greater(first.RunSeconds, 0.2f);
             yield return TestScene.LoadPrototype();
             var second = Object.FindFirstObjectByType<EncounterDirector>();
-            Assert.Less((float)clock.GetValue(second), 0.25f, "A restart must not include the previous run");
+            Assert.Less(second.RunSeconds, 0.25f, "A restart must not include the previous run");
         }
 
         [UnityTest]
@@ -104,20 +102,16 @@ namespace Ryona.Tests
             var captor = Object.FindFirstObjectByType<EnemyBrain>();
             player.transform.rotation = Quaternion.LookRotation(Vector3.right);
 
-            var tryGrab = typeof(EnemyBrain).GetMethod("TryGrab",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.IsNotNull(tryGrab, "TryGrab not found");
-
             // 正面（+X）からは掴めない。掴みは羽交い締め（背後）だけ。
             captor.transform.position = player.transform.position + Vector3.right;
             captor.transform.rotation = Quaternion.LookRotation(Vector3.left);
-            Assert.IsFalse((bool)tryGrab.Invoke(captor, null), "A front grab must whiff");
+            Assert.IsFalse(captor.TryGrab(), "A front grab must whiff");
             Assert.IsFalse(grapple.IsGrappled, "The player must not be held from the front");
 
             // 背後（-X）なら掴める。
             captor.transform.position = player.transform.position + Vector3.left * 0.6f;
             captor.transform.rotation = Quaternion.LookRotation(Vector3.right);
-            Assert.IsTrue((bool)tryGrab.Invoke(captor, null), "A back grab must connect");
+            Assert.IsTrue(captor.TryGrab(), "A back grab must connect");
             Assert.IsTrue(grapple.IsGrappled);
             Assert.AreEqual(GrappleKind.Back, grapple.Kind);
 
@@ -137,16 +131,12 @@ namespace Ryona.Tests
             enemy.transform.position = player.transform.position + Vector3.left * 0.6f;
             enemy.transform.rotation = Quaternion.LookRotation(Vector3.right);
 
-            const BindingFlags privateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
-            typeof(EnemyBrain).GetMethod("BeginWindup", privateInstance)
-                .Invoke(enemy, new object[] { EnemyBrain.AttackId.Grab });
-            typeof(EnemyBrain).GetMethod("TickWindup", privateInstance)
-                .Invoke(enemy, new object[] { 10f });
+            enemy.BeginWindup(EnemyBrain.AttackId.Grab);
+            enemy.TickWindup(10f);
             Assert.AreEqual(EnemyPhase.Attack, enemy.Phase);
 
             player.ForceDown(1f, "test", forward: true);
-            typeof(EnemyBrain).GetMethod("Strike", privateInstance)
-                .Invoke(enemy, new object[] { 0.6f });
+            enemy.Strike(0.6f);
 
             Assert.IsFalse(grapple.IsGrappled, "A grab must not connect after the player goes down.");
         }
@@ -220,8 +210,7 @@ namespace Ryona.Tests
             attacker.ForceZone = PunchZone.Face;
             attacker.HoldFire(0.8f);
             Assert.IsTrue(group.TryAcquireAttackToken(holder));
-            typeof(EnemyBrain).GetMethod("BeginWindup", BindingFlags.Instance | BindingFlags.NonPublic)
-                .Invoke(holder, new object[] { EnemyBrain.AttackId.Grab });
+            holder.BeginWindup(EnemyBrain.AttackId.Grab);
             float end = Time.realtimeSinceStartup + 5f;
             while (!grapple.IsGrappled && Time.realtimeSinceStartup < end) yield return null;
             Assert.IsTrue(grapple.IsGrappled, "Back grab should connect");
@@ -237,8 +226,7 @@ namespace Ryona.Tests
             Assert.That(Vector3.Distance(holder.transform.position, player.transform.position),
                 Is.EqualTo(holdGap).Within(0.08f), "The holder should not be pushed into the player");
             Assert.IsTrue(grapple.IsGrappled, "A normal hit should not cancel the hold");
-            typeof(EnemyBrain).GetMethod("EnterStagger", BindingFlags.Instance | BindingFlags.NonPublic)
-                .Invoke(holder, new object[] { StaggerTier.Medium, BodyPart.Torso });
+            holder.EnterStagger(StaggerTier.Medium, BodyPart.Torso);
             Assert.IsFalse(grapple.IsGrappled, "A staggered holder must release the player");
             Assert.IsFalse(holder.IsHolding);
         }
@@ -316,8 +304,7 @@ namespace Ryona.Tests
             player.transform.rotation = Quaternion.LookRotation(Vector3.right);
             holder.transform.position = player.transform.position + Vector3.left;
             holder.transform.rotation = Quaternion.LookRotation(Vector3.right);
-            typeof(EnemyBrain).GetMethod("BeginWindup", BindingFlags.Instance | BindingFlags.NonPublic)
-                .Invoke(holder, new object[] { EnemyBrain.AttackId.Grab });
+            holder.BeginWindup(EnemyBrain.AttackId.Grab);
             end = Time.realtimeSinceStartup + 5f;
             while (!grapple.IsGrappled && Time.realtimeSinceStartup < end) yield return null;
             Assert.IsTrue(grapple.IsGrappled);
@@ -370,13 +357,11 @@ namespace Ryona.Tests
             enemy.enabled = false;
             enemy.transform.position = player.transform.position + Vector3.right * 1.8f;
             enemy.transform.rotation = Quaternion.LookRotation(Vector3.left);
-            typeof(EnemyBrain).GetMethod("BeginWindup", BindingFlags.Instance | BindingFlags.NonPublic)
-                .Invoke(enemy, new object[] { EnemyBrain.AttackId.Heavy });
+            enemy.BeginWindup(EnemyBrain.AttackId.Heavy);
             var figure = enemy.GetComponent<EnemyFigure>();
             figure.Preview(EnemyPhase.Attack, 0f, EnemyBrain.AttackId.Heavy, 0f);
             float hp = player.State.Hp;
-            typeof(EnemyBrain).GetMethod("Strike", BindingFlags.Instance | BindingFlags.NonPublic)
-                .Invoke(enemy, new object[] { 1.8f });
+            enemy.Strike(1.8f);
             Assert.AreEqual(hp, player.State.Hp, "A punch must not hit when the fist is visibly out of reach");
         }
 
@@ -414,8 +399,7 @@ namespace Ryona.Tests
                 yield return null;
             Assert.IsTrue(slot != null && slot.Loaded);
             player.transform.rotation = Quaternion.LookRotation(Vector3.right);
-            typeof(PlayerCombat).GetMethod("Begin", BindingFlags.Instance | BindingFlags.NonPublic)
-                .Invoke(combat, new object[] { AttackLibrary.Light(), 0 });
+            combat.Begin(AttackLibrary.Light(), 0);
             Assert.IsTrue(combat.IsAttacking);
             while (combat.IsAttacking)
             {
@@ -443,8 +427,7 @@ namespace Ryona.Tests
                 yield return null;
             Assert.IsTrue(slot != null && slot.Loaded);
             player.transform.rotation = Quaternion.LookRotation(Vector3.right);
-            typeof(PlayerCombat).GetMethod("Begin", BindingFlags.Instance | BindingFlags.NonPublic)
-                .Invoke(combat, new object[] { AttackLibrary.Light(), 0 });
+            combat.Begin(AttackLibrary.Light(), 0);
             Assert.That(combat.AimDistance, Is.EqualTo(1.5f).Within(0.05f));
             while (combat.IsAttacking)
             {
@@ -460,15 +443,13 @@ namespace Ryona.Tests
             var go = new GameObject("occlusion regression");
             var renderer = go.AddComponent<MeshRenderer>();
             var fade = go.AddComponent<OcclusionFade>();
-            var type = typeof(OcclusionFade);
-            var flags = BindingFlags.Instance | BindingFlags.NonPublic;
-            type.GetField("_renderers", flags).SetValue(fade, new Renderer[] { renderer });
-            type.GetField("_originals", flags).SetValue(fade, new Material[][] { new Material[0] });
-            type.GetField("_fadeable", flags).SetValue(fade, new bool[] { false });
-            var apply = type.GetMethod("Apply", flags);
-            apply.Invoke(fade, new object[] { 0.25f });
+            fade.ConfigureForTest(
+                new Renderer[] { renderer },
+                new Material[][] { new Material[0] },
+                new bool[] { false });
+            fade.Apply(0.25f);
             Assert.IsFalse(renderer.enabled);
-            apply.Invoke(fade, new object[] { 1f });
+            fade.Apply(1f);
             Assert.IsTrue(renderer.enabled);
             Object.Destroy(go);
             yield return null;

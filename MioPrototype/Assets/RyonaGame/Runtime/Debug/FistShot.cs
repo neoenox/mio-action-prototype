@@ -20,17 +20,7 @@ namespace Ryona.Game
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
         {
-            string[] args = System.Environment.GetCommandLineArgs();
-
-            string path = null;
-            for (int i = 0; i < args.Length - 1; i++)
-            {
-                if (string.Equals(args[i], "-fistshot", System.StringComparison.OrdinalIgnoreCase))
-                {
-                    path = args[i + 1];
-                    break;
-                }
-            }
+            string path = LaunchOptions.Value("-fistshot");
 
             if (string.IsNullOrEmpty(path))
                 return;

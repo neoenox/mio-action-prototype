@@ -28,10 +28,10 @@ namespace Ryona.Game
 
         // 実行時に組み立てる部品
         Image _hpFill, _enemyHpFill;
-        Image _downFill, _bellyFill;
+        internal Image _downFill, _bellyFill;
         Text _statusText, _enemyText;
-        Text _downHitsText, _bellyHitsText;
-        Text _encounterText;
+        internal Text _downHitsText, _bellyHitsText;
+        internal Text _encounterText;
         EncounterDirector _encounter;
 
         // 画面ロック中の案内（右端）。見えない壁で止まったように感じさせない。
@@ -40,12 +40,12 @@ namespace Ryona.Game
         PlayerMotor _motor;
 
         /// <summary>ステージ終了の中央表示（通常は非表示）。</summary>
-        RectTransform _bannerRoot;
-        Text _bannerText;
+        internal RectTransform _bannerRoot;
+        internal Text _bannerText;
 
         // 掴まれている間の表示
         RectTransform _grappleRoot;
-        Text _grappleText;
+        internal Text _grappleText;
         Image _grappleFill;
         PlayerGrapple _grapple;
         HeldBellyPunchDirector _bellyPunch;
@@ -217,15 +217,15 @@ namespace Ryona.Game
             {
                 tail = _grapple.WallPhase switch
                 {
-                    PlayerGrapple.WallStage.Grab => "掴まれた",
-                    PlayerGrapple.WallStage.Rise => "壁がせり上がる",
-                    PlayerGrapple.WallStage.Throw => "壁へ投げられる",
-                    PlayerGrapple.WallStage.Slam => "壁に叩きつけられた",
-                    PlayerGrapple.WallStage.Lean => "壁をずり落ちる",
-                    PlayerGrapple.WallStage.Regrip => "両腕を掴まれる",
-                    PlayerGrapple.WallStage.Restrain => "引き起こされる",
-                    PlayerGrapple.WallStage.TossWindup or PlayerGrapple.WallStage.TossAir => "レーンへ投げられる",
-                    PlayerGrapple.WallStage.TossLand => "着地",
+                    WallStage.Grab => "掴まれた",
+                    WallStage.Rise => "壁がせり上がる",
+                    WallStage.Throw => "壁へ投げられる",
+                    WallStage.Slam => "壁に叩きつけられた",
+                    WallStage.Lean => "壁をずり落ちる",
+                    WallStage.Regrip => "両腕を掴まれる",
+                    WallStage.Restrain => "引き起こされる",
+                    WallStage.TossWindup or WallStage.TossAir => "レーンへ投げられる",
+                    WallStage.TossLand => "着地",
                     _ => "両手首を押さえられる"
                 };
                 danger = true;

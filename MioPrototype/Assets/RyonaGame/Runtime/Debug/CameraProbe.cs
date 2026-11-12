@@ -25,18 +25,7 @@ namespace Ryona.Game
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
         {
-            bool enabled = false;
-
-            foreach (string a in System.Environment.GetCommandLineArgs())
-            {
-                if (string.Equals(a, "-camlog", System.StringComparison.OrdinalIgnoreCase))
-                {
-                    enabled = true;
-                    break;
-                }
-            }
-
-            if (!enabled)
+            if (!LaunchOptions.Has("-camlog"))
                 return;
 
             var go = new GameObject("Camera Probe");

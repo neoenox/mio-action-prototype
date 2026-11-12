@@ -790,11 +790,7 @@ namespace Ryona.Game
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         static void ReadArgs()
         {
-            foreach (string a in System.Environment.GetCommandLineArgs())
-            {
-                if (string.Equals(a, "-sfxlog", System.StringComparison.OrdinalIgnoreCase))
-                    LogPlays = true;
-            }
+            LogPlays = LaunchOptions.Has("-sfxlog");
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]

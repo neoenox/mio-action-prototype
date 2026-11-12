@@ -58,31 +58,16 @@ namespace Ryona.Game
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         static void ReadDebugArgs()
         {
-            var args = System.Environment.GetCommandLineArgs();
-            foreach (string a in args)
-            {
-                if (string.Equals(a, "-holdmove", System.StringComparison.OrdinalIgnoreCase))
-                    ForceMove = true;
-                else if (string.Equals(a, "-holdright", System.StringComparison.OrdinalIgnoreCase))
-                    ForceRight = true;
-                else if (string.Equals(a, "-holdlight", System.StringComparison.OrdinalIgnoreCase))
-                    ForceLightOnly = true;
-                else if (string.Equals(a, "-leftpunch", System.StringComparison.OrdinalIgnoreCase))
-                    ForceLeftPunch = true;
-                else if (string.Equals(a, "-holdattack", System.StringComparison.OrdinalIgnoreCase))
-                    ForceAttack = true;
-                else if (string.Equals(a, "-holdmash", System.StringComparison.OrdinalIgnoreCase))
-                    ForceMash = true;
-                else if (a.StartsWith("-attackinterval=", System.StringComparison.OrdinalIgnoreCase))
-                {
-                    // 自動攻撃の間隔（秒）。硬直の食い込みを試すときに短くする。
-                    if (float.TryParse(a.Substring("-attackinterval=".Length),
-                        System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out float interval)
-                        && interval > 0.05f)
-                        _autoAttackInterval = interval;
-                }
-            }
+            ForceMove = LaunchOptions.Has("-holdmove");
+            ForceRight = LaunchOptions.Has("-holdright");
+            ForceLightOnly = LaunchOptions.Has("-holdlight");
+            ForceLeftPunch = LaunchOptions.Has("-leftpunch");
+            ForceAttack = LaunchOptions.Has("-holdattack");
+            ForceMash = LaunchOptions.Has("-holdmash");
+
+            // 自動攻撃の間隔（秒）。硬直の食い込みを試すときに短くする。
+            if (LaunchOptions.TryFloat("-attackinterval", out float interval) && interval > 0.05f)
+                _autoAttackInterval = interval;
 
             if (ForceMove || ForceRight || ForceAttack || ForceLightOnly)
                 Debug.Log($"[Input] 強制入力 move={ForceMove} right={ForceRight} attack={ForceAttack} " +

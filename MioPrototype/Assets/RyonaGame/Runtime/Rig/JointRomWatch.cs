@@ -37,20 +37,9 @@ namespace Ryona.Game
             _enabled = false;
             _logSummary = false;
 
-            bool forcedOn = false;
-            bool forcedOff = false;
-            foreach (string a in Environment.GetCommandLineArgs())
-            {
-                if (string.Equals(a, "-jointrom", StringComparison.OrdinalIgnoreCase))
-                    forcedOn = true;
-                else if (string.Equals(a, "-nojointrom", StringComparison.OrdinalIgnoreCase))
-                    forcedOff = true;
-                else if (string.Equals(a, "-jointlog", StringComparison.OrdinalIgnoreCase))
-                {
-                    _logSummary = true;
-                    forcedOn = true;
-                }
-            }
+            bool forcedOff = LaunchOptions.Has("-nojointrom");
+            bool forcedOn = LaunchOptions.Has("-jointrom") || LaunchOptions.Has("-jointlog");
+            _logSummary = LaunchOptions.Has("-jointlog");
 
             _enabled = !forcedOff && (forcedOn || DefaultEnabled());
             if (!_enabled)

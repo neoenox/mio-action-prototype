@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Reflection;
 using NUnit.Framework;
 using Ryona.Game;
 using UnityEngine;
@@ -98,8 +97,7 @@ namespace Ryona.Tests
                 enemy.FeintChance = 0f;
                 enemy.transform.position = player.transform.position + Vector3.right * 1.03f;
                 enemy.transform.rotation = Quaternion.LookRotation(Vector3.left);
-                typeof(EnemyBrain).GetMethod("BeginWindup", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-                    .Invoke(enemy, new object[] { attack });
+                enemy.BeginWindup(attack);
                 float hp = player.State.Hp;
                 float deadline = Time.realtimeSinceStartup + 2.5f;
                 while (Time.realtimeSinceStartup < deadline && player.State.Hp >= hp && enemy.Phase != EnemyPhase.Recover)
@@ -138,8 +136,7 @@ namespace Ryona.Tests
                 float distanceAtHit = -1f;
                 player.HitReceived += result =>
                     distanceAtHit = Vector3.Distance(figure.Fist(false).position, EnemyBrain.PunchTarget(player, zone));
-                typeof(EnemyBrain).GetMethod("BeginWindup", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-                    .Invoke(enemy, new object[] { attack });
+                enemy.BeginWindup(attack);
                 float deadline = Time.realtimeSinceStartup + 3f;
                 while (Time.realtimeSinceStartup < deadline && distanceAtHit < 0f) yield return null;
                 Assert.GreaterOrEqual(distanceAtHit, 0f, $"{attack} to the {zone} did not hit");
@@ -157,8 +154,7 @@ namespace Ryona.Tests
             enemy.transform.position = player.transform.position + Vector3.right * 1.0f;
             enemy.transform.rotation = Quaternion.LookRotation(Vector3.right);
             enemy.FeintChance = 0f;
-            var method = typeof(EnemyBrain).GetMethod("TryBeginAttack", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-            bool started = (bool)method.Invoke(enemy, new object[] { 1f });
+            bool started = enemy.TryBeginAttack(1f);
             Assert.IsFalse(started, "Enemy should turn toward the player before beginning an attack");
             foreach (var other in Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
                 if (other != enemy) other.enabled = false;
@@ -191,10 +187,7 @@ namespace Ryona.Tests
                 Quaternion.LookRotation(toPlayer.normalized, Vector3.up) * Quaternion.Euler(0f, 20f, 0f);
             Assert.Greater(FlatAngle(enemy.transform.forward, toPlayer), 10f, "前提: 斜めを向いている");
 
-            var begin = typeof(EnemyBrain).GetMethod(
-                "BeginWindup", BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.IsNotNull(begin);
-            begin.Invoke(enemy, new object[] { EnemyBrain.AttackId.Jab });
+            enemy.BeginWindup(EnemyBrain.AttackId.Jab);
 
             Vector3 to = player.transform.position - enemy.transform.position;
             Assert.Less(FlatAngle(enemy.transform.forward, to), 2f,
@@ -249,10 +242,7 @@ namespace Ryona.Tests
             Assert.IsFalse(grapple.HasTimeLimit);
 
             // 振りほどくと拘束者がよろけ、その後で攻撃を再開する
-            var escape = typeof(PlayerGrapple).GetMethod("Escape",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.IsNotNull(escape, "Escape not found");
-            escape.Invoke(grapple, null);
+            grapple.Escape();
             yield return null;
             Assert.IsFalse(grapple.IsGrappled, "Escape must end the hold");
 

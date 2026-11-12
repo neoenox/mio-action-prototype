@@ -27,6 +27,34 @@ namespace Ryona
         public const float DownDuration = 2.00f;
         public const float GetUpVulnerable = 0.60f;
 
+        // --- 体の寸法と、拘束中の間合い（m） ---------------------------
+        /// <summary>敵のカプセルの半径。体が重ならない下限の計算に使う。</summary>
+        public const float EnemyCapsuleRadius = 0.40f;
+
+        /// <summary>彼女の体の半径（肩幅の半分より少し小さい）。</summary>
+        public const float PlayerBodyRadius = 0.30f;
+
+        /// <summary>
+        /// 互いの体が重ならない最小の間合い（半径の和）。
+        /// 押さえつけ・ベアハッグで彼女を立たせる位置の基準になる。
+        /// </summary>
+        public const float BodyGap = EnemyCapsuleRadius + PlayerBodyRadius;
+
+        /// <summary>
+        /// 押さえつけ・ベアハッグで彼女を立たせる、拘束者からの距離（m）。
+        /// 近すぎると敵が <see cref="PinMinDistance"/> 側へ押し戻され、伸ばした腕が宙に浮く。
+        /// </summary>
+        public const float GrabStandoff = 0.60f;
+
+        /// <summary>ベアハッグの基準距離（離れ気味のとき）。締め付けでここから 0.16m 詰めて密着する。</summary>
+        public const float BearHugStandoff = 0.54f;
+
+        /// <summary>
+        /// 羽交い締めで立たせる距離（m）。胸を相手の背中に付けて組む。
+        /// 離れていると腕が伸びきって「首へ手を伸ばしている」画になる。
+        /// </summary>
+        public const float BackGrabStandoff = 0.34f;
+
         // --- 掴み・抵抗 -----------------------------------------------
         /// <summary>背後からの掴み（羽交い締め）を振りほどくのに必要な入力回数。</summary>
         public const int MashBaseBack = 10;
@@ -129,7 +157,7 @@ namespace Ryona
         public const float WallSplitPunchBelly = 10f;
 
         /// <summary>二人がかりのときの脱出に必要な連打数（通常の 1.5 倍）。</summary>
-        public const float WallSplitEscapeInputs = 18f;
+        public const float WallSplitEscapeInputs = MashBasePin * 1.5f;
 
         /// <summary>Y 字に広げたときの手首の横位置（m、中心から）。</summary>
         public const float WallSplitHandHalf = 0.48f;

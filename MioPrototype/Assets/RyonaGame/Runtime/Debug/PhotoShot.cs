@@ -82,8 +82,7 @@ namespace Ryona.Game
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
         {
-            string[] args = Environment.GetCommandLineArgs();
-            string path = Value(args, "-shotpath");
+            string path = LaunchOptions.Value("-shotpath");
             if (string.IsNullOrEmpty(path))
                 return;
 
@@ -92,10 +91,10 @@ namespace Ryona.Game
 
             var shot = go.AddComponent<PhotoShot>();
             shot.Path = path;
-            shot.State = ParseState(Value(args, "-shotstate"), CharacterAnimator.State.Down);
-            shot.FaceCamera = string.Equals(Value(args, "-shotcam"), "face", StringComparison.OrdinalIgnoreCase);
+            shot.State = ParseState(LaunchOptions.Value("-shotstate"), CharacterAnimator.State.Down);
+            shot.FaceCamera = string.Equals(LaunchOptions.Value("-shotcam"), "face", StringComparison.OrdinalIgnoreCase);
 
-            string offset = Value(args, "-shotoffset");
+            string offset = LaunchOptions.Value("-shotoffset");
             if (!string.IsNullOrEmpty(offset))
             {
                 string[] parts = offset.Split(',');
@@ -109,45 +108,45 @@ namespace Ryona.Game
                 }
             }
 
-            if (float.TryParse(Value(args, "-shotfov"), out float fov))
+            if (float.TryParse(LaunchOptions.Value("-shotfov"), out float fov))
                 shot.Fov = fov;
 
-            shot.HideHair = Value(args, "-shothidehair") == "1";
-            shot.OnlyCharacter = Value(args, "-shotonly") == "1";
-            shot.ShowEnemy = Value(args, "-shotenemy") == "1";
+            shot.HideHair = LaunchOptions.Value("-shothidehair") == "1";
+            shot.OnlyCharacter = LaunchOptions.Value("-shotonly") == "1";
+            shot.ShowEnemy = LaunchOptions.Value("-shotenemy") == "1";
 
-            shot.EnemyWindup = Value(args, "-shotenemywindup") == "1";
-            if (float.TryParse(Value(args, "-shotenemyswing"), out float eswing))
+            shot.EnemyWindup = LaunchOptions.Value("-shotenemywindup") == "1";
+            if (float.TryParse(LaunchOptions.Value("-shotenemyswing"), out float eswing))
                 shot.EnemySwing = eswing;
 
-            if (float.TryParse(Value(args, "-shotcharge"), out float charge))
+            if (float.TryParse(LaunchOptions.Value("-shotcharge"), out float charge))
                 shot.DebugCharge = charge;
 
-            shot.FlashShot = Value(args, "-shotflash") == "1";
+            shot.FlashShot = LaunchOptions.Value("-shotflash") == "1";
 
-            if (float.TryParse(Value(args, "-shotangry"), out float ang))
+            if (float.TryParse(LaunchOptions.Value("-shotangry"), out float ang))
                 shot.FaceAngry = ang;
-            if (float.TryParse(Value(args, "-shotsad"), out float sad))
+            if (float.TryParse(LaunchOptions.Value("-shotsad"), out float sad))
                 shot.FaceSad = sad;
-            if (float.TryParse(Value(args, "-shotmouth"), out float mouth))
+            if (float.TryParse(LaunchOptions.Value("-shotmouth"), out float mouth))
                 shot.FaceMouth = mouth;
-            if (float.TryParse(Value(args, "-shotih"), out float grit))
+            if (float.TryParse(LaunchOptions.Value("-shotih"), out float grit))
                 shot.FaceGrit = grit;
-            if (float.TryParse(Value(args, "-shotblink"), out float blink))
+            if (float.TryParse(LaunchOptions.Value("-shotblink"), out float blink))
                 shot.FaceBlink = blink;
-            if (float.TryParse(Value(args, "-shotbelly"), out float belly))
+            if (float.TryParse(LaunchOptions.Value("-shotbelly"), out float belly))
                 shot.FaceBelly = belly;
 
-            if (float.TryParse(Value(args, "-shotpain"), out float pain))
+            if (float.TryParse(LaunchOptions.Value("-shotpain"), out float pain))
                 shot.Pain = pain;
 
-            if (float.TryParse(Value(args, "-shotwarmup"), out float warmup))
+            if (float.TryParse(LaunchOptions.Value("-shotwarmup"), out float warmup))
                 shot.WarmupSeconds = warmup;
-            if (float.TryParse(Value(args, "-shotsettle"), out float settle))
+            if (float.TryParse(LaunchOptions.Value("-shotsettle"), out float settle))
                 shot.SettleSeconds = settle;
-            if (float.TryParse(Value(args, "-shottime"), out float shotTime))
+            if (float.TryParse(LaunchOptions.Value("-shottime"), out float shotTime))
                 shot.StateTime = shotTime;
-            if (float.TryParse(Value(args, "-shotdur"), out float shotDur))
+            if (float.TryParse(LaunchOptions.Value("-shotdur"), out float shotDur))
                 shot.StateDuration = shotDur;
         }
 
@@ -373,7 +372,7 @@ namespace Ryona.Game
             string full = System.IO.Path.GetFullPath(Path);
 
             // 診断: プレイヤーの近くにある見た目を列挙する（正体不明の物体の特定用）
-            if (Value(System.Environment.GetCommandLineArgs(), "-shotnear") == "1")
+            if (LaunchOptions.Value("-shotnear") == "1")
             {
                 Vector3 center = anims[0].transform.position;
                 foreach (var r in FindObjectsByType<Renderer>(FindObjectsSortMode.None))
@@ -459,17 +458,6 @@ namespace Ryona.Game
 
         void OnApplicationQuit() => Debug.Log("[Shot] OnApplicationQuit");
         void OnDestroy() => Debug.Log("[Shot] OnDestroy");
-
-        static string Value(string[] args, string key)
-        {
-            for (int i = 0; i < args.Length - 1; i++)
-            {
-                if (string.Equals(args[i], key, StringComparison.OrdinalIgnoreCase))
-                    return args[i + 1];
-            }
-
-            return null;
-        }
 
         static CharacterAnimator.State ParseState(string name, CharacterAnimator.State fallback)
         {

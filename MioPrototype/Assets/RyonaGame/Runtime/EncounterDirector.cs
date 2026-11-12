@@ -98,6 +98,9 @@ namespace Ryona.Game
 
         const string BestTimeKey = "Mio.BestClearSeconds.Normal10.v2";
         float _runSeconds;
+
+        /// <summary>この一団が始まってからの経過秒（テスト・HUD 用）。</summary>
+        internal float RunSeconds => _runSeconds;
         bool _recordEligible = true;
 
         void Start()
@@ -118,43 +121,25 @@ namespace Ryona.Game
         /// </summary>
         void ApplyCommandLine()
         {
-            const string spanKey = "-screenspan=";
-            const string wavesKey = "-maxwaves=";
+            // 検証用のゲーム条件では通常プレイの記録を更新しない。
+            if (LaunchOptions.HasPrefix("-maxwaves") ||
+                LaunchOptions.HasPrefix("-screenspan") ||
+                LaunchOptions.HasPrefix("-hold") ||
+                LaunchOptions.HasPrefix("-encountertest") ||
+                LaunchOptions.HasPrefix("-grappletest"))
+                _recordEligible = false;
 
-            foreach (string a in System.Environment.GetCommandLineArgs())
+            if (LaunchOptions.TryFloat("-screenspan", out float value) && value > 1f)
             {
-                // 検証用のゲーム条件では通常プレイの記録を更新しない。
-                if (a.StartsWith("-", System.StringComparison.Ordinal) &&
-                    (a.StartsWith("-maxwaves", System.StringComparison.OrdinalIgnoreCase) ||
-                     a.StartsWith("-screenspan", System.StringComparison.OrdinalIgnoreCase) ||
-                     a.StartsWith("-hold", System.StringComparison.OrdinalIgnoreCase) ||
-                     a.StartsWith("-encountertest", System.StringComparison.OrdinalIgnoreCase) ||
-                     a.StartsWith("-grappletest", System.StringComparison.OrdinalIgnoreCase)))
-                    _recordEligible = false;
+                ScreenSpan = value;
+                Debug.Log($"[Encounter] ScreenSpan={ScreenSpan:F1}（起動引数で上書き）");
+            }
 
-                if (a.StartsWith(spanKey, System.StringComparison.OrdinalIgnoreCase))
-                {
-                    if (float.TryParse(a.Substring(spanKey.Length),
-                            System.Globalization.NumberStyles.Float,
-                            System.Globalization.CultureInfo.InvariantCulture, out float value)
-                        && value > 1f)
-                    {
-                        ScreenSpan = value;
-                        Debug.Log($"[Encounter] ScreenSpan={ScreenSpan:F1}（起動引数で上書き）");
-                    }
-
-                    continue;
-                }
-
-                // 0 を渡すと無限（計測用）
-                if (a.StartsWith(wavesKey, System.StringComparison.OrdinalIgnoreCase))
-                {
-                    if (int.TryParse(a.Substring(wavesKey.Length), out int waves) && waves >= 0)
-                    {
-                        MaxWaves = waves;
-                        Debug.Log($"[Encounter] MaxWaves={MaxWaves}（起動引数で上書き。0 は無限）");
-                    }
-                }
+            // 0 を渡すと無限（計測用）
+            if (LaunchOptions.TryInt("-maxwaves", out int waves) && waves >= 0)
+            {
+                MaxWaves = waves;
+                Debug.Log($"[Encounter] MaxWaves={MaxWaves}（起動引数で上書き。0 は無限）");
             }
         }
 

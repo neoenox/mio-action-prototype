@@ -50,46 +50,27 @@ namespace Ryona.Game
                 return;
             _loaded = true;
 
-            foreach (string a in System.Environment.GetCommandLineArgs())
+            string text = LaunchOptions.Value("-wallsplitcam");
+            if (text != null)
             {
-                if (TryRead(a, "-wallsplitcam=", out string text))
-                {
-                    if (text.Equals("hold", System.StringComparison.OrdinalIgnoreCase))
-                        _mode = Shot.Hold;
-                    else if (text.Equals("front", System.StringComparison.OrdinalIgnoreCase))
-                        _mode = Shot.Front;
-                    else if (text.Equals("angle", System.StringComparison.OrdinalIgnoreCase))
-                        _mode = Shot.Angle;
-                }
-                else if (TryRead(a, "-wallsplitcamangle=", out float angle))
-                    _angleDeg = Mathf.Clamp(angle, 0f, 45f);
-                else if (TryRead(a, "-wallsplitcamdist=", out float dist))
-                    _distance = Mathf.Clamp(dist, 1.6f, 4.0f);
-                else if (TryRead(a, "-wallsplitcamheight=", out float height))
-                    _height = Mathf.Clamp(height, 0f, 1.2f);
-                else if (TryRead(a, "-wallsplitcamtarget=", out float target))
-                    _targetHeight = Mathf.Clamp(target, 0.6f, 1.8f);
-                else if (TryRead(a, "-wallsplitcamlat=", out float lateral))
-                    _lateral = Mathf.Clamp(lateral, -0.4f, 0.4f);
+                if (text.Equals("hold", System.StringComparison.OrdinalIgnoreCase))
+                    _mode = Shot.Hold;
+                else if (text.Equals("front", System.StringComparison.OrdinalIgnoreCase))
+                    _mode = Shot.Front;
+                else if (text.Equals("angle", System.StringComparison.OrdinalIgnoreCase))
+                    _mode = Shot.Angle;
             }
-        }
 
-        static bool TryRead(string arg, string key, out float value)
-        {
-            value = 0f;
-            return arg.StartsWith(key, System.StringComparison.OrdinalIgnoreCase)
-                && float.TryParse(arg.Substring(key.Length),
-                    System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out value);
-        }
-
-        static bool TryRead(string arg, string key, out string value)
-        {
-            value = null;
-            if (!arg.StartsWith(key, System.StringComparison.OrdinalIgnoreCase))
-                return false;
-            value = arg.Substring(key.Length).Trim();
-            return value.Length > 0;
+            if (LaunchOptions.TryFloat("-wallsplitcamangle", out float angle))
+                _angleDeg = Mathf.Clamp(angle, 0f, 45f);
+            if (LaunchOptions.TryFloat("-wallsplitcamdist", out float dist))
+                _distance = Mathf.Clamp(dist, 1.6f, 4.0f);
+            if (LaunchOptions.TryFloat("-wallsplitcamheight", out float height))
+                _height = Mathf.Clamp(height, 0f, 1.2f);
+            if (LaunchOptions.TryFloat("-wallsplitcamtarget", out float target))
+                _targetHeight = Mathf.Clamp(target, 0.6f, 1.8f);
+            if (LaunchOptions.TryFloat("-wallsplitcamlat", out float lateral))
+                _lateral = Mathf.Clamp(lateral, -0.4f, 0.4f);
         }
 
         /// <summary>

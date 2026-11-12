@@ -195,14 +195,7 @@ namespace Ryona.Game
                     return _verbose;
 
                 _verboseRead = true;
-                foreach (string a in System.Environment.GetCommandLineArgs())
-                {
-                    if (string.Equals(a, "-occlog", System.StringComparison.OrdinalIgnoreCase))
-                    {
-                        _verbose = true;
-                        break;
-                    }
-                }
+                _verbose = LaunchOptions.Has("-occlog");
 
                 return _verbose;
             }
@@ -291,7 +284,22 @@ namespace Ryona.Game
             return Vector3.Dot(transform.position - middle, cameraForward) < 0.45f;
         }
 
-        void Apply(float alpha)
+        /// <summary>
+        /// テスト用: 走査結果を直接差し込む。走査は実行中のシーンでしか揃わないので、
+        /// 生成直後のコンポーネントで Apply の分岐だけを検証したいときに使う。
+        /// </summary>
+        internal void ConfigureForTest(Renderer[] renderers, Material[][] originals, bool[] fadeable)
+        {
+            _renderers = renderers;
+            _originals = originals;
+            _fadeable = fadeable;
+            _faded = new Material[renderers.Length][];
+
+            for (int i = 0; i < renderers.Length; i++)
+                _faded[i] = new Material[originals[i].Length];
+        }
+
+        internal void Apply(float alpha)
         {
             bool faded = alpha < 0.995f;
 

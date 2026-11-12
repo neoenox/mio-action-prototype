@@ -36,18 +36,8 @@ namespace Ryona.Game
             if (FindFirstObjectByType<PinHotkey>() != null)
                 return;
 
-            bool auto = false;
-            bool wall = false;
-            foreach (string a in System.Environment.GetCommandLineArgs())
-            {
-                if (string.Equals(a, "-pinnow", System.StringComparison.OrdinalIgnoreCase))
-                    auto = true;
-                else if (string.Equals(a, "-wallpinnow", System.StringComparison.OrdinalIgnoreCase))
-                {
-                    auto = true;
-                    wall = true;
-                }
-            }
+            bool auto = LaunchOptions.Has("-pinnow") || LaunchOptions.Has("-wallpinnow");
+            bool wall = LaunchOptions.Has("-wallpinnow");
 
             var go = new GameObject("Pin Hotkey");
             var hotkey = go.AddComponent<PinHotkey>();

@@ -312,20 +312,11 @@ namespace Ryona.Game
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         static void ParseStatLogFlag()
         {
-            _statLog = false;
+            _statLog = LaunchOptions.Has("-statlog");
             _launchScale = 1f;
 
-            foreach (string a in System.Environment.GetCommandLineArgs())
-            {
-                if (string.Equals(a, "-statlog", System.StringComparison.OrdinalIgnoreCase))
-                    _statLog = true;
-                else if (a.StartsWith("-downlaunch=", System.StringComparison.OrdinalIgnoreCase)
-                    && float.TryParse(a.Substring("-downlaunch=".Length),
-                        System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out float scale)
-                    && scale > 0f)
-                    _launchScale = scale;
-            }
+            if (LaunchOptions.TryFloat("-downlaunch", out float scale) && scale > 0f)
+                _launchScale = scale;
         }
 
         /// <summary>攻撃を受ける。プレイヤー側の被弾はすべてここを通る。</summary>

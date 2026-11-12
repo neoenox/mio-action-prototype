@@ -39,15 +39,8 @@ namespace Ryona.Game
             if (FindFirstObjectByType<DownTestDriver>() != null)
                 return;
 
-            string prefix = null;
-            string attack = "light";
-            foreach (string a in System.Environment.GetCommandLineArgs())
-            {
-                if (a.StartsWith("-downburst=", System.StringComparison.OrdinalIgnoreCase))
-                    prefix = a.Substring("-downburst=".Length);
-                else if (a.StartsWith("-downhits=", System.StringComparison.OrdinalIgnoreCase))
-                    attack = a.Substring("-downhits=".Length).Trim().ToLowerInvariant();
-            }
+            string prefix = LaunchOptions.Value("-downburst");
+            string attack = LaunchOptions.Value("-downhits")?.Trim().ToLowerInvariant() ?? "light";
 
             if (prefix == null)
                 return;

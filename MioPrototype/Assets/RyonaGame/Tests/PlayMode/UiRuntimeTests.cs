@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Reflection;
 using NUnit.Framework;
 using Ryona.Game;
 using UnityEngine;
@@ -23,7 +22,6 @@ namespace Ryona.Tests
     /// </summary>
     public sealed class UiRuntimeTests
     {
-        const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
         /// <summary>クリアタイムの保存先。<c>EncounterDirector</c> と同じキー。</summary>
         const string BestKey = "Mio.BestClearSeconds.Normal10.v2";
@@ -48,10 +46,10 @@ namespace Ryona.Tests
             foreach (var enemy in enemies)
                 enemy.enabled = false;
 
-            var downFill = Field<Image>(hud, "_downFill");
-            var bellyFill = Field<Image>(hud, "_bellyFill");
-            var downText = Field<Text>(hud, "_downHitsText");
-            var bellyText = Field<Text>(hud, "_bellyHitsText");
+            var downFill = hud._downFill;
+            var bellyFill = hud._bellyFill;
+            var downText = hud._downHitsText;
+            var bellyText = hud._bellyHitsText;
             Assert.AreEqual(0f, downFill.fillAmount);
             Assert.AreEqual(0f, bellyFill.fillAmount);
             Assert.AreEqual("弱あと9発 / 強あと4発", downText.text);
@@ -146,7 +144,7 @@ namespace Ryona.Tests
                 camera.HoldFocus(1f, 0f, 0f, 0f);
                 Vector3 shotTarget = camera.Target.position + Vector3.up;
                 Vector3 shotPosition = shotTarget + Vector3.back * 2f;
-                Call(camera, "RequestCinematicShot", shotPosition, shotTarget, true);
+                camera.RequestCinematicShot(shotPosition, shotTarget, true);
                 InputSystem.QueueDeltaStateEvent(mouse.scroll, Vector2.up * tick);
                 InputSystem.Update();
                 yield return null;
@@ -190,7 +188,7 @@ namespace Ryona.Tests
             foreach (var enemy in enemies)
                 enemy.enabled = false;
             grapple.Begin(enemies[0], GrappleKind.Back);
-            var label = Field<Text>(hud, "_grappleText");
+            var label = hud._grappleText;
 
             grapple.SuppressStruggle(1f);
             yield return null;
@@ -237,29 +235,29 @@ namespace Ryona.Tests
 
             try
             {
-                Call(pause, "Pause");
+                pause.Pause();
 
                 Assert.AreEqual(0f, Time.timeScale, 1e-4f, "ポーズで時間が止まっていない");
                 Assert.IsTrue(canvas.gameObject.activeSelf, "ポーズ画面が出ていない");
 
-                var volumeLabel = Field<Text>(pause, "_volumeValue");
-                var sensLabel = Field<Text>(pause, "_sensValue");
+                var volumeLabel = pause._volumeValue;
+                var sensLabel = pause._sensValue;
                 Assert.IsNotNull(volumeLabel, "音量の表示が無い");
                 Assert.IsNotNull(sensLabel, "感度の表示が無い");
 
                 Assert.AreEqual(Percent(volume0), volumeLabel.text, "音量の初期表示が違う");
                 Assert.AreEqual($"{sens0:F1}", sensLabel.text, "感度の初期表示が違う");
 
-                Call(pause, "StepVolume", 0.1f);
+                pause.StepVolume(0.1f);
                 float volume1 = Mathf.Clamp01(volume0 + 0.1f);
                 Assert.AreEqual(volume1, sfx.MasterVolume, 1e-3f, "音量が変わっていない");
                 Assert.AreEqual(Percent(volume1), volumeLabel.text, "音量の表示が古い");
 
-                Call(pause, "StepSensitivity", 0.5f);
+                pause.StepSensitivity(0.5f);
                 Assert.AreEqual(Mathf.Clamp(sens0 + 0.5f, 0.5f, 8f), cam.MouseSensitivity, 1e-3f,
                     "カメラ感度が変わっていない");
 
-                Call(pause, "Resume");
+                pause.Resume();
                 Assert.AreEqual(1f, Time.timeScale, 1e-4f, "再開しても時間が戻っていない");
                 Assert.IsFalse(canvas.gameObject.activeSelf, "ポーズ画面が閉じていない");
             }
@@ -339,9 +337,9 @@ namespace Ryona.Tests
                 Assert.IsNotNull(hud, "MatchHud が無い");
                 Assert.IsNotNull(player, "PlayerStats が無い");
 
-                var encounterText = Field<Text>(hud, "_encounterText");
-                var bannerRoot = Field<RectTransform>(hud, "_bannerRoot");
-                var bannerText = Field<Text>(hud, "_bannerText");
+                var encounterText = hud._encounterText;
+                var bannerRoot = hud._bannerRoot;
+                var bannerText = hud._bannerText;
 
                 Assert.IsNotNull(encounterText, "撃破数の表示が無い");
                 Assert.IsNotNull(bannerRoot, "クリア表示が無い");
@@ -405,23 +403,6 @@ namespace Ryona.Tests
         }
 
         static string Percent(float volume) => $"{Mathf.RoundToInt(volume * 100f)} %";
-
-        /// <summary>プライベートメソッドを叩く（既存テストと同じ流儀）。</summary>
-        static object Call(object target, string method, params object[] args)
-        {
-            var info = target.GetType().GetMethod(method, Private);
-            Assert.IsNotNull(info, $"{target.GetType().Name}.{method} が見つからない");
-            return info.Invoke(target, args);
-        }
-
-        /// <summary>プライベートフィールドを読む（UI の実体は実行時に組み立てられる）。</summary>
-        static T Field<T>(object target, string name) where T : class
-        {
-            var info = target.GetType().GetField(name, Private);
-            Assert.IsNotNull(info, $"{target.GetType().Name}.{name} が見つからない");
-            return info.GetValue(target) as T;
-        }
-
         /// <summary>ヒットストップで時間が止まっても進む待ち。</summary>
         static IEnumerator WaitRealtime(float seconds)
         {

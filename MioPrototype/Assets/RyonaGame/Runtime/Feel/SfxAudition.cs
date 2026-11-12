@@ -72,14 +72,7 @@ namespace Ryona.Game
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
         {
-            bool wanted = false;
-            foreach (string a in System.Environment.GetCommandLineArgs())
-            {
-                if (string.Equals(a, "-sfxaudition", System.StringComparison.OrdinalIgnoreCase))
-                    wanted = true;
-            }
-
-            if (!wanted)
+            if (!LaunchOptions.Has("-sfxaudition"))
                 return;
 
             var go = new GameObject("Sfx Audition");

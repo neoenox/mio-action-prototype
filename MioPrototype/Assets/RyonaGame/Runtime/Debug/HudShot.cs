@@ -23,9 +23,7 @@ namespace Ryona.Game
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
         {
-            string[] args = System.Environment.GetCommandLineArgs();
-
-            string path = Value(args, "-hudshot");
+            string path = LaunchOptions.Value("-hudshot");
             if (string.IsNullOrEmpty(path))
                 return;
 
@@ -33,7 +31,7 @@ namespace Ryona.Game
             var shot = go.AddComponent<HudShot>();
             shot._path = path;
 
-            string list = Value(args, "-hudshotdelays");
+            string list = LaunchOptions.Value("-hudshotdelays");
             if (!string.IsNullOrEmpty(list))
             {
                 foreach (string part in list.Split(','))
@@ -48,7 +46,7 @@ namespace Ryona.Game
             if (shot._times.Count == 0)
             {
                 float delay = 6f;
-                string single = Value(args, "-hudshotdelay");
+                string single = LaunchOptions.Value("-hudshotdelay");
                 if (float.TryParse(single, out float seconds))
                     delay = seconds;
 
@@ -104,17 +102,6 @@ namespace Ryona.Game
             string ext = System.IO.Path.GetExtension(full);
 
             return System.IO.Path.Combine(dir, $"{name}_{index + 1}{ext}");
-        }
-
-        static string Value(string[] args, string key)
-        {
-            for (int i = 0; i < args.Length - 1; i++)
-            {
-                if (string.Equals(args[i], key, System.StringComparison.OrdinalIgnoreCase))
-                    return args[i + 1];
-            }
-
-            return null;
         }
     }
 }

@@ -36,27 +36,12 @@ namespace Ryona.Game
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
         {
-            string prefix = null;
-            bool prone = false;
-            bool wide = false;
-            bool solo = false;
-            bool top = false;
-            bool entry = false;
-            foreach (string a in Environment.GetCommandLineArgs())
-            {
-                if (a.StartsWith("-mountburst=", StringComparison.OrdinalIgnoreCase))
-                    prefix = a.Substring("-mountburst=".Length);
-                else if (string.Equals(a, "-mountprone", StringComparison.OrdinalIgnoreCase))
-                    prone = true;
-                else if (string.Equals(a, "-mountwide", StringComparison.OrdinalIgnoreCase))
-                    wide = true;
-                else if (string.Equals(a, "-mountsolo", StringComparison.OrdinalIgnoreCase))
-                    solo = true;
-                else if (string.Equals(a, "-mounttop", StringComparison.OrdinalIgnoreCase))
-                    top = true;
-                else if (string.Equals(a, "-mountentry", StringComparison.OrdinalIgnoreCase))
-                    entry = true;
-            }
+            string prefix = LaunchOptions.Value("-mountburst");
+            bool prone = LaunchOptions.Has("-mountprone");
+            bool wide = LaunchOptions.Has("-mountwide");
+            bool solo = LaunchOptions.Has("-mountsolo");
+            bool top = LaunchOptions.Has("-mounttop");
+            bool entry = LaunchOptions.Has("-mountentry");
 
             if (string.IsNullOrEmpty(prefix))
                 return;
