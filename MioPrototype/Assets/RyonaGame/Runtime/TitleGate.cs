@@ -152,8 +152,9 @@ namespace Ryona.Game
         void Finish()
         {
             Time.timeScale = 1f;
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            // マウスを奪わない（タイトルから始めてもカーソルは表示したまま）。
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
 
             if (_canvas != null)
                 Destroy(_canvas.gameObject);

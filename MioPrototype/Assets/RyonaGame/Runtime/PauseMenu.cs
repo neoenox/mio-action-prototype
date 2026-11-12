@@ -151,8 +151,9 @@ namespace Ryona.Game
             // ヒットストップが残っているなら、そちらの復帰に任せる（ここで 1 にすると
             // 止めている途中の打撃が、止まったまま動き出す）。
             Time.timeScale = HitStop.IsActive ? 0f : 1f;
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            // 再開してもカーソルは奪わない（プレイ中もマウスは使える）。
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
             SetVisible(false);
             Debug.Log("[Pause] 再開");
         }

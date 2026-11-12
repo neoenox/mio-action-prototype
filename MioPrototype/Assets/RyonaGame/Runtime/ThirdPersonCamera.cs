@@ -236,8 +236,12 @@ namespace Ryona.Game
 
         void Start()
         {
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            // マウスをゲームに奪われないよう、カーソルはロックも非表示もしない。
+            // 横スクロールの固定カメラ（BeltMode）なのでマウス視点は使わず、
+            // マウスはホイールのズームだけに使う。カーソルが消えると他の操作ができない。
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+            Debug.Log($"[Cursor] lock={Cursor.lockState} visible={Cursor.visible}（マウスはロックしない）");
         }
 
         void LateUpdate()
