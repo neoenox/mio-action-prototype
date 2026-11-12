@@ -298,6 +298,42 @@
 - 顔への命中で頭が弾かれ、続いて胸が起きて肩が手前に揺れる。当たった直後は彼女の目が閉じ、そのあと開けて睨み返す。腰と足は拘束姿勢を保つ。
 - 顔パンチ中も拘束役は羽交い締めの上体を基準にする。足を踏ん張ったまま膝と股関節で重心を後ろに移し、肩と上腕を澪のこめかみから逃がす。胸の反りは構えと命中のうち大きい方だけを使う。
 
+## 壁の二体がかり（Y 字拘束）
+
+- **狙い**: 壁押さえつけの派生として、2 体目が片腕を引き受けて「Y 字」に固定し、
+  空いた手で腹パンを 3 発ずつ交互に（計 6 発）入れる。終わりは既存の投げ捨て。
+- **流れ**:
+  1. 1 体目が壁に叩きつけ、押さえつけ成立（既存の Grab〜Held）
+  2. 壁拘束の開始時に、近くの敵 1 体を「二体目」として横で待たせる（退避させない）
+  3. 抵抗時間（2.7 秒）経過 → **膝蹴りは入れず**、二体目が彼女の右側（-X）へ着く
+  4. 手首を Y 字（頭上 ±0.48m）へ広げ、1 体目は彼女の左腕を右手で、二体目は右腕を左手で掴む
+  5. 空いた手で腹パン 6 発（0.55 秒間隔、1 発 = HP 4 / 腹ダメージ 10）。1 体目と二体目が交互
+  6. 終わったら二体目を離し、既存の `TossWindup` → 投げ捨て（仰向け／うつ伏せ）
+- **数値**（`CombatConstants`）: `WallSplitPunchCount=6` / `WallSplitPunchInterval=0.55` /
+  `WallSplitPunchDamage=4` / `WallSplitPunchBelly=10` / `WallSplitEscapeInputs=18` /
+  `WallSplitHandHalf=0.48` / `WallSplitAssistGap=0.62`
+- **実装の要点**:
+  - `PlayerGrapple`: `WallAssistCandidate`（壁拘束開始時に選ぶ）、`TryBeginWallSplit`（拘束役から）、
+    `WallSplitRoutine`（アシスト到着待ち → Y 字 → 6 発 → 投げ捨て）。`EndWallSplit` で必ず解除。
+    `RequiredInputs` は 18 に、`_remaining` は 4.6 秒以上に延長。
+  - `EnemyBrain`: アシスト役の状態（`BeginWallAssist` / `UpdateWallAssist` / `ReleaseWallAssist`）。
+    二体目は「壁の前で退避」の対象外にして横へ寄せる。拘束役は `UpdateWallSplitCaptor` で
+    彼女の左側（+X）へ回り込み、正面に残らないようにする（正面カメラが背中になるため）。
+    **押さえつけ中は移動速度倍率が 0 のことがある**ので、位置合わせは定速。
+  - `EnemyFigure.OverheadHoldPose`（拘束役）/ `WallAssistPose`（二体目）: 片手で前腕を掴み、
+    空いた手を腹へ振る。打点は彼の向きではなく**彼女の正面基準**（振りかぶり=手前 0.58m・
+    打点=腹 1.02m）で決める（向き基準だと腕が顔の前を横切った）。
+  - `CharacterAnimator.Pose.SolveOverheadArms`: 手首の開きを `WallSplitWeight` で ±0.08 → ±0.48 に。
+  - `OcclusionFade`: 二体がかりの正面ショット中は、拘束役とアシストを透明化しない
+    （壁ショット用の判定でアシストが alpha 0 になり、片方しか見えなかった）。
+  - `MatchHud`: 「2人がかり n/6」を表示。
+- **検証**:
+  - PlayMode `WallPinRuntimeTests`: 二体目がいると膝を入れず二人がかりになる／腹パンが交互に 6 発／
+    連打 18 回で脱出できる。既存の壁拘束テスト（1 体時は膝 5 発）も維持。
+  - 実機: `MioPrototype.exe -grappletest -wallpintest -pinburst=<dir>\pin.png`（0.05 秒 × 200 枚）。
+- **既知の割り切り**: 正面カメラの距離・角度はまだ調整中（左右の敵が画面端で切れる）。
+  彼女の腕を掴む手と、腹を打つ腕が同じ側で交差して見えるフレームがある。
+
 ## 腹パン・顔パンの演出カメラを寄せる（2026-11-12）
 
 - **要望**: 拘束中の腹パン・顔面パンチで「カメラが遠い。彼女の表情と攻撃が見える位置に」。
