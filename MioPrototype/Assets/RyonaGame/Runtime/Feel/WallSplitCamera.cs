@@ -5,7 +5,7 @@ namespace Ryona.Game
     /// <summary>
     /// 壁の二体がかり（Y 字拘束）の固定ショット。
     /// <para>
-    /// 正面ぴったりだと平たく「二人がかり」の圧が読めないので、既定は少し斜め（14°）から 3.3m。二人が彼女の正面に立つので、近いと背中で彼女が隠れる。
+    /// 正面ぴったりだと平たく「二人がかり」の圧が読めないので、既定は少し斜め（14°）から 1.8m。彼女の顔と腹（殴られているところ）が入る近さで、二人の肩の間から覗く。
     /// 拘束に入ったときのカメラから動かしたくない場合は <c>-wallsplitcam=hold</c> で
     /// 壁押さえつけのショットをそのまま使う（カットも入らない）。
     /// </para>
@@ -35,9 +35,9 @@ namespace Ryona.Game
         static bool _loaded;
         static Shot _mode = Shot.Angle;
         static float _angleDeg = 14f;
-        static float _distance = 3.30f;
-        static float _height = 0.58f;
-        static float _targetHeight = 1.06f;
+        static float _distance = 1.80f;
+        static float _height = 0.40f;
+        static float _targetHeight = 1.05f;
         static float _lateral = 0.12f;
 
         /// <summary>壁押さえつけ（1 体）のカメラ位置。hold でそのまま使う。</summary>
