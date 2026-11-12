@@ -61,6 +61,15 @@ namespace Ryona.Game
                 KneeR = 10f,
                 KneeL = 10f,
             };
+            BuildPhasePose(ref pose, phase, speed, restY, dt, instant);
+            BuildHeldPose(ref pose, phase, holdState, restY, out bool grabbing);
+            BuildWristPose(ref pose, phase, holdState, grabbing, restY);
+            return pose;
+        }
+
+        /// <summary>フェーズごとの基本姿勢（立ち・歩き・攻撃・怯み・ダウン）。</summary>
+        void BuildPhasePose(ref PoseTarget pose, EnemyPhase phase, float speed, float restY, float dt, bool instant)
+        {
             switch (phase)
             {
                 case EnemyPhase.Chase:
@@ -366,6 +375,22 @@ namespace Ryona.Game
                     break;
                 }
             }
+        }
+
+        /// <summary>掴まれ・拘束・受け止め・立ち上がりの上書き。</summary>
+        void BuildHeldPose(ref PoseTarget pose, EnemyPhase phase, PlayerGrapple holdState, float restY, out bool grabbing)
+        {
+            BuildGrabPose(ref pose, phase, holdState, restY);
+            BuildPunchPose(ref pose, phase, holdState, restY);
+            BuildPushPose(ref pose, phase, holdState, restY);
+            BuildCatchPose(ref pose, phase, holdState, restY);
+            BuildHugPinPose(ref pose, phase, holdState, restY);
+            BuildGetUpPose(ref pose, phase, holdState, restY, out grabbing);
+        }
+
+        /// <summary>掴みかかる両腕（予備動作・伸ばし・掴み）。</summary>
+        void BuildGrabPose(ref PoseTarget pose, EnemyPhase phase, PlayerGrapple holdState, float restY)
+        {
             // --- 掴み: 両腕を前へ伸ばして掴みかかる ----------------------
             if (AttackNow == AttackId.Grab
                 && (phase == EnemyPhase.Windup || phase == EnemyPhase.Attack || phase == EnemyPhase.Recover))
@@ -475,7 +500,11 @@ namespace Ryona.Game
                 pose.KneeR += 16f * pull;
                 pose.KneeL += 10f * pull;
             }
+        }
 
+        /// <summary>腹パン・顔面パンチの腕（構えと打ち分け）。</summary>
+        void BuildPunchPose(ref PoseTarget pose, EnemyPhase phase, PlayerGrapple holdState, float restY)
+        {
             // ボディーブロー: 腹へ届くよう、腰を落として上体を前へ倒す。
             // 顔を殴るときは立ったまま、腹を殴るときは沈む。構えを見れば狙いが読める。
             if (Brain != null && Brain.Zone == PunchZone.Body && AttackNow != AttackId.Grab
@@ -605,6 +634,11 @@ namespace Ryona.Game
                 pose.ElbowL = ForceLeftArm.Value.y;
                 pose.ArmLSpread = ForceLeftArm.Value.z;
             }
+        }
+
+        /// <summary>押し込み・突き飛ばしの上体。</summary>
+        void BuildPushPose(ref PoseTarget pose, EnemyPhase phase, PlayerGrapple holdState, float restY)
+        {
             // 腰を落として手を届かせ、前足に体重を乗せて押し切る。
             if (Brain != null && Brain.IsPushing)
             {
@@ -626,6 +660,11 @@ namespace Ryona.Game
                 pose.KneeR = 17f + 20f * shoveDrive + 15f * load;
                 pose.KneeL = 18f + 18f * load;
             }
+        }
+
+        /// <summary>受け止めと背面拘束への引き渡し。</summary>
+        void BuildCatchPose(ref PoseTarget pose, EnemyPhase phase, PlayerGrapple holdState, float restY)
+        {
             // 体で衝撃を受けてから腕で支え、背面拘束では片腕で向きを誘導する。
             if (Brain != null && Brain.IsCatching)
             {
@@ -665,6 +704,11 @@ namespace Ryona.Game
                 pose.TorsoPitch = 0f;
                 pose.HipsZ = 0f;
             }
+        }
+
+        /// <summary>ベアハッグと押さえつけの上体（膝を落として踏ん張る）。</summary>
+        void BuildHugPinPose(ref PoseTarget pose, EnemyPhase phase, PlayerGrapple holdState, float restY)
+        {
             // ベアハッグ: 胴を抱え込むので上体を前へ寄せ、膝を落として締める。
             if (Brain != null && Brain.IsBearHugging)
             {
@@ -749,6 +793,12 @@ namespace Ryona.Game
                     }
                 }
             }
+        }
+
+        /// <summary>立ち上がりと武器の表示切替。<paramref name="grabbing"/> を返す。</summary>
+        void BuildGetUpPose(ref PoseTarget pose, EnemyPhase phase, PlayerGrapple holdState, float restY, out bool grabbing)
+        {
+            grabbing = false;
             // --- 立ち上がり（倒れた姿勢から起こす） ---------------------
             // 4 つの形を順に通す: 仰向け → 上体を起こす → しゃがみ（膝を深く折る）
             // → 立ち上がる。途中で必ず膝を折って足を体の下へ入れる。
@@ -777,13 +827,18 @@ namespace Ryona.Game
             }
             // 掴みは両手を使うので、パイプは手元から隠す。
             // 立ち上がりの途中も隠す（床に手を突いている間、手にパイプがあると刺さる）。
-            bool grabbing = AttackNow == AttackId.Grab
+            grabbing = AttackNow == AttackId.Grab
                 && (phase == EnemyPhase.Windup || phase == EnemyPhase.Attack || phase == EnemyPhase.Recover);
             bool weaponHidden = grabbing || (rising && rise < 0.9f);
             SetWeaponVisible(!weaponHidden);
             // --- 手首 ---------------------------------------------------
             // 前腕と拳が一直線のままだと「棒の先に塊」に見える。
             // 当てる瞬間だけ伸ばし、それ以外は少し折って力を抜く。
+        }
+
+        /// <summary>手首・左右反転・壁の腕の上書き。</summary>
+        void BuildWristPose(ref PoseTarget pose, EnemyPhase phase, PlayerGrapple holdState, bool grabbing, float restY)
+        {
             pose.WristR = 8f;
             pose.WristL = 8f;
             pose.TwistR = -12f;   // 前腕の軸まわり（手のひらを内へ）
@@ -885,7 +940,6 @@ namespace Ryona.Game
                 }
             }
 
-            return pose;
         }
 
         /// <summary>

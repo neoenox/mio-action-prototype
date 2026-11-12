@@ -29,7 +29,10 @@ PlayMode のテストを実行できます。
   - `EnemyBrain.Lifecycle.cs` … 被弾・怯み・死亡・復活
   - `EnemyBrain.Group.cs` / `.Spacing.cs` / `.Presentation.cs` … 群管理・押し合い・予告表示
 - `EnemyFigure.cs`（コア: フィールド・プレビュー）
-  - `EnemyFigure.Step.cs` … 姿勢の組み立て（毎フレームの本体）
+  - `EnemyFigure.Step.cs` … 姿勢の組み立て（毎フレームの本体）。
+    `Step`（前処理）→ `BuildTargetPose`（数値を決める）→ `ApplyPoseTarget`（ボーンへ流す）の
+    3 段構造で、`BuildTargetPose` はさらにフェーズ・掴み・手首の小さなメソッドに分かれている。
+    姿勢パラメータは `PoseTarget` 構造体で受け渡す。
   - `EnemyFigure.Mount.cs` … 地面マウントの姿勢
   - `EnemyFigure.HoldPose.cs` / `.AttackPose.cs` … 拘束・攻撃の腕
   - `EnemyFigure.Build.cs` / `.Primitives.cs` … プリミティブの組み立て
