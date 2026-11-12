@@ -1747,10 +1747,10 @@ namespace Ryona.Game
         }
 
         // 澪の被弾姿勢を反映した後、手の位置を解く前に上体を合わせる。
-        internal void BraceHoldUpperBody(float leanBack, float leanSide, float tuckChin)
+        internal void BraceHoldUpperBody(float leanBack, float leanSide, float tuckChin, float yaw = 0f)
         {
             // ヒットストップ中は Step が止まるので、前フレームの補正には重ねない。
-            _chest.localRotation = Quaternion.Euler(-_torsoPitch, _torsoYaw * 0.55f, _torsoRoll)
+            _chest.localRotation = Quaternion.Euler(-_torsoPitch, _torsoYaw * 0.55f + yaw, _torsoRoll)
                 * Quaternion.Euler(-leanBack, 0f, leanSide);
             _head.localRotation = Quaternion.Euler(-_headPitch * 0.5f, -_torsoYaw * 0.25f, 0f)
                 * Quaternion.Euler(tuckChin, 0f, leanSide * 0.5f);
@@ -3338,8 +3338,8 @@ namespace Ryona.Game
             // 拳を自分の胸元に溜め、腹へ短く突き出す。大きく振りかぶって横へ振り抜くと
             // 「太鼓を叩いている」ように見えた（実測）。
             // 振りかぶりは自分の胸の前（体の面より手前）。体の後ろへ引くと腕が折れて肘が上がる。
-            Vector3 windup = her + Vector3.up * 1.06f + front * 0.56f + Vector3.right * (side * 0.30f);
-            Vector3 belly = her + Vector3.up * 0.98f + front * 0.12f;
+            Vector3 windup = her + Vector3.up * 1.00f + front * 0.56f + Vector3.right * (side * 0.30f);
+            Vector3 belly = her + Vector3.up * 0.88f + front * 0.12f;
 
             float drive = age < 0.12f ? 0f : Mathf.Clamp01((age - 0.12f) / 0.10f);
             if (age > 0.22f)
@@ -3350,7 +3350,7 @@ namespace Ryona.Game
             Vector3 pole = upper.position - Vector3.up * 0.40f + front * 0.10f;
 
             // 肩ごと踏み込む（腕だけを振ると棒で叩いているように見える）。
-            figure.BraceHoldUpperBody(-15f * punch, side * 4f * punch, 5f * punch);
+            figure.BraceHoldUpperBody(-22f * punch, side * 6f * punch, 6f * punch, -side * 22f * punch);
 
             Quaternion previousUpper = upper.rotation;
             Quaternion previousElbow = elbow.rotation;
@@ -3371,7 +3371,7 @@ namespace Ryona.Game
             if (upper == null || elbow == null || wrist == null)
                 return;
 
-            Vector3 goal = her + Vector3.up * 1.06f + front * 0.56f + Vector3.right * (side * 0.30f);
+            Vector3 goal = her + Vector3.up * 1.00f + front * 0.56f + Vector3.right * (side * 0.30f);
             Vector3 pole = upper.position - Vector3.up * 0.45f + front * 0.10f;
 
             Quaternion previousUpper = upper.rotation;

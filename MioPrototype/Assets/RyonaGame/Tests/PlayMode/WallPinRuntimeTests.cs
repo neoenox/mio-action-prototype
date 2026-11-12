@@ -761,6 +761,41 @@ namespace Ryona.Tests
         // --- 壁拘束の被弾と手首のクリアランス -----------------------
 
         [UnityTest]
+        public IEnumerator 二人がかりの拳は腹に当たる()
+        {
+            yield return Load(withAssist: true);
+            _captor.QueuePin();
+            yield return WaitForGrapple();
+
+            float deadline = Time.realtimeSinceStartup + 14f;
+            while (!_grapple.IsWallSplitActive && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.IsTrue(_grapple.IsWallSplitActive, "二人がかりが始まらない");
+
+            // 打つ瞬間、拳が腹の正面へ来ているか（胸や顔で止まっていないか）。
+            Vector3 her = _player.transform.position;
+            Vector3 front = Vector3.ProjectOnPlane(_player.transform.forward, Vector3.up).normalized;
+            Vector3 belly = her + Vector3.up * 0.88f + front * 0.12f;
+
+            float best = float.MaxValue;
+            deadline = Time.realtimeSinceStartup + 4f;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                EnemyBrain puncher = _grapple.WallSplitPuncher;
+                if (puncher != null)
+                {
+                    var figure = puncher.GetComponent<EnemyFigure>();
+                    Transform fist = figure != null ? figure.Fist(_grapple.WallSplitPunchLeft) : null;
+                    if (fist != null)
+                        best = Mathf.Min(best, Vector3.Distance(fist.position, belly));
+                }
+                yield return null;
+            }
+
+            Assert.Less(best, 0.16f, $"拳が腹に届いていない（最接近 {best:F2}m）");
+        }
+
+        [UnityTest]
         public IEnumerator 二人がかりの腹パンで壁に固定されたまま上体が折れる()
         {
             yield return Load(withAssist: true);
@@ -846,7 +881,7 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator 二人がかりのカメラは斜めで三人が画に入る()
+        public IEnumerator 二人がかりのカメラは正面寄りで三人が画に入る()
         {
             yield return Load(withAssist: true);
             _captor.QueuePin();
@@ -873,8 +908,8 @@ namespace Ryona.Tests
             Vector3 toCamera = Vector3.ProjectOnPlane(position - target, Vector3.up).normalized;
             float yaw = Vector3.Angle(front, toCamera);
             if (WallSplitCamera.Mode == WallSplitCamera.Shot.Angle)
-                Assert.That(yaw, Is.InRange(10f, 35f),
-                    $"二体がかりのカメラが斜めになっていない（{yaw:F0}°）");
+                Assert.That(yaw, Is.InRange(0f, 20f),
+                    $"二体がかりのカメラが正面寄りになっていない（{yaw:F0}°）");
 
             // 三人とも画に入る。実カメラは動かさず、同じ画角の探りカメラで投影する。
             var main = Camera.main;

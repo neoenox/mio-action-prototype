@@ -73,7 +73,7 @@ namespace Ryona.Game
             // 数値上も打撃（-24.2 dBFS）より 3 dB 下げて、当たった音が前に出るようにする。
             SfxId.Swing => 0.38f,
             SfxId.Impact => 0.95f,
-            SfxId.WallSlam => 1f,
+            SfxId.WallSlam => 1.35f,
             SfxId.Guard => 0.80f,
 
             // のけぞり音は波形の RMS が小さく、0.45 では -32.8 dBFS になり
@@ -467,16 +467,19 @@ namespace Ryona.Game
 
         static float[] BuildWallSlam()
         {
-            var data = NewBuffer(0.29f);
+            // 壁へ叩きつける音。以前は 87Hz の胴鳴り＋速い減衰で「軽い」と感じたので、
+            // 低い胴鳴り（62Hz）とサブ（41Hz）を足し、余韻を長くして重さを出す。
+            var data = NewBuffer(0.44f);
             var rng = new System.Random(2014);
             for (int i = 0; i < data.Length; i++)
             {
                 float t = (float)i / SampleRate;
-                float thud = Mathf.Sin(2f * Mathf.PI * (87f * t - 95f * t * t)) * Mathf.Exp(-25f * t);
-                float panel = (0.32f * Mathf.Sin(2f * Mathf.PI * 143f * t) +
-                               0.18f * Mathf.Sin(2f * Mathf.PI * 231f * t)) * Mathf.Exp(-17f * t);
-                float crack = 0.8f * Noise(rng) * Mathf.Exp(-105f * t);
-                data[i] = thud + panel + crack;
+                float thud = Mathf.Sin(2f * Mathf.PI * (62f * t - 70f * t * t)) * Mathf.Exp(-16f * t);
+                float sub = Mathf.Sin(2f * Mathf.PI * 41f * t) * Mathf.Exp(-9f * t) * 0.55f;
+                float panel = (0.26f * Mathf.Sin(2f * Mathf.PI * 118f * t) +
+                               0.14f * Mathf.Sin(2f * Mathf.PI * 197f * t)) * Mathf.Exp(-13f * t);
+                float crack = 0.75f * Noise(rng) * Mathf.Exp(-90f * t);
+                data[i] = thud + sub + panel + crack;
             }
             Finish(data, 0.002f);
             return data;

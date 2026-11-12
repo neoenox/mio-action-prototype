@@ -110,7 +110,7 @@ namespace Ryona.Game
             WallAssist != null && _wallSplitReady && WallAssist.IsAlive && WallAssist.isActiveAndEnabled;
 
         /// <summary>いま殴る側（拘束役かアシスト）。null なら待ち。</summary>
-        internal EnemyBrain WallSplitPuncher { get; private set; }
+        public EnemyBrain WallSplitPuncher { get; private set; }
 
         /// <summary>いまの 1 発の経過秒（0 = 振りかぶり開始、負 = 待ち）。</summary>
         internal float WallSplitPunchAge { get; private set; } = -1f;

@@ -178,7 +178,7 @@ namespace Ryona.Game
 
         // --- 再生の補助 -------------------------------------------------
 
-        internal void OnWallSlam() => Shake(0.16f, 0.22f);
+        internal void OnWallSlam() => Shake(0.22f, 0.30f);
 
         void Shake(float amplitude, float duration)
         {
