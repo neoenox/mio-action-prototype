@@ -30,6 +30,9 @@ namespace Ryona.Game
         [Tooltip("移動中や戦闘中に敵が見切れすぎないよう、ベルトカメラの手動ズームをここまでにする（m）")]
         public float BeltMinZoomDistance = 3.8f;
 
+        [Tooltip("腹パン・顔パンなど、顔と拳を見せる寄りの演出で許す最短距離（m）")]
+        public float BeltCloseUpMinDistance = 0.82f;
+
         [Tooltip("見下ろし角。0 で真横、大きいほど俯瞰")]
         public float BeltPitch = 18f;
 
@@ -195,6 +198,9 @@ namespace Ryona.Game
             DownPivotHeight = 0.45f;
             DownDistanceScale = 0.85f;
             DownBlendSeconds = 0.45f;
+            // 寄りの演出（腹パン・顔パン）で顔と拳が読める距離まで寄せる下限。
+            // 通常の移動・戦闘では Distance 側が大きいので、この値は効かない。
+            BeltCloseUpMinDistance = 0.82f;
             // 真横からのカメラなので、倒れたときに 180° 回すと反対側へ大きく振れてしまう。
             // 同じ側のまま見下ろす（＝横から倒れた彼女を見る）。
             DownYawBias = 0f;
@@ -386,7 +392,7 @@ namespace Ryona.Game
             float baseDistance = focusing && _distanceScale < 1f
                 ? Mathf.Max(Distance, _initialDistance * ClosestShotZoom)
                 : Distance;
-            float distance = Mathf.Max(1f, baseDistance * _distanceScale);
+            float distance = Mathf.Max(BeltCloseUpMinDistance, baseDistance * _distanceScale);
             float height = BeltPivotHeight + _pivotOffsetY;
 
             // 倒れているあいだは少し引いて、体全体が入るようにする

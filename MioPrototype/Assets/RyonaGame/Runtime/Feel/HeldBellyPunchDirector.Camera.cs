@@ -19,8 +19,13 @@ namespace Ryona.Game
 
         float ZoneYaw => _comboZone == PunchZone.Face ? FaceCameraYawOffset : CameraYawOffset;
         float FacingSign => _stats.transform.forward.x < -0.1f ? -1f : 1f;
+
+        // 画面中心を合わせる横オフセット。寄るほど同じオフセットでも画面内のずれが
+        // 大きくなるので、距離倍率に比例させる（基準は旧倍率 0.32 / 0.31 のときの値）。
         float FocusX => _stats.transform.position.x
-            + FacingSign * (_comboZone == PunchZone.Face ? 0.38f : 0.18f);
+            + FacingSign * (_comboZone == PunchZone.Face
+                ? 0.38f * (FaceCameraDistanceScale / 0.31f)
+                : 0.14f * (CameraDistanceScale / 0.32f));
 
         /// <summary>当たった瞬間だけ少し寄る（顔面パンチの衝撃を画で押す）。</summary>
         float EffectiveDistanceScale =>

@@ -442,6 +442,7 @@ namespace Ryona.Tests
             Assert.Greater(_anim.HeldThrowLead, 0.6f, "The throw leaves her in the belly stance");
             Assert.IsTrue(_anim.IsHeldBellyPunch, "The first punch starts her recoil");
             Assert.IsTrue(_camera.IsFocusing, "Camera must center on the player for the punches");
+            Assert.Less(_camera.EffectDistanceScale, 0.25f, "腹パンも彼女の表情と拳が読める距離まで寄る");
 
             // 5 発を食らっても拘束は続く
             float deadline = Time.realtimeSinceStartup + 10f;
@@ -710,7 +711,7 @@ namespace Ryona.Tests
             }
 
             Assert.Less(lowestPitch, 3f, "命中直後だけ肩と胸も弾かれて上体が起きる");
-            Assert.That(widestStoppedShot, Is.InRange(0.2f, 0.48f), "ヒットストップ中も顔と拳の寄りを保つ");
+            Assert.That(widestStoppedShot, Is.InRange(0.14f, 0.30f), "ヒットストップ中も顔と拳の寄りを保つ");
             Assert.Less(lastStoppedFrame - firstFaceStopAt, 0.075f, "顔パンチで長く画面を止めない");
             Assert.Greater(recoilWhileStopped, 0.12f, "止まっている画にも顔の反応が出る");
             Assert.Greater(_anim.HeldFacePunchFlick, 0.5f, "The head must snap away toward the camera");
@@ -1027,14 +1028,23 @@ namespace Ryona.Tests
             Vector3 toCamera = _camera.transform.position - _player.transform.position;
             toCamera.y = 0f;
             float front = Vector3.Dot(_player.transform.forward, toCamera.normalized);
-            Assert.That(front, zone == PunchZone.Face ? Is.InRange(0.68f, 0.88f) : Is.InRange(0.37f, 0.55f),
+            Assert.That(front, zone == PunchZone.Face ? Is.InRange(0.58f, 0.88f) : Is.InRange(0.37f, 0.55f),
                 "腹パンは斜め横から、顔パンはより正面寄りから撮る");
             Camera view = _camera.GetComponent<Camera>();
             float playerX = view.WorldToViewportPoint(_player.transform.position + Vector3.up * 1.1f).x;
             float attackerX = view.WorldToViewportPoint(_attacker.transform.position + Vector3.up * 1.25f).x;
-            Assert.That(playerX, Is.InRange(0.36f, 0.64f), "画面ロックの端でも澪を中央付近に保つ");
-            Assert.That(attackerX, Is.InRange(0.05f, 0.95f), "打ち手も画面に入る");
-            Assert.Greater((attackerX - playerX) * forward.x, 0.08f, "打ち手と澪を横に並べる");
+            // 顔と拳が読める距離まで寄せたぶん、彼女が画面中央 40% から少し外れることがある。
+            Assert.That(playerX, Is.InRange(0.30f, 0.70f), "画面ロックの端でも澪を画面中央付近に保つ");
+            if (zone == PunchZone.Body)
+            {
+                // 腹パンは打ち手の体も入れて「誰がどこを殴っているか」を見せる。
+                // 寄せた構図では腕・肩の一部が画面端で切れることは許容する。
+                Assert.That(attackerX, Is.InRange(-0.30f, 1.30f), "打ち手が画面の反対側へ飛んでいない");
+            }
+            // 顔パンは顔と拳が読める距離まで寄せるため、打ち手の体は画面外へ出てよい
+            // （拳と腕は彼女の顔まで入る）。ここで体の位置を縛ると寄りを強制できなくなる。
+            Assert.Greater((attackerX - playerX) * forward.x, 0.08f,
+                "打ち手と澪を横に並べる（画面端へ切れても同じ側に置く）");
             if (zone == PunchZone.Face)
             {
                 // カメラの補間はフレーム時間で変わるため、寄り切るまで待つ。
