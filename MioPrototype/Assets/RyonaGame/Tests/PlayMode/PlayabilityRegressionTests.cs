@@ -309,7 +309,11 @@ namespace Ryona.Tests
             while (!grapple.IsGrappled && Time.realtimeSinceStartup < end) yield return null;
             Assert.IsTrue(grapple.IsGrappled);
             Assert.AreEqual(GrappleKind.Back, grapple.Kind);
-            yield return new WaitForSeconds(0.65f);
+            // 腕の角度は 0.16 秒の補間で目標へ寄る。0.65 秒だと肘の高さが
+            // 数 mm 単位で残り、しきい値（肩の 10cm 下）をまたいで不安定になる。
+            // 姿勢が収束してから測る。
+            yield return new WaitForSeconds(1.2f);
+            yield return null;
             var figure = holder.GetComponent<EnemyFigure>();
             // 羽交い締め: 両手は首の後ろ（うなじ）で組まれる
             float rightGap = Vector3.Distance(figure.Fist(false).position, rig.Neck.position);

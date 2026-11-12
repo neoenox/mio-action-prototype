@@ -42,6 +42,11 @@ PlayMode のテストを実行できます。
 カメラ・ポーズ・HUD は `PlayerGrapple.Session` を見てください。
 壁拘束の段階（`WallStage`）は `GrappleSession` 側の enum です。
 
+カメラとポーズが使う重み（壁への押さえつけ `WallRestraintWeight`、
+ずり落ち `WallSlideWeight`、手首の掴み直し `WallGripWeight`、
+投げ下ろし `WallTossLower`、Y 字の見た目 `SplitWeight`）も
+`GrappleSession` が段階から計算します。`PlayerGrapple` はそれを中継するだけです。
+
 ### 起動引数（LaunchOptions）
 
 `-flag=value` / `-flag value` の読み取りは `LaunchOptions` に集約しています。

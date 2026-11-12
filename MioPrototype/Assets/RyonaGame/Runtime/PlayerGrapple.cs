@@ -83,23 +83,20 @@ namespace Ryona.Game
         public bool IsWallPin => _session.IsWall;
         public WallStage WallPhase => _session.Stage;
         public float WallPhaseProgress => _session.StageProgress;
-        public bool IsWallTransition => IsWallPin && WallPhase != WallStage.Held;
-        public float WallRestraintWeight => WallPhase == WallStage.Restrain
-            ? Mathf.SmoothStep(0f, 1f, WallPhaseProgress)
-            : WallPhase == WallStage.Held || WallPhase == WallStage.TossWindup ? 1f : 0f;
-        internal bool IsWallToss => IsWallPin && WallPhase >= WallStage.TossWindup;
-        internal float WallTossLower => Mathf.SmoothStep(0f, 1f, WallPhaseProgress);
+        public bool IsWallTransition => _session.IsWallTransition;
+        public float WallRestraintWeight => _session.WallRestraintWeight;
+        internal bool IsWallToss => _session.IsWallToss;
+        internal float WallTossLower => _session.WallTossLower;
 
         // --- 壁・二体がかり（Y 字拘束） -------------------------------
         /// <summary>もう一人の拘束役（アシスト）。居なければ null。</summary>
         public EnemyBrain WallAssist => _session.Assist;
 
         /// <summary>Y 字拘束の見た目 0..1（手首の開き・二人の腕の持ち方に使う）。</summary>
-        internal float WallSplitWeight { get; private set; }
+        internal float WallSplitWeight => _session.SplitWeight;
 
         /// <summary>二体目が横に着いて、二人で押さえ始めたか。</summary>
-        public bool IsWallSplitActive => IsWallPin && WallPhase == WallStage.Held &&
-            WallAssist != null && _session.SplitReady && WallAssist.IsAlive && WallAssist.isActiveAndEnabled;
+        public bool IsWallSplitActive => _session.IsSplitActive;
 
         /// <summary>いま殴る側（拘束役かアシスト）。null なら待ち。</summary>
         public EnemyBrain WallSplitPuncher => _session.SplitPuncher;
@@ -140,27 +137,11 @@ namespace Ryona.Game
         /// </summary>
         internal float WallTossSide => _wallTossSide;
 
-        internal float WallGripWeight => WallPhase == WallStage.Regrip
-            ? Mathf.SmoothStep(0f, 1f, WallPhaseProgress)
-            : WallRestraintWeight > 0f || WallPhase == WallStage.Restrain ? 1f : 0f;
+        internal float WallGripWeight => _session.WallGripWeight;
 
-        internal float WallSlideWeight => WallPhase switch
-        {
-            WallStage.Lean => Mathf.SmoothStep(0f, 1f, WallPhaseProgress),
-            WallStage.Regrip => 1f,
-            WallStage.Restrain => 1f - WallRestraintWeight,
-            _ => 0f
-        };
+        internal float WallSlideWeight => _session.WallSlideWeight;
 
-        internal float WallCaptorTravel => WallPhase switch
-        {
-            WallStage.Throw => 0.55f * WallPhaseProgress,
-            WallStage.Slam or WallStage.Lean => 0.55f,
-            WallStage.Regrip => Mathf.Lerp(0.55f, 0.90f, WallGripWeight),
-            WallStage.Restrain => Mathf.Lerp(0.90f, 1f, WallRestraintWeight),
-            WallStage.Held or WallStage.TossWindup or WallStage.TossAir or WallStage.TossLand => 1f,
-            _ => 0f
-        };
+        internal float WallCaptorTravel => _session.WallCaptorTravel;
         WallPinSite _wallSite;
         Vector3 _wallStartPosition;
         Quaternion _wallStartRotation;
@@ -766,7 +747,7 @@ namespace Ryona.Game
             _session.SplitReady = best.WallAssistReady;
             _session.SplitHits = 0;
             _session.SplitAssistAge = 0f;
-            WallSplitWeight = 0f;
+            _session.ResetSplitWeight();
             _session.SplitPunchAge = -1f;
             // 二人がかりの間は拘束時間を延ばす（膝 5 発ぶんの時間を使うため）。
             _session.LimitRemaining = Mathf.Max(_session.LimitRemaining, 4.6f);
@@ -887,11 +868,7 @@ namespace Ryona.Game
                     Stats.State.Body[BodyPart.Arms]);
         }
 
-        void TickWallSplitWeight(float dt)
-        {
-            float target = IsWallSplitActive ? 1f : 0f;
-            WallSplitWeight = Mathf.MoveTowards(WallSplitWeight, target, dt / 0.22f);
-        }
+        void TickWallSplitWeight(float dt) => _session.TickSplitWeight(dt);
 
         void TickWallToss()
         {

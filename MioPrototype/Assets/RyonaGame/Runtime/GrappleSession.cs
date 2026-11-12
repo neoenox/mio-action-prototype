@@ -95,6 +95,67 @@ namespace Ryona.Game
             StageElapsed = 0f;
         }
 
+        // --- 壁の見た目（カメラ・ポーズ・HUD が読む重み） ------------
+        // 段階と進捗から決まる純粋な関数。ここに置くことで、
+        // 「今どのくらい壁に押さえつけられているか」を 1 か所で説明できる。
+
+        /// <summary>壁の段階が変わっている途中（固定前）か。</summary>
+        public bool IsWallTransition => IsWall && Stage != WallStage.Held;
+
+        /// <summary>投げ捨ての段階に入っているか。</summary>
+        public bool IsWallToss => IsWall && Stage >= WallStage.TossWindup;
+
+        /// <summary>壁に押さえつけられている強さ（0..1）。Regrip 以降は固定。</summary>
+        public float WallRestraintWeight => Stage == WallStage.Restrain
+            ? Mathf.SmoothStep(0f, 1f, StageProgress)
+            : Stage == WallStage.Held || Stage == WallStage.TossWindup ? 1f : 0f;
+
+        /// <summary>投げ捨てで壁から下ろされる度合い（0..1）。</summary>
+        public float WallTossLower => Mathf.SmoothStep(0f, 1f, StageProgress);
+
+        /// <summary>両手首を掴み直す度合い（0..1）。</summary>
+        public float WallGripWeight => Stage == WallStage.Regrip
+            ? Mathf.SmoothStep(0f, 1f, StageProgress)
+            : WallRestraintWeight > 0f || Stage == WallStage.Restrain ? 1f : 0f;
+
+        /// <summary>壁に沿ってずり落ちる度合い（0..1）。</summary>
+        public float WallSlideWeight => Stage switch
+        {
+            WallStage.Lean => Mathf.SmoothStep(0f, 1f, StageProgress),
+            WallStage.Regrip => 1f,
+            WallStage.Restrain => 1f - WallRestraintWeight,
+            _ => 0f
+        };
+
+        /// <summary>拘束役が壁際まで詰める距離（0..1）。</summary>
+        public float WallCaptorTravel => Stage switch
+        {
+            WallStage.Throw => 0.55f * StageProgress,
+            WallStage.Slam or WallStage.Lean => 0.55f,
+            WallStage.Regrip => Mathf.Lerp(0.55f, 0.90f, WallGripWeight),
+            WallStage.Restrain => Mathf.Lerp(0.90f, 1f, WallRestraintWeight),
+            WallStage.Held or WallStage.TossWindup or WallStage.TossAir or WallStage.TossLand => 1f,
+            _ => 0f
+        };
+
+        // --- 二体がかりの見た目 -------------------------------------
+        /// <summary>Y 字拘束の見た目 0..1（手首の開き・二人の腕の持ち方に使う）。</summary>
+        public float SplitWeight { get; private set; }
+
+        /// <summary>二体目が横に着いて、二人で押さえ始めているか。</summary>
+        public bool IsSplitActive => IsWall && Stage == WallStage.Held &&
+            Assist != null && SplitReady && Assist.IsAlive && Assist.isActiveAndEnabled;
+
+        /// <summary>Y 字の見た目を目標へ寄せる（0.22 秒で切り替わる速さ）。</summary>
+        public void TickSplitWeight(float dt)
+        {
+            SplitWeight = Mathf.MoveTowards(SplitWeight, IsSplitActive ? 1f : 0f, dt / 0.22f);
+        }
+
+        /// <summary>二人がかりの見た目を初期化する。</summary>
+        public void ResetSplitWeight() => SplitWeight = 0f;
+
+
         /// <summary>今の段階の経過を進める。<paramref name="seconds"/> はその段階の長さ。</summary>
         public void AdvanceStage(float deltaSeconds, float seconds)
         {
@@ -123,6 +184,7 @@ namespace Ryona.Game
             SplitStarted = false;
             SplitReady = false;
             SplitAssistAge = 0f;
+            SplitWeight = 0f;
         }
     }
 }
