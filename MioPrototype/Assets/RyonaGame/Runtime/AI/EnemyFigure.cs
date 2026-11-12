@@ -3218,17 +3218,23 @@ namespace Ryona.Game
             Vector3 her = _brain.Player.transform.position;
             Vector3 front = Vector3.ProjectOnPlane(_brain.Player.transform.forward, Vector3.up).normalized;
             float side = transform.position.x >= her.x ? 1f : -1f;
-            // 振りかぶりは彼女の手前（カメラ側）の外、打点は腹の正面。
-            // 彼の向きに依存させると、腕が彼女の顔の前を横切ることがある（実測）。
-            Vector3 windup = her + Vector3.up * 1.30f + front * 0.58f + Vector3.right * (side * 0.34f);
-            Vector3 belly = her + Vector3.up * 1.02f + front * 0.16f;
+            // 羽交い締めの腹パンと同じ入り方: 下から腹へ突き上げる。
+            // 横へ大きく振り抜くと「太鼓を叩いている」ように見えた（実測）。
+            // 彼の向きに依存させると腕が彼女の顔の前を横切るので、狙いは彼女の正面基準で決める。
+            Vector3 windup = her + Vector3.up * 0.78f + front * 0.44f + Vector3.right * (side * 0.16f);
+            Vector3 belly = her + Vector3.up * 0.98f + front * 0.14f;
 
             // 0.12 秒まで引いて、0.22 秒（当たる瞬間）に腹へ。以降は半分だけ戻す。
             float drive = age < 0.12f ? 0f : Mathf.Clamp01((age - 0.12f) / 0.10f);
             if (age > 0.22f)
                 drive = 1f - Mathf.Clamp01((age - 0.22f) / 0.18f) * 0.5f;
+            float punch = Mathf.SmoothStep(0f, 1f, drive) * weight;
             Vector3 goal = Vector3.Lerp(windup, belly, Mathf.SmoothStep(0f, 1f, drive));
-            Vector3 pole = upper.position + front * 0.20f - Vector3.up * 0.18f;
+            // 肘は拳より下。横に張ると棒で叩いているように見える。
+            Vector3 pole = upper.position - Vector3.up * 0.55f + front * 0.15f;
+
+            // 肩ごと踏み込む（腕だけを振ると棒で叩いているように見える）。
+            _figure.BraceHoldUpperBody(-15f * punch, side * 4f * punch, 5f * punch);
 
             Quaternion previousUpper = upper.rotation;
             Quaternion previousElbow = elbow.rotation;

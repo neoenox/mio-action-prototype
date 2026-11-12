@@ -2233,7 +2233,7 @@ namespace Ryona.Game
             Vector3 forward = Vector3.ProjectOnPlane(hold.transform.forward, Vector3.up).normalized;
             Vector3 spot = her
                 + Vector3.right * (_wallAssistSide * CombatConstants.WallSplitAssistGap)
-                + forward * 0.28f;
+                + forward * 0.34f;
             spot.y = transform.position.y;
 
             float speed = MoveSpeed * State.MoveSpeedMultiplier;
@@ -2243,7 +2243,10 @@ namespace Ryona.Game
             look.y = 0f;
             if (look.sqrMagnitude > 0.0004f)
             {
+                // 真横を向いたままだと、空き手が腹を横切って「太鼓を叩いている」画になる。
+                // カメラ（プレイヤー）側へ体を開いて、前から腹へ入る形にする。
                 Quaternion facing = Quaternion.LookRotation(look.normalized, Vector3.up);
+                facing = Quaternion.AngleAxis(-_wallAssistSide * 38f, Vector3.up) * facing;
                 transform.rotation = Quaternion.Slerp(transform.rotation, facing,
                     1f - Mathf.Exp(-10f * dt));
             }
@@ -2265,7 +2268,7 @@ namespace Ryona.Game
             Vector3 forward = Vector3.ProjectOnPlane(hold.transform.forward, Vector3.up).normalized;
             Vector3 spot = her
                 + Vector3.right * CombatConstants.WallSplitAssistGap
-                + forward * 0.28f;
+                + forward * 0.34f;
             spot.y = transform.position.y;
 
             // 押さえつけ中は移動速度倍率が 0 のことがあるので、位置合わせは定速で行う。
@@ -2276,7 +2279,9 @@ namespace Ryona.Game
             look.y = 0f;
             if (look.sqrMagnitude > 0.0004f)
             {
+                // アシストと同じく、カメラ（プレイヤー）側へ体を開く。
                 Quaternion facing = Quaternion.LookRotation(look.normalized, Vector3.up);
+                facing = Quaternion.AngleAxis(-38f, Vector3.up) * facing;
                 transform.rotation = Quaternion.Slerp(transform.rotation, facing,
                     1f - Mathf.Exp(-10f * dt));
             }
