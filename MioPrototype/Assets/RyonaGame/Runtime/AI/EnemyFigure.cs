@@ -3169,7 +3169,16 @@ namespace Ryona.Game
 
             if (split > 0.001f)
             {
-                SolveWallSplitPunchArm(true, hold, split);
+                // 空き手は腹パン。打たない間は脇へ下ろす（上げたままだと不自然）。
+                Vector3 herPos = _brain.Player.transform.position;
+                Vector3 herFront = Vector3.ProjectOnPlane(_brain.Player.transform.forward, Vector3.up).normalized;
+                float herSide = transform.position.x >= herPos.x ? 1f : -1f;
+                bool punching = hold.WallSplitPuncher == _brain && hold.WallSplitPunchAge >= 0f;
+                if (punching)
+                    WallSplitArm.Punch(_figure, true, herPos, herFront, herSide,
+                        hold.WallSplitPunchAge, split, transform);
+                else
+                    WallSplitArm.Guard(_figure, true, herPos, herFront, herSide, split, transform);
             }
 
             // 頭が壁側へ揺れた分は、敵が届いた位置へ澪の手首を寄せて接触を保つ。
@@ -3197,52 +3206,6 @@ namespace Ryona.Game
                           $"gripGapL={Vector3.Distance(cl, gripR):F2}");
             }
 
-        }
-
-        /// <summary>二人がかりの空き手（腹パン）を腹へ振る。</summary>
-        void SolveWallSplitPunchArm(bool left, PlayerGrapple hold, float weight)
-        {
-            if (hold.WallSplitPuncher != _brain)
-                return;
-
-            float age = hold.WallSplitPunchAge;
-            if (age < 0f || _targetRig == null || _targetRig.Spine == null || _targetRig.Chest == null)
-                return;
-
-            var upper = _figure.ShoulderBone(left);
-            var elbow = _figure.ElbowBone(left);
-            var wrist = _figure.WristBone(left);
-            if (upper == null || elbow == null || wrist == null)
-                return;
-
-            Vector3 her = _brain.Player.transform.position;
-            Vector3 front = Vector3.ProjectOnPlane(_brain.Player.transform.forward, Vector3.up).normalized;
-            float side = transform.position.x >= her.x ? 1f : -1f;
-            // 羽交い締めの腹パンと同じボディーブロー: 拳を自分の胸元に溜め、腹へ短く突き出す。
-            // 大きく振りかぶって横へ振り抜くと「太鼓を叩いている」ように見えた（実測）。
-            // 彼の向きに依存させると腕が彼女の顔の前を横切るので、狙いは彼女の正面基準で決める。
-            Vector3 windup = her + Vector3.up * 1.10f + front * 0.46f + Vector3.right * (side * 0.28f);
-            Vector3 belly = her + Vector3.up * 0.98f + front * 0.12f;
-
-            // 0.12 秒まで引いて、0.22 秒（当たる瞬間）に腹へ。以降は半分だけ戻す。
-            float drive = age < 0.12f ? 0f : Mathf.Clamp01((age - 0.12f) / 0.10f);
-            if (age > 0.22f)
-                drive = 1f - Mathf.Clamp01((age - 0.22f) / 0.18f) * 0.5f;
-            float punch = Mathf.SmoothStep(0f, 1f, drive) * weight;
-            Vector3 goal = Vector3.Lerp(windup, belly, Mathf.SmoothStep(0f, 1f, drive));
-            // 肘は拳の後ろ（体側）。横に張らない。
-            Vector3 pole = upper.position - Vector3.up * 0.40f + front * 0.10f;
-
-            // 肩ごと踏み込む（腕だけを振ると棒で叩いているように見える）。
-            _figure.BraceHoldUpperBody(-15f * punch, side * 4f * punch, 5f * punch);
-
-            Quaternion previousUpper = upper.rotation;
-            Quaternion previousElbow = elbow.rotation;
-            ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);
-            EnemyFigure.SettleElbowHinge(upper, elbow, wrist);
-            Quaternion aimedElbow = elbow.rotation;
-            upper.rotation = Quaternion.Slerp(previousUpper, upper.rotation, weight);
-            elbow.rotation = Quaternion.Slerp(previousElbow, aimedElbow, weight);
         }
 
         static void SettlePlayerWrist(Transform upper, Transform elbow, Transform hand,
@@ -3322,9 +3285,15 @@ namespace Ryona.Game
             Vector3 grip = Vector3.Lerp(_targetRig.RHand.position, _targetRig.RLowerArm.position, 0.25f);
             SolveArm(true, grip + Vector3.up * 0.02f, split);
 
-            // 外側の手（彼の右手）で腹を打つ。
+            // 外側の手（彼の右手）は腹パン。打たない間は脇へ下ろす（上げたままだと不自然）。
+            Vector3 her = _brain.Player.transform.position;
+            Vector3 front = Vector3.ProjectOnPlane(_brain.Player.transform.forward, Vector3.up).normalized;
+            float side = transform.position.x >= her.x ? 1f : -1f;
             if (hold.WallSplitPuncher == _brain && hold.WallSplitPunchAge >= 0f)
-                SolvePunch(false, hold, split);
+                WallSplitArm.Punch(_figure, false, her, front, side,
+                    hold.WallSplitPunchAge, split, transform);
+            else
+                WallSplitArm.Guard(_figure, false, her, front, side, split, transform);
         }
 
         void SolveArm(bool left, Vector3 goal, float weight)
@@ -3345,34 +3314,69 @@ namespace Ryona.Game
             upper.rotation = Quaternion.Slerp(previousUpper, upper.rotation, weight);
             elbow.rotation = Quaternion.Slerp(previousElbow, aimedElbow, weight);
         }
+    }
 
-        void SolvePunch(bool left, PlayerGrapple hold, float weight)
+    /// <summary>
+    /// 二体がかりの空き手。拘束役（左手）とアシスト（右手）で同じ形を使う。
+    /// <para>
+    /// 打たない間は脇へ下ろす。掴みの姿勢のまま上げていると「殴る腕を上げている」に
+    /// 見える（実測）。打つときは拳を胸元に溜めて腹へ短く突き出すボディーブロー。
+    /// </para>
+    /// </summary>
+    static class WallSplitArm
+    {
+        /// <summary>腹パン（ボディーブロー）。0.22 秒で当たる。</summary>
+        public static void Punch(EnemyFigure figure, bool left, Vector3 her, Vector3 front,
+            float side, float age, float weight, Transform body)
         {
-            float age = hold.WallSplitPunchAge;
-            if (age < 0f)
-                return;
-
-            var upper = _figure.ShoulderBone(left);
-            var elbow = _figure.ElbowBone(left);
-            var wrist = _figure.WristBone(left);
+            var upper = figure.ShoulderBone(left);
+            var elbow = figure.ElbowBone(left);
+            var wrist = figure.WristBone(left);
             if (upper == null || elbow == null || wrist == null)
                 return;
 
-            Vector3 her = _brain.Player.transform.position;
-            Vector3 front = Vector3.ProjectOnPlane(_brain.Player.transform.forward, Vector3.up).normalized;
-            float side = transform.position.x >= her.x ? 1f : -1f;
-            Vector3 windup = her + Vector3.up * 1.30f + front * 0.58f + Vector3.right * (side * 0.34f);
-            Vector3 belly = her + Vector3.up * 1.02f + front * 0.16f;
+            // 拳を自分の胸元に溜め、腹へ短く突き出す。大きく振りかぶって横へ振り抜くと
+            // 「太鼓を叩いている」ように見えた（実測）。
+            // 振りかぶりは自分の胸の前（体の面より手前）。体の後ろへ引くと腕が折れて肘が上がる。
+            Vector3 windup = her + Vector3.up * 1.06f + front * 0.56f + Vector3.right * (side * 0.30f);
+            Vector3 belly = her + Vector3.up * 0.98f + front * 0.12f;
 
             float drive = age < 0.12f ? 0f : Mathf.Clamp01((age - 0.12f) / 0.10f);
             if (age > 0.22f)
-                drive = 1f - Mathf.Clamp01((age - 0.22f) / 0.18f) * 0.5f;
+                drive = 1f - Mathf.Clamp01((age - 0.22f) / 0.18f);   // 打ったあとは胸元へ戻す
+            float punch = Mathf.SmoothStep(0f, 1f, drive) * weight;
             Vector3 goal = Vector3.Lerp(windup, belly, Mathf.SmoothStep(0f, 1f, drive));
-            Vector3 pole = upper.position + front * 0.20f - Vector3.up * 0.18f;
+            // 肘は拳の後ろ（体側）。横に張らない。
+            Vector3 pole = upper.position - Vector3.up * 0.40f + front * 0.10f;
+
+            // 肩ごと踏み込む（腕だけを振ると棒で叩いているように見える）。
+            figure.BraceHoldUpperBody(-15f * punch, side * 4f * punch, 5f * punch);
 
             Quaternion previousUpper = upper.rotation;
             Quaternion previousElbow = elbow.rotation;
-            ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);
+            ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, body.right);
+            EnemyFigure.SettleElbowHinge(upper, elbow, wrist);
+            Quaternion aimedElbow = elbow.rotation;
+            upper.rotation = Quaternion.Slerp(previousUpper, upper.rotation, weight);
+            elbow.rotation = Quaternion.Slerp(previousElbow, aimedElbow, weight);
+        }
+
+        /// <summary>打たない間の空き手。自分の脇に下ろして構える。</summary>
+        public static void Guard(EnemyFigure figure, bool left, Vector3 her, Vector3 front,
+            float side, float weight, Transform body)
+        {
+            var upper = figure.ShoulderBone(left);
+            var elbow = figure.ElbowBone(left);
+            var wrist = figure.WristBone(left);
+            if (upper == null || elbow == null || wrist == null)
+                return;
+
+            Vector3 goal = her + Vector3.up * 1.06f + front * 0.56f + Vector3.right * (side * 0.30f);
+            Vector3 pole = upper.position - Vector3.up * 0.45f + front * 0.10f;
+
+            Quaternion previousUpper = upper.rotation;
+            Quaternion previousElbow = elbow.rotation;
+            ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, body.right);
             EnemyFigure.SettleElbowHinge(upper, elbow, wrist);
             Quaternion aimedElbow = elbow.rotation;
             upper.rotation = Quaternion.Slerp(previousUpper, upper.rotation, weight);
