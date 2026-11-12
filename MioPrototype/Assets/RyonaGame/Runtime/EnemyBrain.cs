@@ -1233,6 +1233,11 @@ namespace Ryona.Game
                 return;
             }
 
+            // 二体がかりのアシストは、Update 側が彼女の正面側の持ち場を決める。
+            // ここで彼女の z に合わせると、持ち場（正面）へ寄れない（実測: z が彼女の位置へ戻る）。
+            if (IsWallAssisting)
+                return;
+
             if (Target == null || (Player != null && Player.GroundMount.Attacker == this))
                 return;
             var position = transform.position;
@@ -2231,12 +2236,14 @@ namespace Ryona.Game
 
             Vector3 her = hold.transform.position;
             Vector3 forward = Vector3.ProjectOnPlane(hold.transform.forward, Vector3.up).normalized;
+            // 二人とも彼女の正面側へ立つ。横に並ぶと腹パンが横から棒で叩く形になる（実測）。
             Vector3 spot = her
-                + Vector3.right * (_wallAssistSide * CombatConstants.WallSplitAssistGap)
-                + forward * 0.34f;
+                + Vector3.right * (_wallAssistSide * CombatConstants.WallSplitStandGap)
+                + forward * CombatConstants.WallSplitStandFront;
             spot.y = transform.position.y;
 
-            float speed = MoveSpeed * State.MoveSpeedMultiplier;
+            // 持ち場へは小走りで寄る（通常の移動速度だと間に合わない）。
+            float speed = Mathf.Max(2.4f, MoveSpeed * State.MoveSpeedMultiplier);
             transform.position = Vector3.MoveTowards(transform.position, spot, speed * dt);
 
             Vector3 look = her - transform.position;
@@ -2246,7 +2253,7 @@ namespace Ryona.Game
                 // 真横を向いたままだと、空き手が腹を横切って「太鼓を叩いている」画になる。
                 // カメラ（プレイヤー）側へ体を開いて、前から腹へ入る形にする。
                 Quaternion facing = Quaternion.LookRotation(look.normalized, Vector3.up);
-                facing = Quaternion.AngleAxis(-_wallAssistSide * 38f, Vector3.up) * facing;
+                facing = Quaternion.AngleAxis(-_wallAssistSide * 15f, Vector3.up) * facing;
                 transform.rotation = Quaternion.Slerp(transform.rotation, facing,
                     1f - Mathf.Exp(-10f * dt));
             }
@@ -2267,8 +2274,8 @@ namespace Ryona.Game
             Vector3 her = hold.transform.position;
             Vector3 forward = Vector3.ProjectOnPlane(hold.transform.forward, Vector3.up).normalized;
             Vector3 spot = her
-                + Vector3.right * CombatConstants.WallSplitAssistGap
-                + forward * 0.34f;
+                + Vector3.right * CombatConstants.WallSplitStandGap
+                + forward * CombatConstants.WallSplitStandFront;
             spot.y = transform.position.y;
 
             // 押さえつけ中は移動速度倍率が 0 のことがあるので、位置合わせは定速で行う。
@@ -2281,7 +2288,7 @@ namespace Ryona.Game
             {
                 // アシストと同じく、カメラ（プレイヤー）側へ体を開く。
                 Quaternion facing = Quaternion.LookRotation(look.normalized, Vector3.up);
-                facing = Quaternion.AngleAxis(-38f, Vector3.up) * facing;
+                facing = Quaternion.AngleAxis(-15f, Vector3.up) * facing;
                 transform.rotation = Quaternion.Slerp(transform.rotation, facing,
                     1f - Mathf.Exp(-10f * dt));
             }

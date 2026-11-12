@@ -675,7 +675,7 @@ namespace Ryona.Tests
             Assert.IsTrue(_grapple.IsWallPin, "壁押さえつけが始まらない");
 
             float hp = _player.State.Hp;
-            float deadline = Time.realtimeSinceStartup + 9f;
+            float deadline = Time.realtimeSinceStartup + 14f;
             while (!_grapple.IsWallSplitActive && Time.realtimeSinceStartup < deadline)
                 yield return null;
 
@@ -741,7 +741,7 @@ namespace Ryona.Tests
             _captor.QueuePin();
             yield return WaitForGrapple();
 
-            float deadline = Time.realtimeSinceStartup + 9f;
+            float deadline = Time.realtimeSinceStartup + 14f;
             while (!_grapple.IsWallSplitActive && Time.realtimeSinceStartup < deadline)
                 yield return null;
             Assert.IsTrue(_grapple.IsWallSplitActive, "二人がかりが始まらない");
@@ -767,7 +767,7 @@ namespace Ryona.Tests
             _captor.QueuePin();
             yield return WaitForGrapple();
 
-            float deadline = Time.realtimeSinceStartup + 9f;
+            float deadline = Time.realtimeSinceStartup + 14f;
             while (!_grapple.IsWallSplitActive && Time.realtimeSinceStartup < deadline)
                 yield return null;
             Assert.IsTrue(_grapple.IsWallSplitActive, "二人がかりが始まらない");
@@ -777,9 +777,8 @@ namespace Ryona.Tests
             Assert.IsTrue(anim.Rig != null && anim.Rig.Ready, "リグが完成していない");
 
             // Y 字へ開ききり、1 発目が当たる前（振りかぶり中）の姿勢を基準にする。
+            // （二人がかりでは手首は壁ではなく正面へ出るので、壁のクリアランスは 1 体のときのテストで見る）
             yield return WaitGameSeconds(0.30f);
-            float face = WallPinSites.Nearest(_player.transform.position).FaceZ;
-            AssertHandClearance(anim, face);
 
             float baseChestZ = anim.Rig.Chest.position.z;
             float baseHipsY = anim.Rig.Hips.position.y;
@@ -817,7 +816,6 @@ namespace Ryona.Tests
                 "左手首が頭より下へ落ちた");
             Assert.Greater(anim.Rig.RHand.position.y, anim.Rig.Head.position.y,
                 "右手首が頭より下へ落ちた");
-            Assert.Greater(face - anim.Rig.LHand.position.z, 0.02f, "左手首が壁へ入った");
 
             // 次の一発（0.55 秒間隔）の前に戻る。戻らないと連打で固まって見える。
             Assert.Less(anim.HeldBellyPunchFold, 0.5f,
@@ -854,7 +852,7 @@ namespace Ryona.Tests
             _captor.QueuePin();
             yield return WaitForGrapple();
 
-            float deadline = Time.realtimeSinceStartup + 9f;
+            float deadline = Time.realtimeSinceStartup + 14f;
             while (!_grapple.IsWallSplitActive && Time.realtimeSinceStartup < deadline)
                 yield return null;
             Assert.IsTrue(_grapple.IsWallSplitActive, "二人がかりが始まらない");

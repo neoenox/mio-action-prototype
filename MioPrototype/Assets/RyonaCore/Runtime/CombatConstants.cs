@@ -137,6 +137,12 @@ namespace Ryona
         /// <summary>二体目が彼女の横に立つ距離（m）。</summary>
         public const float WallSplitAssistGap = 0.62f;
 
+        /// <summary>二人がかりで二人が彼女の正面側に立つときの、横のずれ（m、中心から）。</summary>
+        public const float WallSplitStandGap = 0.45f;
+
+        /// <summary>二人がかりで二人が彼女の正面側に立つときの、前への距離（m）。</summary>
+        public const float WallSplitStandFront = 0.55f;
+
         /// <summary>起き上がり完了後、この秒数はダウンしない（無限ダウンの防止）。</summary>
         public const float DownImmunitySeconds = 1.0f;
 

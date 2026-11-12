@@ -1843,12 +1843,32 @@ namespace Ryona.Game
                 goalL = Vector3.Lerp(goalL, reach - right * 0.18f, Grapple.WallTossLower);
                 goalR = Vector3.Lerp(goalR, reach + right * 0.18f, Grapple.WallTossLower);
             }
+
+            // 二人がかり（Y 字）では手首を壁から離し、正面に立つ二人へ差し出す。
+            // 壁へ貼り付けたままだと二人は彼女の真横に並ぶしかなく、腹パンが横から
+            // 棒で叩く形になる（実測）。手首を正面へ出すと二人が前に立てる。
+            float split = Grapple.WallSplitWeight;
+            Vector3 splitBase = transform.position + Vector3.up * 1.40f + transform.forward * 0.34f;
+            if (split > 0.001f)
+            {
+                Vector3 splitL = splitBase - right * CombatConstants.WallSplitHandHalf;
+                Vector3 splitR = splitBase + right * CombatConstants.WallSplitHandHalf;
+                goalL = Vector3.Lerp(goalL, splitL, split);
+                goalR = Vector3.Lerp(goalR, splitR, split);
+            }
+
             goalL = Vector3.Lerp(Rig.LHand.position, goalL, w);
             goalR = Vector3.Lerp(Rig.RHand.position, goalR, w);
 
             // 肘は外へ開き、**少し後ろ**へ。前へ出すと腕が顔の前に来て表情が隠れる
             // （実測: 正面寄りのカメラで腕が顔を覆った）。後ろへ逃がすと腕が頭の枠になる。
             Vector3 poleBase = head + Vector3.up * 0.02f - transform.forward * 0.10f;
+            if (split > 0.001f)
+            {
+                // 手首が正面にあるので、肘は後ろではなく外へ開く。
+                Vector3 splitPole = head + Vector3.up * 0.02f + transform.forward * 0.02f;
+                poleBase = Vector3.Lerp(poleBase, splitPole, split);
+            }
             float poleSpread = Mathf.Lerp(0.50f, 0.62f, adhere);
             Vector3 poleL = poleBase - right * poleSpread;
             Vector3 poleR = poleBase + right * poleSpread;
@@ -1857,20 +1877,22 @@ namespace Ryona.Game
             ProceduralRig.SolveTwoBone(Rig.RUpperArm, Rig.RLowerArm, Rig.RHand, goalR, poleR, right);
 
             // 壁へ貼り付いた手首は、掌を壁へ向けて押し当てる。手のひらが部屋側を向いたままだと
-            // 「壁へ手を突っ張っている」に見えない（実測）。
-            if (hasWall && adhere > 0.01f)
+            // 「壁へ手を突っ張っている」に見えない（実測）。二人がかりでは手首が正面へ出るので
+            // 壁の掌は抜く（二人が手首を掴んでいる）。
+            float wallPalm = hasWall ? adhere * (1f - split) : 0f;
+            if (wallPalm > 0.01f)
             {
                 Vector3 intoWall = -normal;
                 Quaternion leftPose = Rig.LHand.rotation;
                 Quaternion rightPose = Rig.RHand.rotation;
                 Rig.AlignPalm(true, intoWall, Vector3.up);
                 Rig.AlignPalm(false, intoWall, Vector3.up);
-                Rig.LHand.rotation = Quaternion.Slerp(leftPose, Rig.LHand.rotation, adhere);
-                Rig.RHand.rotation = Quaternion.Slerp(rightPose, Rig.RHand.rotation, adhere);
+                Rig.LHand.rotation = Quaternion.Slerp(leftPose, Rig.LHand.rotation, wallPalm);
+                Rig.RHand.rotation = Quaternion.Slerp(rightPose, Rig.RHand.rotation, wallPalm);
 
                 // 手首は壁から離したので、そのままだと掌が浮いて見える。手首を軸に指先だけを
                 // 壁へ寄せる（掌は壁に平行から少し傾くが、指先が触れて「押し当てている」形になる）。
-                float tilt = WallHandTilt * adhere * (1f - Grapple.WallTossLower);
+                float tilt = WallHandTilt * wallPalm * (1f - Grapple.WallTossLower);
                 if (tilt > 0.01f)
                 {
                     Vector3 tiltAxis = Vector3.Cross(Vector3.up, intoWall);

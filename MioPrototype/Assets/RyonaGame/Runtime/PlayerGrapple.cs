@@ -791,7 +791,8 @@ namespace Ryona.Game
         System.Collections.IEnumerator WallSplitRoutine()
         {
             // アシストが横へ着くまで待つ（来なければ通常の膝蹴りへ戻す）。
-            while (_wallSplitAssistAge < 1.2f && !_wallSplitReady &&
+            // 二人は彼女の正面側まで回り込むので、横に並ぶより距離がある（実測 1.7〜2.2m）。
+            while (_wallSplitAssistAge < 2.4f && !_wallSplitReady &&
                    WallAssist != null && WallAssist.IsAlive && WallAssist.isActiveAndEnabled)
             {
                 _wallSplitAssistAge += Time.deltaTime;
