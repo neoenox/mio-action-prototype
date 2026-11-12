@@ -757,5 +757,186 @@ namespace Ryona.Tests
             Assert.IsFalse(_grapple.IsWallSplitActive, "二人がかりの状態が残っている");
             Assert.IsFalse(_assist.IsWallAssisting, "アシストが持ち場に残っている");
         }
+
+        // --- 壁拘束の被弾と手首のクリアランス -----------------------
+
+        [UnityTest]
+        public IEnumerator 二人がかりの腹パンで壁に固定されたまま上体が折れる()
+        {
+            yield return Load(withAssist: true);
+            _captor.QueuePin();
+            yield return WaitForGrapple();
+
+            float deadline = Time.realtimeSinceStartup + 9f;
+            while (!_grapple.IsWallSplitActive && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.IsTrue(_grapple.IsWallSplitActive, "二人がかりが始まらない");
+
+            var anim = _player.GetComponentInChildren<CharacterAnimator>();
+            Assert.IsNotNull(anim, "CharacterAnimator が無い");
+            Assert.IsTrue(anim.Rig != null && anim.Rig.Ready, "リグが完成していない");
+
+            // Y 字へ開ききり、1 発目が当たる前（振りかぶり中）の姿勢を基準にする。
+            yield return WaitGameSeconds(0.30f);
+            float face = WallPinSites.Nearest(_player.transform.position).FaceZ;
+            AssertHandClearance(anim, face);
+
+            float baseChestZ = anim.Rig.Chest.position.z;
+            float baseHipsY = anim.Rig.Hips.position.y;
+            float baseHeadZ = anim.Rig.Head.position.z;
+
+            // 1 発目が当たって折れきるまで待つ。
+            deadline = Time.realtimeSinceStartup + 3f;
+            while (anim.HeldBellyPunchFold < 0.6f && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.Greater(anim.HeldBellyPunchFold, 0.6f, "腹パンの被弾姿勢が始まらない");
+
+            // フレームの位相に依存しないよう、当たった直後 0.40 秒の最大の動きで見る
+            // （次の一発は 0.55 秒後なので、その前の戻りまでを測れる）。
+            float minChestZ = baseChestZ;
+            float minHipsY = baseHipsY;
+            float minHeadZ = baseHeadZ;
+            float sampleUntil = Time.realtimeSinceStartup + 0.40f;
+            while (Time.realtimeSinceStartup < sampleUntil)
+            {
+                minChestZ = Mathf.Min(minChestZ, anim.Rig.Chest.position.z);
+                minHipsY = Mathf.Min(minHipsY, anim.Rig.Hips.position.y);
+                minHeadZ = Mathf.Min(minHeadZ, anim.Rig.Head.position.z);
+                yield return null;
+            }
+
+            Assert.Greater(baseChestZ - minChestZ, 0.03f,
+                $"上体が前へ折れていない（胸 z {baseChestZ:F2}→{minChestZ:F2}）");
+            Assert.Less(minHipsY - baseHipsY, -0.02f,
+                $"膝が抜けて腰が沈んでいない（腰 y {baseHipsY:F2}→{minHipsY:F2}）");
+            Assert.Greater(baseHeadZ - minHeadZ, 0.10f,
+                $"頭が前へ落ちていない（頭 z {baseHeadZ:F2}→{minHeadZ:F2}）");
+
+            // 殴られても腕は振りほどかれず、頭上に残る（Y 字が崩れない）。
+            Assert.Greater(anim.Rig.LHand.position.y, anim.Rig.Head.position.y,
+                "左手首が頭より下へ落ちた");
+            Assert.Greater(anim.Rig.RHand.position.y, anim.Rig.Head.position.y,
+                "右手首が頭より下へ落ちた");
+            Assert.Greater(face - anim.Rig.LHand.position.z, 0.02f, "左手首が壁へ入った");
+
+            // 次の一発（0.55 秒間隔）の前に戻る。戻らないと連打で固まって見える。
+            Assert.Less(anim.HeldBellyPunchFold, 0.5f,
+                $"折れた姿勢から戻らない（fold={anim.HeldBellyPunchFold:F2}）");
+            Assert.Less(Mathf.Abs(anim.Rig.Chest.position.z - baseChestZ), 0.05f,
+                "上体が折れたまま戻らない");
+        }
+
+        [UnityTest]
+        public IEnumerator 壁に貼り付いた手首と手のひらが壁へ埋まらない()
+        {
+            yield return Load();
+
+            var site = WallPinSites.Nearest(_player.transform.position);
+            Assert.IsNotNull(site, "壁が無い");
+            float face = site.FaceZ;
+
+            _captor.QueuePin();
+            yield return WaitForGrapple();
+            Assert.IsTrue(_grapple.IsWallPin, "壁押さえつけが始まらない");
+
+            var anim = _player.GetComponentInChildren<CharacterAnimator>();
+            Assert.IsNotNull(anim, "CharacterAnimator が無い");
+            Assert.IsTrue(anim.Rig != null && anim.Rig.Ready, "リグが完成していない");
+
+            yield return WaitGameSeconds(0.7f);
+            AssertHandClearance(anim, face);
+        }
+
+        [UnityTest]
+        public IEnumerator 二人がかりのカメラは斜めで三人が画に入る()
+        {
+            yield return Load(withAssist: true);
+            _captor.QueuePin();
+            yield return WaitForGrapple();
+
+            float deadline = Time.realtimeSinceStartup + 9f;
+            while (!_grapple.IsWallSplitActive && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.IsTrue(_grapple.IsWallSplitActive, "二人がかりが始まらない");
+            yield return WaitGameSeconds(0.35f);
+
+            Vector3 her = _player.transform.position;
+            WallSplitCamera.Build(her, _player.transform.forward,
+                _captor.transform.position, _assist.transform.position,
+                out Vector3 position, out Vector3 target);
+
+            // 壁の奥へ回り込まない（壁は +Z。彼女は部屋側を向く）。
+            var site = WallPinSites.Nearest(her);
+            Assert.IsNotNull(site, "壁が無い");
+            Assert.Less(position.z, site.FaceZ - 0.5f, "カメラが壁の奥へ回り込んでいる");
+
+            // 斜め（既定 18°）。正面ぴったりではない。
+            Vector3 front = Vector3.ProjectOnPlane(_player.transform.forward, Vector3.up).normalized;
+            Vector3 toCamera = Vector3.ProjectOnPlane(position - target, Vector3.up).normalized;
+            float yaw = Vector3.Angle(front, toCamera);
+            if (WallSplitCamera.Mode == WallSplitCamera.Shot.Angle)
+                Assert.That(yaw, Is.InRange(10f, 35f),
+                    $"二体がかりのカメラが斜めになっていない（{yaw:F0}°）");
+
+            // 三人とも画に入る。実カメラは動かさず、同じ画角の探りカメラで投影する。
+            var main = Camera.main;
+            var probeGo = new GameObject("WallSplit Camera Probe");
+            var probe = probeGo.AddComponent<Camera>();
+            probe.fieldOfView = main != null ? main.fieldOfView : 50f;
+            probe.aspect = main != null ? main.aspect : 1.57f;
+            probe.transform.position = position;
+            probe.transform.rotation = Quaternion.LookRotation(target - position, Vector3.up);
+
+            Vector3[] subjects =
+            {
+                her + Vector3.up * 1.05f,
+                _captor.transform.position + Vector3.up * 1.02f,
+                _assist.transform.position + Vector3.up * 1.02f,
+            };
+            foreach (Vector3 p in subjects)
+            {
+                Vector3 view = probe.WorldToViewportPoint(p);
+                Assert.Greater(view.z, 0f, "三人の誰かがカメラの後ろにある");
+                Assert.That(view.x, Is.InRange(0.02f, 0.98f),
+                    $"三人の誰かが画面の外（x={view.x:F2}）");
+                Assert.That(view.y, Is.InRange(0.02f, 0.98f),
+                    $"三人の誰かが画面の外（y={view.y:F2}）");
+            }
+
+            Object.Destroy(probeGo);
+        }
+
+        /// <summary>
+        /// 手首と前腕が壁へ埋まり、指先は壁に触れていることを測る。
+        /// 手首の位置だけでなく、前腕（手首寄り）と指の付け根も見る。
+        /// </summary>
+        static void AssertHandClearance(CharacterAnimator anim, float face)
+        {
+            var rig = anim.Rig;
+            for (int i = 0; i < 2; i++)
+            {
+                bool left = i == 0;
+                string name = left ? "左" : "右";
+                Transform hand = left ? rig.LHand : rig.RHand;
+                Transform lower = left ? rig.LLowerArm : rig.RLowerArm;
+
+                float wristGap = face - hand.position.z;
+                Assert.Greater(wristGap, 0.06f,
+                    $"{name}手首が壁へ埋まっている（壁から {wristGap:F3}m）");
+
+                Vector3 forearm = Vector3.Lerp(lower.position, hand.position, 0.85f);
+                float forearmGap = face - forearm.z;
+                Assert.Greater(forearmGap, 0.045f,
+                    $"{name}前腕が壁へ埋まっている（壁から {forearmGap:F3}m）");
+
+                // 手首は浮かせたまま、掌を壁へ向けて傾けて指先だけ触れさせる。
+                // （指の骨は VRM の制御階層側にあり位置が取れないので、掌の向きで測る。）
+                Vector3 palm = rig.PalmNormalWorld(left);
+                Assert.Greater(palm.sqrMagnitude, 0.5f, $"{name}の掌の向きが取れない");
+                float tilt = Vector3.Angle(palm, Vector3.forward);   // 壁の法線（部屋側から壁へ）
+                Assert.That(tilt, Is.InRange(4f, 22f),
+                    $"{name}の掌が壁へ傾いていない（法線から {tilt:F0}°）");
+            }
+        }
     }
 }

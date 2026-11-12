@@ -119,12 +119,25 @@ namespace Ryona.Game
         internal int WallSplitHits => _wallSplitHits;
 
         /// <summary>打つ手が左か（アシスト=右、拘束役=左）。ポーズ側が空き手を選ぶ。</summary>
-        internal bool WallSplitPunchLeft { get; private set; }
+        public bool WallSplitPunchLeft { get; private set; }
 
         bool _wallSplitStarted;
         bool _wallSplitReady;
         int _wallSplitHits;
         float _wallSplitAssistAge;
+
+        /// <summary>
+        /// 彼女のアニメータ。二体がかりの腹パンで被弾姿勢を重ねるのに使う
+        /// （VRM の読み込みが遅れて後から付くことがあるので、都度取り直す）。
+        /// </summary>
+        CharacterAnimator _animator;
+
+        CharacterAnimator Animator()
+        {
+            if (_animator == null && Stats != null)
+                _animator = Stats.GetComponentInChildren<CharacterAnimator>();
+            return _animator;
+        }
 
         /// <summary>壁拘束が始まった時点で横に残しておく二体目（いなければ null）。</summary>
         internal EnemyBrain WallAssistCandidate { get; private set; }
@@ -836,6 +849,11 @@ namespace Ryona.Game
                 }
 
                 puncher?.DoWallSplitPunch();
+
+                // 壁に両腕を固定されたまま、腹で折れる被弾姿勢を重ねる。
+                // 疲労（打った数）を渡すと、後半ほど戻りが遅く、折れが深くなる。
+                float fatigue = (float)_wallSplitHits / CombatConstants.WallSplitPunchCount;
+                Animator()?.PlayHeldBellyPunch(CombatConstants.WallSplitPunchInterval, fatigue);
                 _wallSplitHits++;
 
                 // 戻り（合計 0.55 秒間隔）

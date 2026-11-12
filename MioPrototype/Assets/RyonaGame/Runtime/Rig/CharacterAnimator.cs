@@ -279,6 +279,21 @@ namespace Ryona.Game
             }
         }
 
+        /// <summary>
+        /// 腹パンの疲労度 0..1（呼び出し側が渡した値）。壁の二体がかりでは、
+        /// 後半の一発ほど深く折って戻りを遅くするのに使う。
+        /// </summary>
+        public float HeldBellyPunchFatigue => _heldBellyFatigue;
+
+        /// <summary>
+        /// いまの腹パンが当たってからの秒。当たった瞬間の揺れの位相に使う。
+        /// 反応が終わっていれば 0。
+        /// </summary>
+        public float HeldBellyPunchAge =>
+            _heldBellyPunchTotal > 0f && _heldBellyPunchRemaining > 0f
+                ? _heldBellyPunchTotal - _heldBellyPunchRemaining
+                : 0f;
+
         /// <summary>倒れている（立ち上がり中を含む）。移動できない区間。</summary>
         public bool IsDowned => _state == State.Down || _state == State.GetUp;
 

@@ -1015,6 +1015,36 @@ namespace Ryona.Game
 
             pose.Grip = 1f;
 
+            // 二体がかり（Y 字）の腹パン: 両腕は壁に固定されたまま、腹で折れて膝が抜ける。
+            // 腕のポーズ値は触らない。手首は SolveOverheadArms が world 固定しているので、
+            // 上体が折れると肘が曲がり「押さえ込まれたまま殴られている」形になる。
+            float wallHit = HeldBellyPunchFold;
+            if (wallHit > 0f && Grapple != null && Grapple.WallSplitWeight > 0.5f)
+            {
+                // 打った側と逆へ逃げる（拘束役が左で打てば、彼女の左から来るので右へ）。
+                float side = Grapple.WallSplitPunchLeft ? -1f : 1f;
+                float fatigue = HeldBellyPunchFatigue;
+                float fold = wallHit;
+
+                // 壁の反り（-3°）から前へ折る。正面の押さえつけ（52°）ほど深くは折らない
+                // （深いと、腕を伸ばしたまま吊られた画になる）。
+                pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, 32f + 6f * fatigue, fold);
+                // 胴の前傾を首で打ち消し、腹で折れても顔は前に残す（前髪で顔が隠れない）。
+                pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -52f - 4f * fatigue, fold);
+                pose.HeadYaw += side * 10f * fold;
+                pose.TorsoRoll += side * 6f * fold;
+                pose.HipsOffset.y -= (0.10f + 0.03f * fatigue) * fold;
+                // ローカルの -Z が壁側。殴られて上体が前へ折れるぶん、腰は壁から少し離れる。
+                pose.HipsOffset.z += 0.03f * fold;
+                pose.HipsOffset.x += side * 0.03f * fold;
+
+                // 当たった瞬間だけ頭と肩が短く揺れる（0.15 秒で消える）。
+                float age = HeldBellyPunchAge;
+                float shake = Mathf.Exp(-age * 14f) * Mathf.Sin(age * 55f) * fold;
+                pose.HeadPitch += shake * 3f;
+                pose.TorsoRoll += shake * 2f;
+            }
+
             // 構えの足の位置から始める。Rest（T ポーズ）のままだと脚が伸びきって
             // 爪先立ちになり、「踏ん張り」ではなく「吊られている」画になる。
             pose.FootL += StanceFootL;
@@ -1837,6 +1867,20 @@ namespace Ryona.Game
                 Rig.AlignPalm(false, intoWall, Vector3.up);
                 Rig.LHand.rotation = Quaternion.Slerp(leftPose, Rig.LHand.rotation, adhere);
                 Rig.RHand.rotation = Quaternion.Slerp(rightPose, Rig.RHand.rotation, adhere);
+
+                // 手首は壁から離したので、そのままだと掌が浮いて見える。手首を軸に指先だけを
+                // 壁へ寄せる（掌は壁に平行から少し傾くが、指先が触れて「押し当てている」形になる）。
+                float tilt = WallHandTilt * adhere * (1f - Grapple.WallTossLower);
+                if (tilt > 0.01f)
+                {
+                    Vector3 tiltAxis = Vector3.Cross(Vector3.up, intoWall);
+                    if (tiltAxis.sqrMagnitude > 1e-4f)
+                    {
+                        Quaternion tiltRotation = Quaternion.AngleAxis(tilt, tiltAxis.normalized);
+                        Rig.LHand.rotation = tiltRotation * Rig.LHand.rotation;
+                        Rig.RHand.rotation = tiltRotation * Rig.RHand.rotation;
+                    }
+                }
             }
 
             // 手首が壁に付いている間は指を開く（掴む相手がいない）。
@@ -1857,8 +1901,40 @@ namespace Ryona.Game
         /// <summary>壁へ貼り付く手首の高さ（キャラクターの足元から m）。頭より上に置く。</summary>
         const float WallStickHeight = 1.62f;
 
-        /// <summary>壁の表面から手のひら中心までの距離（m）。</summary>
-        const float WallHandGap = 0.045f;
+        /// <summary>
+        /// 壁の表面から手首までの距離（m）。手首のメッシュ半径（約 3〜4cm）ぶんを空ける。
+        /// 0.045 では手首が壁に埋まって見えた（実測）。<c>-wallhandgap=</c> で撮り比べられる。
+        /// </summary>
+        static float WallHandGap
+        {
+            get
+            {
+                if (_wallHandGap < 0f)
+                    _wallHandGap = ReadWallHandGap();
+                return _wallHandGap;
+            }
+        }
+
+        static float _wallHandGap = -1f;
+
+        static float ReadWallHandGap()
+        {
+            foreach (string a in System.Environment.GetCommandLineArgs())
+            {
+                const string key = "-wallhandgap=";
+                if (a.StartsWith(key, System.StringComparison.OrdinalIgnoreCase)
+                    && float.TryParse(a.Substring(key.Length),
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out float value))
+                    return Mathf.Clamp(value, 0.03f, 0.15f);
+            }
+            return 0.075f;
+        }
+
+        /// <summary>
+        /// 手首から先だけ壁へ寄せる傾き（度）。手首は浮かせたまま、指先を壁へ触れさせる。
+        /// </summary>
+        const float WallHandTilt = 12f;
 
         /// <summary>組み立てた姿勢をリグへ流し込む（IK・倒れ・指・かかと）。</summary>
         void ApplyPoseToRig(PoseValues pose)

@@ -2842,14 +2842,19 @@ namespace Ryona.Game
                 {
                     Transform pinned = _brain.Player.transform;
 
-                    // 二体がかり（Y 字）は正面が空くので、ほぼ正面の固定ショット。
-                    // 左右の敵と彼女の顔・腹が同じ画に入る。
+                    // 二体がかり（Y 字）は二人と彼女が並ぶので、少し斜めから引いた固定ショット。
+                    // 角度・距離は WallSplitCamera が起動引数で切り替える
+                    // （-wallsplitcam=hold なら壁押さえつけのショットのまま動かさない）。
                     if (hold.WallSplitWeight > 0.01f)
                     {
-                        Vector3 front = Vector3.ProjectOnPlane(pinned.forward, Vector3.up).normalized;
-                        Vector3 target = pinned.position + Vector3.up * 1.05f;
-                        // 左右の敵と彼女が同じ画に入る距離（近いと左右の敵が画面外へ出る）。
-                        Vector3 shot = target + front * 2.10f + Vector3.up * 0.30f;
+                        // アシストが離れた直後（重みが抜ける 0.2 秒）は、拘束役を彼女の反対側へ
+                        // 鏡映して代用する。ここで別ショットへ落とすとカメラが跳ねる。
+                        Vector3 assist = hold.WallAssist != null
+                            ? hold.WallAssist.transform.position
+                            : pinned.position + (pinned.position - transform.position);
+                        WallSplitCamera.Build(pinned.position, pinned.forward,
+                            transform.position, assist,
+                            out Vector3 shot, out Vector3 target);
                         _camera.RequestCinematicShot(shot, target);
                         return;
                     }
@@ -3232,24 +3237,6 @@ namespace Ryona.Game
             Quaternion aimedElbow = elbow.rotation;
             upper.rotation = Quaternion.Slerp(previousUpper, upper.rotation, weight);
             elbow.rotation = Quaternion.Slerp(previousElbow, aimedElbow, weight);
-        }
-
-        /// <summary>二人がかりのカメラ。正面が空くので、ほぼ正面の固定ショット。</summary>
-        void ApplyWallSplitCamera(PlayerGrapple hold, float weight)
-        {
-            if (weight <= 0.01f)
-                return;
-
-            if (_camera == null)
-                _camera = FindFirstObjectByType<ThirdPersonCamera>();
-            if (_camera == null)
-                return;
-
-            Transform her = _brain.Player.transform;
-            Vector3 front = Vector3.ProjectOnPlane(her.forward, Vector3.up).normalized;
-            Vector3 target = her.position + Vector3.up * 1.06f;
-            Vector3 position = target + front * 1.35f + Vector3.up * 0.22f + her.right * 0.08f;
-            _camera.RequestCinematicShot(position, target);
         }
 
         static void SettlePlayerWrist(Transform upper, Transform elbow, Transform hand,
