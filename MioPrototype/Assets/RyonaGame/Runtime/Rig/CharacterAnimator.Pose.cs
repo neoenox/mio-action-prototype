@@ -1780,7 +1780,8 @@ namespace Ryona.Game
 
             Vector3 head = Rig.Head.position + transform.forward * 0.09f;
             Vector3 right = transform.right;
-            float half = 0.08f;
+            // 壁の二人がかり（Y 字）では、手首を左右へ広げて二人が片腕ずつ掴める形にする。
+            float half = Mathf.Lerp(0.08f, CombatConstants.WallSplitHandHalf, Grapple.WallSplitWeight);
 
             // 引き上げ中は頭の上。貼り付くと同時に、腕を上へ伸ばした位置へ移る。
             Vector3 goalL = head + Vector3.up * 0.24f - right * half;

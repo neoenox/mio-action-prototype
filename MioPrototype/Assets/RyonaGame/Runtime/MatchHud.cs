@@ -241,6 +241,11 @@ namespace Ryona.Game
                 tail = "背後から敵が来る";
                 danger = true;
             }
+            else if (_grapple.IsWallSplitActive)
+            {
+                tail = $"2人がかり {_grapple.WallSplitHits}/{CombatConstants.WallSplitPunchCount}";
+                danger = true;
+            }
             else if (_grapple.HasTimeLimit)
             {
                 tail = $"あと {_grapple.Remaining:F1}s で解放";

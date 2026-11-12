@@ -584,6 +584,18 @@ namespace Ryona.Game
         /// <summary>次の膝蹴りを入れる時刻（0 = 予定なし）。</summary>
         float _pinNextKneeAt;
 
+        // --- 壁・二体がかり（Y 字）のアシスト役 -------------------------
+        PlayerGrapple _wallAssistHold;
+        float _wallAssistSide = 1f;
+        bool _wallAssistReady;
+        float _wallSplitLogAt;
+
+        /// <summary>二体目として壁押さえつけに加わっているか。</summary>
+        public bool IsWallAssisting => _wallAssistHold != null;
+
+        /// <summary>横の持ち場に着いたか（PlayerGrapple が Y 字へ移る合図）。</summary>
+        internal bool WallAssistReady => _wallAssistReady;
+
         internal const float PushContactSeconds = 0.13f;
         internal const float PushDuration = 0.36f;
         float _pushUntil;
@@ -976,6 +988,24 @@ namespace Ryona.Game
 
             if (_grapple == null)
                 _grapple = Player.GetComponent<PlayerGrapple>();
+
+            // 壁の二体がかりで、自分がアシスト役なら通常 AI を止めて持ち場へ。
+            if (_wallAssistHold != null)
+            {
+                if (Phase == EnemyPhase.Windup || Phase == EnemyPhase.Attack)
+                    CancelWindup();
+                UpdateWallAssist(dt);
+                return;
+            }
+
+            // 二体がかり中は、拘束役も正面から彼女の左側（+X）へ回り込む。
+            // 正面に残ると、正面のカメラが彼の背中になる。
+            if (IsPinning && _grapple != null && _grapple.IsWallSplitActive)
+            {
+                UpdateWallSplitCaptor(dt, _grapple);
+                return;
+            }
+
             bool waitingForWallPin = _grapple != null && _grapple.IsWallPin && _grapple.Captor != this;
             if (waitingForWallPin)
             {
@@ -1041,12 +1071,21 @@ namespace Ryona.Game
                     bool canHitHeld = frontHold != null && frontHold.IsGrappled &&
                         !frontHold.IsHandingOff && !frontHold.IsWallTransition && frontHold.Captor == this && frontHold.FrontEscapeRemaining <= 0f;
 
-                    // 押さえつけ中の膝蹴り（5 発）
+                    // 押さえつけ中の膝蹴り（5 発）。壁で二体目が居るときは膝を入れず、
+                    // 二人がかり（Y 字）へ切り替える。
                     if (canHitHeld && IsPinning && _pinKneesLeft > 0 && Time.time >= _pinNextKneeAt)
                     {
-                        _pinKneesLeft--;
-                        _pinNextKneeAt = Time.time + Mathf.Max(0.1f, CombatConstants.PinKneeInterval);
-                        DoPinKnee();
+                        if (IsWallPinning && _pinKneesLeft == CombatConstants.PinKneeCount &&
+                            frontHold != null && frontHold.TryBeginWallSplit(this))
+                        {
+                            _pinKneesLeft = 0;
+                        }
+                        else
+                        {
+                            _pinKneesLeft--;
+                            _pinNextKneeAt = Time.time + Mathf.Max(0.1f, CombatConstants.PinKneeInterval);
+                            DoPinKnee();
+                        }
                     }
 
                     // ベアハッグの締め付け。体を引き寄せ、密着した瞬間に HP を削る。
@@ -1145,6 +1184,11 @@ namespace Ryona.Game
             if (IsWallPinning)
             {
                 var wallHold = Player.GetComponent<PlayerGrapple>();
+                // 二体がかり（Y 字）中は、Update 側が彼女の横へ回り込む位置を決める。
+                // ここで正面の定位置へ戻すと、彼が正面に残ってカメラが背中になる。
+                if (wallHold != null && wallHold.IsWallSplitActive)
+                    return;
+
                 float t = wallHold != null ? wallHold.WallCaptorTravel : 1f;
                 transform.position = Vector3.Lerp(_wallFromPos, _wallToPos, t);
                 transform.rotation = Quaternion.Slerp(_wallFromRot, _wallToRot, t);
@@ -1177,10 +1221,11 @@ namespace Ryona.Game
 
             // 誰かが壁押さえつけしている間、他の敵はレーン（z=0）に留める。
             // 彼女の z に合わせると、全員が壁の前に押し寄せて壁へめり込む。
+            // ただし二体がかりのアシストは、彼女の横（壁際）に付くので除外する。
             if (_grapple == null && Player != null)
                 _grapple = Player.GetComponent<PlayerGrapple>();
             if (_grapple != null && _grapple.IsGrappled && _grapple.IsWallPin &&
-                _grapple.Captor != this)
+                _grapple.Captor != this && !IsWallAssisting)
             {
                 var lane = transform.position;
                 lane.z = 0f;
@@ -2126,6 +2171,139 @@ namespace Ryona.Game
 
             if (_pinKneesLeft == 0 && grapple.Captor == this)
                 FindFirstObjectByType<GrappleHandOff>()?.TryPinChain(grapple);
+        }
+
+        // --- 壁・二体がかり（Y 字）のアシスト役 -------------------------
+
+        /// <summary>二体目として壁押さえつけに加わる。横の持ち場へ移動する。</summary>
+        internal void BeginWallAssist(PlayerGrapple hold)
+        {
+            if (hold == null || !hold.IsWallPin)
+                return;
+
+            _wallAssistHold = hold;
+            _wallAssistReady = false;
+            // 押さえ役は彼女の左側（+X）で左腕を右手で持つので、アシストは右側（-X）に付く。
+            _wallAssistSide = -1f;
+
+            IsPinning = false;
+            IsHolding = false;
+            StopFlanking();
+            if (Group != null)
+                Group.ReleaseAttackToken(this);
+            if (Phase == EnemyPhase.Windup || Phase == EnemyPhase.Attack)
+                CancelWindup();
+
+            Debug.Log($"[WallSplit] assist {name} side={_wallAssistSide:F0}");
+        }
+
+        /// <summary>二体がかりを降りる（6 発が終わった／脱出された）。</summary>
+        internal void ReleaseWallAssist()
+        {
+            if (_wallAssistHold == null)
+                return;
+
+            _wallAssistHold = null;
+            _wallAssistReady = false;
+            HoldFire(0.8f);
+            Debug.Log($"[WallSplit] assist {name} release");
+        }
+
+        /// <summary>アシストが来なかったとき、拘束役の膝蹴りを再開する。</summary>
+        internal void ResumePinKnees()
+        {
+            if (!IsPinning)
+                return;
+
+            _pinKneesLeft = Mathf.Max(1, CombatConstants.PinKneeCount);
+            _pinNextKneeAt = Time.time + 0.25f;
+        }
+
+        /// <summary>横の持ち場へ寄り、彼女の方を向く。着いたら ready を立てる。</summary>
+        void UpdateWallAssist(float dt)
+        {
+            var hold = _wallAssistHold;
+            if (hold == null || !hold.IsGrappled || !hold.IsWallPin)
+            {
+                ReleaseWallAssist();
+                return;
+            }
+
+            Vector3 her = hold.transform.position;
+            Vector3 forward = Vector3.ProjectOnPlane(hold.transform.forward, Vector3.up).normalized;
+            Vector3 spot = her
+                + Vector3.right * (_wallAssistSide * CombatConstants.WallSplitAssistGap)
+                + forward * 0.28f;
+            spot.y = transform.position.y;
+
+            float speed = MoveSpeed * State.MoveSpeedMultiplier;
+            transform.position = Vector3.MoveTowards(transform.position, spot, speed * dt);
+
+            Vector3 look = her - transform.position;
+            look.y = 0f;
+            if (look.sqrMagnitude > 0.0004f)
+            {
+                Quaternion facing = Quaternion.LookRotation(look.normalized, Vector3.up);
+                transform.rotation = Quaternion.Slerp(transform.rotation, facing,
+                    1f - Mathf.Exp(-10f * dt));
+            }
+
+            if (!_wallAssistReady && (transform.position - spot).sqrMagnitude < 0.02f)
+            {
+                _wallAssistReady = true;
+                Debug.Log($"[WallSplit] assist {name} ready");
+            }
+        }
+
+        /// <summary>
+        /// 二人がかり中の拘束役。彼女の左側（+X）へ回り込み、左腕を右手で持ったまま
+        /// 空いた左手で腹を打つ。正面に立ったままだと正面のカメラが背中になる。
+        /// </summary>
+        void UpdateWallSplitCaptor(float dt, PlayerGrapple hold)
+        {
+            Vector3 her = hold.transform.position;
+            Vector3 forward = Vector3.ProjectOnPlane(hold.transform.forward, Vector3.up).normalized;
+            Vector3 spot = her
+                + Vector3.right * CombatConstants.WallSplitAssistGap
+                + forward * 0.28f;
+            spot.y = transform.position.y;
+
+            // 押さえつけ中は移動速度倍率が 0 のことがあるので、位置合わせは定速で行う。
+            float speed = Mathf.Max(1.2f, MoveSpeed);
+            transform.position = Vector3.MoveTowards(transform.position, spot, speed * dt);
+
+            Vector3 look = her - transform.position;
+            look.y = 0f;
+            if (look.sqrMagnitude > 0.0004f)
+            {
+                Quaternion facing = Quaternion.LookRotation(look.normalized, Vector3.up);
+                transform.rotation = Quaternion.Slerp(transform.rotation, facing,
+                    1f - Mathf.Exp(-10f * dt));
+            }
+        }
+
+        /// <summary>二人がかりの腹パン 1 発。見た目は空き手のポーズ側が作る。</summary>
+        internal void DoWallSplitPunch()        {
+            if (Player == null || Player.IsDead)
+                return;
+
+            var punch = new AttackData
+            {
+                id = "wall_split_punch",
+                kind = AttackKind.Light,
+                damage = Mathf.Max(0f, CombatConstants.WallSplitPunchDamage),
+                partDamage = 0f,
+                targetPart = BodyPart.Torso,
+                flinch = 4f,
+                startupSeconds = 0f,
+                activeSeconds = 0f,
+                recoverySeconds = 0f
+            };
+
+            Player.LastHitZone = PunchZone.Body;
+            Player.ReceiveHit(State, punch, transform, CombatConstants.WallSplitPunchBelly);
+            PlaySfx(SfxId.Impact, 0.8f);
+            Debug.Log($"[WallSplit] punch {name} hp={Player.State.Hp:F0} belly={Player.HeldBellyDamage:F0}");
         }
 
         /// <summary>

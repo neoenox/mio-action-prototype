@@ -18,6 +18,7 @@ namespace Ryona.Tests
         PlayerStats _player;
         PlayerGrapple _grapple;
         EnemyBrain _captor;
+        EnemyBrain _assist;
 
         /// <summary>テストで置いた壁の中心 X。押さえ役を毎回ここ基準で置き直す。</summary>
         float _wallCenterX;
@@ -345,7 +346,7 @@ namespace Ryona.Tests
         }
 
         /// <summary>壁の前（レーン上）に彼女と押さえ役を置く。</summary>
-        IEnumerator Load()
+        IEnumerator Load(bool withAssist = false)
         {
             yield return TestScene.LoadPrototype();
 
@@ -359,8 +360,18 @@ namespace Ryona.Tests
             Assert.GreaterOrEqual(enemies.Length, 1, "押さえ役が必要");
 
             _captor = enemies[0];
+            _assist = null;
             for (int i = 1; i < enemies.Length; i++)
+            {
+                // 二体がかりのテストでは、2 体目だけ残して横に立たせる。
+                if (withAssist && i == 1)
+                {
+                    _assist = enemies[i];
+                    enemies[i].enabled = true;
+                    continue;
+                }
                 enemies[i].enabled = false;
+            }
 
             // 無効化した敵が攻撃トークンを持ったままだと、押さえ役が予備動作に入れない。
             var group = Object.FindFirstObjectByType<EnemyGroup>();
@@ -410,6 +421,15 @@ namespace Ryona.Tests
             _captor.transform.rotation = Quaternion.LookRotation(Vector3.left);
             _captor.CanPin = true;
             _captor.enabled = true;
+
+            if (_assist != null)
+            {
+                // 二体目は彼女の反対側（-X）に立たせる。攻撃は止めて、持ち場待ちにする。
+                _assist.transform.position = lane + Vector3.left * 1.6f;
+                _assist.transform.rotation = Quaternion.LookRotation(Vector3.right);
+                _assist.CanPin = false;
+                _assist.HoldFire(60f);
+            }
 
             // VRM の読み込みが終わるまで timeScale が 0 のことがある。
             // その間は AI が進まないので、動く状態になってから返す。
@@ -642,6 +662,100 @@ namespace Ryona.Tests
             Assert.Less(midHips, idleHips - 0.008f,
                 $"戻っている途中なのに立ち姿勢へ戻っている（腰が壁姿勢の高さに残っていない）"
                 + $" pinned={pinnedHips:F3} mid={midHips:F3} idle={idleHips:F3}");
+        }
+
+        // --- 壁・二体がかり（Y 字） ---------------------------------
+
+        [UnityTest]
+        public IEnumerator 壁拘束で二体目がいると膝を入れず二人がかりになる()
+        {
+            yield return Load(withAssist: true);
+            _captor.QueuePin();
+            yield return WaitForGrapple();
+            Assert.IsTrue(_grapple.IsWallPin, "壁押さえつけが始まらない");
+
+            float hp = _player.State.Hp;
+            float deadline = Time.realtimeSinceStartup + 9f;
+            while (!_grapple.IsWallSplitActive && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.IsTrue(_grapple.IsWallSplitActive, "二人がかり（Y 字）が始まらない");
+            Assert.AreEqual(_assist, _grapple.WallAssist, "アシストが二体目になっていない");
+            Assert.AreEqual(CombatConstants.WallSplitEscapeInputs, _grapple.RequiredInputs, 0.1f,
+                "二人がかりの連打必要数になっていない");
+
+            // 膝蹴りは入っていない（膝 5 発ぶんは減らない）。
+            Assert.Greater(_player.State.Hp, hp - 12f, "二人がかりなのに膝蹴りが入っている");
+
+            // 手首が左右へ開いている（Y 字）。
+            var anim = _player.GetComponentInChildren<CharacterAnimator>();
+            Assert.IsNotNull(anim, "CharacterAnimator が無い");
+            Assert.IsTrue(anim.Rig != null && anim.Rig.Ready, "リグが完成していない");
+            yield return WaitGameSeconds(0.35f);
+            float spread = Mathf.Abs(anim.Rig.LHand.position.x - anim.Rig.RHand.position.x);
+            Assert.Greater(spread, 0.5f, $"手首が Y 字に開いていない（{spread:F2}m）");
+        }
+
+        [UnityTest]
+        public IEnumerator 二人がかりの腹パンは交互に6発入る()
+        {
+            yield return Load(withAssist: true);
+            _captor.QueuePin();
+            yield return WaitForGrapple();
+
+            var attackers = new System.Collections.Generic.List<Transform>();
+            _player.HitReceived += result =>
+            {
+                if (result.Damage <= 0f)
+                    return;
+
+                Transform attacker = _player.LastAttacker;
+                if (attacker == _captor.transform || attacker == _assist.transform)
+                    attackers.Add(attacker);
+            };
+
+            float deadline = Time.realtimeSinceStartup + 12f;
+            while (attackers.Count < CombatConstants.WallSplitPunchCount &&
+                   Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.AreEqual(CombatConstants.WallSplitPunchCount, attackers.Count,
+                $"二人がかりの腹パンが {attackers.Count} 発しか入っていない");
+            for (int i = 0; i < attackers.Count; i++)
+            {
+                Transform expected = i % 2 == 0 ? _captor.transform : _assist.transform;
+                Assert.AreEqual(expected, attackers[i], $"{i + 1} 発目が交互になっていない");
+            }
+
+            // 6 発のあとは既存の投げ捨てでダウンする。
+            deadline = Time.realtimeSinceStartup + 6f;
+            while (!_player.IsDown && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.IsTrue(_player.IsDown, "二人がかりのあと投げ捨てでダウンしない");
+        }
+
+        [UnityTest]
+        public IEnumerator 二人がかりは連打18回で脱出できる()
+        {
+            yield return Load(withAssist: true);
+            _captor.QueuePin();
+            yield return WaitForGrapple();
+
+            float deadline = Time.realtimeSinceStartup + 9f;
+            while (!_grapple.IsWallSplitActive && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.IsTrue(_grapple.IsWallSplitActive, "二人がかりが始まらない");
+
+            int need = Mathf.CeilToInt(_grapple.RequiredInputs);
+            Assert.AreEqual(Mathf.CeilToInt(CombatConstants.WallSplitEscapeInputs), need,
+                "二人がかりの連打必要数が 18 になっていない");
+            for (int i = 0; i < need; i++)
+                _grapple.Struggle();
+            yield return null;
+
+            Assert.IsFalse(_grapple.IsGrappled, "連打しても二人がかりから抜けられない");
+            Assert.IsFalse(_grapple.IsWallSplitActive, "二人がかりの状態が残っている");
+            Assert.IsFalse(_assist.IsWallAssisting, "アシストが持ち場に残っている");
         }
     }
 }

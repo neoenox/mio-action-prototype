@@ -115,6 +115,28 @@ namespace Ryona
         public const float HeldBellyPunchDamage = 16f;
         public const float HeldKneeBellyDamage = 12f;
 
+        // --- 壁・二体がかり（Y字拘束） -------------------------------
+        /// <summary>二人がかりのときの腹パンの回数（左右の敵が 3 発ずつ交互）。</summary>
+        public const int WallSplitPunchCount = 6;
+
+        /// <summary>腹パンの間隔（秒）。1 発は「振りかぶり 0.22 + 戻り 0.33」。</summary>
+        public const float WallSplitPunchInterval = 0.55f;
+
+        /// <summary>腹パン 1 発の HP ダメージ。膝 5 発の代わりに 6 発で近い総量にする。</summary>
+        public const float WallSplitPunchDamage = 4f;
+
+        /// <summary>腹パン 1 発で溜まる腹ダメージ（膝 1 発 = 12 の代わり）。</summary>
+        public const float WallSplitPunchBelly = 10f;
+
+        /// <summary>二人がかりのときの脱出に必要な連打数（通常の 1.5 倍）。</summary>
+        public const float WallSplitEscapeInputs = 18f;
+
+        /// <summary>Y 字に広げたときの手首の横位置（m、中心から）。</summary>
+        public const float WallSplitHandHalf = 0.48f;
+
+        /// <summary>二体目が彼女の横に立つ距離（m）。</summary>
+        public const float WallSplitAssistGap = 0.62f;
+
         /// <summary>起き上がり完了後、この秒数はダウンしない（無限ダウンの防止）。</summary>
         public const float DownImmunitySeconds = 1.0f;
 

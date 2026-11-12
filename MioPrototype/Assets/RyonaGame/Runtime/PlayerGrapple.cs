@@ -98,6 +98,37 @@ namespace Ryona.Game
         internal bool IsWallToss => IsWallPin && WallPhase >= WallStage.TossWindup;
         internal float WallTossLower => Mathf.SmoothStep(0f, 1f, WallPhaseProgress);
 
+        // --- 壁・二体がかり（Y 字拘束） -------------------------------
+        /// <summary>もう一人の拘束役（アシスト）。居なければ null。</summary>
+        public EnemyBrain WallAssist { get; private set; }
+
+        /// <summary>Y 字拘束の見た目 0..1（手首の開き・二人の腕の持ち方に使う）。</summary>
+        internal float WallSplitWeight { get; private set; }
+
+        /// <summary>二体目が横に着いて、二人で押さえ始めたか。</summary>
+        public bool IsWallSplitActive => IsWallPin && WallPhase == WallStage.Held &&
+            WallAssist != null && _wallSplitReady && WallAssist.IsAlive && WallAssist.isActiveAndEnabled;
+
+        /// <summary>いま殴る側（拘束役かアシスト）。null なら待ち。</summary>
+        internal EnemyBrain WallSplitPuncher { get; private set; }
+
+        /// <summary>いまの 1 発の経過秒（0 = 振りかぶり開始、負 = 待ち）。</summary>
+        internal float WallSplitPunchAge { get; private set; } = -1f;
+
+        /// <summary>二人がかりで入った腹パンの数（HUD 用）。</summary>
+        internal int WallSplitHits => _wallSplitHits;
+
+        /// <summary>打つ手が左か（アシスト=右、拘束役=左）。ポーズ側が空き手を選ぶ。</summary>
+        internal bool WallSplitPunchLeft { get; private set; }
+
+        bool _wallSplitStarted;
+        bool _wallSplitReady;
+        int _wallSplitHits;
+        float _wallSplitAssistAge;
+
+        /// <summary>壁拘束が始まった時点で横に残しておく二体目（いなければ null）。</summary>
+        internal EnemyBrain WallAssistCandidate { get; private set; }
+
         /// <summary>
         /// 投げ捨てる向き（X の符号）。<see cref="BeginWallToss"/> が実際の投げ方向から決める。
         /// 拘束役ののけぞり（<see cref="EnemyFigure"/>）と彼女の手の逃がし先
@@ -378,6 +409,9 @@ namespace Ryona.Game
             WallAdhereWeight = Mathf.MoveTowards(WallAdhereWeight, adhereTarget,
                 Time.deltaTime / WallAdhereSeconds);
 
+            // 二体がかり（Y 字）の見た目。二人そろってから手首を広げる。
+            TickWallSplitWeight(Time.deltaTime);
+
             // 壁からレーンへ戻る。掴みが解けたあとも z を滑らかに戻さないと、
             // 1.4m 横へ瞬間移動したように見える。
             // 引き渡し（HandOff）は掴まれたままなので、IsGrappled では切らない。
@@ -572,6 +606,35 @@ namespace Ryona.Game
             _grabContactRemaining = 0f;
             _wallSite.BeginRise();
             SetWallStage(WallStage.Grab);
+
+            // 壁拘束の間、二体目は「退避」ではなく横で待たせる（二人がかりの準備）。
+            PickWallAssistCandidate();
+        }
+
+        /// <summary>壁拘束に加わる二体目を、拘束が始まった時点で選ぶ。</summary>
+        void PickWallAssistCandidate()
+        {
+            WallAssistCandidate = null;
+            float bestDistance = 5f;
+            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            {
+                if (enemy == null || enemy == Captor || !enemy.isActiveAndEnabled || !enemy.IsAlive ||
+                    enemy.IsRising || enemy.IsHolding || enemy.IsPinning || enemy.MoveSpeed <= 0f)
+                    continue;
+
+                float distance = Vector3.Distance(enemy.transform.position, transform.position);
+                if (distance >= bestDistance)
+                    continue;
+
+                bestDistance = distance;
+                WallAssistCandidate = enemy;
+            }
+
+            if (WallAssistCandidate != null)
+            {
+                WallAssistCandidate.BeginWallAssist(this);
+                Debug.Log($"[WallSplit] candidate {WallAssistCandidate.name} dist={bestDistance:F2}");
+            }
         }
 
         void SetWallStage(WallStage stage)
@@ -651,6 +714,178 @@ namespace Ryona.Game
             // +X をアリーナ内側とみなす（0 にすると投げ方向がゼロベクトルになる）。
             _wallTossSide = Mathf.Abs(interior) > 0.1f ? Mathf.Sign(interior) : 1f;
             SetWallStage(WallStage.TossWindup);
+        }
+
+        /// <summary>
+        /// 壁押さえつけ中に二体目が横へ入り、二人がかり（Y 字）になる。
+        /// 拘束役の EnemyBrain から、最初の膝蹴りのタイミングで呼ばれる。
+        /// 二体目が見つからなければ false（呼び出し側は従来の膝蹴りを続ける）。
+        /// </summary>
+        internal bool TryBeginWallSplit(EnemyBrain captor)
+        {
+            if (!IsWallPin || WallPhase != WallStage.Held || _wallSplitStarted || IsHandingOff)
+                return false;
+            if (Captor != captor || Stats == null || Stats.IsDown || Stats.IsDead)
+                return false;
+
+            // 壁拘束の開始時に選んでおいた二体目を優先する（すでに横で待っている）。
+            EnemyBrain best = WallAssistCandidate;
+            if (best != null && (!best.isActiveAndEnabled || !best.IsAlive || best.IsHolding ||
+                best.IsHandOffLocked || best.IsPinning))
+                best = null;
+
+            float bestDistance = best != null
+                ? Vector3.Distance(best.transform.position, transform.position) : 5f;
+            if (best == null)
+            {
+                foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+                {
+                    if (enemy == null || enemy == captor || !enemy.isActiveAndEnabled || !enemy.IsAlive ||
+                        enemy.IsRising || enemy.IsHolding || enemy.IsHandOffLocked || enemy.IsPinning ||
+                        enemy.MoveSpeed <= 0f)
+                        continue;
+
+                    float distance = Vector3.Distance(enemy.transform.position, transform.position);
+                    if (distance >= bestDistance)
+                        continue;
+
+                    bestDistance = distance;
+                    best = enemy;
+                }
+            }
+            if (best == null)
+                return false;
+
+            WallAssistCandidate = best;
+            WallAssist = best;
+            _wallSplitStarted = true;
+            _wallSplitReady = best.WallAssistReady;
+            _wallSplitHits = 0;
+            _wallSplitAssistAge = 0f;
+            WallSplitWeight = 0f;
+            WallSplitPunchAge = -1f;
+            // 二人がかりの間は拘束時間を延ばす（膝 5 発ぶんの時間を使うため）。
+            _remaining = Mathf.Max(_remaining, 4.6f);
+            RequiredInputs = CombatConstants.WallSplitEscapeInputs;
+            if (!best.IsWallAssisting)
+                best.BeginWallAssist(this);
+            StartCoroutine(WallSplitRoutine());
+            Debug.Log($"[WallSplit] begin captor={captor.name} assist={best.name} " +
+                      $"dist={bestDistance:F2} ready={_wallSplitReady} need={RequiredInputs:F0}");
+            return true;
+        }
+
+        System.Collections.IEnumerator WallSplitRoutine()
+        {
+            // アシストが横へ着くまで待つ（来なければ通常の膝蹴りへ戻す）。
+            while (_wallSplitAssistAge < 1.2f && !_wallSplitReady &&
+                   WallAssist != null && WallAssist.IsAlive && WallAssist.isActiveAndEnabled)
+            {
+                _wallSplitAssistAge += Time.deltaTime;
+                if (WallAssist.WallAssistReady)
+                {
+                    _wallSplitReady = true;
+                    break;
+                }
+                yield return null;
+            }
+            if (!_wallSplitReady)
+            {
+                Debug.Log("[WallSplit] assist could not arrive - fallback to knees");
+                var captor = Captor;
+                EndWallSplit();
+                captor?.ResumePinKnees();
+                yield break;
+            }
+
+            // 手首を Y 字へ広げ、二人の持ち方へ移る（姿勢側は WallSplitWeight を見る）。
+            while (WallSplitWeight < 0.99f && IsWallSplitActive && Stats != null && !Stats.IsDown)
+                yield return null;
+            if (!IsWallSplitActive || Stats == null || Stats.IsDown)
+            {
+                EndWallSplit();
+                yield break;
+            }
+
+            for (int i = 0; i < CombatConstants.WallSplitPunchCount; i++)
+            {
+                if (!IsWallSplitActive || WallAssist == null || Stats == null || Stats.IsDown)
+                {
+                    EndWallSplit();
+                    yield break;
+                }
+
+                EnemyBrain puncher = i % 2 == 0 ? Captor : WallAssist;
+                WallSplitPuncher = puncher;
+                // 拘束役は右で彼女の左腕を持つので空き手は左。アシストは左で右腕を持つので空き手は右。
+                WallSplitPunchLeft = puncher == Captor;
+                WallSplitPunchAge = 0f;
+
+                // 振りかぶり（0.22 秒）
+                float t = 0f;
+                while (t < 0.22f)
+                {
+                    if (!IsWallSplitActive)
+                    {
+                        EndWallSplit();
+                        yield break;
+                    }
+                    t += Time.deltaTime;
+                    WallSplitPunchAge = t;
+                    yield return null;
+                }
+
+                puncher?.DoWallSplitPunch();
+                _wallSplitHits++;
+
+                // 戻り（合計 0.55 秒間隔）
+                while (t < CombatConstants.WallSplitPunchInterval)
+                {
+                    if (!IsWallSplitActive)
+                    {
+                        EndWallSplit();
+                        yield break;
+                    }
+                    t += Time.deltaTime;
+                    WallSplitPunchAge = t;
+                    yield return null;
+                }
+                WallSplitPunchAge = -1f;
+            }
+
+            // 6 発を打ち終えたらアシストを離し、既存の投げ捨てへ。
+            EndWallSplit();
+            if (IsWallPin && WallPhase == WallStage.Held && Captor != null &&
+                Stats != null && !Stats.IsDown)
+                BeginWallToss();
+        }
+
+        /// <summary>二人がかりを終える。アシストには退避を指示する。</summary>
+        void EndWallSplit()
+        {
+            var assist = WallAssist;
+            WallAssist = null;
+            WallSplitPuncher = null;
+            WallSplitPunchAge = -1f;
+            _wallSplitStarted = false;
+            _wallSplitReady = false;
+            _wallSplitHits = 0;
+            if (assist != null)
+                assist.ReleaseWallAssist();
+            if (WallAssistCandidate != null && WallAssistCandidate != assist)
+                WallAssistCandidate.ReleaseWallAssist();
+            WallAssistCandidate = null;
+
+            // もがき必要数を通常へ戻す（腕の負傷の扱いは BeginHold と同じ）。
+            if (IsWallPin && Stats != null)
+                RequiredInputs = ResistanceMath.RequiredInputs(Kind, 1f,
+                    Stats.State.Body[BodyPart.Arms]);
+        }
+
+        void TickWallSplitWeight(float dt)
+        {
+            float target = IsWallSplitActive ? 1f : 0f;
+            WallSplitWeight = Mathf.MoveTowards(WallSplitWeight, target, dt / 0.22f);
         }
 
         void TickWallToss()
@@ -1039,6 +1274,7 @@ namespace Ryona.Game
         /// </summary>
         public void Release()
         {
+            EndWallSplit();
             EndWallPin();
             bool wasGrappled = IsGrappled;
             ClearPinHandOff();
@@ -1248,6 +1484,7 @@ namespace Ryona.Game
         {
             if (IsWallPin && WallPhase == WallStage.Held && !Stats.IsDown)
             {
+                EndWallSplit();
                 BeginWallToss();
                 return;
             }
@@ -1291,6 +1528,16 @@ namespace Ryona.Game
             WallPhaseProgress = 0f;
             IsWallPin = false;
             _wallExitFromZ = transform.position.z;
+
+            // 二人がかりの途中で壁拘束が終わったら、二体目も持ち場から離す。
+            if (WallAssistCandidate != null)
+                WallAssistCandidate.ReleaseWallAssist();
+            WallAssistCandidate = null;
+            WallAssist = null;
+            _wallSplitStarted = false;
+            _wallSplitReady = false;
+            WallSplitPunchAge = -1f;
+            WallSplitPuncher = null;
 
             // 投げ捨てのときは、飛んでいる間に z をレーンへ戻す（壁の上をすり抜けない）。
             _wallExitSeconds = _wallThrowExitSeconds > 0f ? _wallThrowExitSeconds : WallExitSeconds;
