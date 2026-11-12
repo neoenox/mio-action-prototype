@@ -58,8 +58,8 @@
 | `-tagcam` | タッグ技の演出中だけ真横から撮る。打つ敵の腰・脚・肘を見るときに `-heldpunchburst` と併用 |
 | `-tagcamflip` | `-tagcam` のカメラを反対側へ回す（奥側の腕・拳を見る） |
 | `-punchlog` | 拘束中の顔面パンチの動きを毎フレーム数値で出力（`[PunchLog]`）。1 発ごとに `[PunchSum]`（拳の最高速・移動・肘・胸のひねり・腰の前進・彼女の頭の振れ）。「当たる瞬間が一番速いか」を測る |
-| `-heldpunchcamdist=` / `-heldpunchcampivot=` / `-heldpunchcampitch=` / `-heldpunchcamyaw=` | 腹パン中のカメラ値を起動時だけ差し替える（顔が入る構図の撮り比べ用）。既定は 0.28 / 0.27 / −12 / −40 |
-| `-heldpunchfacedist=` / `-heldpunchfacepivot=` / `-heldpunchfacepitch=` / `-heldpunchfaceyaw=` | **顔面パンチ中**のカメラ値を差し替える。既定は 0.28 / 0.46 / −8 / −18。再ビルドせずに撮り比べられる |
+| `-heldpunchcamdist=` / `-heldpunchcampivot=` / `-heldpunchcampitch=` / `-heldpunchcamyaw=` | 腹パン中のカメラ値を起動時だけ差し替える（顔が入る構図の撮り比べ用）。既定は 0.18 / 0.40 / −12 / −22（0.18 で約 0.94m。表情と腹へ入る拳が同じ画に入る） |
+| `-heldpunchfacedist=` / `-heldpunchfacepivot=` / `-heldpunchfacepitch=` / `-heldpunchfaceyaw=` | **顔面パンチ中**のカメラ値を差し替える。既定は 0.17 / 0.58 / −3 / −36（約 0.88m）。再ビルドせずに撮り比べられる |
 | `-heldpunchface=<0〜1>` | タッグ技が顔面を狙う確率を差し替える（既定 0.5）。`1` で顔面のみ、`0` で腹パンのみ |
 | `-tagarmL=` / `-tagelbowL=` / `-tagspreadL=` | タッグ技のあいだ、打たない左腕の角度を差し替える（既定 −12 / 126 / 2）。構えの撮り比べ用 |
 | `-pintest` | `-grappletest` と併用。押さえつけ（Pin）を正面から指示する（`CanPin` は既定 false） |
