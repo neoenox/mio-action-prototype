@@ -42,3 +42,7 @@ InitTestScene*.unity.meta
 
 # grapple_verify.py --baseline の作業用ワークツリー
 /.claude/worktrees/
+
+# Python
+__pycache__/
+*.pyc
