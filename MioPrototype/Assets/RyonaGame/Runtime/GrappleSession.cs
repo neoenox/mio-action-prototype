@@ -81,6 +81,12 @@ namespace Ryona.Game
         /// <summary>いまの 1 発の経過秒（0 = 振りかぶり開始、負 = 待ち）。</summary>
         public float SplitPunchAge { get; set; } = -1f;
 
+        /// <summary>
+        /// いまの 1 発の振りかぶり秒数。段階（序盤→締め）で変わるので、
+        /// 姿勢側が「溜めきる瞬間・当たる瞬間」を割り出すのにここを見る。
+        /// </summary>
+        public float SplitWindup { get; set; } = 0.16f;
+
         /// <summary>二人がかりで入った腹パンの数（HUD 用）。</summary>
         public int SplitHits { get; set; }
 
@@ -232,6 +238,7 @@ namespace Ryona.Game
             AssistCandidate = null;
             SplitPuncher = null;
             SplitPunchAge = -1f;
+            SplitWindup = 0.16f;
             SplitHits = 0;
             SplitPunchLeft = false;
             SplitFinisher = false;

@@ -179,7 +179,7 @@ namespace Ryona.Game
             if (!_session.SplitFinisher || _session.SplitPuncher != who || _session.SplitPunchAge < 0f)
                 return 0f;
 
-            float windup = CombatConstants.WallSplitHitWindup(CombatConstants.WallSplitPunchCount - 1);
+            float windup = _session.SplitWindup;
             float t = _session.SplitPunchAge;
             float coil = Mathf.SmoothStep(0f, 1f, t / (windup * 0.7f));
             float release = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(windup + 0.12f, windup + 0.50f, t));
@@ -197,7 +197,7 @@ namespace Ryona.Game
                 return 0f;
 
             float age = _session.SplitPunchAge;
-            float up = Mathf.SmoothStep(0f, 1f, age / CombatConstants.WallGangWindup);
+            float up = Mathf.SmoothStep(0f, 1f, age / Mathf.Max(0.01f, _session.SplitWindup));
             float down = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.30f, 0.50f, age));
             return up * (1f - down);
         }
@@ -213,7 +213,7 @@ namespace Ryona.Game
             if (!_session.SplitFinisher || _session.SplitPuncher != who || _session.SplitPunchAge < 0f)
                 return 0f;
 
-            float windup = CombatConstants.WallSplitHitWindup(CombatConstants.WallSplitPunchCount - 1);
+            float windup = _session.SplitWindup;
             float t = _session.SplitPunchAge;
             float up = Mathf.Pow(Mathf.InverseLerp(windup - 0.22f, windup, t), 2.2f);
             float down = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(windup + 0.04f, windup + 0.26f, t));

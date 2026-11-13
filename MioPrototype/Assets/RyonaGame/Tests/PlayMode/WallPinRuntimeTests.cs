@@ -900,10 +900,11 @@ namespace Ryona.Tests
                 }
 
                 // 顔パンの拳が、彼女の顔（頭の実際の位置）に届いているか。
+                // 振りかぶりは段階（序盤→締め）で変わるので、経過秒の窓では測らない。
+                // 1 発の間ずっと最接近を拾えば、いちばん近づく「当たった瞬間」が残る。
                 EnemyBrain facePuncher = _grapple.WallSplitPuncher;
                 if (facePuncher != null && _grapple.WallSplitFace && hitAnim != null && hitAnim.Rig != null &&
-                    hitAnim.Rig.Head != null && _grapple.WallSplitPunchAge >= CombatConstants.WallGangWindup &&
-                    _grapple.WallSplitPunchAge < CombatConstants.WallGangWindup + 0.10f)
+                    hitAnim.Rig.Head != null && _grapple.WallSplitPunchAge >= 0f)
                 {
                     var faceFigure = facePuncher.GetComponent<EnemyFigure>();
                     Transform fist = faceFigure != null ? faceFigure.Fist(_grapple.WallSplitPunchLeft) : null;

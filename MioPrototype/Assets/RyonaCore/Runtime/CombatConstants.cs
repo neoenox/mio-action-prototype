@@ -219,11 +219,58 @@ namespace Ryona
         /// <summary>3 人が順番に打つ回数（3 の倍数。休む暇なく続ける）。</summary>
         public const int WallGangStrikes = 15;
 
-        /// <summary>殴る・顔パンの振りかぶり（秒）。膝は <see cref="WallSplitHitWindup"/> の最後の値を使う。</summary>
-        public const float WallGangWindup = 0.16f;
+        /// <summary>
+        /// 序盤の打撃数。ここまでは「速く・軽く」で畳みかける。
+        /// 以前は 15 発すべて同じ間隔（0.50 秒固定）で、同じ 3 連が 5 回繰り返すだけだった。
+        /// 二体がかり側（<see cref="WallSplitHitInterval"/> 等）と同じく、段階で緩急を付ける。
+        /// </summary>
+        public const int WallGangOpeningHits = 4;
 
-        /// <summary>1 発ぶんの間隔（秒）。短いほど「ボコボコ」に見える。</summary>
-        public const float WallGangInterval = 0.50f;
+        /// <summary>3 人がかりの段階。0 = 序盤 / 1 = 中盤 / 2 = 締め（最後の 1 発）。</summary>
+        public static int WallGangStage(int index) =>
+            index < WallGangOpeningHits ? 0
+            : index < WallGangStrikes - 1 ? 1
+            : 2;
+
+        /// <summary>殴る・顔パンの振りかぶり（秒）。締めへ向けて溜める。</summary>
+        public static float WallGangWindup(int index) => WallGangStage(index) switch
+        {
+            0 => 0.12f,
+            1 => 0.15f,
+            _ => 0.20f
+        };
+
+        /// <summary>1 発ぶんの間隔（秒）。序盤は詰め、締めは空ける。</summary>
+        public static float WallGangInterval(int index) => WallGangStage(index) switch
+        {
+            0 => 0.34f,
+            1 => 0.44f,
+            _ => 0.60f
+        };
+
+        /// <summary>脚（膝・蹴り）の振りかぶり（秒）。足を上げきるのに拳より時間が要る。</summary>
+        public static float WallGangLegWindup(int index) => WallGangStage(index) switch
+        {
+            0 => 0.26f,
+            1 => 0.36f,
+            _ => 0.48f
+        };
+
+        /// <summary>脚（膝・蹴り）の間隔（秒）。振り抜きから戻すまで。</summary>
+        public static float WallGangLegInterval(int index) => WallGangStage(index) switch
+        {
+            0 => 0.52f,
+            1 => 0.78f,
+            _ => 1.05f
+        };
+
+        /// <summary>段階ごとの威力・揺れの倍率（種類別の倍率に掛ける）。</summary>
+        public static float WallGangImpactScale(int index) => WallGangStage(index) switch
+        {
+            0 => 0.75f,
+            1 => 1.0f,
+            _ => 1.25f
+        };
 
         /// <summary>
         /// 3 人目の持ち場（彼女の中心から +X 側へ / 前へ（カメラ側）、m）。画面右の手前の外側に立ち、蹴りを入れる。

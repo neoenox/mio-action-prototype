@@ -262,6 +262,7 @@ namespace Ryona.Game
                 // 段階（序盤→中盤→締め）ごとに振りかぶり・間隔・重さが変わる。
                 float windup = CombatConstants.WallSplitHitWindup(i);
                 float interval = CombatConstants.WallSplitHitInterval(i);
+                _session.SplitWindup = windup;
 
                 float t = 0f;
                 while (t < windup)
@@ -539,24 +540,29 @@ namespace Ryona.Game
 
                 _session.GangStriker = striker;
                 bool finisher = i == total - 1;
-                yield return WallGangStrike(striker, kinds[i], finisher);
+                yield return WallGangStrike(striker, kinds[i], finisher, i);
             }
 
             EndWallGang();
         }
 
         /// <summary>3 人がかりの 1 発。振りかぶり → 当たる → 間隔。</summary>
-        IEnumerator WallGangStrike(EnemyBrain puncher, WallStrikeKind kind, bool finisher)
+        IEnumerator WallGangStrike(EnemyBrain puncher, WallStrikeKind kind, bool finisher, int index)
         {
             if (puncher == null)
                 yield break;
 
             // 膝と蹴りは同じ枠（溜め → 突き上げ）で動く。
             bool legStrike = kind == WallStrikeKind.Knee || kind == WallStrikeKind.Kick;
+
+            // 段階（序盤→中盤→締め）で振りかぶりと間隔が伸びる。
+            // 序盤は詰めて畳みかけ、締めは溜めてから重く入れる。
             float windup = legStrike
-                ? CombatConstants.WallSplitHitWindup(CombatConstants.WallSplitPunchCount - 1)
-                : CombatConstants.WallGangWindup;
-            float interval = legStrike ? 0.85f : CombatConstants.WallGangInterval;
+                ? CombatConstants.WallGangLegWindup(index)
+                : CombatConstants.WallGangWindup(index);
+            float interval = legStrike
+                ? CombatConstants.WallGangLegInterval(index)
+                : CombatConstants.WallGangInterval(index);
             float scale = kind switch
             {
                 WallStrikeKind.Knee => finisher ? CombatConstants.WallGangFinisherScale : CombatConstants.WallGangKneeScale,
@@ -570,6 +576,7 @@ namespace Ryona.Game
             _session.SplitFinisher = legStrike;
             _session.SplitKick = kind == WallStrikeKind.Kick;
             _session.SplitFace = kind == WallStrikeKind.Face;
+            _session.SplitWindup = windup;
             _session.SplitPunchAge = 0f;
 
             float t = 0f;
@@ -585,9 +592,12 @@ namespace Ryona.Game
             puncher.DoWallSplitPunch(scale, kind == WallStrikeKind.Face ? PunchZone.Face : PunchZone.Body);
 
             // 1 発ごとに画面が応える（揺れ・ヒットストップ・フラッシュ）。当たった感じを出す。
+            // 段階が進むほど大きく応える（序盤は軽く、締めへ向けて重く）。
+            float stageImpact = CombatConstants.WallGangImpactScale(index);
             if (!finisher)
                 FindFirstObjectByType<CombatFeel>()?.OnWallGangHit(
-                    kind == WallStrikeKind.Belly ? 0.55f : kind == WallStrikeKind.Face ? 0.75f : 1.0f);
+                    (kind == WallStrikeKind.Belly ? 0.55f : kind == WallStrikeKind.Face ? 0.75f : 1.0f)
+                    * stageImpact);
 
             var anim = Animator();
             float progress = _session.GangTotal > 0 ? (float)_session.GangHits / _session.GangTotal : 0f;
@@ -600,7 +610,9 @@ namespace Ryona.Game
             else
             {
                 // 重さ: 腹パンでも深く折れる（実測: 0.9 だと「当たっている感」が無かった）。
-                float impact = legStrike ? (finisher ? 1.7f : 1.6f) : 1.15f;
+                // 段階倍率を掛けるが、1.0 を下回らせない（浅いと当たって見えない）。
+                float impact = (legStrike ? (finisher ? 1.7f : 1.6f) : 1.15f) * stageImpact;
+                impact = Mathf.Max(1.0f, impact);
                 anim?.PlayHeldBellyPunch(interval, Mathf.Clamp01(0.5f + 0.5f * progress), impact);
                 if (legStrike && finisher)
                     FindFirstObjectByType<CombatFeel>()?.OnWallSplitFinisher();
