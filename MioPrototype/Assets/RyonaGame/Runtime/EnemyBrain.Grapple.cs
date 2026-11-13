@@ -6,6 +6,10 @@ namespace Ryona.Game
     public sealed partial class EnemyBrain : MonoBehaviour, IDamageable
     {
         /// <summary>
+        /// 次の掴みの種類を固定する（撮影・テスト用）。null なら抽選。
+        /// </summary>
+        internal static GrappleKind? ForcedGrabKind { get; set; }
+        /// <summary>
         /// 掴みが当たったとき。プレイヤーを掴んだまま硬直を伸ばし、
         /// 振りほどかれる（=こちらがよろける）か時間切れで解放されるまで待つ。
         /// 掴めるのは背後に回れているときだけ（正面掴みは廃止した）。

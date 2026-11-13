@@ -18,6 +18,7 @@ namespace Ryona.Tests
         public void TearDown()
         {
             Time.timeScale = 1f;
+            EnemyBrain.ForcedGrabKind = null;
         }
 
         static IEnumerator LoadPrototype()
@@ -231,6 +232,9 @@ namespace Ryona.Tests
             player.transform.rotation = Quaternion.LookRotation(Vector3.right);
             holder.transform.position = player.transform.position + Vector3.left;
             holder.transform.rotation = Quaternion.LookRotation(Vector3.right);
+            // 背後からの掴みは羽交い締めと髪掴みの抽選なので、羽交い締めに固定する
+            // （髪掴みは時間切れで解けるため、このテストの前提と合わない）。
+            EnemyBrain.ForcedGrabKind = GrappleKind.Back;
             holder.QueueGrab();
             float deadline = Time.realtimeSinceStartup + 20f;
             while (!grapple.IsGrappled && Time.realtimeSinceStartup < deadline) yield return null;

@@ -24,6 +24,7 @@ namespace Ryona.Tests
         public void TearDown()
         {
             Time.timeScale = 1f;
+            EnemyBrain.ForcedGrabKind = null;
             if (_grapple != null && _grapple.IsGrappled)
                 _grapple.Release();
         }
@@ -31,6 +32,9 @@ namespace Ryona.Tests
         IEnumerator Load()
         {
             yield return TestScene.LoadPrototype();
+
+            // 背後からの掴みは羽交い締めと髪掴みの抽選。ここでは羽交い締めに固定する。
+            EnemyBrain.ForcedGrabKind = GrappleKind.Back;
 
             _player = Object.FindFirstObjectByType<PlayerStats>();
             Assert.IsNotNull(_player, "PlayerStats がシーンに無い");

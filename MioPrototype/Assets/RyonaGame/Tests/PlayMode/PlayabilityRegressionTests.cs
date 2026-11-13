@@ -8,6 +8,14 @@ namespace Ryona.Tests
 {
     public sealed class PlayabilityRegressionTests
     {
+        // 背後からの掴みは羽交い締めと髪掴みの抽選。このクラスは羽交い締めを前提にするので固定する
+        // （髪掴みは HairPullTests で検証する）。
+        [SetUp]
+        public void SetUp() => EnemyBrain.ForcedGrabKind = GrappleKind.Back;
+
+        [TearDown]
+        public void TearDown() => EnemyBrain.ForcedGrabKind = null;
+
         [UnityTest]
         public IEnumerator NewEncounterStartsItsOwnClock()
         {
