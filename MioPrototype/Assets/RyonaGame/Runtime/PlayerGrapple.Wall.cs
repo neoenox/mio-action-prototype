@@ -121,6 +121,7 @@ namespace Ryona.Game
                 SetWallStage(WallStage.Held);
                 _session.HeldSeconds = 0f;
                 Captor.TakeOverHold(CombatConstants.GrappleLimitSeconds + 4f);
+                StartWallSequence();
                 return;
             }
 
@@ -225,10 +226,9 @@ namespace Ryona.Game
             }
             if (!_session.SplitReady)
             {
-                Debug.Log("[WallSplit] assist could not arrive - fallback to knees");
-                var captor = Captor;
+                // 膝はこの前に済んでいるので、膝へは戻らない。二人がかりを飛ばして次へ進む。
+                GameLog.Log("[WallSplit] assist could not arrive - skip");
                 EndWallSplit();
-                captor?.ResumePinKnees();
                 yield break;
             }
 
@@ -249,7 +249,10 @@ namespace Ryona.Game
                     yield break;
                 }
 
-                EnemyBrain puncher = i % 2 == 0 ? Captor : WallAssist;
+                // アシストから始めて交互に打つ。6 発目（締めの膝入れ）は拘束役。
+                // カメラは既定でアシスト側にあるので、アシストが膝を入れると、手前の体が
+                // 彼女の腹を隠す。カメラから遠い側の拘束役が入れれば、腹へ入る膝が見える。
+                EnemyBrain puncher = i % 2 == 0 ? WallAssist : Captor;
                 _session.SplitPuncher = puncher;
                 // 拘束役は右で彼女の左腕を持つので空き手は左。アシストは左で右腕を持つので空き手は右。
                 _session.SplitPunchLeft = puncher == Captor;
@@ -298,11 +301,357 @@ namespace Ryona.Game
                 _session.SplitPunchAge = -1f;
             }
 
-            // 6 発を打ち終えたらアシストを離し、既存の投げ捨てへ。
-            EndWallSplit();
-            if (IsWallPin && WallPhase == WallStage.Held && Captor != null &&
-                Stats != null && !Stats.IsDown)
-                BeginWallToss();
+            // 6 発を打ち終えた。Y 字（二人で腕を持つ形）は次の猶予のあいだも続けるので、まだ解かない。
+            // 解くのは 3 人がかりが終わったあと（WallSequenceRoutine）。
+            _session.SplitPuncher = null;
+            _session.SplitPunchAge = -1f;
+            _session.SplitFinisher = false;
+            _session.SplitPunchesDone = true;
+        }
+
+        // --- 壁拘束の段階進行 ----------------------------------------------------------
+        // 壁拘束 → 膝蹴り（拘束役 1 人） → 猶予 → 二人がかりの腹パン → 猶予 → 解放（投げ捨て）。
+        // 猶予では連打で抜けられる。抜けられなければ次の段階へ進む。
+
+        bool _wallKneesDone;
+        Coroutine _wallSeq;
+
+        /// <summary>拘束役の膝蹴りが全部終わった。拘束役の EnemyBrain から呼ばれる。</summary>
+        internal void OnWallKneesFinished() => _wallKneesDone = true;
+
+        /// <summary>壁拘束の進行を続けられる状態か（拘束が解けた・倒れた・引き渡し中は止める）。</summary>
+        bool WallSequenceAlive =>
+            IsGrappled && IsWallPin && WallPhase == WallStage.Held && Captor != null &&
+            Stats != null && !Stats.IsDown && !Stats.IsDead && !IsHandingOff;
+
+        void StartWallSequence()
+        {
+            // 前回の進行が残っていれば先に片付ける（フラグが立ったままだと時間切れが止まる）。
+            StopWallSequence();
+
+            _wallKneesDone = false;
+            _session.WallSequenceActive = true;
+            _session.WallPauseActive = false;
+            _wallSeq = StartCoroutine(WallSequenceRoutine());
+        }
+
+        void StopWallSequence()
+        {
+            if (_wallSeq != null)
+            {
+                StopCoroutine(_wallSeq);
+                _wallSeq = null;
+            }
+
+            FinishWallSequence();
+        }
+
+        /// <summary>
+        /// 段階進行の後始末。正常終了・途中で抜けた（ダウン／死亡／引き渡し／相方が来ない等）の
+        /// どちらでも通るので、何度呼んでも安全。
+        /// <c>WallSequenceActive</c> を落とさないと、時間切れの解放（<see cref="PlayerGrapple"/> の
+        /// Update にある判定）が止まったままになり、壁拘束が解放されずに残る。
+        /// 3 人がかりの途中なら、3 人目を離して彼女の腕も戻す。
+        /// </summary>
+        void FinishWallSequence()
+        {
+            _wallSeq = null;
+            _session.WallSequenceActive = false;
+            _session.WallPauseActive = false;
+
+            if (_session.GangActive || _session.Third != null)
+                EndWallGang();
+        }
+
+        IEnumerator WallSequenceRoutine()
+        {
+            // 途中で抜けたときも後始末を必ず通す（yield break が何本あっても漏れないように try/finally）。
+            try
+            {
+                yield return WallSequenceSteps();
+            }
+            finally
+            {
+                FinishWallSequence();
+            }
+        }
+
+        /// <summary>段階進行の本体。終了時の後始末は <see cref="WallSequenceRoutine"/> が行う。</summary>
+        IEnumerator WallSequenceSteps()
+        {
+            // 1〜2. 猶予（連打で逃げる）→ 膝蹴り。膝は拘束役の既存の処理が入れる。終わるまで待つ。
+            float timeout = CombatConstants.FrontGrappleEscapeSeconds +
+                            CombatConstants.PinKneeCount * CombatConstants.PinKneeInterval + 4f;
+            float waited = 0f;
+            while (WallSequenceAlive && !_wallKneesDone && waited < timeout)
+            {
+                waited += Time.deltaTime;
+                yield return null;
+            }
+            if (!WallSequenceAlive)
+                yield break;
+
+            // 3. 拘束が続く。
+            yield return WallPause(CombatConstants.WallPauseInputsAfterKnees);
+            if (!WallSequenceAlive)
+                yield break;
+
+            // 4〜6. 二人がかりの腹パン → 拘束が続く → 3 人目が参戦。二体目が来なければ飛ばす。
+            if (TryBeginWallSplit(Captor))
+            {
+                while (_session.SplitStarted && !_session.SplitPunchesDone && WallSequenceAlive)
+                    yield return null;
+                if (!WallSequenceAlive)
+                    yield break;
+
+                // 二体目が来られなかったときは SplitStarted が落ちている（次へ進まず解放する）。
+                if (_session.SplitStarted)
+                {
+                    // 猶予のあいだに 3 人目を選び、待ち位置へ向かわせる（到着が間に合うように）。
+                    PrepareWallThird();
+                    yield return WallPause(CombatConstants.WallPauseInputsAfterSplit);
+                    if (!WallSequenceAlive)
+                        yield break;
+
+                    yield return WallGang();
+                    if (!WallSequenceAlive)
+                        yield break;
+                }
+
+                EndWallSplit();
+            }
+
+            // 7. 解放（投げ捨て）。
+            BeginWallToss();
+        }
+
+        enum WallStrikeKind
+        {
+            Belly,
+            Knee,
+            Face,
+            Kick
+        }
+
+        /// <summary>3 人目に選ぶ敵（拘束役・アシスト以外で、いちばん近い敵）。</summary>
+        EnemyBrain PickWallThird()
+        {
+            EnemyBrain best = null;
+            // 画面内の敵なら歩いて来られる距離（歩きで約 4 秒）。
+            float bestDistance = 10f;
+            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            {
+                if (enemy == null || enemy == Captor || enemy == _session.Assist)
+                    continue;
+
+                if (!enemy.isActiveAndEnabled || !enemy.IsAlive || enemy.IsRising ||
+                    enemy.IsHolding || enemy.IsPinning || enemy.IsWallAssisting ||
+                    enemy.IsHandOffLocked || enemy.MoveSpeed <= 0f)
+                {
+                    GameLog.Log($"[WallGang] skip {enemy.name}: enabled={enemy.isActiveAndEnabled} alive={enemy.IsAlive} " +
+                              $"rising={enemy.IsRising} holding={enemy.IsHolding} pinning={enemy.IsPinning} " +
+                              $"assisting={enemy.IsWallAssisting} handoff={enemy.IsHandOffLocked} speed={enemy.MoveSpeed:F1}");
+                    continue;
+                }
+
+                float distance = Vector3.Distance(enemy.transform.position, transform.position);
+                if (distance >= bestDistance)
+                {
+                    GameLog.Log($"[WallGang] skip {enemy.name}: too far {distance:F1}m");
+                    continue;
+                }
+
+                bestDistance = distance;
+                best = enemy;
+            }
+            return best;
+        }
+
+        /// <summary>3 人目を選び、待ち位置へ向かわせる。居なければ何もしない（3 人がかりは飛ばされる）。</summary>
+        void PrepareWallThird()
+        {
+            EnemyBrain third = PickWallThird();
+            if (third == null)
+                return;
+
+            _session.Third = third;
+            third.BeginWallAssist(this);
+            GameLog.Log($"[WallGang] third {third.name} heading to wait spot");
+        }
+
+        /// <summary>
+        /// 3 人がかり（最後の段階）。画面左のアシストは片手首を持ち続け、拘束役は手を離す
+        /// （彼女のその腕はだらんと下がる）。拘束役と 3 人目が入れ替わり立ち代わりで殴る蹴る。
+        /// アシストは合間に、空いた手で腹パンを入れる。3 人目がいなければ飛ばす。
+        /// </summary>
+        IEnumerator WallGang()
+        {
+            EnemyBrain third = _session.Third;
+            if (third == null || !third.IsAlive || !third.isActiveAndEnabled)
+            {
+                GameLog.Log("[WallGang] no third enemy - skip");
+                yield break;
+            }
+
+            _session.GangTotal = CombatConstants.WallGangStrikes;
+            _session.GangHits = 0;
+            _session.GangStriker = third;
+            _session.GangActive = true;
+
+            // 彼女はグロッキーで、抵抗できない（連打は受け付けない）。ここへ来る前の猶予が最後の脱出の機会。
+            // 制限時間は止めない。0 になっても、進行中は WallSequenceActive が時間切れの解放を止める。
+            // ここで 999 のような値を入れると、進行が途中で抜けたときに時間切れが二度と来なくなる。
+            _session.SuppressRemaining = 999f;
+            GameLog.Log($"[WallGang] begin third={third.name}");
+
+            // 3 人目が持ち場へ着くまで待つ（来なければ飛ばす）。
+            float arrive = 0f;
+            while (WallSequenceAlive && !third.WallAssistReady && arrive < 4f)
+            {
+                arrive += Time.deltaTime;
+                yield return null;
+            }
+            if (!WallSequenceAlive || !third.WallAssistReady)
+            {
+                EndWallGang();
+                yield break;
+            }
+
+            // アシストと拘束役は腹パン・顔パン・膝を混ぜる。遠くに立つ 3 人目は蹴りだけ（拳は届かない）。
+            // 最後は 3 人目の重い蹴り。3 人が順番に、休む暇なく続ける（順番: アシスト・拘束役・3 人目）。
+            var kinds = new[]
+            {
+                WallStrikeKind.Belly, WallStrikeKind.Face, WallStrikeKind.Kick,
+                WallStrikeKind.Face, WallStrikeKind.Belly, WallStrikeKind.Kick,
+                WallStrikeKind.Belly, WallStrikeKind.Face, WallStrikeKind.Kick,
+                WallStrikeKind.Knee, WallStrikeKind.Belly, WallStrikeKind.Kick,
+                WallStrikeKind.Face, WallStrikeKind.Knee, WallStrikeKind.Kick
+            };
+            int total = Mathf.Min(CombatConstants.WallGangStrikes, kinds.Length);
+            var strikers = new[] { WallAssist, Captor, third };
+
+            for (int i = 0; i < total && WallSequenceAlive; i++)
+            {
+                // 3 人は最初から持ち場に立っていて、入れ替わらず順番に打つ。
+                EnemyBrain striker = strikers[i % strikers.Length];
+                if (striker == null)
+                    continue;
+
+                _session.GangStriker = striker;
+                bool finisher = i == total - 1;
+                yield return WallGangStrike(striker, kinds[i], finisher);
+            }
+
+            EndWallGang();
+        }
+
+        /// <summary>3 人がかりの 1 発。振りかぶり → 当たる → 間隔。</summary>
+        IEnumerator WallGangStrike(EnemyBrain puncher, WallStrikeKind kind, bool finisher)
+        {
+            if (puncher == null)
+                yield break;
+
+            // 膝と蹴りは同じ枠（溜め → 突き上げ）で動く。
+            bool legStrike = kind == WallStrikeKind.Knee || kind == WallStrikeKind.Kick;
+            float windup = legStrike
+                ? CombatConstants.WallSplitHitWindup(CombatConstants.WallSplitPunchCount - 1)
+                : CombatConstants.WallGangWindup;
+            float interval = legStrike ? 0.85f : CombatConstants.WallGangInterval;
+            float scale = kind switch
+            {
+                WallStrikeKind.Knee => finisher ? CombatConstants.WallGangFinisherScale : CombatConstants.WallGangKneeScale,
+                WallStrikeKind.Kick => finisher ? CombatConstants.WallGangFinisherScale : CombatConstants.WallGangKickScale,
+                WallStrikeKind.Face => CombatConstants.WallGangFaceScale,
+                _ => CombatConstants.WallGangBellyScale
+            };
+            // 膝と蹴りは WallSplitKneeStrike（姿勢側が見る）を立てる。蹴りは SplitKick、顔パンは SplitFace を別に立てる。
+            _session.SplitPuncher = puncher;
+            _session.SplitPunchLeft = puncher == Captor;
+            _session.SplitFinisher = legStrike;
+            _session.SplitKick = kind == WallStrikeKind.Kick;
+            _session.SplitFace = kind == WallStrikeKind.Face;
+            _session.SplitPunchAge = 0f;
+
+            float t = 0f;
+            while (t < windup)
+            {
+                if (!WallSequenceAlive)
+                    yield break;
+                t += Time.deltaTime;
+                _session.SplitPunchAge = t;
+                yield return null;
+            }
+
+            puncher.DoWallSplitPunch(scale, kind == WallStrikeKind.Face ? PunchZone.Face : PunchZone.Body);
+
+            // 1 発ごとに画面が応える（揺れ・ヒットストップ・フラッシュ）。当たった感じを出す。
+            if (!finisher)
+                FindFirstObjectByType<CombatFeel>()?.OnWallGangHit(
+                    kind == WallStrikeKind.Belly ? 0.55f : kind == WallStrikeKind.Face ? 0.75f : 1.0f);
+
+            var anim = Animator();
+            float progress = _session.GangTotal > 0 ? (float)_session.GangHits / _session.GangTotal : 0f;
+            if (kind == WallStrikeKind.Face)
+            {
+                Vector3 push = transform.position - puncher.transform.position;
+                push.y = 0f;
+                anim?.PlayHeldFacePunch(0.45f, push, 1f);
+            }
+            else
+            {
+                // 重さ: 腹パンでも深く折れる（実測: 0.9 だと「当たっている感」が無かった）。
+                float impact = legStrike ? (finisher ? 1.7f : 1.6f) : 1.15f;
+                anim?.PlayHeldBellyPunch(interval, Mathf.Clamp01(0.5f + 0.5f * progress), impact);
+                if (legStrike && finisher)
+                    FindFirstObjectByType<CombatFeel>()?.OnWallSplitFinisher();
+            }
+            _session.GangHits++;
+
+            while (t < interval)
+            {
+                if (!WallSequenceAlive)
+                    yield break;
+                t += Time.deltaTime;
+                _session.SplitPunchAge = t;
+                yield return null;
+            }
+
+            _session.SplitPuncher = null;
+            _session.SplitPunchAge = -1f;
+            _session.SplitFinisher = false;
+            _session.SplitKick = false;
+            _session.SplitFace = false;
+        }
+
+        /// <summary>3 人がかりを終える。3 人目を持ち場から離し、拘束役の手を戻す。</summary>
+        void EndWallGang()
+        {
+            var third = _session.Third;
+            _session.SplitPuncher = null;
+            _session.SplitPunchAge = -1f;
+            _session.SplitFinisher = false;
+            _session.SplitFace = false;
+            _session.GangActive = false;
+            _session.GangStriker = null;
+            _session.SuppressRemaining = 0f;
+            if (third != null)
+                third.ReleaseWallAssist();
+            _session.Third = null;
+        }
+
+        /// <summary>段階の間の猶予。脱出に必要な連打数を入れ直し、残り秒を数える。</summary>
+        IEnumerator WallPause(int inputs)
+        {
+            RequiredInputs = inputs;
+            _resistance = new GrappleResistance(Kind, RequiredInputs);
+            _session.LimitRemaining = CombatConstants.WallPauseSeconds;
+            _session.WallPauseActive = true;
+            GameLog.Log($"[WallSequence] pause {CombatConstants.WallPauseSeconds:F1}s need={inputs}");
+
+            while (WallSequenceAlive && _session.LimitRemaining > 0f)
+                yield return null;
+
+            _session.WallPauseActive = false;
         }
 
         /// <summary>二人がかりを終える。アシストには退避を指示する。</summary>
@@ -310,7 +659,10 @@ namespace Ryona.Game
         {
             var assist = WallAssist;
             var candidate = WallAssistCandidate;
+            var third = _session.Third;
             _session.ClearSplit();
+            if (third != null)
+                third.ReleaseWallAssist();
             if (assist != null)
                 assist.ReleaseWallAssist();
             if (candidate != null && candidate != assist)
@@ -322,7 +674,11 @@ namespace Ryona.Game
                     Stats.State.Body[BodyPart.Arms]);
         }
 
-        void TickWallSplitWeight(float dt) => _session.TickSplitWeight(dt);
+        void TickWallSplitWeight(float dt)
+        {
+            _session.TickSplitWeight(dt);
+            _session.TickGangWeight(dt);
+        }
 
         void TickWallToss()
         {

@@ -65,6 +65,18 @@ namespace Ryona
         /// <summary>ベアハッグを振りほどくのに必要な入力回数。</summary>
         public const int MashBaseBearHug = 12;
 
+        /// <summary>足取り（足首を掴まれて転ばされる）を振りほどくのに必要な入力回数。短時間なので少なめ。</summary>
+        public const int MashBaseAnkleGrab = 8;
+
+        /// <summary>足取りの拘束時間（秒）。振りほどけなければ前へ転ぶ。</summary>
+        public const float AnkleGrabLimitSeconds = 1.6f;
+
+        /// <summary>足取りで、敵の体から彼女までの距離（m）。低く沈んだ敵の腕が足首まで届く。</summary>
+        public const float AnkleGrabStandoff = 0.85f;
+
+        /// <summary>走って逃げる彼女を背後から掴んだとき、足取りになる割合。残りは羽交い締め。</summary>
+        public const float AnkleGrabChance = 0.5f;
+
         /// <summary>
         /// 押さえつけ（<see cref="GrappleKind.Pin"/>）で掴まれてから解放されるまでの猶予（秒）。
         /// 掴まれてすぐ膝蹴りを始めず、しばらくそのまま押さえる（脱出する猶予）。
@@ -156,18 +168,6 @@ namespace Ryona
         /// <summary>腹パン 1 発で溜まる腹ダメージ（膝 1 発 = 12 の代わり）。</summary>
         public const float WallSplitPunchBelly = 10f;
 
-        /// <summary>二人がかりのときの脱出に必要な連打数（通常の 1.5 倍）。</summary>
-        public const float WallSplitEscapeInputs = MashBasePin * 1.5f;
-
-        /// <summary>Y 字に広げたときの手首の横位置（m、中心から）。</summary>
-        public const float WallSplitHandHalf = 0.48f;
-
-        /// <summary>二体目が彼女の横に立つ距離（m）。</summary>
-        public const float WallSplitAssistGap = 0.62f;
-
-        /// <summary>二人がかりで二人が彼女の正面側に立つときの、横のずれ（m、中心から）。</summary>
-        public const float WallSplitStandGap = 0.45f;
-
         /// <summary>序盤（軽い腹パンを速いテンポで交互に）の発数。</summary>
         public const int WallSplitOpeningHits = 3;
 
@@ -210,8 +210,75 @@ namespace Ryona
         /// <summary>締めの 1 発か。</summary>
         public static bool IsWallSplitFinisher(int index) => index >= WallSplitBuildHits;
 
+        /// <summary>壁拘束の段階の間（膝のあと・二人がかりのあと）に、連打で逃げられる猶予（秒）。</summary>
+        public const float WallPauseSeconds = 1.5f;
+
+        /// <summary>膝蹴りのあとの猶予で、脱出に必要な連打数。</summary>
+        public const int WallPauseInputsAfterKnees = 10;
+
+        /// <summary>二人がかりのあとの猶予で、脱出に必要な連打数（段階が進むほど重い）。</summary>
+        public const int WallPauseInputsAfterSplit = 14;
+
+        // --- 3 人がかり（壁拘束の最後の段階） --------------------------------------------
+        // 二人がかりの腹パンの最後で、彼女は壁に寄りかかってグロッキーになる。誰も彼女を持たない
+        // （抵抗もできない）。そこを 3 人（アシスト・拘束役・3 人目）が順番に殴る蹴る。
+
+        /// <summary>3 人が順番に打つ回数（3 の倍数。休む暇なく続ける）。</summary>
+        public const int WallGangStrikes = 15;
+
+        /// <summary>殴る・顔パンの振りかぶり（秒）。膝は <see cref="WallSplitHitWindup"/> の最後の値を使う。</summary>
+        public const float WallGangWindup = 0.16f;
+
+        /// <summary>1 発ぶんの間隔（秒）。短いほど「ボコボコ」に見える。</summary>
+        public const float WallGangInterval = 0.50f;
+
+        /// <summary>
+        /// 3 人目の持ち場（彼女の中心から +X 側へ / 前へ（カメラ側）、m）。画面右の手前の外側に立ち、蹴りを入れる。
+        /// 彼女の正面に立つと彼女が隠れる。拘束役と同じ奥行きだと、蹴りの脚が拘束役の体を通って見える
+        /// （実測）ので、拘束役より手前に出す。
+        /// </summary>
+        public const float WallGangThirdLateral = 0.70f;
+        public const float WallGangThirdDepth = 0.70f;
+
+        /// <summary>3 人がかりでの拘束役の持ち場。3 人目の蹴りの脚が通らないよう、少し奥（壁寄り）へ下がる。</summary>
+        public const float WallGangCaptorLateral = 0.55f;
+        public const float WallGangCaptorDepth = 0.30f;
+
+        /// <summary>威力の倍率（二人がかりの 1 発 = 1.0）。回数が多いので、HP が尽きないよう 1 発は軽くする。</summary>
+        public const float WallGangBellyScale = 0.45f;
+        public const float WallGangFaceScale = 0.40f;
+        public const float WallGangKneeScale = 0.8f;
+        public const float WallGangFinisherScale = 1.4f;
+
+        /// <summary>3 人がかりの間、カメラを引く量（m）。3 人が画面に収まるように。</summary>
+        public const float WallGangCameraBack = 0.55f;
+
+        /// <summary>3 人がかりの間、カメラの狙いを 3 人目の側（画面右）へ寄せる量（m）。</summary>
+        public const float WallGangCameraShift = 0.30f;
+
+        /// <summary>3 人目の蹴りの威力の倍率。</summary>
+        public const float WallGangKickScale = 0.9f;
+
+        /// <summary>二人がかりのときの脱出に必要な連打数（通常の 1.5 倍）。</summary>
+        public const float WallSplitEscapeInputs = MashBasePin * 1.5f;
+
+        /// <summary>Y 字に広げたときの手首の横位置（m、中心から）。</summary>
+        public const float WallSplitHandHalf = 0.48f;
+
+        /// <summary>二体目が彼女の横に立つ距離（m）。</summary>
+        public const float WallSplitAssistGap = 0.62f;
+
+        /// <summary>二人がかりで二人が彼女の正面側に立つときの、横のずれ（m、中心から）。</summary>
+        public const float WallSplitStandGap = 0.45f;
+
         /// <summary>二人がかりで二人が彼女の正面側に立つときの、前への距離（m）。</summary>
         public const float WallSplitStandFront = 0.55f;
+
+        /// <summary>締めの膝入れで、打つ側が踏み込む位置の横のずれ（m、彼女の中心から）。斜めから腹へ入る。</summary>
+        public const float WallSplitKneeGap = 0.30f;
+
+        /// <summary>締めの膝入れで、打つ側が踏み込む位置の前への距離（m）。</summary>
+        public const float WallSplitKneeFront = 0.34f;
 
         /// <summary>起き上がり完了後、この秒数はダウンしない（無限ダウンの防止）。</summary>
         public const float DownImmunitySeconds = 1.0f;

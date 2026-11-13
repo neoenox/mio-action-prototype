@@ -107,12 +107,72 @@ namespace Ryona.Game
         /// <summary>二人がかりで入った腹パンの数（HUD 用）。</summary>
         internal int WallSplitHits => _session.SplitHits;
 
+        /// <summary>壁拘束の段階の間の猶予の残り秒（猶予中でなければ 0）。HUD 用。</summary>
+        internal float WallPauseRemaining =>
+            _session.WallPauseActive ? Mathf.Max(0f, _session.LimitRemaining) : 0f;
+
+        /// <summary>3 人目（居なければ null）。</summary>
+        internal EnemyBrain WallThird => _session.Third;
+
+        /// <summary>3 人がかりで、いま前へ入って打つ側。もう一人は横で待つ。</summary>
+        internal EnemyBrain WallGangStriker => _session.GangStriker;
+
+        /// <summary>3 人がかりの段階か。</summary>
+        internal bool IsWallGangActive => _session.GangActive;
+
+        /// <summary>拘束役が手を離して、彼女の腕が下がる見た目 0..1。</summary>
+        internal float WallGangWeight => _session.GangWeight;
+
+        internal int WallGangHits => _session.GangHits;
+        internal int WallGangTotal => _session.GangTotal;
+
+        /// <summary>いまの 1 発が顔パンか。</summary>
+        internal bool WallSplitFace => _session.SplitFace;
+
+        /// <summary>いまの 1 発が蹴りか（膝入れと同じ枠で動くが、脚をまっすぐ伸ばす）。</summary>
+        internal bool WallSplitKick => _session.SplitKick;
+
+        /// <summary>
+        /// 3 人がかりでの持ち場。3 人目は画面右の手前の外側、拘束役はその奥へ下がる。
+        /// アシストは二人がかりのときの位置のまま（false を返す）。
+        /// </summary>
+        internal bool TryGetWallGangSlot(EnemyBrain who, out float lateral, out float depth)
+        {
+            lateral = 0f;
+            depth = 0f;
+            if (who == null)
+                return false;
+
+            // 3 人目は、3 人がかりが始まる前（猶予のあいだ）から持ち場へ向かう。
+            // 拘束役は、3 人がかりの間だけ少し奥へ下がる（3 人目の蹴りの脚が通るので）。
+            // アシストは二人がかりのときの位置のまま（左から打つ）。
+            if (who == _session.Third)
+            {
+                lateral = CombatConstants.WallGangThirdLateral;
+                depth = CombatConstants.WallGangThirdDepth;
+                return true;
+            }
+
+            if (_session.GangActive && who == Captor)
+            {
+                lateral = CombatConstants.WallGangCaptorLateral;
+                depth = CombatConstants.WallGangCaptorDepth;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>壁拘束の段階進行が動いているか。HUD 用。</summary>
+        internal bool IsWallSequenceActive => _session.WallSequenceActive;
+
         /// <summary>いまの 1 発が締めの膝入れか（腕のパンチは出さない）。</summary>
         internal bool WallSplitKneeStrike => _session.SplitFinisher;
 
         /// <summary>
-        /// 締めの膝入れの上がり具合（0..1）。<paramref name="who"/> が打つ側のときだけ値を返す。
-        /// 振りかぶりの間に膝を引き上げ、当たった瞬間が最大、そのあと下ろす。
+        /// 締めの膝入れの「溜め」（0..1）。<paramref name="who"/> が打つ側のときだけ値を返す。
+        /// 振りかぶりの間に腰を沈めて体を溜め、当たったあとにゆっくり戻る。
+        /// 膝そのものの突き上げは <see cref="WallSplitKneeThrust"/>。
         /// </summary>
         internal float WallSplitKneeWeight(EnemyBrain who)
         {
@@ -121,8 +181,42 @@ namespace Ryona.Game
 
             float windup = CombatConstants.WallSplitHitWindup(CombatConstants.WallSplitPunchCount - 1);
             float t = _session.SplitPunchAge;
-            float up = Mathf.SmoothStep(0f, 1f, t / windup);
-            float down = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(windup + 0.10f, windup + 0.50f, t));
+            float coil = Mathf.SmoothStep(0f, 1f, t / (windup * 0.7f));
+            float release = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(windup + 0.12f, windup + 0.50f, t));
+            return coil * (1f - release);
+        }
+
+        /// <summary>
+        /// 顔パンを打つ側の踏み込み（0..1）。<paramref name="who"/> が顔パンを打つ間だけ値を返す。
+        /// 二人がかりの立ち位置（横 0.45m・前 0.55m）からは、腕が顔まで届かない（実測: 顔から 8cm 手前で止まる）。
+        /// 振りかぶりの間に、顔に届く位置まで踏み込み、打ったあとに戻る。
+        /// </summary>
+        internal float WallSplitFaceStep(EnemyBrain who)
+        {
+            if (!_session.SplitFace || _session.SplitPuncher != who || _session.SplitPunchAge < 0f)
+                return 0f;
+
+            float age = _session.SplitPunchAge;
+            float up = Mathf.SmoothStep(0f, 1f, age / CombatConstants.WallGangWindup);
+            float down = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.30f, 0.50f, age));
+            return up * (1f - down);
+        }
+
+        /// <summary>
+        /// 締めの膝の突き上げ（0..1）。溜めたあと、当たる直前に素早く突き上げ、当たってから引く。
+        /// 姿勢は補間で遅れて追うので、立ち上がりは 0.22 秒前から、当たった後 0.04 秒で引き始める
+        /// （短いと膝が最後まで上がりきらない）。ゆっくり上げ続けると「足上げ」に見えるので、
+        /// 立ち上がりの形は急にしてある。
+        /// </summary>
+        internal float WallSplitKneeThrust(EnemyBrain who)
+        {
+            if (!_session.SplitFinisher || _session.SplitPuncher != who || _session.SplitPunchAge < 0f)
+                return 0f;
+
+            float windup = CombatConstants.WallSplitHitWindup(CombatConstants.WallSplitPunchCount - 1);
+            float t = _session.SplitPunchAge;
+            float up = Mathf.Pow(Mathf.InverseLerp(windup - 0.22f, windup, t), 2.2f);
+            float down = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(windup + 0.04f, windup + 0.26f, t));
             return up * (1f - down);
         }
 
@@ -231,7 +325,8 @@ namespace Ryona.Game
         /// <summary>掴まれてからの経過秒。ログとテスト用。</summary>
         public float HeldSeconds => _session.HeldSeconds;
 
-        public float FrontEscapeRemaining => IsGrappled && !IsHandingOff && HasTimeLimit
+        public float FrontEscapeRemaining => IsGrappled && !IsHandingOff && HasTimeLimit &&
+                                             Kind != GrappleKind.AnkleGrab
             ? Mathf.Max(0f, CombatConstants.FrontGrappleEscapeSeconds - _session.HeldSeconds)
             : 0f;
 
@@ -547,7 +642,8 @@ namespace Ryona.Game
             if (HasTimeLimit)
             {
                 _session.LimitRemaining = Mathf.Max(0f, _session.LimitRemaining - Time.deltaTime);
-                if (_session.LimitRemaining <= 0f && _pinReceiver == null)
+                // 壁拘束の段階進行が動いている間は、進行が自分で次へ進める（時間切れで投げ捨てにしない）。
+                if (_session.LimitRemaining <= 0f && _pinReceiver == null && !_session.WallSequenceActive)
                 {
                     Fail();
                     return;

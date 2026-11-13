@@ -119,6 +119,9 @@ namespace Ryona.Game
             if (LaunchOptions.TryFloat("-pinshotdelay", out float d) && d >= 0f)
                 pinShotDelay = d;
             string pinBurst = LaunchOptions.Value("-pinburst");
+            // -anklegrabtest: 次の掴みを足取りに固定する（撮影・確認用）。
+            if (LaunchOptions.Has("-anklegrabtest"))
+                EnemyBrain.ForcedGrabKind = GrappleKind.AnkleGrab;
             bool tagCam = LaunchOptions.Has("-tagcam");
             bool tagCamFlip = LaunchOptions.Has("-tagcamflip");
 
@@ -204,10 +207,11 @@ namespace Ryona.Game
                         _grabbedOnce = true;
                         if (kind == GrappleKind.Pin)
                             _pinChainKnees = 0;
-                        Debug.Log($"[GrappleTest] 掴まれた kind={kind}");
+                        GameLog.Log($"[GrappleTest] 掴まれた kind={kind}");
                         if (kind == GrappleKind.Pin && _pinShotPath != null)
                             _pinShotDelay = Mathf.Max(0f, _pinShotDelaySeconds);
-                        if (kind == GrappleKind.Pin && _pinBurstPrefix != null && !_pinBurstDone)
+                        if ((kind == GrappleKind.Pin || kind == GrappleKind.AnkleGrab) &&
+                            _pinBurstPrefix != null && !_pinBurstDone)
                         {
                             _pinBurstDone = true;
                             StartCoroutine(PinBurstShots());
@@ -371,7 +375,13 @@ namespace Ryona.Game
         IEnumerator PinBurstShots()
         {
             int count = _wallPin ? 200 : 80;   // 壁版はレーンに戻るまで10秒撮る。
-            const float interval = 0.05f;
+            float interval = 0.05f;
+            // 壁拘束の全体（膝・猶予・二人がかり・3 人がかり・解放）は 25 秒以上かかるので、
+            // 枚数と間隔を変えられる（例: -pinburstframes=300 -pinburstinterval=0.1 で 30 秒）。
+            if (LaunchOptions.TryFloat("-pinburstframes", out float frames))
+                count = Mathf.Clamp((int)frames, 1, 2000);
+            if (LaunchOptions.TryFloat("-pinburstinterval", out float seconds))
+                interval = Mathf.Clamp(seconds, 0.02f, 0.5f);
 
             string dir = System.IO.Path.GetDirectoryName(_pinBurstPrefix);
             string name = System.IO.Path.GetFileNameWithoutExtension(_pinBurstPrefix);

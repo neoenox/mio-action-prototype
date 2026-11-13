@@ -124,6 +124,9 @@ namespace Ryona.Game
         /// <summary>押さえつけが時間切れで解放された直後、そのことを 1.5 秒だけ出す残り秒。</summary>
         float _releasedRemaining;
 
+        /// <summary>直前に解放された拘束の種類（解放メッセージの文言に使う）。</summary>
+        GrappleKind _releasedKind;
+
         void UpdateGrapple()
         {
             if (_grappleRoot == null)
@@ -181,7 +184,9 @@ namespace Ryona.Game
             if (!grappled)
             {
                 // 時間切れで解放された直後
-                _grappleText.text = "押さえつけから解放された";
+                _grappleText.text = _releasedKind == GrappleKind.AnkleGrab
+                    ? "足を取られて転んだ"
+                    : "押さえつけから解放された";
                 _grappleText.color = new Color(0.72f, 1f, 0.70f, 0.98f);
                 _grappleFill.fillAmount = 0f;
                 _grappleFill.color = new Color(0.95f, 0.45f, 0.35f, 0.95f);
@@ -206,6 +211,7 @@ namespace Ryona.Game
                 GrappleKind.Back => "（後ろから）",
                 GrappleKind.Pin => _grapple.IsWallPin ? "（壁に押さえつけ）" : "（押さえつけ）",
                 GrappleKind.BearHug => "（ベアハッグ）",
+                GrappleKind.AnkleGrab => "（足を掴まれている）",
                 _ => string.Empty
             };
 
@@ -241,15 +247,33 @@ namespace Ryona.Game
                 tail = "背後から敵が来る";
                 danger = true;
             }
+            else if (_grapple.IsWallGangActive)
+            {
+                tail = $"3人がかり {_grapple.WallGangHits}/{_grapple.WallGangTotal}";
+                danger = true;
+            }
             else if (_grapple.IsWallSplitActive)
             {
                 tail = $"2人がかり {_grapple.WallSplitHits}/{CombatConstants.WallSplitPunchCount}";
                 danger = true;
             }
+            else if (_grapple.WallPauseRemaining > 0f)
+            {
+                tail = $"次の攻撃まで {_grapple.WallPauseRemaining:F1}s";
+                danger = _grapple.WallPauseRemaining <= 0.5f;
+            }
+            else if (_grapple.IsWallSequenceActive)
+            {
+                tail = "連打で逃げる";
+                danger = true;
+            }
             else if (_grapple.HasTimeLimit)
             {
-                tail = $"あと {_grapple.Remaining:F1}s で解放";
-                // 時間切れは解放なので、危険色にはしない
+                // 足取りは時間切れで「解放」ではなく前へ転ぶので、文言を分ける。
+                tail = _grapple.Kind == GrappleKind.AnkleGrab
+                    ? $"あと {_grapple.Remaining:F1}s で転ぶ"
+                    : $"あと {_grapple.Remaining:F1}s で解放";
+                // 時間切れは解放（足取りは転倒）なので、危険色にはしない
             }
             else if (_bellyPunch == null)
             {
@@ -302,6 +326,8 @@ namespace Ryona.Game
         void OnGrappleReleased()
         {
             _releasedRemaining = 1.5f;
+            if (_grapple != null)
+                _releasedKind = _grapple.Kind;
         }
 
         /// <summary>

@@ -414,11 +414,26 @@ namespace Ryona.Game
             }
         }
 
+        /// <summary>
+        /// 1 振りのヒット処理。**当てるのは 1 体だけ。**
+        /// <para>
+        /// 拳の範囲内に複数入っていても、拳に一番近い 1 体を選んで終わる。
+        /// 範囲内の全員に当てていたころは、<see cref="HitLanded"/> が人数分発火して
+        /// ヒットストップ・カメラ揺れ・打撃音が重なり、1 発が「連打」に聞こえた。
+        /// </para>
+        /// <para>
+        /// 複数ヒットを意図する技（なぎ払い・多段など）を追加するときだけ、
+        /// ここで対象を 1 体に絞らず全員へ適用し、その理由をこのコメントに残すこと。
+        /// 現状そんな技は無いので、常に 1 体に限定している。
+        /// </para>
+        /// </summary>
         void ResolveHit(AttackData attack)
         {
             Vector3 fist = FistPoint();
 
             EnemyBrain hitEnemy = null;
+            IDamageable hitTarget = null;
+            float nearestGap = float.PositiveInfinity;
 
             foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
             {
@@ -432,13 +447,27 @@ namespace Ryona.Game
                 if (target == null || ReferenceEquals(target, this))
                     continue;
 
-                var result = target.TakeHit(Stats.State, attack);
+                // 範囲内に複数いるときは、拳の軸に一番近い体を 1 体だけ選ぶ。
+                // 同距離なら列挙順で先に見つかったほうを残す（決定的）。
+                Vector3 d = fist - enemy.transform.position;
+                d.y = 0f;
+                float gap = d.magnitude;
+                if (gap >= nearestGap)
+                    continue;
+
+                nearestGap = gap;
+                hitEnemy = enemy;
+                hitTarget = target;
+            }
+
+            if (hitTarget != null)
+            {
+                var result = hitTarget.TakeHit(Stats.State, attack);
 
                 Log($"[Combat] hit {attack.id} dmg={result.Damage:F0} " +
                     $"stagger={result.Stagger}");
 
-                hitEnemy = enemy;
-                HitLanded?.Invoke(result, target);
+                HitLanded?.Invoke(result, hitTarget);
             }
 
             if (TraceFist)
@@ -571,15 +600,13 @@ namespace Ryona.Game
         /// リリースビルドでは <c>-hitlog</c>（<see cref="TraceFist"/>）のときだけ出す。
         /// Editor / Development Build では従来どおり常に出す。
         /// </summary>
-        void Log(string message)
-        {
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-            Debug.Log(message);
-#else
-            if (TraceFist)
-                Debug.Log(message);
-#endif
-        }
+        /// <summary>
+        /// 戦闘ログ。出すかどうかの判定は <see cref="GameLog"/> に任せる
+        /// （Editor / Development Build、またはリリースビルドで <c>-log</c> / <c>-hitlog</c>
+        /// を付けたときだけ出る）。毎攻撃・毎ヒットで文字列を作るので、
+        /// 呼び出し側は従来どおり <c>TraceFist</c> などで必要なときだけ呼ぶこと。
+        /// </summary>
+        void Log(string message) => GameLog.Log(message);
 
         EnemyBrain FindNearestEnemy(out Vector3 center, out float distance)
         {

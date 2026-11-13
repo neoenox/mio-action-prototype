@@ -199,6 +199,18 @@ namespace Ryona.Game
 
         internal void OnWallSlam() => Shake(0.22f, 0.30f);
 
+        /// <summary>
+        /// 3 人がかりの 1 発ごとの手応え。<paramref name="weight"/> が大きいほど、揺れ・止まり・フラッシュが強い。
+        /// 受けた被弾の汎用の反応（HitReceived）に上乗せする。
+        /// </summary>
+        internal void OnWallGangHit(float weight)
+        {
+            Shake(0.08f + 0.16f * weight, 0.20f);
+            HitStop.Play(0.04f + 0.05f * weight);
+            if (weight >= 0.7f)
+                FindFirstObjectByType<HitFlash>()?.FlashNow(0.25f + 0.25f * weight);
+        }
+
         /// <summary>壁の二人がかりの締めの一撃。大きく揺れ、一瞬止まり、画面の縁が赤く光る。</summary>
         internal void OnWallSplitFinisher()
         {

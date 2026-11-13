@@ -1135,17 +1135,10 @@ namespace Ryona.Game
             // 二人がかり（Y 字）へ切り替える。
             if (canHitHeld && IsPinning && _pinKneesLeft > 0 && Time.time >= _pinNextKneeAt)
             {
-                if (IsWallPinning && _pinKneesLeft == CombatConstants.PinKneeCount &&
-                    frontHold != null && frontHold.TryBeginWallSplit(this))
-                {
-                    _pinKneesLeft = 0;
-                }
-                else
-                {
-                    _pinKneesLeft--;
-                    _pinNextKneeAt = Time.time + Mathf.Max(0.1f, CombatConstants.PinKneeInterval);
-                    DoPinKnee();
-                }
+                // 膝は 1 人で全部入れる。二人がかりは、そのあとの猶予を経て始まる（段階進行）。
+                _pinKneesLeft--;
+                _pinNextKneeAt = Time.time + Mathf.Max(0.1f, CombatConstants.PinKneeInterval);
+                DoPinKnee();
             }
 
             // ベアハッグの締め付け。体を引き寄せ、密着した瞬間に HP を削る。

@@ -25,7 +25,15 @@ namespace Ryona.Game
             if (!IsBehindPlayer())
                 return false;
 
-            grapple.BeginContact(this, GrappleKind.Back);
+            // 走って逃げる彼女の背後からは、足首を狙って転ばせる（足取り）。
+            GrappleKind kind = GrappleKind.Back;
+            if (ForcedGrabKind.HasValue)
+                kind = ForcedGrabKind.Value;
+            else if (Player != null && Player.IsMoving &&
+                     UnityEngine.Random.value < CombatConstants.AnkleGrabChance)
+                kind = GrappleKind.AnkleGrab;
+
+            grapple.BeginContact(this, kind);
             return true;
         }
 
@@ -578,10 +586,16 @@ namespace Ryona.Game
             grapple.KickKnee();
             PlaySfx(SfxId.Impact, 0.85f);
 
-            Debug.Log($"[Pin] knee {name} left={_pinKneesLeft} hp={Player.State.Hp:F0}");
+            GameLog.Log($"[Pin] knee {name} left={_pinKneesLeft} hp={Player.State.Hp:F0}");
 
             if (_pinKneesLeft == 0 && grapple.Captor == this)
-                FindFirstObjectByType<GrappleHandOff>()?.TryPinChain(grapple);
+            {
+                // 壁拘束は、膝のあとを段階進行（猶予 → 二人がかり …）が引き継ぐ。
+                if (grapple.IsWallPin)
+                    grapple.OnWallKneesFinished();
+                else
+                    FindFirstObjectByType<GrappleHandOff>()?.TryPinChain(grapple);
+            }
         }
 
         // --- 壁・二体がかり（Y 字）のアシスト役 -------------------------
@@ -644,13 +658,24 @@ namespace Ryona.Game
             Vector3 forward = Vector3.ProjectOnPlane(hold.transform.forward, Vector3.up).normalized;
             // 二人とも彼女の正面側へ立つ。横に並ぶと腹パンが横から棒で叩く形になる（実測）。
             // 締めの膝入れは腹の真正面まで踏み込む。
-            float kneeStep = hold.WallSplitKneeWeight(this);
-            float gap = Mathf.Lerp(CombatConstants.WallSplitStandGap, 0.22f, kneeStep);
-            float front = Mathf.Lerp(CombatConstants.WallSplitStandFront, 0.38f, kneeStep);
+            // 蹴りは脚を伸ばして遠くから入れるので、膝のように踏み込まない。
+            float kneeStep = hold.WallSplitKick ? 0f
+                : Mathf.Max(hold.WallSplitKneeWeight(this), hold.WallSplitFaceStep(this));
+            float gap = Mathf.Lerp(CombatConstants.WallSplitStandGap, CombatConstants.WallSplitKneeGap, kneeStep);
+            float front = Mathf.Lerp(CombatConstants.WallSplitStandFront, CombatConstants.WallSplitKneeFront, kneeStep);
             Vector3 spot = her
                 + Vector3.right * (_wallAssistSide * gap)
                 + forward * front;
             spot.y = transform.position.y;
+
+            // 3 人がかり（最後の段階）の 3 人目は、打つときは前の持ち場、待つときは横の持ち場へ入る。
+            if (hold.TryGetWallGangSlot(this, out float slotLateral, out float slotDepth))
+            {
+                slotLateral = Mathf.Lerp(slotLateral, CombatConstants.WallSplitKneeGap, kneeStep);
+                slotDepth = Mathf.Lerp(slotDepth, CombatConstants.WallSplitKneeFront, kneeStep);
+                spot = her + Vector3.right * slotLateral + forward * slotDepth;
+                spot.y = transform.position.y;
+            }
 
             // 持ち場へは小走りで寄る（通常の移動速度だと間に合わない）。
             float speed = Mathf.Max(2.4f, MoveSpeed * State.MoveSpeedMultiplier);
@@ -683,16 +708,27 @@ namespace Ryona.Game
         {
             Vector3 her = hold.transform.position;
             Vector3 forward = Vector3.ProjectOnPlane(hold.transform.forward, Vector3.up).normalized;
-            float kneeStep = hold.WallSplitKneeWeight(this);
-            float gap = Mathf.Lerp(CombatConstants.WallSplitStandGap, 0.22f, kneeStep);
-            float front = Mathf.Lerp(CombatConstants.WallSplitStandFront, 0.38f, kneeStep);
+            // 蹴りは脚を伸ばして遠くから入れるので、膝のように踏み込まない。
+            float kneeStep = hold.WallSplitKick ? 0f
+                : Mathf.Max(hold.WallSplitKneeWeight(this), hold.WallSplitFaceStep(this));
+            float gap = Mathf.Lerp(CombatConstants.WallSplitStandGap, CombatConstants.WallSplitKneeGap, kneeStep);
+            float front = Mathf.Lerp(CombatConstants.WallSplitStandFront, CombatConstants.WallSplitKneeFront, kneeStep);
             Vector3 spot = her
                 + Vector3.right * gap
                 + forward * front;
             spot.y = transform.position.y;
 
+            // 3 人がかりでは、拘束役も打つ側として前へ入り、待つ側として横へ下がる（3 人目と交代）。
+            if (hold.TryGetWallGangSlot(this, out float slotLateral, out float slotDepth))
+            {
+                slotLateral = Mathf.Lerp(slotLateral, CombatConstants.WallSplitKneeGap, kneeStep);
+                slotDepth = Mathf.Lerp(slotDepth, CombatConstants.WallSplitKneeFront, kneeStep);
+                spot = her + Vector3.right * slotLateral + forward * slotDepth;
+                spot.y = transform.position.y;
+            }
+
             // 押さえつけ中は移動速度倍率が 0 のことがあるので、位置合わせは定速で行う。
-            float speed = Mathf.Max(1.2f, MoveSpeed);
+            float speed = Mathf.Max(hold.IsWallGangActive ? 2.4f : 1.2f, MoveSpeed);
             transform.position = Vector3.MoveTowards(transform.position, spot, speed * dt);
 
             Vector3 look = her - transform.position;
@@ -708,7 +744,7 @@ namespace Ryona.Game
         }
 
         /// <summary>二人がかりの腹パン 1 発。見た目は空き手のポーズ側が作る。</summary>
-        internal void DoWallSplitPunch(float scale = 1f)
+        internal void DoWallSplitPunch(float scale = 1f, PunchZone zone = PunchZone.Body)
         {
             if (Player == null || Player.IsDead)
                 return;
@@ -719,17 +755,18 @@ namespace Ryona.Game
                 kind = AttackKind.Light,
                 damage = Mathf.Max(0f, CombatConstants.WallSplitPunchDamage * scale),
                 partDamage = 0f,
-                targetPart = BodyPart.Torso,
+                targetPart = BodyPart.Torso,   // 部位は胴だけ。顔かどうかは PunchZone で区別する
                 flinch = 4f * scale,
                 startupSeconds = 0f,
                 activeSeconds = 0f,
                 recoverySeconds = 0f
             };
 
-            Player.LastHitZone = PunchZone.Body;
-            Player.ReceiveHit(State, punch, transform, CombatConstants.WallSplitPunchBelly * scale);
+            Player.LastHitZone = zone;
+            Player.ReceiveHit(State, punch, transform,
+                zone == PunchZone.Body ? CombatConstants.WallSplitPunchBelly * scale : 0f);
             PlaySfx(SfxId.Impact, Mathf.Clamp01(0.7f + 0.1f * scale));
-            Debug.Log($"[WallSplit] punch {name} hp={Player.State.Hp:F0} belly={Player.HeldBellyDamage:F0}");
+            GameLog.Log($"[WallSplit] punch {name} hp={Player.State.Hp:F0} belly={Player.HeldBellyDamage:F0}");
         }
 
     }

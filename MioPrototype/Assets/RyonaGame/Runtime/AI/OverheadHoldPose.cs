@@ -69,8 +69,10 @@ namespace Ryona.Game
             // 二体がかり（Y 字）: 拘束役は右手で彼女の左腕だけを持ち、
             // 左手を空けて腹パンへ回す。もう片腕はアシストが持つ。
             float split = hold.WallSplitWeight;
+            // 3 人がかりでは、拘束役が彼女の左手首（右手で持っている）を離す。
+            float gang = hold.WallGangWeight;
             Solve(true, gripR, weight * (1f - split), lift, adhere);
-            Solve(false, gripL, weight, lift, adhere);
+            Solve(false, gripL, weight * (1f - gang), lift, adhere);
 
             if (split > 0.001f)
             {
@@ -82,9 +84,22 @@ namespace Ryona.Game
                                 !hold.WallSplitKneeStrike;
                 if (punching)
                     WallSplitArm.Punch(_figure, true, herPos, herFront, herSide,
-                        hold.WallSplitPunchAge, split, transform);
+                        hold.WallSplitPunchAge, split, transform, hold.WallSplitFace,
+                        hold.WallSplitFace && _targetRig.Head != null
+                            ? _targetRig.Head.position + herFront * 0.10f
+                            : (Vector3?)null);
                 else
                     WallSplitArm.Guard(_figure, true, herPos, herFront, herSide, split, transform);
+
+                // 締めの膝入れは、空き手で彼女の腰を掴んで引き寄せる。
+                if (hold.WallSplitKneeStrike && hold.WallSplitPuncher == _brain)
+                    WallSplitArm.Pull(_figure, true, herPos, herFront, herSide,
+                        split * Mathf.Max(hold.WallSplitKneeWeight(_brain), hold.WallSplitKneeThrust(_brain)),
+                        transform);
+
+                // 3 人がかりでは、手を離した右腕も構える（誰も彼女を持たない）。
+                if (gang > 0.001f)
+                    WallSplitArm.Guard(_figure, false, herPos, herFront, herSide, gang, transform);
             }
 
             // 頭が壁側へ揺れた分は、敵が届いた位置へ澪の手首を寄せて接触を保つ。

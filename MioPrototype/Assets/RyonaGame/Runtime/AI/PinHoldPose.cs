@@ -168,7 +168,9 @@ namespace Ryona.Game
                             : pinned.position + (pinned.position - transform.position);
                         WallSplitCamera.Build(pinned.position, pinned.forward,
                             transform.position, assist,
-                            out Vector3 shot, out Vector3 target);
+                            out Vector3 shot, out Vector3 target,
+                            CombatConstants.WallGangCameraBack * hold.WallGangWeight,
+                            CombatConstants.WallGangCameraShift * hold.WallGangWeight);
 
                         // 段階が進むほど彼女へ寄る（序盤は引き、締めで大きく寄る）。
                         _splitPush = Mathf.MoveTowards(_splitPush, hold.WallSplitCameraPushTarget,
@@ -176,8 +178,9 @@ namespace Ryona.Game
                         // 締めの膝入れは、少し上から腹と顔の両方が入る構図にする。
                         // 彼女の顔が画面から切れないことを優先する（狙いを下げすぎると頭が切れる）。
                         float lowering = Mathf.InverseLerp(0.10f, 0.15f, _splitPush);
-                        target.y -= 0.06f * lowering;
-                        shot.y += 0.10f * lowering;
+                        // 締めの一撃で彼女の体が持ち上がるので、狙いは下げずに少し上げて頭の余裕を作る。
+                        target.y += 0.03f * lowering;
+                        shot.y += 0.06f * lowering;
                         shot = target + (shot - target) * (1f - 0.40f * _splitPush);
                         _camera.RequestCinematicShot(shot, target);
                         return;

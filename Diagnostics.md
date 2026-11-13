@@ -44,6 +44,7 @@
 
 | フラグ | 動き |
 |---|---|
+| `-log` | リリースビルドでログを出す。既定では `Debug.Log` 相当のゲームログは**すべて黙る**（`GameLog` 経由）。Editor / Development Build は引数なしで常に出る。`-hitlog` / `-statlog` / `-pinlog` / `-jointlog` でも有効になる |
 | `-holdlight` | 弱だけ押し続ける（3段コンボの確認） |
 | `-leftpunch` | 弱を必ず左で打つ（2段目の姿勢確認） |
 | `-holdattack [-attackinterval=秒]` | 強も混ぜて自動で殴る |
@@ -67,6 +68,8 @@
 | `-pinchain` | `-grappletest -pintest` と併用。最後の膝蹴りで背後に受け手を配置し、羽交い締めへの引き渡しを再現する（`-handoffburst=<png>` で撮影） |
 | `-wallpinnow` | 起動 1.5 秒後に、いちばん近い壁の前へ移動してから押さえつけを 1 回指示する（壁押さえつけの自動確認用） |
 | `-wallpintest` | `-grappletest` と併用。壁の前（x=4 / 14 / 24）へ移動してから押さえつけを繰り返す。`-pinshot=` / `-pinburst=` もそのまま使える |
+| `-anklegrabtest` | `-grappletest` と併用。背後からの掴みを足取り（`GrappleKind.AnkleGrab`）に固定する。`-pinburst=<png>` で掴まれてから 0.05 秒 × 80 枚を撮れる（振りほどけなければ転倒・マウントまで写る） |
+| `-pinburstframes=<n>` / `-pinburstinterval=<秒>` | `-pinburst` の枚数（既定: 壁 200 / 通常 80）と間隔（既定 0.05 秒）を変える。壁拘束の全体は `-pinburstframes=300 -pinburstinterval=0.1`（30 秒）で撮れる |
 | `-nowallprops` | 実行時に作る壁パネル（3 か所）を止める。ジオメトリ側に `WallPinSite` を置いたとき用 |
 | `-overheadtest` | `-grappletest` と併用。壁押さえつけでの頭上拘束を再現。 `-overheadburst=<png>` で撮影 |
 | `-walllog` | 壁押さえつけ中、体の骨・髪のジョイント・**描画メッシュ**が壁の表面からどれだけ手前かを 0.25 秒ごとログ（`[WallClear]` / `[WallMesh]` / `[HairWall]`）。貫通の判定は `[WallMesh]` を見る（骨だけでは見落とす） |

@@ -149,9 +149,10 @@ namespace Ryona.Game
                 ? _brain.Player.GetComponent<PlayerGrapple>() : null;
             bool wallShot = hold != null && hold.IsWallPin;
             // 二体がかり（Y 字）の正面ショットでは、拘束役とアシストは消さない
-            // （消すと「二人がかり」に見えなくなる）。
+            // （消すと「二人がかり」に見えなくなる）。3 人がかりの 3 人目も同じ
+            // （消すと 3 人目が画面に出ず、2 人でやっているように見える。実測）。
             bool splitShot = hold != null && hold.IsWallSplitActive &&
-                (hold.Captor == _brain || hold.WallAssist == _brain);
+                (hold.Captor == _brain || hold.WallAssist == _brain || hold.WallThird == _brain);
             bool inFrontOfWallShot = wallShot && hold.Captor != _brain && !splitShot &&
                 InFrontOfWallShot(hold);
             float target = inFrontOfWallShot ? 0f : 1f;

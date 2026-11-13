@@ -136,6 +136,7 @@ namespace Ryona.Game
         {
             GrappleKind.Back => float.PositiveInfinity,
             GrappleKind.BearHug => CombatConstants.BearHugLimitSeconds,
+            GrappleKind.AnkleGrab => CombatConstants.AnkleGrabLimitSeconds,
             _ => CombatConstants.GrappleLimitSeconds
         };
 

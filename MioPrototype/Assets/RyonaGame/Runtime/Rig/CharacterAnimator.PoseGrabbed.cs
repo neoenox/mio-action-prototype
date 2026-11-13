@@ -174,6 +174,43 @@ namespace Ryona.Game
 
             // 掴まれた向きで姿勢を作り替える。背後は羽交い締め（Back）、
             // 正面の押さえつけ（Pin）、正面から胴を抱えるベアハッグ。
+            if (Grapple != null && Grapple.Kind == GrappleKind.AnkleGrab)
+            {
+                // 足取り。後ろから左の足首を掴まれて引かれ、前へつんのめる。
+                // 掴まれた足（左）は後ろへ持ち上がり、軸足（右）で踏ん張る。
+                // 上体は前へ倒れ、両腕は前へ出てバランスを取る。もがくと腕が大きく振れる。
+                pose.HipsOffset.y = StanceHipsY - 0.05f * pull - 0.03f * strain;
+                pose.HipsOffset.z = StanceHipsZ + 0.05f * pull;
+
+                pose.TorsoPitch = 18f * pull + 10f * strain;
+                pose.TorsoYaw = Mathf.Sin(Time.time * 3.1f) * 3f;
+                pose.TorsoRoll = 0f;
+
+                // 上体が倒れても顔は前を見る（うつむくと表情が隠れる）。
+                pose.HeadPitch = -6f * pull;
+                pose.HeadYaw = Mathf.Sin(Time.time * 4.1f) * 4f;
+                pose.HeadRoll = 0f;
+
+                var reachUpper = new Vector3(0.50f, -0.20f, 0.55f);
+                var reachFore = new Vector3(-0.15f, 0.25f, 0.80f);
+                float flail = 0.16f * pulse + 0.10f * strain;
+                pose.ArmLUpper = reachUpper + new Vector3(0.20f * flail, flail, 0f);
+                pose.ArmRUpper = reachUpper + new Vector3(0.20f * flail, flail * 0.8f, 0f);
+                pose.ArmLFore = reachFore + new Vector3(0f, flail * 1.2f, 0f);
+                pose.ArmRFore = reachFore + new Vector3(0f, flail, 0f);
+
+                pose.HandRollL = StanceHandRollL;
+                pose.HandRollR = StanceHandRollR;
+                pose.Grip = 0.3f;
+
+                pose.FootL += StanceFootL;
+                pose.FootR += StanceFootR;
+                pose.FootL += new Vector3(0f, 0.22f * pull, -0.36f * pull);
+                pose.FootPitchL = -24f * pull;
+                pose.FootPitchR = 12f * pull;
+                return pose;
+            }
+
             if (Grapple != null && Grapple.Kind == GrappleKind.Back)
             {
                 // 羽交い締め。相手の腕が首に回り、上体を後ろへ反らされる。
@@ -470,6 +507,25 @@ namespace Ryona.Game
 
             pose.Grip = 1f;
 
+            // 3 人がかり: 彼女はグロッキーで、壁にもたれてずり落ちる。腰が落ち、足が前へ投げ出され、
+            // 上体は壁に背中を預けて（前へ倒さず、わずかに反らせる）、頭は力なく後ろへ傾いて横へ垂れる。
+            // 腹で折れる動きや顔パンの反応は、この上に重なる（殴られると前へ折れて、また壁へ戻る）。
+            // （順番が逆だと、グロッキーの角度が折れの動きを上書きして、殴られても体が動かない。実測）
+            // （上体を前へ倒して頭を前へ垂らすと、壁にもたれたのではなく前かがみに見える。実測）
+            float groggy = Grapple != null ? Grapple.WallGangWeight : 0f;
+            if (groggy > 0.001f)
+            {
+                pose.HipsOffset.y -= 0.26f * groggy;
+                pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, -4f, groggy);
+                pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -8f, groggy);
+                pose.HeadRoll += (16f + Mathf.Sin(Time.time * 1.3f) * 3f) * groggy;
+                pose.TorsoRoll += Mathf.Sin(Time.time * 1.7f) * 2.0f * groggy;
+
+                // 壁をずり落ちて、足が前へ投げ出される（壁から離れる向きが前）。
+                pose.FootL += new Vector3(0f, 0f, 0.20f * groggy);
+                pose.FootR += new Vector3(0f, 0f, 0.26f * groggy);
+            }
+
             // 二体がかり（Y 字）の腹パン: 両腕は壁に固定されたまま、腹で折れて膝が抜ける。
             // 腕のポーズ値は触らない。手首は SolveOverheadArms が world 固定しているので、
             // 上体が折れると肘が曲がり「押さえ込まれたまま殴られている」形になる。
@@ -492,14 +548,36 @@ namespace Ryona.Game
                 pose.TorsoRoll += side * 6f * impact * fold;
                 pose.HipsOffset.y -= (0.10f + 0.03f * fatigue) * impact * fold;
                 // ローカルの -Z が壁側。殴られて上体が前へ折れるぶん、腰は壁から少し離れる。
-                pose.HipsOffset.z += 0.03f * impact * fold;
+                // 締めの膝入れ（重さ 1.5 以上）は、腰が膝の側へ出ると腹が膝へ食い込むので出さない。
+                pose.HipsOffset.z += (impact > 1.5f ? 0f : 0.03f * impact) * fold;
                 pose.HipsOffset.x += side * 0.03f * impact * fold;
 
-                // 当たった瞬間だけ頭と肩が短く揺れる（0.15 秒で消える）。
+                // 締めの膝は腹を突き上げるので、当たった瞬間に体が持ち上がる（足が床から浮く）。
+                float lift = Mathf.Clamp01((impact - 1.2f) / 0.5f) * fold;
+                pose.HipsOffset.y += 0.07f * lift;
+                pose.FootL.y += 0.05f * lift;
+                pose.FootR.y += 0.05f * lift;
+
+                // 当たった瞬間だけ頭と肩が短く揺れる（0.15 秒で消える）。重いほど大きい。
                 float age = HeldBellyPunchAge;
                 float shake = Mathf.Exp(-age * 14f) * Mathf.Sin(age * 55f) * fold * impact;
                 pose.HeadPitch += shake * 3f;
                 pose.TorsoRoll += shake * 2f;
+            }
+
+            // 3 人がかりの顔パン: 殴られた側と反対へ頭が弾かれる（腹の折れとは別に、頭だけが動く）。
+            float faceHit = HeldFacePunchImpulse;
+            if (faceHit > 0f && Grapple != null && Grapple.WallSplitFace)
+            {
+                float faceSide = _facePunchLocalX >= 0f ? -1f : 1f;
+                pose.HeadYaw += faceSide * 62f * faceHit;
+                pose.HeadRoll += faceSide * 18f * faceHit;
+                pose.HeadPitch += 14f * faceHit;
+                pose.TorsoYaw += faceSide * 12f * faceHit;
+                pose.TorsoRoll += faceSide * 6f * faceHit;
+                // 顔を殴られて足がもつれる（膝が少し沈み、腰が殴られた側と反対へ流れる）。
+                pose.HipsOffset.y -= 0.05f * faceHit;
+                pose.HipsOffset.x += faceSide * 0.05f * faceHit;
             }
 
             // 構えの足の位置から始める。Rest（T ポーズ）のままだと脚が伸びきって

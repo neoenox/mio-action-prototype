@@ -46,10 +46,16 @@ namespace Ryona.Game
             }
 
             var captor = Captor;
-
             int inputs = InputCount;
+            bool ankleTrip = Kind == GrappleKind.AnkleGrab;
             Release();
-            Stats.ResolveHeldBellyDown();
+
+            // 足取りは、振りほどけなければ前へ転ぶ（うつ伏せ。飛ばさず、足を取られて崩れる）。
+            if (ankleTrip)
+                Stats.ForceDown(CombatConstants.DownDuration, "ankle-trip",
+                    captor != null ? captor.transform : null, forward: true);
+            else
+                Stats.ResolveHeldBellyDown();
 
             // 拘束を解いた直後に、別の敵から即座に追撃されないようにする。
             foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
@@ -77,6 +83,8 @@ namespace Ryona.Game
         {
             if (!IsWallPin)
                 return;
+
+            StopWallSequence();
 
             _wallSite?.RetractAfterRelease();
             _wallSite = null;

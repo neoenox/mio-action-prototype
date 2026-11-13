@@ -8,7 +8,10 @@ namespace Ryona
     {
         Back = 0,
         Pin = 1,
-        BearHug = 2
+        BearHug = 2,
+
+        /// <summary>足取り。逃げる彼女の足首を掴んで転ばせる。短い拘束で、逃げ切れないと前へ転ぶ。</summary>
+        AnkleGrab = 3
     }
 
     /// <summary>
@@ -62,6 +65,7 @@ namespace Ryona
             {
                 case GrappleKind.Pin: return CombatConstants.MashBasePin;
                 case GrappleKind.BearHug: return CombatConstants.MashBaseBearHug;
+                case GrappleKind.AnkleGrab: return CombatConstants.MashBaseAnkleGrab;
                 default: return CombatConstants.MashBaseBack;
             }
         }

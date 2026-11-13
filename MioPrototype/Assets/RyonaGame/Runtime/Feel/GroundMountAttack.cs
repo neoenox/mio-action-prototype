@@ -118,11 +118,20 @@ namespace Ryona.Game
             _motor = GetComponent<PlayerMotor>();
         }
 
+        /// <summary>
+        /// ダウンが明けた（または新しいダウンが始まった）ときの後始末。
+        /// <para>
+        /// **<see cref="End"/> が決めた再マウント待ち（<see cref="RemountDelay"/>）は消さない。**
+        /// ここは <see cref="Update"/> からダウン中でない間ずっと毎フレーム呼ばれるので、
+        /// 以前のように <c>_nextSearch = 0</c> を書くと待ち時間が毎フレーム潰れ、
+        /// 解除直後のダウンで 0.75 秒後にまた跨られてしまう（実測）。
+        /// 初期値は 0 なので、開始直後のダウンはこれまでどおりすぐ探索できる。
+        /// </para>
+        /// </summary>
         internal void ResetKnockdown()
         {
             End();
             _downTime = 0f;
-            _nextSearch = 0f;
         }
 
         void OnDisable() => End();
@@ -455,6 +464,8 @@ namespace Ryona.Game
 
         void End()
         {
+            // 実際に跨っていた（いた）ときだけ、次の探索まで間を空ける。
+            // ここで待ちを立てても、ResetKnockdown 側で消さないこと。
             if (Stage != Beat.Idle)
                 _nextSearch = Time.time + RemountDelay;
             if (Stage == Beat.Roll && RollProgress >= 0.5f && _player.IsDown && !_player.IsDead)

@@ -78,7 +78,10 @@ namespace Ryona.Game
                     return 0f;
 
                 float t = _heldBellyPunchTotal - _heldBellyPunchRemaining;
-                float inT = Mathf.SmoothStep(_heldBellyCarry, 1f, t / 0.055f);
+                // 締めの膝入れ（重さ 1.2 以上）は、膝がまだ腹にある間に素早く折れると膝へ食い込むので、
+                // 膝が引くまでの間に膝を包むようにゆっくり折れる。
+                float inSeconds = Mathf.Lerp(0.055f, 0.14f, Mathf.InverseLerp(1.2f, 1.7f, _heldBellyImpact));
+                float inT = Mathf.SmoothStep(_heldBellyCarry, 1f, t / inSeconds);
                 float recoverAt = _heldBellyPunchTotal * Mathf.Lerp(0.26f, 0.72f, _heldBellyFatigue);
                 float outT = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(recoverAt, _heldBellyPunchTotal, t));
                 return Mathf.Clamp01(inT * outT);

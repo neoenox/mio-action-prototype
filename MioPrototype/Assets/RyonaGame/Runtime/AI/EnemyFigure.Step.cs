@@ -480,6 +480,26 @@ namespace Ryona.Game
                         pose.LegLPitch = 14f;
                         pose.HeadPitch = -22f;
                     }
+                    else if (holding && hold != null && hold.Kind == GrappleKind.AnkleGrab)
+                    {
+                        // 足取り: 低く沈み込み、前へ伸ばした片腕で彼女の足首を掴む（腕の先は
+                        // AnkleHoldPose が足首へ合わせる）。もう片腕は体を支える。
+                        pose.TorsoPitch = -26f;
+                        pose.HipsY = restY - 0.36f;
+                        pose.HipsZ = 0.08f;
+                        // 前の足（右）を踏み込み、後ろの足（左）は膝をついて沈む。
+                        pose.KneeR = 96f;
+                        pose.KneeL = 74f;
+                        pose.LegRPitch = -44f;
+                        pose.LegLPitch = 20f;
+                        pose.HeadPitch = -8f;
+                        pose.ArmRPitch = -40f;
+                        pose.ElbowR = 14f;
+                        pose.ArmRSpread = -16f;
+                        pose.ArmLPitch = -58f;
+                        pose.ElbowL = 10f;
+                        pose.ArmLSpread = 10f;
+                    }
                 }
 
                 if (Brain != null && Brain.IsPreparingGrab)
@@ -807,37 +827,44 @@ namespace Ryona.Game
                 return;
 
             var hold = Brain.Player.GetComponent<PlayerGrapple>();
-            float knee = hold != null ? hold.WallSplitKneeWeight(Brain) : 0f;
-            if (knee <= 0f)
+            float coil = hold != null ? hold.WallSplitKneeWeight(Brain) : 0f;
+            float thrust = hold != null ? hold.WallSplitKneeThrust(Brain) : 0f;
+            if (coil <= 0f && thrust <= 0f)
                 return;
 
-            bool leftKnee = false;
-            var cam = Camera.main;
-            if (cam != null)
-            {
-                Vector3 toCam = cam.transform.position - transform.position;
-                toCam.y = 0f;
-                leftKnee = Vector3.Dot(toCam, transform.right) < 0f;
-            }
+            // 足踏み・踏み込みの IK（LegsExact）が脚の角度を毎フレーム上書きすると、
+            // 膝の振り上げが反映されない（実測: 突き上げ中も脚が -20° のまま）。
+            // 締めの間は FK で脚を動かす。IK から FK へは、直前の実際の角度から滑らかにつながる。
+            pose.LegsExact = false;
 
-            // 溜めの間に深くしゃがみ、膝を入れる瞬間に伸び上がる。
-            pose.HipsY -= 0.22f * knee;
-            pose.TorsoPitch += 14f * knee;
-            const float raise = 78f;
-            const float swing = -95f;
+            // 溜めの間は膝を少し引き上げるだけ。突き上げの瞬間にだけ大きく振り上げる。
+            float prep = coil * (1f - thrust);
+
+            // 彼女に近い側（内側）の脚で入れる。外側の脚だと膝が腹の横を通って届かない。
+            Vector3 herPos = Brain.Player.transform.position;
+            bool leftKnee = (_hipL.position - herPos).sqrMagnitude < (_hipR.position - herPos).sqrMagnitude;
+
+            // 溜めの間に深くしゃがんで上体を少し反らせ、突き上げで前へ倒れ込む。
+            // 突き上げの瞬間は腰を少し起こして、膝を腹の高さまで届かせる。
+            // 蹴りは膝を曲げずに脚をまっすぐ伸ばす（腰は沈めすぎず、上体を少し反らす）。
+            bool kick = hold.WallSplitKick;
+            pose.HipsY -= (kick ? 0.08f : 0.22f) * coil * (1f - 0.5f * thrust);
+            pose.TorsoPitch += (kick ? -8f : 14f) * thrust - 6f * prep;
+            float raise = (kick ? 8f : 90f) * thrust + (kick ? 0f : 14f) * prep;
+            float swing = (kick ? -92f : -105f) * thrust - 10f * prep;
             if (leftKnee)
             {
-                pose.HipsX += 0.10f * knee;
-                pose.KneeL += raise * knee;
-                pose.LegLPitch += swing * knee;
-                pose.KneeR += 10f * knee;
+                pose.HipsX += 0.10f * coil;
+                pose.KneeL += raise;
+                pose.LegLPitch += swing;
+                pose.KneeR += 10f * coil;
             }
             else
             {
-                pose.HipsX -= 0.10f * knee;
-                pose.KneeR += raise * knee;
-                pose.LegRPitch += swing * knee;
-                pose.KneeL += 10f * knee;
+                pose.HipsX -= 0.10f * coil;
+                pose.KneeR += raise;
+                pose.LegRPitch += swing;
+                pose.KneeL += 10f * coil;
             }
         }
 
