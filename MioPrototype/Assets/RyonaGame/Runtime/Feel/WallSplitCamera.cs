@@ -35,10 +35,10 @@ namespace Ryona.Game
         static bool _loaded;
         static Shot _mode = Shot.Angle;
         static float _angleDeg = 6f;
-        static float _distance = 1.80f;
+        static float _distance = 1.55f;
         static float _height = 0.40f;
         static float _targetHeight = 1.05f;
-        static float _lateral = 0.12f;
+        static float _lateral = 0.06f;
 
         /// <summary>壁押さえつけ（1 体）のカメラ位置。hold でそのまま使う。</summary>
         static readonly Vector3 PinOffset = new Vector3(-2.25f, 0.47f, -1.75f);
@@ -64,7 +64,7 @@ namespace Ryona.Game
             if (LaunchOptions.TryFloat("-wallsplitcamangle", out float angle))
                 _angleDeg = Mathf.Clamp(angle, 0f, 45f);
             if (LaunchOptions.TryFloat("-wallsplitcamdist", out float dist))
-                _distance = Mathf.Clamp(dist, 1.6f, 4.0f);
+                _distance = Mathf.Clamp(dist, 1.2f, 4.0f);
             if (LaunchOptions.TryFloat("-wallsplitcamheight", out float height))
                 _height = Mathf.Clamp(height, 0f, 1.2f);
             if (LaunchOptions.TryFloat("-wallsplitcamtarget", out float target))
