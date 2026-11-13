@@ -889,6 +889,7 @@ namespace Ryona.Tests
             float bestFace = float.MaxValue;
             float torsoMin = float.MaxValue;
             float torsoMax = float.MinValue;
+            int maxConcurrentStrikes = 0;
             deadline = Time.realtimeSinceStartup + 40f;
             while (_grapple.IsWallGangActive && Time.realtimeSinceStartup < deadline)
             {
@@ -899,30 +900,41 @@ namespace Ryona.Tests
                     torsoMax = Mathf.Max(torsoMax, hitAnim.DebugTorsoPitch);
                 }
 
-                // 顔パンの拳が、彼女の顔（頭の実際の位置）に届いているか。
-                // 振りかぶりは段階（序盤→締め）で変わるので、経過秒の窓では測らない。
-                // 1 発の間ずっと最接近を拾えば、いちばん近づく「当たった瞬間」が残る。
-                EnemyBrain facePuncher = _grapple.WallSplitPuncher;
-                if (facePuncher != null && _grapple.WallSplitFace && hitAnim != null && hitAnim.Rig != null &&
-                    hitAnim.Rig.Head != null && _grapple.WallSplitPunchAge >= 0f)
+                // 顔パン・蹴りは 2 枠のどちらでも起きる（同時打ちがあるため）。両方を見る。
+                int active = 0;
+                foreach (SplitStrike s in _grapple.WallSplitStrikes)
+                    if (s != null && s.Puncher != null && s.Age >= 0f)
+                        active++;
+                maxConcurrentStrikes = Mathf.Max(maxConcurrentStrikes, active);
+
+                foreach (SplitStrike strike in _grapple.WallSplitStrikes)
                 {
-                    var faceFigure = facePuncher.GetComponent<EnemyFigure>();
-                    Transform fist = faceFigure != null ? faceFigure.Fist(_grapple.WallSplitPunchLeft) : null;
-                    if (fist != null)
-                        bestFace = Mathf.Min(bestFace, Vector3.Distance(fist.position, hitAnim.Rig.Head.position));
-                }
-                EnemyBrain kicker = _grapple.WallSplitPuncher;
-                if (kicker != null && _grapple.WallSplitKick && _grapple.WallSplitKneeThrust(kicker) > 0.8f)
-                {
-                    var kickFigure = kicker.GetComponent<EnemyFigure>();
-                    Vector3 herPos = _player.transform.position;
-                    Vector3 herFront = Vector3.ProjectOnPlane(_player.transform.forward, Vector3.up).normalized;
-                    Vector3 bellyPoint = herPos + Vector3.up * 0.86f + herFront * 0.14f;
-                    foreach (bool left in new[] { true, false })
+                    if (strike == null || strike.Puncher == null || strike.Age < 0f)
+                        continue;
+
+                    // 顔パンの拳が、彼女の顔（頭の実際の位置）に届いているか。
+                    // 振りかぶりは段階（序盤→締め）で変わるので、経過秒の窓では測らない。
+                    // 1 発の間ずっと最接近を拾えば、いちばん近づく「当たった瞬間」が残る。
+                    if (strike.Face && hitAnim != null && hitAnim.Rig != null && hitAnim.Rig.Head != null)
                     {
-                        Transform ankle = kickFigure.AnkleBone(left);
-                        if (ankle != null)
-                            bestFoot = Mathf.Min(bestFoot, Vector3.Distance(ankle.position, bellyPoint));
+                        var faceFigure = strike.Puncher.GetComponent<EnemyFigure>();
+                        Transform fist = faceFigure != null ? faceFigure.Fist(strike.Left) : null;
+                        if (fist != null)
+                            bestFace = Mathf.Min(bestFace, Vector3.Distance(fist.position, hitAnim.Rig.Head.position));
+                    }
+
+                    if (strike.Kick && _grapple.WallSplitKneeThrust(strike.Puncher) > 0.8f)
+                    {
+                        var kickFigure = strike.Puncher.GetComponent<EnemyFigure>();
+                        Vector3 herPos = _player.transform.position;
+                        Vector3 herFront = Vector3.ProjectOnPlane(_player.transform.forward, Vector3.up).normalized;
+                        Vector3 bellyPoint = herPos + Vector3.up * 0.86f + herFront * 0.14f;
+                        foreach (bool left in new[] { true, false })
+                        {
+                            Transform ankle = kickFigure.AnkleBone(left);
+                            if (ankle != null)
+                                bestFoot = Mathf.Min(bestFoot, Vector3.Distance(ankle.position, bellyPoint));
+                        }
                     }
                 }
                 yield return null;
@@ -933,6 +945,8 @@ namespace Ryona.Tests
             Assert.Greater(torsoMax - torsoMin, 25f,
                 $"殴られても上体が動かない（3 人がかりの間の上体の角度の振れ幅 {torsoMax - torsoMin:F0}°）");
             Assert.Less(bestFoot, 0.40f, $"3 人目の蹴りの足が腹に届いていない（最接近 {bestFoot:F2}m）");
+            Assert.GreaterOrEqual(maxConcurrentStrikes, 2,
+                "同時に打つ場面が一度も無い（3 人が順番待ちのまま）");
 
             hits.TryGetValue(_captor.transform, out int captorHits);
             hits.TryGetValue(third.transform, out int thirdHits);

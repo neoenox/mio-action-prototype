@@ -39,7 +39,7 @@ namespace Ryona.Game
             Vector3 her = _brain.Player.transform.position;
             Vector3 front = Vector3.ProjectOnPlane(_brain.Player.transform.forward, Vector3.up).normalized;
             // 蹴りは足の裏を腹の表面へ（膝より手前に出さない）。
-            Vector3 belly = her + Vector3.up * BellyHeight + front * (hold.WallSplitKick ? 0.14f : BellyFront);
+            Vector3 belly = her + Vector3.up * BellyHeight + front * (hold.WallSplitKickOf(_brain) ? 0.14f : BellyFront);
 
             // 彼女に近い側（内側）の脚。姿勢側（BuildWallSplitKneePose）と同じ選び方。
             Transform hipL = _figure.HipBone(true);
@@ -50,7 +50,7 @@ namespace Ryona.Game
 
             Transform hip = left ? hipL : hipR;
             // 膝入れは膝を、蹴りは足首（足）を腹へ向ける。
-            Transform knee = hold.WallSplitKick ? _figure.AnkleBone(left) : _figure.KneeBone(left);
+            Transform knee = hold.WallSplitKickOf(_brain) ? _figure.AnkleBone(left) : _figure.KneeBone(left);
             if (knee == null)
                 return;
 

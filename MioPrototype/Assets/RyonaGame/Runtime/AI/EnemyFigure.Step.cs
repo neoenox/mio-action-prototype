@@ -847,7 +847,7 @@ namespace Ryona.Game
             // 溜めの間に深くしゃがんで上体を少し反らせ、突き上げで前へ倒れ込む。
             // 突き上げの瞬間は腰を少し起こして、膝を腹の高さまで届かせる。
             // 蹴りは膝を曲げずに脚をまっすぐ伸ばす（腰は沈めすぎず、上体を少し反らす）。
-            bool kick = hold.WallSplitKick;
+            bool kick = hold.WallSplitKickOf(Brain);
             pose.HipsY -= (kick ? 0.08f : 0.22f) * coil * (1f - 0.5f * thrust);
             pose.TorsoPitch += (kick ? -8f : 14f) * thrust - 6f * prep;
             float raise = (kick ? 8f : 90f) * thrust + (kick ? 0f : 14f) * prep;

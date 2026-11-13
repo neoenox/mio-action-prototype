@@ -519,28 +519,64 @@ namespace Ryona.Game
             }
 
             // アシストと拘束役は腹パン・顔パン・膝を混ぜる。遠くに立つ 3 人目は蹴りだけ（拳は届かない）。
-            // 最後は 3 人目の重い蹴り。3 人が順番に、休む暇なく続ける（順番: アシスト・拘束役・3 人目）。
-            var kinds = new[]
+            // 1 巡 = アシスト・拘束役・3 人目。巡によってはアシストと拘束役が「同時に」入る。
+            // 3 人全員が 1 人ずつ順番に打つだけだと、打っていない 2 人が棒立ちで順番待ちに見える。
+            var assistKinds = new[]
             {
-                WallStrikeKind.Belly, WallStrikeKind.Face, WallStrikeKind.Kick,
-                WallStrikeKind.Face, WallStrikeKind.Belly, WallStrikeKind.Kick,
-                WallStrikeKind.Belly, WallStrikeKind.Face, WallStrikeKind.Kick,
-                WallStrikeKind.Knee, WallStrikeKind.Belly, WallStrikeKind.Kick,
-                WallStrikeKind.Face, WallStrikeKind.Knee, WallStrikeKind.Kick
+                WallStrikeKind.Belly, WallStrikeKind.Face, WallStrikeKind.Belly,
+                WallStrikeKind.Knee, WallStrikeKind.Face
             };
-            int total = Mathf.Min(CombatConstants.WallGangStrikes, kinds.Length);
-            var strikers = new[] { WallAssist, Captor, third };
-
-            for (int i = 0; i < total && WallSequenceAlive; i++)
+            var captorKinds = new[]
             {
-                // 3 人は最初から持ち場に立っていて、入れ替わらず順番に打つ。
-                EnemyBrain striker = strikers[i % strikers.Length];
-                if (striker == null)
-                    continue;
+                WallStrikeKind.Face, WallStrikeKind.Belly, WallStrikeKind.Face,
+                WallStrikeKind.Belly, WallStrikeKind.Knee
+            };
+            var thirdKinds = new[]
+            {
+                WallStrikeKind.Kick, WallStrikeKind.Kick, WallStrikeKind.Kick,
+                WallStrikeKind.Kick, WallStrikeKind.Kick
+            };
 
-                _session.GangStriker = striker;
-                bool finisher = i == total - 1;
-                yield return WallGangStrike(striker, kinds[i], finisher, i);
+            // 2 巡目と 3 巡目で、アシストと拘束役が腹と顔へ同時に入る。
+            var simultaneous = new[] { false, true, true, false, false };
+
+            EnemyBrain assist = WallAssist;
+            EnemyBrain holder = Captor;
+            int cycles = Mathf.Min(simultaneous.Length,
+                Mathf.Min(assistKinds.Length, Mathf.Min(captorKinds.Length, thirdKinds.Length)));
+
+            for (int cycle = 0; cycle < cycles && WallSequenceAlive; cycle++)
+            {
+                int baseIndex = cycle * 3;
+
+                if (simultaneous[cycle] && assist != null && holder != null)
+                {
+                    // 2 人同時。片方をコルーチンで走らせたまま、もう片方を待つ。
+                    _session.GangStriker = assist;
+                    Coroutine other = StartCoroutine(
+                        WallGangStrike(holder, captorKinds[cycle], false, baseIndex + 1));
+                    yield return WallGangStrike(assist, assistKinds[cycle], false, baseIndex);
+
+                    // 枠が空くまで待ってから次へ（打撃が重なり続けないように）。
+                    while (other != null && WallSequenceAlive && _session.StrikeOf(holder) != null)
+                        yield return null;
+                }
+                else
+                {
+                    _session.GangStriker = assist;
+                    yield return WallGangStrike(assist, assistKinds[cycle], false, baseIndex);
+                    if (!WallSequenceAlive)
+                        break;
+
+                    _session.GangStriker = holder;
+                    yield return WallGangStrike(holder, captorKinds[cycle], false, baseIndex + 1);
+                }
+
+                if (!WallSequenceAlive)
+                    break;
+
+                _session.GangStriker = third;
+                yield return WallGangStrike(third, thirdKinds[cycle], cycle == cycles - 1, baseIndex + 2);
             }
 
             EndWallGang();
@@ -570,79 +606,78 @@ namespace Ryona.Game
                 WallStrikeKind.Face => CombatConstants.WallGangFaceScale,
                 _ => CombatConstants.WallGangBellyScale
             };
-            // 膝と蹴りは WallSplitKneeStrike（姿勢側が見る）を立てる。蹴りは SplitKick、顔パンは SplitFace を別に立てる。
-            _session.SplitPuncher = puncher;
-            _session.SplitPunchLeft = puncher == Captor;
-            _session.SplitFinisher = legStrike;
-            _session.SplitKick = kind == WallStrikeKind.Kick;
-            _session.SplitFace = kind == WallStrikeKind.Face;
-            _session.SplitWindup = windup;
-            _session.SplitPunchAge = 0f;
+            // 同時に打てるよう、空いている枠を取る（2 枠）。
+            // 膝と蹴りは Finisher、蹴りは Kick、顔パンは Face を立てる（姿勢側がこの枠を見る）。
+            SplitStrike strike = _session.ClaimStrike(puncher);
+            strike.Left = puncher == Captor;
+            strike.Finisher = legStrike;
+            strike.Kick = kind == WallStrikeKind.Kick;
+            strike.Face = kind == WallStrikeKind.Face;
+            strike.Windup = windup;
 
-            float t = 0f;
-            while (t < windup)
+            // 途中で抜けても枠を残さない（残すと次の打撃が「打ちっぱなし」になる）。
+            try
             {
-                if (!WallSequenceAlive)
-                    yield break;
-                t += Time.deltaTime;
-                _session.SplitPunchAge = t;
-                yield return null;
+                float t = 0f;
+                while (t < windup)
+                {
+                    if (!WallSequenceAlive)
+                        yield break;
+                    t += Time.deltaTime;
+                    strike.Age = t;
+                    yield return null;
+                }
+
+                puncher.DoWallSplitPunch(scale, kind == WallStrikeKind.Face ? PunchZone.Face : PunchZone.Body);
+
+                // 1 発ごとに画面が応える（揺れ・ヒットストップ・フラッシュ）。当たった感じを出す。
+                // 段階が進むほど大きく応える（序盤は軽く、締めへ向けて重く）。
+                float stageImpact = CombatConstants.WallGangImpactScale(index);
+                if (!finisher)
+                    FindFirstObjectByType<CombatFeel>()?.OnWallGangHit(
+                        (kind == WallStrikeKind.Belly ? 0.55f : kind == WallStrikeKind.Face ? 0.75f : 1.0f)
+                        * stageImpact);
+
+                var anim = Animator();
+                float progress = _session.GangTotal > 0 ? (float)_session.GangHits / _session.GangTotal : 0f;
+                if (kind == WallStrikeKind.Face)
+                {
+                    Vector3 push = transform.position - puncher.transform.position;
+                    push.y = 0f;
+                    anim?.PlayHeldFacePunch(0.45f, push, 1f);
+                }
+                else
+                {
+                    // 重さ: 腹パンでも深く折れる（実測: 0.9 だと「当たっている感」が無かった）。
+                    // 段階倍率を掛けるが、1.0 を下回らせない（浅いと当たって見えない）。
+                    float impact = (legStrike ? (finisher ? 1.7f : 1.6f) : 1.15f) * stageImpact;
+                    impact = Mathf.Max(1.0f, impact);
+                    anim?.PlayHeldBellyPunch(interval, Mathf.Clamp01(0.5f + 0.5f * progress), impact);
+                    if (legStrike && finisher)
+                        FindFirstObjectByType<CombatFeel>()?.OnWallSplitFinisher();
+                }
+                _session.GangHits++;
+
+                while (t < interval)
+                {
+                    if (!WallSequenceAlive)
+                        yield break;
+                    t += Time.deltaTime;
+                    strike.Age = t;
+                    yield return null;
+                }
             }
-
-            puncher.DoWallSplitPunch(scale, kind == WallStrikeKind.Face ? PunchZone.Face : PunchZone.Body);
-
-            // 1 発ごとに画面が応える（揺れ・ヒットストップ・フラッシュ）。当たった感じを出す。
-            // 段階が進むほど大きく応える（序盤は軽く、締めへ向けて重く）。
-            float stageImpact = CombatConstants.WallGangImpactScale(index);
-            if (!finisher)
-                FindFirstObjectByType<CombatFeel>()?.OnWallGangHit(
-                    (kind == WallStrikeKind.Belly ? 0.55f : kind == WallStrikeKind.Face ? 0.75f : 1.0f)
-                    * stageImpact);
-
-            var anim = Animator();
-            float progress = _session.GangTotal > 0 ? (float)_session.GangHits / _session.GangTotal : 0f;
-            if (kind == WallStrikeKind.Face)
+            finally
             {
-                Vector3 push = transform.position - puncher.transform.position;
-                push.y = 0f;
-                anim?.PlayHeldFacePunch(0.45f, push, 1f);
+                strike.Reset();
             }
-            else
-            {
-                // 重さ: 腹パンでも深く折れる（実測: 0.9 だと「当たっている感」が無かった）。
-                // 段階倍率を掛けるが、1.0 を下回らせない（浅いと当たって見えない）。
-                float impact = (legStrike ? (finisher ? 1.7f : 1.6f) : 1.15f) * stageImpact;
-                impact = Mathf.Max(1.0f, impact);
-                anim?.PlayHeldBellyPunch(interval, Mathf.Clamp01(0.5f + 0.5f * progress), impact);
-                if (legStrike && finisher)
-                    FindFirstObjectByType<CombatFeel>()?.OnWallSplitFinisher();
-            }
-            _session.GangHits++;
-
-            while (t < interval)
-            {
-                if (!WallSequenceAlive)
-                    yield break;
-                t += Time.deltaTime;
-                _session.SplitPunchAge = t;
-                yield return null;
-            }
-
-            _session.SplitPuncher = null;
-            _session.SplitPunchAge = -1f;
-            _session.SplitFinisher = false;
-            _session.SplitKick = false;
-            _session.SplitFace = false;
         }
 
         /// <summary>3 人がかりを終える。3 人目を持ち場から離し、拘束役の手を戻す。</summary>
         void EndWallGang()
         {
             var third = _session.Third;
-            _session.SplitPuncher = null;
-            _session.SplitPunchAge = -1f;
-            _session.SplitFinisher = false;
-            _session.SplitFace = false;
+            _session.ClearStrikes();
             _session.GangActive = false;
             _session.GangStriker = null;
             _session.SuppressRemaining = 0f;

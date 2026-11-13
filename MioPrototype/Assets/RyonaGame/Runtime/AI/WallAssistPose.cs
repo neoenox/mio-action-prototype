@@ -55,17 +55,20 @@ namespace Ryona.Game
                 WallSplitArm.Relax(_figure, true, split, transform);
 
             // 外側の手（彼の右手）は腹パン。打たない間は脇へ下ろす（上げたままだと不自然）。
-            if (hold.WallSplitPuncher == _brain && hold.WallSplitPunchAge >= 0f && !hold.WallSplitKneeStrike)
+            // 同時打ちがあるので、判定は「この人」の枠で行う。
+            float punchAge = hold.WallSplitPunchAgeOf(_brain);
+            bool facePunch = hold.WallSplitFaceOf(_brain);
+            if (punchAge >= 0f && !hold.WallSplitKneeStrikeOf(_brain))
                 WallSplitArm.Punch(_figure, false, her, front, side,
-                    hold.WallSplitPunchAge, split, transform, hold.WallSplitFace,
-                    hold.WallSplitFace && _targetRig.Head != null
+                    punchAge, split, transform, facePunch,
+                    facePunch && _targetRig.Head != null
                         ? _targetRig.Head.position + front * 0.10f
                         : (Vector3?)null);
             else
                 WallSplitArm.Guard(_figure, false, her, front, side, split, transform);
 
             // 締めの膝入れは、空き手で彼女の腰を掴んで引き寄せる。
-            if (hold.WallSplitKneeStrike && hold.WallSplitPuncher == _brain)
+            if (hold.WallSplitKneeStrikeOf(_brain))
                 WallSplitArm.Pull(_figure, false, her, front, side,
                     split * Mathf.Max(hold.WallSplitKneeWeight(_brain), hold.WallSplitKneeThrust(_brain)),
                     transform);

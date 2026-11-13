@@ -104,6 +104,21 @@ namespace Ryona.Game
         /// <summary>いまの 1 発の経過秒（0 = 振りかぶり開始、負 = 待ち）。</summary>
         internal float WallSplitPunchAge => _session.SplitPunchAge;
 
+        /// <summary>この人がいま打っている 1 発の経過秒（打っていなければ -1）。</summary>
+        internal float WallSplitPunchAgeOf(EnemyBrain who) => _session.StrikeOf(who)?.Age ?? -1f;
+
+        /// <summary>この人の 1 発が顔パンか。</summary>
+        internal bool WallSplitFaceOf(EnemyBrain who) => _session.StrikeOf(who)?.Face ?? false;
+
+        /// <summary>この人の 1 発が蹴りか（膝入れと同じ枠で動くが、脚をまっすぐ伸ばす）。</summary>
+        internal bool WallSplitKickOf(EnemyBrain who) => _session.StrikeOf(who)?.Kick ?? false;
+
+        /// <summary>この人の 1 発が締め（膝入れ・蹴り）か。</summary>
+        internal bool WallSplitKneeStrikeOf(EnemyBrain who) => _session.StrikeOf(who)?.Finisher ?? false;
+
+        /// <summary>同時に打っている枠（テスト・診断用）。</summary>
+        internal System.Collections.Generic.IReadOnlyList<SplitStrike> WallSplitStrikes => _session.Strikes;
+
         /// <summary>二人がかりで入った腹パンの数（HUD 用）。</summary>
         internal int WallSplitHits => _session.SplitHits;
 
@@ -176,11 +191,12 @@ namespace Ryona.Game
         /// </summary>
         internal float WallSplitKneeWeight(EnemyBrain who)
         {
-            if (!_session.SplitFinisher || _session.SplitPuncher != who || _session.SplitPunchAge < 0f)
+            SplitStrike strike = _session.StrikeOf(who);
+            if (strike == null || !strike.Finisher)
                 return 0f;
 
-            float windup = _session.SplitWindup;
-            float t = _session.SplitPunchAge;
+            float windup = strike.Windup;
+            float t = strike.Age;
             float coil = Mathf.SmoothStep(0f, 1f, t / (windup * 0.7f));
             float release = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(windup + 0.12f, windup + 0.50f, t));
             return coil * (1f - release);
@@ -193,11 +209,12 @@ namespace Ryona.Game
         /// </summary>
         internal float WallSplitFaceStep(EnemyBrain who)
         {
-            if (!_session.SplitFace || _session.SplitPuncher != who || _session.SplitPunchAge < 0f)
+            SplitStrike strike = _session.StrikeOf(who);
+            if (strike == null || !strike.Face)
                 return 0f;
 
-            float age = _session.SplitPunchAge;
-            float up = Mathf.SmoothStep(0f, 1f, age / Mathf.Max(0.01f, _session.SplitWindup));
+            float age = strike.Age;
+            float up = Mathf.SmoothStep(0f, 1f, age / Mathf.Max(0.01f, strike.Windup));
             float down = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.30f, 0.50f, age));
             return up * (1f - down);
         }
@@ -210,11 +227,12 @@ namespace Ryona.Game
         /// </summary>
         internal float WallSplitKneeThrust(EnemyBrain who)
         {
-            if (!_session.SplitFinisher || _session.SplitPuncher != who || _session.SplitPunchAge < 0f)
+            SplitStrike strike = _session.StrikeOf(who);
+            if (strike == null || !strike.Finisher)
                 return 0f;
 
-            float windup = _session.SplitWindup;
-            float t = _session.SplitPunchAge;
+            float windup = strike.Windup;
+            float t = strike.Age;
             float up = Mathf.Pow(Mathf.InverseLerp(windup - 0.22f, windup, t), 2.2f);
             float down = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(windup + 0.04f, windup + 0.26f, t));
             return up * (1f - down);

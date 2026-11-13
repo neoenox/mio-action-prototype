@@ -80,19 +80,21 @@ namespace Ryona.Game
                 Vector3 herPos = _brain.Player.transform.position;
                 Vector3 herFront = Vector3.ProjectOnPlane(_brain.Player.transform.forward, Vector3.up).normalized;
                 float herSide = transform.position.x >= herPos.x ? 1f : -1f;
-                bool punching = hold.WallSplitPuncher == _brain && hold.WallSplitPunchAge >= 0f &&
-                                !hold.WallSplitKneeStrike;
+                // 同時打ちがあるので、判定は「この人」の枠で行う。
+                float punchAge = hold.WallSplitPunchAgeOf(_brain);
+                bool facePunch = hold.WallSplitFaceOf(_brain);
+                bool punching = punchAge >= 0f && !hold.WallSplitKneeStrikeOf(_brain);
                 if (punching)
                     WallSplitArm.Punch(_figure, true, herPos, herFront, herSide,
-                        hold.WallSplitPunchAge, split, transform, hold.WallSplitFace,
-                        hold.WallSplitFace && _targetRig.Head != null
+                        punchAge, split, transform, facePunch,
+                        facePunch && _targetRig.Head != null
                             ? _targetRig.Head.position + herFront * 0.10f
                             : (Vector3?)null);
                 else
                     WallSplitArm.Guard(_figure, true, herPos, herFront, herSide, split, transform);
 
                 // 締めの膝入れは、空き手で彼女の腰を掴んで引き寄せる。
-                if (hold.WallSplitKneeStrike && hold.WallSplitPuncher == _brain)
+                if (hold.WallSplitKneeStrikeOf(_brain))
                     WallSplitArm.Pull(_figure, true, herPos, herFront, herSide,
                         split * Mathf.Max(hold.WallSplitKneeWeight(_brain), hold.WallSplitKneeThrust(_brain)),
                         transform);
