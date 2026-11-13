@@ -204,8 +204,8 @@ namespace Ryona
         /// <summary>カメラの寄り（0..1）。序盤は引き、中盤で寄り始め、締めで大きく寄る。</summary>
         public static float WallSplitCameraPush(int index) =>
             index < WallSplitOpeningHits ? 0f
-            : index < WallSplitBuildHits ? 0.35f
-            : 0.50f;
+            : index < WallSplitBuildHits ? 0.10f
+            : 0.15f;
 
         /// <summary>締めの 1 発か。</summary>
         public static bool IsWallSplitFinisher(int index) => index >= WallSplitBuildHits;
