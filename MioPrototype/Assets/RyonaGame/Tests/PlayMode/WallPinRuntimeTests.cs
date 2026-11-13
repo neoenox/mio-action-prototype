@@ -890,6 +890,14 @@ namespace Ryona.Tests
             float torsoMin = float.MaxValue;
             float torsoMax = float.MinValue;
             int maxConcurrentStrikes = 0;
+            // 顔パンで「拳がいちばん近づいた距離」と「そのときの経過秒」を人ごとに持つ。
+            // 経過秒が振りかぶり（＝ダメージが入る時刻）と離れていると、
+            // 拳が届く前／後に彼女が折れて見える。
+            // 姿勢は 1 フレーム遅れて反映されるので、許容は 0.05 秒（約 3 フレーム）にする。
+            var faceMinDist = new System.Collections.Generic.Dictionary<Transform, float>();
+            var faceMinAge = new System.Collections.Generic.Dictionary<Transform, float>();
+            var faceMinWindup = new System.Collections.Generic.Dictionary<Transform, float>();
+            var faceLastAge = new System.Collections.Generic.Dictionary<Transform, float>();
             deadline = Time.realtimeSinceStartup + 40f;
             while (_grapple.IsWallGangActive && Time.realtimeSinceStartup < deadline)
             {
@@ -920,7 +928,24 @@ namespace Ryona.Tests
                         var faceFigure = strike.Puncher.GetComponent<EnemyFigure>();
                         Transform fist = faceFigure != null ? faceFigure.Fist(strike.Left) : null;
                         if (fist != null)
-                            bestFace = Mathf.Min(bestFace, Vector3.Distance(fist.position, hitAnim.Rig.Head.position));
+                        {
+                            Transform key = strike.Puncher.transform;
+                            float d = Vector3.Distance(fist.position, hitAnim.Rig.Head.position);
+                            bestFace = Mathf.Min(bestFace, d);
+
+                            // 同じ人の次の 1 発が始まったら、最接近の記録をやり直す。
+                            float prevAge = faceLastAge.TryGetValue(key, out float pa) ? pa : -1f;
+                            if (strike.Age < prevAge)
+                                faceMinDist[key] = float.MaxValue;
+                            faceLastAge[key] = strike.Age;
+
+                            if (!faceMinDist.TryGetValue(key, out float m) || d < m)
+                            {
+                                faceMinDist[key] = d;
+                                faceMinAge[key] = strike.Age;
+                                faceMinWindup[key] = strike.Windup;
+                            }
+                        }
                     }
 
                     if (strike.Kick && _grapple.WallSplitKneeThrust(strike.Puncher) > 0.8f)
@@ -947,6 +972,14 @@ namespace Ryona.Tests
             Assert.Less(bestFoot, 0.40f, $"3 人目の蹴りの足が腹に届いていない（最接近 {bestFoot:F2}m）");
             Assert.GreaterOrEqual(maxConcurrentStrikes, 2,
                 "同時に打つ場面が一度も無い（3 人が順番待ちのまま）");
+
+            // 拳の到達とダメージの時刻が揃っていること（ズレると打撃と被弾姿勢が噛み合わない）。
+            foreach (var pair in faceMinAge)
+            {
+                Assert.Less(Mathf.Abs(pair.Value - faceMinWindup[pair.Key]), 0.05f,
+                    $"{pair.Key.name} の顔パンで拳の到達とダメージがずれている" +
+                    $"（拳の最接近 {pair.Value:F2}s / ダメージ {faceMinWindup[pair.Key]:F2}s）");
+            }
 
             hits.TryGetValue(_captor.transform, out int captorHits);
             hits.TryGetValue(third.transform, out int thirdHits);

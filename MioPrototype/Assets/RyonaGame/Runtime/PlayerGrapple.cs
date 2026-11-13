@@ -107,6 +107,9 @@ namespace Ryona.Game
         /// <summary>この人がいま打っている 1 発の経過秒（打っていなければ -1）。</summary>
         internal float WallSplitPunchAgeOf(EnemyBrain who) => _session.StrikeOf(who)?.Age ?? -1f;
 
+        /// <summary>この人の 1 発の振りかぶり秒（打っていなければ 0.16）。</summary>
+        internal float WallSplitWindupOf(EnemyBrain who) => _session.StrikeOf(who)?.Windup ?? 0.16f;
+
         /// <summary>この人の 1 発が顔パンか。</summary>
         internal bool WallSplitFaceOf(EnemyBrain who) => _session.StrikeOf(who)?.Face ?? false;
 

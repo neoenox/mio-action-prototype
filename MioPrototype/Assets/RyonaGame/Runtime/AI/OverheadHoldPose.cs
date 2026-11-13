@@ -86,7 +86,7 @@ namespace Ryona.Game
                 bool punching = punchAge >= 0f && !hold.WallSplitKneeStrikeOf(_brain);
                 if (punching)
                     WallSplitArm.Punch(_figure, true, herPos, herFront, herSide,
-                        punchAge, split, transform, facePunch,
+                        punchAge, hold.WallSplitWindupOf(_brain), split, transform, facePunch,
                         facePunch && _targetRig.Head != null
                             ? _targetRig.Head.position + herFront * 0.10f
                             : (Vector3?)null);
