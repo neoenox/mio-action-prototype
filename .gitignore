@@ -46,3 +46,6 @@ InitTestScene*.unity.meta
 # Python
 __pycache__/
 *.pyc
+
+# プレビュー用の生キャプチャ（連番 PNG。成果物は docs/verification へ）
+/preview-gang/
