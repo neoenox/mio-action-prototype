@@ -643,9 +643,13 @@ namespace Ryona.Game
             Vector3 her = hold.transform.position;
             Vector3 forward = Vector3.ProjectOnPlane(hold.transform.forward, Vector3.up).normalized;
             // 二人とも彼女の正面側へ立つ。横に並ぶと腹パンが横から棒で叩く形になる（実測）。
+            // 締めの膝入れは腹の真正面まで踏み込む。
+            float kneeStep = hold.WallSplitKneeWeight(this);
+            float gap = Mathf.Lerp(CombatConstants.WallSplitStandGap, 0.22f, kneeStep);
+            float front = Mathf.Lerp(CombatConstants.WallSplitStandFront, 0.38f, kneeStep);
             Vector3 spot = her
-                + Vector3.right * (_wallAssistSide * CombatConstants.WallSplitStandGap)
-                + forward * CombatConstants.WallSplitStandFront;
+                + Vector3.right * (_wallAssistSide * gap)
+                + forward * front;
             spot.y = transform.position.y;
 
             // 持ち場へは小走りで寄る（通常の移動速度だと間に合わない）。
@@ -655,10 +659,6 @@ namespace Ryona.Game
             Vector3 look = her - transform.position;
             look.y = 0f;
             if (look.sqrMagnitude > 0.0004f)
-            // 締めの膝入れは腹の真正面まで踏み込む。
-            float kneeStep = hold.WallSplitKneeWeight(this);
-            float gap = Mathf.Lerp(CombatConstants.WallSplitStandGap, 0.22f, kneeStep);
-            float front = Mathf.Lerp(CombatConstants.WallSplitStandFront, 0.38f, kneeStep);
             {
                 // 真横を向いたままだと、空き手が腹を横切って「太鼓を叩いている」画になる。
                 // カメラ（プレイヤー）側へ体を開いて、前から腹へ入る形にする。
@@ -683,9 +683,12 @@ namespace Ryona.Game
         {
             Vector3 her = hold.transform.position;
             Vector3 forward = Vector3.ProjectOnPlane(hold.transform.forward, Vector3.up).normalized;
+            float kneeStep = hold.WallSplitKneeWeight(this);
+            float gap = Mathf.Lerp(CombatConstants.WallSplitStandGap, 0.22f, kneeStep);
+            float front = Mathf.Lerp(CombatConstants.WallSplitStandFront, 0.38f, kneeStep);
             Vector3 spot = her
-                + Vector3.right * CombatConstants.WallSplitStandGap
-                + forward * CombatConstants.WallSplitStandFront;
+                + Vector3.right * gap
+                + forward * front;
             spot.y = transform.position.y;
 
             // 押さえつけ中は移動速度倍率が 0 のことがあるので、位置合わせは定速で行う。
@@ -695,9 +698,6 @@ namespace Ryona.Game
             Vector3 look = her - transform.position;
             look.y = 0f;
             if (look.sqrMagnitude > 0.0004f)
-            float kneeStep = hold.WallSplitKneeWeight(this);
-            float gap = Mathf.Lerp(CombatConstants.WallSplitStandGap, 0.22f, kneeStep);
-            float front = Mathf.Lerp(CombatConstants.WallSplitStandFront, 0.38f, kneeStep);
             {
                 // アシストと同じく、カメラ（プレイヤー）側へ体を開く。
                 Quaternion facing = Quaternion.LookRotation(look.normalized, Vector3.up);

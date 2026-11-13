@@ -796,24 +796,6 @@ namespace Ryona.Game
             }
         }
 
-        /// <summary>立ち上がりと武器の表示切替。<paramref name="grabbing"/> を返す。</summary>
-        void BuildGetUpPose(ref PoseTarget pose, EnemyPhase phase, PlayerGrapple holdState, float restY, out bool grabbing)
-        {
-            grabbing = false;
-            // --- 立ち上がり（倒れた姿勢から起こす） ---------------------
-            // 4 つの形を順に通す: 仰向け → 上体を起こす → しゃがみ（膝を深く折る）
-            // → 立ち上がる。途中で必ず膝を折って足を体の下へ入れる。
-            // これが無いと、脚を伸ばしたまま足首を支点に板が起きるように見える。
-            float rise = RiseNow;
-            bool rising = RisingNow && (phase == EnemyPhase.Chase || phase == EnemyPhase.Strafe);
-            if (rising)
-            {
-                // 倒れている間も頭は前を見る。上体と一緒に垂れると
-                // 「気を失ったまま体だけ起きた」ように見える。
-                pose.Fall = SampleRise(RiseFall, rise);
-                pose.HipsY = restY * SampleRise(RiseHip, rise);
-                pose.HipsZ = 0f;
-                pose.TorsoPitch = SampleRise(RiseTorso, rise);
         /// <summary>
         /// 壁の二体がかりの締め。打つ側が腕ではなく膝を腹へ入れる。
         /// 腰を沈めて骨盤を彼女の腹の中心線へずらし、カメラ側の膝を引き上げる
@@ -859,6 +841,24 @@ namespace Ryona.Game
             }
         }
 
+        /// <summary>立ち上がりと武器の表示切替。<paramref name="grabbing"/> を返す。</summary>
+        void BuildGetUpPose(ref PoseTarget pose, EnemyPhase phase, PlayerGrapple holdState, float restY, out bool grabbing)
+        {
+            grabbing = false;
+            // --- 立ち上がり（倒れた姿勢から起こす） ---------------------
+            // 4 つの形を順に通す: 仰向け → 上体を起こす → しゃがみ（膝を深く折る）
+            // → 立ち上がる。途中で必ず膝を折って足を体の下へ入れる。
+            // これが無いと、脚を伸ばしたまま足首を支点に板が起きるように見える。
+            float rise = RiseNow;
+            bool rising = RisingNow && (phase == EnemyPhase.Chase || phase == EnemyPhase.Strafe);
+            if (rising)
+            {
+                // 倒れている間も頭は前を見る。上体と一緒に垂れると
+                // 「気を失ったまま体だけ起きた」ように見える。
+                pose.Fall = SampleRise(RiseFall, rise);
+                pose.HipsY = restY * SampleRise(RiseHip, rise);
+                pose.HipsZ = 0f;
+                pose.TorsoPitch = SampleRise(RiseTorso, rise);
                 pose.TorsoYaw = SampleRise(RiseYaw, rise);
                 pose.HeadPitch = SampleRise(RiseHead, rise);
                 pose.ArmRPitch = SampleRise(RiseArmR, rise);
