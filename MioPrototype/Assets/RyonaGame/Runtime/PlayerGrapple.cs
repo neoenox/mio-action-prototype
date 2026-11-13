@@ -475,10 +475,18 @@ namespace Ryona.Game
             PushPulse = 1f;
         }
 
+        /// <summary>掴みの調整値（<see cref="RyonaConfig.Grapple"/>）。シーンの値は使わない。</summary>
+        RyonaConfig.GrappleSettings _grappleSettings;
+
         void Awake()
         {
             if (Stats == null)
                 Stats = GetComponent<PlayerStats>();
+
+            _grappleSettings = RyonaConfig.Instance.Grapple;
+            // 必要入力数の計算は RyonaCore にあり、そこから RyonaConfig は見えない。
+            // 足取りの入力回数だけはここで写す（残りはこのクラスが直接読む）。
+            ResistanceMath.AnkleMashInputs = _grappleSettings.AnkleMashInputs;
         }
 
         /// <summary>

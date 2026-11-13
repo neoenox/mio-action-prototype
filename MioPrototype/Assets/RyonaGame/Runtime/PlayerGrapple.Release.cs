@@ -99,7 +99,7 @@ namespace Ryona.Game
                 // 頭上拘束も背後から密着して掴む（腕を上げる余地を残し、羽交い締めより少し離す）。
                 GrappleKind.Back => CombatConstants.BackGrabStandoff,
                 GrappleKind.BearHug => CombatConstants.BearHugStandoff,
-                GrappleKind.AnkleGrab => CombatConstants.AnkleGrabStandoff,
+                GrappleKind.AnkleGrab => _grappleSettings.AnkleStandoff,
                 _ => CombatConstants.GrabStandoff
             };
             Vector3 spot = captor.transform.position + dir * distance;

@@ -238,6 +238,26 @@ namespace Ryona.Game
             public Color FlashColor = Color.white;
         }
 
+        /// <summary>
+        /// 捕まえられ方（拘束）の調整値。足取りのように「敵が仕掛け、彼女が掴まれる」ものをまとめる。
+        /// </summary>
+        [Serializable]
+        public sealed class GrappleSettings
+        {
+            [Header("Ankle Grab (足取り)")]
+            [Tooltip("振りほどくのに必要な入力回数。短い拘束なので少なめ")]
+            [Min(1)] public int AnkleMashInputs = 8;
+
+            [Tooltip("拘束時間（秒）。振りほどけないと前へ転ぶ")]
+            public float AnkleLimitSeconds = 1.6f;
+
+            [Tooltip("掴んだ側と彼女の距離（m）。低く沈んだ敵の腕が足首まで届く")]
+            public float AnkleStandoff = 0.85f;
+
+            [Tooltip("走って逃げる彼女を背後から掴んだとき、足取りになる割合。残りは羽交い締め")]
+            [Range(0f, 1f)] public float AnkleChance = 0.5f;
+        }
+
         /// <summary>敵の同時攻撃の制限（<see cref="EnemyGroup"/>）の調整値。</summary>
         [Serializable]
         public sealed class GroupSettings
@@ -359,6 +379,9 @@ namespace Ryona.Game
         public EnemySettings Enemy = new EnemySettings();
         public EnemyReactionSettings EnemyReaction = new EnemyReactionSettings();
         public GroupSettings Group = new GroupSettings();
+
+        [Header("Grapple")]
+        public GrappleSettings Grapple = new GrappleSettings();
 
         [Header("Stage / UI")]
         public EncounterSettings Encounter = new EncounterSettings();

@@ -59,13 +59,21 @@ namespace Ryona
     /// </summary>
     public static class ResistanceMath
     {
+        /// <summary>
+        /// 足取り（<see cref="GrappleKind.AnkleGrab"/>）の基礎入力回数。
+        /// 真実源は <c>RyonaConfig.Grapple.AnkleMashInputs</c>。RyonaCore は RyonaGame を
+        /// 参照できない（アセンブリの向き）ので、Game 側（PlayerGrapple）が Awake でここへ写す。
+        /// 設定アセットが無いときはこの既定で動く（RyonaConfig の既定と同じ値）。
+        /// </summary>
+        public static int AnkleMashInputs { get; set; } = 8;
+
         public static int BaseInputs(GrappleKind kind)
         {
             switch (kind)
             {
                 case GrappleKind.Pin: return CombatConstants.MashBasePin;
                 case GrappleKind.BearHug: return CombatConstants.MashBaseBearHug;
-                case GrappleKind.AnkleGrab: return CombatConstants.MashBaseAnkleGrab;
+                case GrappleKind.AnkleGrab: return AnkleMashInputs;
                 default: return CombatConstants.MashBaseBack;
             }
         }

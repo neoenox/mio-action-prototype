@@ -71,10 +71,11 @@ namespace Ryona.Tests
             Assert.IsTrue(_grapple.IsGrappled, "足取りが始まらない");
             Assert.AreEqual(GrappleKind.AnkleGrab, _grapple.Kind);
             Assert.IsTrue(_grapple.HasTimeLimit, "足取りは時間切れがある");
-            Assert.AreEqual(CombatConstants.AnkleGrabLimitSeconds, _grapple.Remaining, 0.05f,
-                $"制限時間は {CombatConstants.AnkleGrabLimitSeconds:F1} 秒");
-            Assert.AreEqual(CombatConstants.MashBaseAnkleGrab, _grapple.RequiredInputs, 0.01f,
-                "必要入力は 8 回");
+            RyonaConfig.GrappleSettings cfg = RyonaConfig.Instance.Grapple;
+            Assert.AreEqual(cfg.AnkleLimitSeconds, _grapple.Remaining, 0.05f,
+                $"制限時間は RyonaConfig.Grapple.AnkleLimitSeconds（{cfg.AnkleLimitSeconds:F1} 秒）");
+            Assert.AreEqual(cfg.AnkleMashInputs, _grapple.RequiredInputs, 0.01f,
+                $"必要入力は RyonaConfig.Grapple.AnkleMashInputs（{cfg.AnkleMashInputs} 回）");
             Assert.AreEqual(0f, _grapple.FrontEscapeRemaining, 0.001f,
                 "足取りに正面拘束の膝蹴りまでの猶予は無い");
 
@@ -85,7 +86,7 @@ namespace Ryona.Tests
             // 低く沈んだ敵の腕が足首まで届く距離に置かれる。
             Vector3 toPlayer = _player.transform.position - _captor.transform.position;
             toPlayer.y = 0f;
-            Assert.AreEqual(CombatConstants.AnkleGrabStandoff, toPlayer.magnitude, 0.05f,
+            Assert.AreEqual(RyonaConfig.Instance.Grapple.AnkleStandoff, toPlayer.magnitude, 0.05f,
                 "掴んだ距離が足取りの間合いになっていない");
         }
 
@@ -96,7 +97,7 @@ namespace Ryona.Tests
 
             _grapple.Begin(_captor, GrappleKind.AnkleGrab);
             int need = Mathf.CeilToInt(_grapple.RequiredInputs);
-            Assert.AreEqual(CombatConstants.MashBaseAnkleGrab, need);
+            Assert.AreEqual(RyonaConfig.Instance.Grapple.AnkleMashInputs, need);
 
             for (int i = 0; i < need - 1; i++)
             {
@@ -121,7 +122,7 @@ namespace Ryona.Tests
             _grapple.Failed += () => failed = true;
 
             _grapple.Begin(_captor, GrappleKind.AnkleGrab);
-            yield return new WaitForSeconds(CombatConstants.AnkleGrabLimitSeconds + 0.4f);
+            yield return new WaitForSeconds(RyonaConfig.Instance.Grapple.AnkleLimitSeconds + 0.4f);
 
             Assert.IsTrue(failed, "時間切れで Failed が飛んでいない");
             Assert.IsFalse(_grapple.IsGrappled, "転んだら拘束は解ける");

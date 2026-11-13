@@ -112,6 +112,7 @@ MioPrototype.exe -jointrom -jointlog             関節が人体の可動域を�
 | `Camera` | `ThirdPersonCamera`（構図・ベルトカメラ・ダウン時の寄り） |
 | `Motor` / `Combat` / `VrmSlot` | `PlayerMotor` / `PlayerCombat` / `VrmCharacterSlot` |
 | `Enemy` / `EnemyReaction` / `Group` | `EnemyBrain`（間合い・速度・硬直・ストレイフ・予告）/ `EnemyReaction` / `EnemyGroup` |
+| `Grapple` | `PlayerGrapple` / `EnemyBrain`（足取りのもがき回数・制限時間・間合い・発生率） |
 | `Encounter` / `BeltLock` | `EncounterDirector`（出現間隔・人数）/ `BeltScreenLock`（画面幅・関所） |
 | `Feel` / `CameraDirection` | `CombatFeel`（ヒットストップ・揺れ・声）/ `CameraDirector`（寄り・引き） |
 

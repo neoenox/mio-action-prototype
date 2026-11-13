@@ -132,11 +132,12 @@ namespace Ryona.Game
             _session.SuppressRemaining = 0f;
         }
 
-        static float HoldDuration(GrappleKind kind) => kind switch
+        /// <summary>拘束の制限時間。足取りは <see cref="RyonaConfig.Grapple"/> の値を使う。</summary>
+        float HoldDuration(GrappleKind kind) => kind switch
         {
             GrappleKind.Back => float.PositiveInfinity,
             GrappleKind.BearHug => CombatConstants.BearHugLimitSeconds,
-            GrappleKind.AnkleGrab => CombatConstants.AnkleGrabLimitSeconds,
+            GrappleKind.AnkleGrab => _grappleSettings.AnkleLimitSeconds,
             _ => CombatConstants.GrappleLimitSeconds
         };
 

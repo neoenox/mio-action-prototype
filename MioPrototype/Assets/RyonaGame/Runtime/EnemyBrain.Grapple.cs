@@ -30,7 +30,7 @@ namespace Ryona.Game
             if (ForcedGrabKind.HasValue)
                 kind = ForcedGrabKind.Value;
             else if (Player != null && Player.IsMoving &&
-                     UnityEngine.Random.value < CombatConstants.AnkleGrabChance)
+                     UnityEngine.Random.value < RyonaConfig.Instance.Grapple.AnkleChance)
                 kind = GrappleKind.AnkleGrab;
 
             grapple.BeginContact(this, kind);

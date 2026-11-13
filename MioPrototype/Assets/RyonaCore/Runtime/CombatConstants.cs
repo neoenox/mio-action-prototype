@@ -65,17 +65,10 @@ namespace Ryona
         /// <summary>ベアハッグを振りほどくのに必要な入力回数。</summary>
         public const int MashBaseBearHug = 12;
 
-        /// <summary>足取り（足首を掴まれて転ばされる）を振りほどくのに必要な入力回数。短時間なので少なめ。</summary>
-        public const int MashBaseAnkleGrab = 8;
-
-        /// <summary>足取りの拘束時間（秒）。振りほどけなければ前へ転ぶ。</summary>
-        public const float AnkleGrabLimitSeconds = 1.6f;
-
-        /// <summary>足取りで、敵の体から彼女までの距離（m）。低く沈んだ敵の腕が足首まで届く。</summary>
-        public const float AnkleGrabStandoff = 0.85f;
-
-        /// <summary>走って逃げる彼女を背後から掴んだとき、足取りになる割合。残りは羽交い締め。</summary>
-        public const float AnkleGrabChance = 0.5f;
+        // 足取り（<see cref="GrappleKind.AnkleGrab"/>）の値はここには置かない。
+        // もがき回数・制限時間・間合い・発生率は RyonaConfig.Grapple
+        // （MioPrototype/Assets/RyonaGame/Resources/RyonaConfig.asset）が真実源。
+        // 必要入力数だけは <see cref="ResistanceMath.AnkleMashInputs"/> 経由で渡る。
 
         /// <summary>
         /// 押さえつけ（<see cref="GrappleKind.Pin"/>）で掴まれてから解放されるまでの猶予（秒）。
