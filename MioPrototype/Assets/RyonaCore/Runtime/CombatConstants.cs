@@ -168,6 +168,48 @@ namespace Ryona
         /// <summary>二人がかりで二人が彼女の正面側に立つときの、横のずれ（m、中心から）。</summary>
         public const float WallSplitStandGap = 0.45f;
 
+        /// <summary>序盤（軽い腹パンを速いテンポで交互に）の発数。</summary>
+        public const int WallSplitOpeningHits = 3;
+
+        /// <summary>締めの 1 発（最後の重い一撃）を除いた、中盤の終わりまでの発数。</summary>
+        public const int WallSplitBuildHits = WallSplitPunchCount - 1;
+
+        /// <summary>
+        /// 腹パン i 発目の段階別の値。序盤は軽く速く、中盤は標準、最後の 1 発だけ重く遅い。
+        /// 同じ殴りの繰り返しに見えないよう、時間経過で緩急をつける。
+        /// </summary>
+        public static float WallSplitHitInterval(int index) =>
+            index < WallSplitOpeningHits ? 0.50f
+            : index < WallSplitBuildHits ? 0.65f
+            : 0.95f;
+
+        /// <summary>振りかぶりの秒数。締めは大きく溜める。</summary>
+        public static float WallSplitHitWindup(int index) =>
+            index < WallSplitOpeningHits ? 0.22f
+            : index < WallSplitBuildHits ? 0.26f
+            : 0.45f;
+
+        /// <summary>ダメージ・腹ダメージの倍率。締めは約 2 倍。</summary>
+        public static float WallSplitHitScale(int index) =>
+            index < WallSplitOpeningHits ? 0.75f
+            : index < WallSplitBuildHits ? 1.0f
+            : 2.0f;
+
+        /// <summary>被弾姿勢の重さ（折れの深さ・沈み・揺れの倍率）。序盤は浅く、締めは深く崩れる。</summary>
+        public static float WallSplitHitImpact(int index) =>
+            index < WallSplitOpeningHits ? 0.85f
+            : index < WallSplitBuildHits ? 1.1f
+            : 1.7f;
+
+        /// <summary>カメラの寄り（0..1）。序盤は引き、中盤で寄り始め、締めで大きく寄る。</summary>
+        public static float WallSplitCameraPush(int index) =>
+            index < WallSplitOpeningHits ? 0f
+            : index < WallSplitBuildHits ? 0.35f
+            : 0.85f;
+
+        /// <summary>締めの 1 発か。</summary>
+        public static bool IsWallSplitFinisher(int index) => index >= WallSplitBuildHits;
+
         /// <summary>二人がかりで二人が彼女の正面側に立つときの、前への距離（m）。</summary>
         public const float WallSplitStandFront = 0.55f;
 

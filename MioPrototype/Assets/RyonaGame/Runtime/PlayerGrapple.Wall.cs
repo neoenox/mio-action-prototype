@@ -255,9 +255,12 @@ namespace Ryona.Game
                 _session.SplitPunchLeft = puncher == Captor;
                 _session.SplitPunchAge = 0f;
 
-                // 振りかぶり（0.22 秒）
+                // 段階（序盤→中盤→締め）ごとに振りかぶり・間隔・重さが変わる。
+                float windup = CombatConstants.WallSplitHitWindup(i);
+                float interval = CombatConstants.WallSplitHitInterval(i);
+
                 float t = 0f;
-                while (t < 0.22f)
+                while (t < windup)
                 {
                     if (!IsWallSplitActive)
                     {
@@ -269,16 +272,18 @@ namespace Ryona.Game
                     yield return null;
                 }
 
-                puncher?.DoWallSplitPunch();
+                puncher?.DoWallSplitPunch(CombatConstants.WallSplitHitScale(i));
 
                 // 壁に両腕を固定されたまま、腹で折れる被弾姿勢を重ねる。
                 // 疲労（打った数）を渡すと、後半ほど戻りが遅く、折れが深くなる。
                 float fatigue = (float)WallSplitHits / CombatConstants.WallSplitPunchCount;
-                Animator()?.PlayHeldBellyPunch(CombatConstants.WallSplitPunchInterval, fatigue);
+                Animator()?.PlayHeldBellyPunch(interval, fatigue, CombatConstants.WallSplitHitImpact(i));
+                if (CombatConstants.IsWallSplitFinisher(i))
+                    FindFirstObjectByType<CombatFeel>()?.OnWallSplitFinisher();
                 _session.SplitHits++;
 
-                // 戻り（合計 0.55 秒間隔）
-                while (t < CombatConstants.WallSplitPunchInterval)
+                // 戻り（段階ごとの間隔）
+                while (t < interval)
                 {
                     if (!IsWallSplitActive)
                     {

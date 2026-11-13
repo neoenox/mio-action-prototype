@@ -94,6 +94,7 @@ namespace Ryona.Game
         // 腹パン演出（後ろ拘束中に別の敵の腹パンチを受けたとき）の残り時間。
         float _heldBellyPunchRemaining;
         float _heldBellyFatigue;
+        float _heldBellyImpact = 1f;
         float _heldBellyCarry;
         float _heldBellyPunchTotal;
 

@@ -107,6 +107,11 @@ namespace Ryona.Game
         /// <summary>二人がかりで入った腹パンの数（HUD 用）。</summary>
         internal int WallSplitHits => _session.SplitHits;
 
+        /// <summary>二人がかりのカメラの寄りの目標（0..1）。段階が進むほど大きい。</summary>
+        internal float WallSplitCameraPushTarget =>
+            CombatConstants.WallSplitCameraPush(
+                Mathf.Min(_session.SplitHits, CombatConstants.WallSplitPunchCount - 1));
+
         /// <summary>打つ手が左か（アシスト=右、拘束役=左）。ポーズ側が空き手を選ぶ。</summary>
         public bool WallSplitPunchLeft => _session.SplitPunchLeft;
 

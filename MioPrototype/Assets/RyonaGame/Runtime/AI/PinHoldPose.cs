@@ -17,6 +17,7 @@ namespace Ryona.Game
         EnemyBrain _brain;
         ProceduralRig _targetRig;
         ThirdPersonCamera _camera;
+        float _splitPush;
 
         /// <summary>もがかれて肩が浮いた分（m）。手の狙いを上げる。</summary>
         float _lift;
@@ -168,10 +169,16 @@ namespace Ryona.Game
                         WallSplitCamera.Build(pinned.position, pinned.forward,
                             transform.position, assist,
                             out Vector3 shot, out Vector3 target);
+
+                        // 段階が進むほど彼女へ寄る（序盤は引き、締めで大きく寄る）。
+                        _splitPush = Mathf.MoveTowards(_splitPush, hold.WallSplitCameraPushTarget,
+                            Time.unscaledDeltaTime * 0.7f);
+                        shot = target + (shot - target) * (1f - 0.40f * _splitPush);
                         _camera.RequestCinematicShot(shot, target);
                         return;
                     }
 
+                    _splitPush = 0f;
                     Vector3 her = pinned.position + Vector3.up * 1.02f;
                     Vector3 him = transform.position + Vector3.up * 1.02f;
                     Vector3 mid = Vector3.Lerp(her, him, 0.45f);

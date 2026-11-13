@@ -697,7 +697,8 @@ namespace Ryona.Game
         }
 
         /// <summary>二人がかりの腹パン 1 発。見た目は空き手のポーズ側が作る。</summary>
-        internal void DoWallSplitPunch()        {
+        internal void DoWallSplitPunch(float scale = 1f)
+        {
             if (Player == null || Player.IsDead)
                 return;
 
@@ -705,18 +706,18 @@ namespace Ryona.Game
             {
                 id = "wall_split_punch",
                 kind = AttackKind.Light,
-                damage = Mathf.Max(0f, CombatConstants.WallSplitPunchDamage),
+                damage = Mathf.Max(0f, CombatConstants.WallSplitPunchDamage * scale),
                 partDamage = 0f,
                 targetPart = BodyPart.Torso,
-                flinch = 4f,
+                flinch = 4f * scale,
                 startupSeconds = 0f,
                 activeSeconds = 0f,
                 recoverySeconds = 0f
             };
 
             Player.LastHitZone = PunchZone.Body;
-            Player.ReceiveHit(State, punch, transform, CombatConstants.WallSplitPunchBelly);
-            PlaySfx(SfxId.Impact, 0.8f);
+            Player.ReceiveHit(State, punch, transform, CombatConstants.WallSplitPunchBelly * scale);
+            PlaySfx(SfxId.Impact, Mathf.Clamp01(0.7f + 0.1f * scale));
             Debug.Log($"[WallSplit] punch {name} hp={Player.State.Hp:F0} belly={Player.HeldBellyDamage:F0}");
         }
 

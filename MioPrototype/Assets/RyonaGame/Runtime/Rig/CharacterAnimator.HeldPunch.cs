@@ -54,13 +54,14 @@ namespace Ryona.Game
         /// 腹パンの被弾姿勢を再生する。拘束（Grabbed）の上に重ねるので、
         /// 呼んでも状態は Grabbed のまま。
         /// </summary>
-        public void PlayHeldBellyPunch(float seconds, float fatigue = 0f)
+        public void PlayHeldBellyPunch(float seconds, float fatigue = 0f, float impact = 1f)
         {
             if (seconds <= 0f)
                 return;
 
             _heldBellyCarry = HeldBellyPunchFold;
             _heldBellyFatigue = Mathf.Clamp01(fatigue);
+            _heldBellyImpact = Mathf.Clamp(impact, 0.5f, 2f);
             _heldBellyPunchTotal = seconds;
             _heldBellyPunchRemaining = seconds;
         }
@@ -102,6 +103,11 @@ namespace Ryona.Game
         /// 後半の一発ほど深く折って戻りを遅くするのに使う。
         /// </summary>
         public float HeldBellyPunchFatigue => _heldBellyFatigue;
+
+        /// <summary>
+        /// 腹パンの重さ（1 = 標準）。壁の二体がかりで、序盤は浅く（&lt;1）、締めは深く（&gt;1）折るのに使う。
+        /// </summary>
+        public float HeldBellyPunchImpact => _heldBellyImpact;
 
         /// <summary>
         /// いまの腹パンが当たってからの秒。当たった瞬間の揺れの位相に使う。

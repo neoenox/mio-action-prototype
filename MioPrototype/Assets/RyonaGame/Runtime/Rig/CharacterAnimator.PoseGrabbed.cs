@@ -483,19 +483,21 @@ namespace Ryona.Game
 
                 // 壁の反り（-3°）から前へ折る。正面の押さえつけ（52°）ほど深くは折らない
                 // （深いと、腕を伸ばしたまま吊られた画になる）。
-                pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, 32f + 6f * fatigue, fold);
+                // 重さ（序盤 0.7 → 締め 1.7）で折れの深さ・沈み・横揺れが変わる。
+                float impact = HeldBellyPunchImpact;
+                pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, (32f + 6f * fatigue) * impact, fold);
                 // 胴の前傾を首で打ち消し、腹で折れても顔は前に残す（前髪で顔が隠れない）。
-                pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -52f - 4f * fatigue, fold);
-                pose.HeadYaw += side * 10f * fold;
-                pose.TorsoRoll += side * 6f * fold;
-                pose.HipsOffset.y -= (0.10f + 0.03f * fatigue) * fold;
+                pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, (-52f - 4f * fatigue) * Mathf.Lerp(1f, impact, 0.6f), fold);
+                pose.HeadYaw += side * 10f * impact * fold;
+                pose.TorsoRoll += side * 6f * impact * fold;
+                pose.HipsOffset.y -= (0.10f + 0.03f * fatigue) * impact * fold;
                 // ローカルの -Z が壁側。殴られて上体が前へ折れるぶん、腰は壁から少し離れる。
-                pose.HipsOffset.z += 0.03f * fold;
-                pose.HipsOffset.x += side * 0.03f * fold;
+                pose.HipsOffset.z += 0.03f * impact * fold;
+                pose.HipsOffset.x += side * 0.03f * impact * fold;
 
                 // 当たった瞬間だけ頭と肩が短く揺れる（0.15 秒で消える）。
                 float age = HeldBellyPunchAge;
-                float shake = Mathf.Exp(-age * 14f) * Mathf.Sin(age * 55f) * fold;
+                float shake = Mathf.Exp(-age * 14f) * Mathf.Sin(age * 55f) * fold * impact;
                 pose.HeadPitch += shake * 3f;
                 pose.TorsoRoll += shake * 2f;
             }

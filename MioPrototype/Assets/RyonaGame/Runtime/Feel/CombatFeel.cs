@@ -180,6 +180,14 @@ namespace Ryona.Game
 
         internal void OnWallSlam() => Shake(0.22f, 0.30f);
 
+        /// <summary>壁の二人がかりの締めの一撃。大きく揺れ、一瞬止まり、画面の縁が赤く光る。</summary>
+        internal void OnWallSplitFinisher()
+        {
+            Shake(0.30f, 0.45f);
+            HitStop.Play(0.16f);
+            FindFirstObjectByType<HitFlash>()?.FlashNow(0.7f);
+        }
+
         void Shake(float amplitude, float duration)
         {
             ResolveShake();
