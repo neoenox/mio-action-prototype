@@ -107,6 +107,25 @@ namespace Ryona.Game
         /// <summary>二人がかりで入った腹パンの数（HUD 用）。</summary>
         internal int WallSplitHits => _session.SplitHits;
 
+        /// <summary>いまの 1 発が締めの膝入れか（腕のパンチは出さない）。</summary>
+        internal bool WallSplitKneeStrike => _session.SplitFinisher;
+
+        /// <summary>
+        /// 締めの膝入れの上がり具合（0..1）。<paramref name="who"/> が打つ側のときだけ値を返す。
+        /// 振りかぶりの間に膝を引き上げ、当たった瞬間が最大、そのあと下ろす。
+        /// </summary>
+        internal float WallSplitKneeWeight(EnemyBrain who)
+        {
+            if (!_session.SplitFinisher || _session.SplitPuncher != who || _session.SplitPunchAge < 0f)
+                return 0f;
+
+            float windup = CombatConstants.WallSplitHitWindup(CombatConstants.WallSplitPunchCount - 1);
+            float t = _session.SplitPunchAge;
+            float up = Mathf.SmoothStep(0f, 1f, t / windup);
+            float down = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(windup + 0.10f, windup + 0.50f, t));
+            return up * (1f - down);
+        }
+
         /// <summary>二人がかりのカメラの寄りの目標（0..1）。段階が進むほど大きい。</summary>
         internal float WallSplitCameraPushTarget =>
             CombatConstants.WallSplitCameraPush(

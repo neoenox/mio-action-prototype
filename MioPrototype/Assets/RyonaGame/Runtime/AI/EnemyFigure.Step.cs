@@ -385,6 +385,7 @@ namespace Ryona.Game
             BuildPushPose(ref pose, phase, holdState, restY);
             BuildCatchPose(ref pose, phase, holdState, restY);
             BuildHugPinPose(ref pose, phase, holdState, restY);
+            BuildWallSplitKneePose(ref pose);
             BuildGetUpPose(ref pose, phase, holdState, restY, out grabbing);
         }
 
@@ -813,6 +814,51 @@ namespace Ryona.Game
                 pose.HipsY = restY * SampleRise(RiseHip, rise);
                 pose.HipsZ = 0f;
                 pose.TorsoPitch = SampleRise(RiseTorso, rise);
+        /// <summary>
+        /// 壁の二体がかりの締め。打つ側が腕ではなく膝を腹へ入れる。
+        /// 腰を沈めて骨盤を彼女の腹の中心線へずらし、カメラ側の膝を引き上げる
+        /// （奥の脚だと自分の体に隠れる）。
+        /// </summary>
+        void BuildWallSplitKneePose(ref PoseTarget pose)
+        {
+            if (Brain == null || Brain.Player == null)
+                return;
+
+            var hold = Brain.Player.GetComponent<PlayerGrapple>();
+            float knee = hold != null ? hold.WallSplitKneeWeight(Brain) : 0f;
+            if (knee <= 0f)
+                return;
+
+            bool leftKnee = false;
+            var cam = Camera.main;
+            if (cam != null)
+            {
+                Vector3 toCam = cam.transform.position - transform.position;
+                toCam.y = 0f;
+                leftKnee = Vector3.Dot(toCam, transform.right) < 0f;
+            }
+
+            // 溜めの間に深くしゃがみ、膝を入れる瞬間に伸び上がる。
+            pose.HipsY -= 0.22f * knee;
+            pose.TorsoPitch += 14f * knee;
+            const float raise = 78f;
+            const float swing = -95f;
+            if (leftKnee)
+            {
+                pose.HipsX += 0.10f * knee;
+                pose.KneeL += raise * knee;
+                pose.LegLPitch += swing * knee;
+                pose.KneeR += 10f * knee;
+            }
+            else
+            {
+                pose.HipsX -= 0.10f * knee;
+                pose.KneeR += raise * knee;
+                pose.LegRPitch += swing * knee;
+                pose.KneeL += 10f * knee;
+            }
+        }
+
                 pose.TorsoYaw = SampleRise(RiseYaw, rise);
                 pose.HeadPitch = SampleRise(RiseHead, rise);
                 pose.ArmRPitch = SampleRise(RiseArmR, rise);

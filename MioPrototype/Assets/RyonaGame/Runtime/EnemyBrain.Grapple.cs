@@ -651,6 +651,10 @@ namespace Ryona.Game
             Vector3 look = her - transform.position;
             look.y = 0f;
             if (look.sqrMagnitude > 0.0004f)
+            // 締めの膝入れは腹の真正面まで踏み込む。
+            float kneeStep = hold.WallSplitKneeWeight(this);
+            float gap = Mathf.Lerp(CombatConstants.WallSplitStandGap, 0.22f, kneeStep);
+            float front = Mathf.Lerp(CombatConstants.WallSplitStandFront, 0.38f, kneeStep);
             {
                 // 真横を向いたままだと、空き手が腹を横切って「太鼓を叩いている」画になる。
                 // カメラ（プレイヤー）側へ体を開いて、前から腹へ入る形にする。
@@ -687,6 +691,9 @@ namespace Ryona.Game
             Vector3 look = her - transform.position;
             look.y = 0f;
             if (look.sqrMagnitude > 0.0004f)
+            float kneeStep = hold.WallSplitKneeWeight(this);
+            float gap = Mathf.Lerp(CombatConstants.WallSplitStandGap, 0.22f, kneeStep);
+            float front = Mathf.Lerp(CombatConstants.WallSplitStandFront, 0.38f, kneeStep);
             {
                 // アシストと同じく、カメラ（プレイヤー）側へ体を開く。
                 Quaternion facing = Quaternion.LookRotation(look.normalized, Vector3.up);

@@ -205,7 +205,7 @@ namespace Ryona
         public static float WallSplitCameraPush(int index) =>
             index < WallSplitOpeningHits ? 0f
             : index < WallSplitBuildHits ? 0.35f
-            : 0.85f;
+            : 0.50f;
 
         /// <summary>締めの 1 発か。</summary>
         public static bool IsWallSplitFinisher(int index) => index >= WallSplitBuildHits;

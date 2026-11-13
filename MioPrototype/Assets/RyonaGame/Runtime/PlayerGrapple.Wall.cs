@@ -253,6 +253,7 @@ namespace Ryona.Game
                 _session.SplitPuncher = puncher;
                 // 拘束役は右で彼女の左腕を持つので空き手は左。アシストは左で右腕を持つので空き手は右。
                 _session.SplitPunchLeft = puncher == Captor;
+                _session.SplitFinisher = CombatConstants.IsWallSplitFinisher(i);
                 _session.SplitPunchAge = 0f;
 
                 // 段階（序盤→中盤→締め）ごとに振りかぶり・間隔・重さが変わる。

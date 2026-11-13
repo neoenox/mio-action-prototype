@@ -46,7 +46,7 @@ namespace Ryona.Game
             Vector3 her = _brain.Player.transform.position;
             Vector3 front = Vector3.ProjectOnPlane(_brain.Player.transform.forward, Vector3.up).normalized;
             float side = transform.position.x >= her.x ? 1f : -1f;
-            if (hold.WallSplitPuncher == _brain && hold.WallSplitPunchAge >= 0f)
+            if (hold.WallSplitPuncher == _brain && hold.WallSplitPunchAge >= 0f && !hold.WallSplitKneeStrike)
                 WallSplitArm.Punch(_figure, false, her, front, side,
                     hold.WallSplitPunchAge, split, transform);
             else

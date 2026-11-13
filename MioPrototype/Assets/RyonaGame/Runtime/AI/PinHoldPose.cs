@@ -173,6 +173,11 @@ namespace Ryona.Game
                         // 段階が進むほど彼女へ寄る（序盤は引き、締めで大きく寄る）。
                         _splitPush = Mathf.MoveTowards(_splitPush, hold.WallSplitCameraPushTarget,
                             Time.unscaledDeltaTime * 0.7f);
+                        // 締めの膝入れは狙いを腹の高さへ下げて、膝が腹へ入るところを見せる
+                        // （寄りすぎると、敵の体で彼女の腹が隠れる）。
+                        float lowering = Mathf.InverseLerp(0.35f, 0.50f, _splitPush);
+                        target.y -= 0.25f * lowering;
+                        shot.y -= 0.10f * lowering;
                         shot = target + (shot - target) * (1f - 0.40f * _splitPush);
                         _camera.RequestCinematicShot(shot, target);
                         return;

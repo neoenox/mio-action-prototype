@@ -78,6 +78,9 @@ namespace Ryona.Game
         /// <summary>打つ手が左か（アシスト=右、拘束役=左）。ポーズ側が空き手を選ぶ。</summary>
         public bool SplitPunchLeft { get; set; }
 
+        /// <summary>いまの 1 発が締め（膝入れ）か。腕のパンチではなく膝で打つ。</summary>
+        public bool SplitFinisher { get; set; }
+
         /// <summary>二体目が横に着いて、二人で押さえ始めたか。</summary>
         public bool SplitStarted { get; set; }
 
@@ -181,6 +184,7 @@ namespace Ryona.Game
             SplitPunchAge = -1f;
             SplitHits = 0;
             SplitPunchLeft = false;
+            SplitFinisher = false;
             SplitStarted = false;
             SplitReady = false;
             SplitAssistAge = 0f;
