@@ -25,13 +25,13 @@ namespace Ryona.Game
         public ThirdPersonCamera Camera;
 
         [Tooltip("次の一団が出るまでに進む距離（1 画面ぶん）")]
-        public float ScreenSpan = 8f;
+        [System.NonSerialized] public float ScreenSpan = 8f;
 
         [Tooltip("画面の右端の、これだけ外から入ってくる（m）")]
-        public float SpawnAhead = 5.4f;
+        [System.NonSerialized] public float SpawnAhead = 5.4f;
 
         [Tooltip("プレイヤーの目の前に出ないための最小距離（m）")]
-        public float MinSpawnGap = 2.2f;
+        [System.NonSerialized] public float MinSpawnGap = 2.2f;
 
         /// <summary>
         /// 入場時に横へずらす間隔（m）。同じ位置に重ならないためだけでなく、
@@ -42,7 +42,7 @@ namespace Ryona.Game
 
         [Header("Timing")]
         /// <summary>倒れてから「倒れる音」を鳴らすまでの秒数。</summary>
-        public float BodyDropDelay = 0.7f;
+        [System.NonSerialized] public float BodyDropDelay = 0.7f;
 
         /// <summary>
         /// 次の一団までの距離に届かないまま、これだけ動けなかったら次の一団を出す（秒）。
@@ -54,7 +54,7 @@ namespace Ryona.Game
         float _lastPlayerX;
 
         [Header("Sound")]
-        [Range(0f, 1f)] public float BodyDropVolume = 0.95f;
+        [Range(0f, 1f)] [System.NonSerialized] public float BodyDropVolume = 0.95f;
 
         readonly List<EnemyBrain> _enemies = new List<EnemyBrain>();
 
@@ -102,6 +102,21 @@ namespace Ryona.Game
         /// <summary>この一団が始まってからの経過秒（テスト・HUD 用）。</summary>
         internal float RunSeconds => _runSeconds;
         bool _recordEligible = true;
+
+        /// <summary>調整値は <see cref="RyonaConfig.Encounter"/> が真実源。シーンの保存値は使わない。</summary>
+        void ApplySettings(RyonaConfig.EncounterSettings s)
+        {
+            ScreenSpan = s.ScreenSpan;
+            SpawnAhead = s.SpawnAhead;
+            MinSpawnGap = s.MinSpawnGap;
+            BodyDropDelay = s.BodyDropDelay;
+            BodyDropVolume = s.BodyDropVolume;
+        }
+
+        void Awake()
+        {
+            ApplySettings(RyonaConfig.Instance.Encounter);
+        }
 
         void Start()
         {

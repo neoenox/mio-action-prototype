@@ -84,16 +84,16 @@ namespace Ryona.Game
 
         [Header("Tuning")]
         [Tooltip("歩き（追跡）の速度 m/s")]
-        public float MoveSpeed = 2.6f;
+        [System.NonSerialized] public float MoveSpeed = 2.6f;
 
         [Tooltip("攻撃間合いの基準値。実間合いは AttackRange * 0.85 になる")]
-        public float AttackRange = 1.45f;
+        [System.NonSerialized] public float AttackRange = 1.45f;
 
         [Tooltip("攻撃別の予備動作が 0 以下のときのフォールバック秒数")]
-        public float WindupSeconds = 0.45f;
+        [System.NonSerialized] public float WindupSeconds = 0.45f;
 
         [Tooltip("攻撃後の硬直秒数")]
-        public float RecoverSeconds = 0.70f;
+        [System.NonSerialized] public float RecoverSeconds = 0.70f;
 
         [Tooltip("予備動作まで見せてから振らずに引く確率（0 で無効）。1 回の接近につき 1 度だけ")]
         [System.NonSerialized] public float FeintChance = 0.22f;
@@ -102,51 +102,51 @@ namespace Ryona.Game
         [System.NonSerialized] public float FeintDelaySeconds = 0.45f;
 
         [Tooltip("旋回の速さ（Slerp 係数）")]
-        public float TurnSpeed = 8f;
+        [System.NonSerialized] public float TurnSpeed = 8f;
 
         [Header("Attack: Jab")]
         [Tooltip("Jab の予備動作秒数")]
-        public float JabSeconds = 0.35f;
+        [System.NonSerialized] public float JabSeconds = 0.35f;
 
         [Tooltip("Jab が届く距離 m")]
-        public float JabRange = 1.45f;
+        [System.NonSerialized] public float JabRange = 1.45f;
 
         [Tooltip("Jab のダメージ")]
         [System.NonSerialized] public float JabDamage = 3f;
 
         [Header("Attack: Heavy")]
         [Tooltip("Heavy の予備動作秒数")]
-        public float HeavySeconds = 0.75f;
+        [System.NonSerialized] public float HeavySeconds = 0.75f;
 
         [Tooltip("Heavy が届く距離 m")]
-        public float HeavyRange = 1.70f;
+        [System.NonSerialized] public float HeavyRange = 1.70f;
 
         [Tooltip("Heavy のダメージ。ひるみは AttackLibrary.Heavy の値を使う")]
         [System.NonSerialized] public float HeavyDamage = 7f;
 
         [Header("Attack: Break")]
         [Tooltip("Break の予備動作秒数")]
-        public float BreakSeconds = 0.55f;
+        [System.NonSerialized] public float BreakSeconds = 0.55f;
 
         [Tooltip("Break が届く距離 m")]
-        public float BreakRange = 1.55f;
+        [System.NonSerialized] public float BreakRange = 1.55f;
 
         [Tooltip("Break のダメージ")]
         [System.NonSerialized] public float BreakDamage = 5f;
 
         [Header("Attack: Grab")]
         [Tooltip("掴みの予備動作秒数。長めにして「来る」と分かるようにする")]
-        public float GrabSeconds = 0.55f;
+        [System.NonSerialized] public float GrabSeconds = 0.55f;
 
         [Tooltip("掴みが届く距離 m。至近距離でだけ出る")]
-        public float GrabRange = 1.15f;
+        [System.NonSerialized] public float GrabRange = 1.15f;
 
         [Tooltip("掴み自体のダメージ。本命は掴んだ後のレバガチャ")]
-        public float GrabDamage = 3f;
+        [System.NonSerialized] public float GrabDamage = 3f;
 
 
         [Tooltip("着弾判定の余裕 m。見た目と当たり判定のズレを吸収する")]
-        public float StrikeTolerance = 0.35f;
+        [System.NonSerialized] public float StrikeTolerance = 0.35f;
 
         /// <summary>
         /// 彼女の体との最小距離。これより近づいたら敵の側が下がる。0 以下なら押し出さない。
@@ -156,50 +156,49 @@ namespace Ryona.Game
 
         [Header("Strafe")]
         [Tooltip("横回りを続ける秒数の基準値。実際は 0.75〜1.25 倍でばらつく")]
-        public float StrafeSeconds = 1.10f;
+        [System.NonSerialized] public float StrafeSeconds = 1.10f;
 
         [Tooltip("横回り中の移動速度倍率")]
-        public float StrafeSpeedScale = 0.75f;
+        [System.NonSerialized] public float StrafeSpeedScale = 0.75f;
 
         [Tooltip("横回りに入るたび、間合いを詰め直す確率")]
         [Range(0f, 1f)]
-        public float StrafeCloseInChance = 0.35f;
+        [System.NonSerialized] public float StrafeCloseInChance = 0.35f;
 
         [Tooltip("間合いを詰め直すときの距離倍率（1 未満で近づく）")]
-        public float StrafeCloseInScale = 0.85f;
+        [System.NonSerialized] public float StrafeCloseInScale = 0.85f;
 
         [Tooltip("順番待ちの敵が立つ距離（間合いの何倍か）。全員が同じ距離まで詰めると画面が敵で埋まる")]
-        public float WaitingRingScale = 2.0f;
+        [System.NonSerialized] public float WaitingRingScale = 2.0f;
 
         [Header("Timing")]
         [Tooltip("硬直・怯みが明けてから次の予備動作に入るまでの間隔")]
-        [System.NonSerialized]
-        public float AttackCooldown = 1.4f;
+        [System.NonSerialized] public float AttackCooldown = 1.4f;
 
         [Tooltip("怯み 小 の秒数（0 以下なら CombatConstants.StunSmall）")]
-        public float StaggerSecondsSmall = 0.20f;
+        [System.NonSerialized] public float StaggerSecondsSmall = 0.20f;
 
         [Tooltip("怯み 中 の秒数（0 以下なら CombatConstants.StunMedium）")]
-        public float StaggerSecondsMedium = 0.40f;
+        [System.NonSerialized] public float StaggerSecondsMedium = 0.40f;
 
         [Tooltip("怯み 大 の秒数（0 以下なら CombatConstants.StunLarge）")]
-        public float StaggerSecondsLarge = 0.80f;
+        [System.NonSerialized] public float StaggerSecondsLarge = 0.80f;
 
         [Header("Telegraph")]
         [Tooltip("予備動作開始時の球の倍率（元の localScale に対する倍率）")]
-        public float TelegraphStartScale = 0.35f;
+        [System.NonSerialized] public float TelegraphStartScale = 0.35f;
 
         [Tooltip("予備動作完了時の球の倍率（元の localScale に対する倍率）")]
-        public float TelegraphMaxScale = 3.5f;
+        [System.NonSerialized] public float TelegraphMaxScale = 3.5f;
 
         [Tooltip("予備動作の最後、この秒数のあいだ球を最大サイズで固定する")]
-        public float TelegraphMaxHoldSeconds = 0.10f;
+        [System.NonSerialized] public float TelegraphMaxHoldSeconds = 0.10f;
 
         [Tooltip("予備動作開始時の球の色")]
-        public Color TelegraphStartColor = new Color(0.45f, 0.45f, 0.45f, 1f);
+        [System.NonSerialized] public Color TelegraphStartColor = new Color(0.45f, 0.45f, 0.45f, 1f);
 
         [Tooltip("予備動作完了時の球の色。ここまで変化すれば「来る」と分かる")]
-        public Color TelegraphColor = new Color(1f, 0.28f, 0.18f, 1f);
+        [System.NonSerialized] public Color TelegraphColor = new Color(1f, 0.28f, 0.18f, 1f);
 
         /// <summary>HP / 部位ダメージ / ひるみを持つ戦闘状態。攻撃側としても渡す。</summary>
         public CombatState State { get; } = new CombatState();
@@ -310,16 +309,16 @@ namespace Ryona.Game
 
         [Header("Punch Zone")]
         [Tooltip("素早い一撃（Jab）が顔を狙う確率。残りは腹")]
-        [Range(0f, 1f)] public float JabFaceChance = 0.65f;
+        [Range(0f, 1f)] [System.NonSerialized] public float JabFaceChance = 0.65f;
 
         [Tooltip("重い一撃（Heavy）が顔を狙う確率。残りは腹")]
-        [Range(0f, 1f)] public float HeavyFaceChance = 0.35f;
+        [Range(0f, 1f)] [System.NonSerialized] public float HeavyFaceChance = 0.35f;
 
         /// <summary>検証用。設定すると、狙いを抽選せずこの場所に固定する。</summary>
         [System.NonSerialized] public PunchZone? ForceZone;
 
         [Tooltip("拳が狙いの座標にこの距離まで届いたら当たり（m）")]
-        public float PunchHitRadius = 0.30f;
+        [System.NonSerialized] public float PunchHitRadius = 0.30f;
 
         /// <summary>プレイヤーの顔・腹の中心（ワールド座標）。拳の狙いと当たり判定が共有する。</summary>
         public static Vector3 PunchTarget(PlayerStats player, PunchZone zone, float bodyBias = 0.40f)
@@ -866,8 +865,46 @@ namespace Ryona.Game
         Vector3 _baseTelegraphScale = Vector3.one;
         bool _registered;
 
+        /// <summary>調整値は <see cref="RyonaConfig.Enemy"/> が真実源。シーンの保存値は使わない。</summary>
+        void ApplySettings(RyonaConfig.EnemySettings s)
+        {
+            MoveSpeed = s.MoveSpeed;
+            AttackRange = s.AttackRange;
+            WindupSeconds = s.WindupSeconds;
+            RecoverSeconds = s.RecoverSeconds;
+            TurnSpeed = s.TurnSpeed;
+            JabSeconds = s.JabSeconds;
+            JabRange = s.JabRange;
+            HeavySeconds = s.HeavySeconds;
+            HeavyRange = s.HeavyRange;
+            BreakSeconds = s.BreakSeconds;
+            BreakRange = s.BreakRange;
+            GrabSeconds = s.GrabSeconds;
+            GrabRange = s.GrabRange;
+            GrabDamage = s.GrabDamage;
+            StrikeTolerance = s.StrikeTolerance;
+            StrafeSeconds = s.StrafeSeconds;
+            StrafeSpeedScale = s.StrafeSpeedScale;
+            StrafeCloseInChance = s.StrafeCloseInChance;
+            StrafeCloseInScale = s.StrafeCloseInScale;
+            WaitingRingScale = s.WaitingRingScale;
+            AttackCooldown = s.AttackCooldown;
+            StaggerSecondsSmall = s.StaggerSecondsSmall;
+            StaggerSecondsMedium = s.StaggerSecondsMedium;
+            StaggerSecondsLarge = s.StaggerSecondsLarge;
+            TelegraphStartScale = s.TelegraphStartScale;
+            TelegraphMaxScale = s.TelegraphMaxScale;
+            TelegraphMaxHoldSeconds = s.TelegraphMaxHoldSeconds;
+            TelegraphStartColor = s.TelegraphStartColor;
+            TelegraphColor = s.TelegraphColor;
+            JabFaceChance = s.JabFaceChance;
+            HeavyFaceChance = s.HeavyFaceChance;
+            PunchHitRadius = s.PunchHitRadius;
+        }
+
         void Awake()
         {
+            ApplySettings(RyonaConfig.Instance.Enemy);
             BuildAttacks();
 
             // 個体ごとの最大 HP。3 体 × 100 では彼女の火力（軽 8）で倒しきれず、

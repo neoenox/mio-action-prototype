@@ -14,10 +14,10 @@ namespace Ryona.Game
         public Transform CameraTransform;
 
         [Header("Tuning")]
-        public float BaseSpeed = 4.2f;
-        public float Acceleration = 28f;
-        public float TurnSpeed = 14f;
-        public float Gravity = -22f;
+        [System.NonSerialized] public float BaseSpeed = 4.2f;
+        [System.NonSerialized] public float Acceleration = 28f;
+        [System.NonSerialized] public float TurnSpeed = 14f;
+        [System.NonSerialized] public float Gravity = -22f;
 
         [Tooltip("ベルト用の向き。奥行き（画面の上下）に動くときは向きを変えず、左右入力でだけ向き直る")]
         [System.NonSerialized]
@@ -126,8 +126,20 @@ namespace Ryona.Game
             _lungeFootPos = rig != null && rig.LFoot != null ? rig.LFoot.position : new Vector3(float.NaN, 0f, 0f);
         }
 
+        /// <summary>調整値は <see cref="RyonaConfig.Motor"/> が真実源。シーンの保存値は使わない。</summary>
+        void ApplySettings(RyonaConfig.MotorSettings s)
+        {
+            BaseSpeed = s.BaseSpeed;
+            Acceleration = s.Acceleration;
+            TurnSpeed = s.TurnSpeed;
+            Gravity = s.Gravity;
+            BeltFacing = s.BeltFacing;
+        }
+
         void Awake()
         {
+            ApplySettings(RyonaConfig.Instance.Motor);
+
             _laneZ = transform.position.z;
             _controller = GetComponent<CharacterController>();
             if (Stats == null)

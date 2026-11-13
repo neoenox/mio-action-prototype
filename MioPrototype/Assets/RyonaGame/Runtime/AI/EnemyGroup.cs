@@ -19,6 +19,7 @@ namespace Ryona.Game
         [Header("Tuning")]
         [Tooltip("同時に予備動作〜攻撃に入れる敵の数。SPEC §5 の上限は 2")]
         [Min(1)]
+        [System.NonSerialized]
         public int MaxAttackers = 2;
 
         readonly List<EnemyBrain> _members = new List<EnemyBrain>();
@@ -72,6 +73,12 @@ namespace Ryona.Game
                 Prune();
                 return _attackers.Count < Mathf.Max(1, MaxAttackers);
             }
+        }
+
+        /// <summary>調整値は <see cref="RyonaConfig.Group"/> が真実源。シーンの保存値は使わない。</summary>
+        void Awake()
+        {
+            MaxAttackers = RyonaConfig.Instance.Group.MaxAttackers;
         }
 
         /// <summary>敵を登録する。<see cref="EnemyBrain"/> の Start から呼ばれる。</summary>

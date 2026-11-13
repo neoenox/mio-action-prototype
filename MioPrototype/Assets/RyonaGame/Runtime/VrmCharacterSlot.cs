@@ -31,10 +31,10 @@ namespace Ryona.Game
 
         [Header("Orientation")]
         [Tooltip("VRM の向き補正。正面が逆なら 180 にする")]
-        public float YawOffset = 0f;
+        [System.NonSerialized] public float YawOffset = 0f;
 
         [Tooltip("VRM の身長をプレイヤーの身長に合わせる（VRoid 出力はメートルなので通常 1）")]
-        public float Scale = 1f;
+        [System.NonSerialized] public float Scale = 1f;
 
         public GameObject Instance { get; private set; }
         public Vrm10Instance Vrm { get; private set; }
@@ -53,6 +53,18 @@ namespace Ryona.Game
             string.IsNullOrEmpty(FileName)
                 ? null
                 : Path.Combine(Application.streamingAssetsPath, FileName);
+
+        /// <summary>調整値は <see cref="RyonaConfig.VrmSlot"/> が真実源。シーンの保存値は使わない。</summary>
+        void ApplySettings(RyonaConfig.VrmSlotSettings s)
+        {
+            YawOffset = s.YawOffset;
+            Scale = s.Scale;
+        }
+
+        void Awake()
+        {
+            ApplySettings(RyonaConfig.Instance.VrmSlot);
+        }
 
         async void Start()
         {

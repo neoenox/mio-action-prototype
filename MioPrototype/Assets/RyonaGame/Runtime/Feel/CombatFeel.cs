@@ -18,25 +18,25 @@ namespace Ryona.Game
         public ThirdPersonCamera CameraRig;
 
         [Header("Hit Stop (seconds)")]
-        public float HitHitStop = 0.065f;
-        public float ReceivedHitStop = 0.07f;
+        [System.NonSerialized] public float HitHitStop = 0.065f;
+        [System.NonSerialized] public float ReceivedHitStop = 0.07f;
 
         [Header("Camera Shake (meter, seconds)")]
-        public float HitShake = 0.06f;
-        public float HitShakeSeconds = 0.16f;
-        public float ReceivedShake = 0.12f;
-        public float ReceivedShakeSeconds = 0.26f;
+        [System.NonSerialized] public float HitShake = 0.06f;
+        [System.NonSerialized] public float HitShakeSeconds = 0.16f;
+        [System.NonSerialized] public float ReceivedShake = 0.12f;
+        [System.NonSerialized] public float ReceivedShakeSeconds = 0.26f;
 
         [Header("Heavy Attack")]
         [Tooltip("Heavy のときの揺れ倍率")]
-        public float HeavyShakeScale = 1.4f;
+        [System.NonSerialized] public float HeavyShakeScale = 1.4f;
 
         [Tooltip("Heavy のときのヒットストップ倍率")]
-        public float HeavyHitStopScale = 1.3f;
+        [System.NonSerialized] public float HeavyHitStopScale = 1.3f;
 
         [Header("Voice")]
         [Tooltip("被弾の声を続けて出さない間隔（秒）。連続で殴られても「あっあっあっ」にしない")]
-        public float HurtVoiceInterval = 0.55f;
+        [System.NonSerialized] public float HurtVoiceInterval = 0.55f;
 
         CameraShake _shake;
         ProceduralSfx _sfx;
@@ -44,6 +44,25 @@ namespace Ryona.Game
 
         // HitLanded には攻撃データが乗ってこないので、直近の攻撃種別を覚えておく
         AttackKind _lastKind = AttackKind.Light;
+
+        /// <summary>調整値は <see cref="RyonaConfig.Feel"/> が真実源。シーンの保存値は使わない。</summary>
+        void ApplySettings(RyonaConfig.FeelSettings s)
+        {
+            HitHitStop = s.HitHitStop;
+            ReceivedHitStop = s.ReceivedHitStop;
+            HitShake = s.HitShake;
+            HitShakeSeconds = s.HitShakeSeconds;
+            ReceivedShake = s.ReceivedShake;
+            ReceivedShakeSeconds = s.ReceivedShakeSeconds;
+            HeavyShakeScale = s.HeavyShakeScale;
+            HeavyHitStopScale = s.HeavyHitStopScale;
+            HurtVoiceInterval = s.HurtVoiceInterval;
+        }
+
+        void Awake()
+        {
+            ApplySettings(RyonaConfig.Instance.Feel);
+        }
 
         void Start()
         {

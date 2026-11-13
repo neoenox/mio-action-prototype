@@ -30,25 +30,25 @@ namespace Ryona.Game
 
         [Header("Auto Aim")]
         /// <summary>この距離までの敵には、攻撃の出始めに向きを合わせる。</summary>
-        public float AutoAimRange = 2.2f;
+        [System.NonSerialized] public float AutoAimRange = 2.2f;
         /// <summary>振り向く最大角度。真後ろの敵までは回らない。</summary>
-        public float AutoAimMaxDegrees = 70f;
+        [System.NonSerialized] public float AutoAimMaxDegrees = 70f;
 
         [Header("Recovery")]
         /// <summary>
         /// 硬直が終わっても、踏み込みで出た足が体の下へ戻るまでは次の攻撃を受け付けない。
         /// 戻り切る前に次を出すと、足の戻しと新しい踏み込みが重なって足が床を滑る。
         /// </summary>
-        public float SettleEpsilon = 0.001f;
+        [System.NonSerialized] public float SettleEpsilon = 0.001f;
 
         /// <summary>
         /// 硬直中に押された攻撃を覚えておく時間（先行入力）。
         /// 押した瞬間に撃てなくても、空いた最初のフレームで撃つ。0 にすると完全に無視。
         /// </summary>
-        public float InputBufferSeconds = 0.15f;
+        [System.NonSerialized] public float InputBufferSeconds = 0.15f;
 
         [Tooltip("3段コンボの受付時間。この秒数内に弱を押すと次の段へ進む")]
-        public float ComboWindowSeconds = 0.45f;
+        [System.NonSerialized] public float ComboWindowSeconds = 0.45f;
 
         /// <summary>拳の軌跡を 1 フレームごとにログる（`-hitlog`）。</summary>
         [System.NonSerialized] public bool TraceFist;
@@ -83,8 +83,20 @@ namespace Ryona.Game
         /// <summary>ヒット時に発火。ヒットストップとカメラワークはここに繋ぐ。</summary>
         public event Action<HitResult, IDamageable> HitLanded;
 
+        /// <summary>調整値は <see cref="RyonaConfig.Combat"/> が真実源。シーンの保存値は使わない。</summary>
+        void ApplySettings(RyonaConfig.CombatSettings s)
+        {
+            AutoAimRange = s.AutoAimRange;
+            AutoAimMaxDegrees = s.AutoAimMaxDegrees;
+            SettleEpsilon = s.SettleEpsilon;
+            InputBufferSeconds = s.InputBufferSeconds;
+            ComboWindowSeconds = s.ComboWindowSeconds;
+        }
+
         void Awake()
         {
+            ApplySettings(RyonaConfig.Instance.Combat);
+
             if (Stats == null)
                 Stats = GetComponent<PlayerStats>();
 

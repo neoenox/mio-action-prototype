@@ -12,57 +12,45 @@ namespace Ryona.Game
         [Header("References")]
         public Transform Target;
 
-        [Header("Framing")]
-        public Vector3 PivotOffset = new Vector3(0f, 1.45f, 0f);
-        public float Distance = 3.4f;
-        public float MinDistance = 1.2f;
-        public float MaxDistance = 5.0f;
-        public float MouseSensitivity = 2.2f;
-        public float MinPitch = -15f;
-        public float MaxPitch = 60f;
-        public float FollowSharpness = 16f;
+        // --- 調整値 -------------------------------------------------------------
+        // 真実源は ScriptableObject の RyonaConfig.Camera（Assets/RyonaGame/Resources/RyonaConfig.asset）。
+        // ここは Awake で設定から写す「実行時の値」で、意図的に NonSerialized にしてある。
+        // シーン側にも値を保存できるようにすると、どちらが勝つか分からない状態に戻るため
+        // （以前は Awake で一部をハードコードし直しており、インスペクタ調整が効かなかった）。
+        // 調整したいときは RyonaConfig を編集すること。
+
+        [System.NonSerialized] public Vector3 PivotOffset;
+        [System.NonSerialized] public float Distance;
+        [System.NonSerialized] public float MinDistance;
+        [System.NonSerialized] public float MaxDistance;
+        [System.NonSerialized] public float MouseSensitivity;
+        [System.NonSerialized] public float MinPitch;
+        [System.NonSerialized] public float MaxPitch;
+        [System.NonSerialized] public float FollowSharpness;
+
+        [Tooltip("カメラの当たり判定に使うレイヤー。プロジェクト固有の値なので設定アセットには入れない")]
         public LayerMask CollisionMask = ~0;
 
-        [Header("Belt Mode (fixed camera)")]
-        [Tooltip("ベルトアクション用の固定カメラ。マウスでは回さず、ステージ軸（X）に沿ってだけ追う")]
-        public bool BeltMode = true;
-
-        [Tooltip("移動中や戦闘中に敵が見切れすぎないよう、ベルトカメラの手動ズームをここまでにする（m）")]
-        public float BeltMinZoomDistance = 3.8f;
-
-        [Tooltip("腹パン・顔パンなど、顔と拳を見せる寄りの演出で許す最短距離（m）")]
-        public float BeltCloseUpMinDistance = 0.82f;
-
-        [Tooltip("見下ろし角。0 で真横、大きいほど俯瞰")]
-        public float BeltPitch = 18f;
-
-        [Tooltip("カメラの向き（0 で画面奥が +Z）。真横のベルトなら 0")]
-        public float BeltYaw = 0f;
-
-        [Tooltip("画面の中心を合わせる高さ（m）")]
-        public float BeltPivotHeight = 1.05f;
-
-        [Tooltip("進行方向へ先回りして見る量（m）")]
-        public float BeltLookAhead = 1.2f;
-
-        [Tooltip("追従の速さ。小さいほどゆったり構える")]
-        public float BeltFollowSharpness = 5f;
-
-        [Tooltip("倒れている間の追従の速さ。吹き飛ばされても画面から切れないようにする")]
-        public float DownFollowSharpness = 16f;
-
-        [Tooltip("カメラが動ける X の範囲（ステージの端）")]
-        public float BeltMinX = -12f;
-        public float BeltMaxX = 28f;
+        [System.NonSerialized] public bool BeltMode;
+        [System.NonSerialized] public float BeltMinZoomDistance;
+        [System.NonSerialized] public float BeltCloseUpMinDistance;
+        [System.NonSerialized] public float BeltPitch;
+        [System.NonSerialized] public float BeltYaw;
+        [System.NonSerialized] public float BeltPivotHeight;
+        [System.NonSerialized] public float BeltLookAhead;
+        [System.NonSerialized] public float BeltFollowSharpness;
+        [System.NonSerialized] public float DownFollowSharpness;
+        [System.NonSerialized] public float BeltMinX;
+        [System.NonSerialized] public float BeltMaxX;
 
         /// <summary>関所（<see cref="BeltStageGate"/>）が決める、カメラの進行上限。</summary>
-        public float GateMaxX = float.PositiveInfinity;
+        [System.NonSerialized] public float GateMaxX = float.PositiveInfinity;
 
         /// <summary>関所が決める、カメラの後退下限。</summary>
-        public float GateMinX = float.NegativeInfinity;
+        [System.NonSerialized] public float GateMinX = float.NegativeInfinity;
 
         /// <summary>カメラが付いてくる距離。画面の端までは自分で歩ける（ベルトの手触り）。</summary>
-        public float BeltDeadZone = 1.0f;
+        [System.NonSerialized] public float BeltDeadZone;
 
         /// <summary>いまの画面の中心 X（追従の目標値）。</summary>
         public float CurrentX => _beltX;
@@ -126,25 +114,13 @@ namespace Ryona.Game
 
         float _beltLead;
 
-        [Header("Combat Framing (演出用)")]
-        [Tooltip("演出倍率の減衰カーブの強さ。大きいほど序盤で一気に抜ける")]
-        public float EffectDecay = 4f;
-
-        [Header("Down Framing (倒れているとき)")]
-        [Tooltip("倒れたときに見る高さ。腰の高さまで下げる")]
-        public float DownPivotHeight = 0.45f;
-
-        [Tooltip("倒れたときの距離の倍率")]
-        public float DownDistanceScale = 0.85f;
-
-        [Tooltip("切り替えにかける秒数")]
-        public float DownBlendSeconds = 0.45f;
-
-        [Tooltip("倒れたときにカメラを回す角度（度）。顔が見える向きへ寄せる")]
-        public float DownYawBias = 0f;
-
-        [Tooltip("倒れたときに見下ろす角度（度）。仰向けの顔は上を向くので、上から覗く")]
-        public float DownPitchBias = 20f;
+        // 演出・倒れカメラの調整値も RyonaConfig.Camera から写す（上と同じ理由で NonSerialized）。
+        [System.NonSerialized] public float EffectDecay;
+        [System.NonSerialized] public float DownPivotHeight;
+        [System.NonSerialized] public float DownDistanceScale;
+        [System.NonSerialized] public float DownBlendSeconds;
+        [System.NonSerialized] public float DownYawBias;
+        [System.NonSerialized] public float DownPitchBias;
 
         float _downBlend;
         CharacterAnimator _anim;
@@ -223,6 +199,45 @@ namespace Ryona.Game
             _initialDistance = Distance;
             _targetDistance = Distance;
             _smoothPivot = Pivot();
+        }
+
+        /// <summary>
+        /// 設定アセットの値を実行時のフィールドへ写す。
+        /// ここ以外で調整値の既定値を書かないこと（設定が 2 か所に増える）。
+        /// </summary>
+        void ApplySettings(RyonaConfig.CameraSettings s)
+        {
+            if (s == null)
+                return;
+
+            PivotOffset = s.PivotOffset;
+            Distance = s.Distance;
+            MinDistance = s.MinDistance;
+            MaxDistance = s.MaxDistance;
+            MouseSensitivity = s.MouseSensitivity;
+            MinPitch = s.MinPitch;
+            MaxPitch = s.MaxPitch;
+            FollowSharpness = s.FollowSharpness;
+
+            BeltMode = s.BeltMode;
+            BeltMinZoomDistance = s.BeltMinZoomDistance;
+            BeltCloseUpMinDistance = s.BeltCloseUpMinDistance;
+            BeltPitch = s.BeltPitch;
+            BeltYaw = s.BeltYaw;
+            BeltPivotHeight = s.BeltPivotHeight;
+            BeltLookAhead = s.BeltLookAhead;
+            BeltFollowSharpness = s.BeltFollowSharpness;
+            DownFollowSharpness = s.DownFollowSharpness;
+            BeltMinX = s.BeltMinX;
+            BeltMaxX = s.BeltMaxX;
+            BeltDeadZone = s.BeltDeadZone;
+
+            EffectDecay = s.EffectDecay;
+            DownPivotHeight = s.DownPivotHeight;
+            DownDistanceScale = s.DownDistanceScale;
+            DownBlendSeconds = s.DownBlendSeconds;
+            DownYawBias = s.DownYawBias;
+            DownPitchBias = s.DownPitchBias;
         }
 
         void Start()
