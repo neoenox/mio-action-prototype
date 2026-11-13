@@ -391,6 +391,8 @@
     これ以上寄せると `WallPinRuntimeTests.二人がかりのカメラは正面寄りで三人が画に入る` が
     片方の敵を画面外（x=0.98 超）にするため、1.55m が三人を入れつつ寄れる限界。
     `-wallsplitcamdist=` の下限は 1.2m（撮り比べ用）。
+    確認映像: `docs/verification/wallpin-split-camera-155.png`（静止比較）/
+    `wallpin-split-camera-155.gif`（0.05 秒 × 81 コマを 10fps に間引いたプレビュー）。
 - **検証**: 実機 0.05 秒 × 200 枚。`WallPinRuntimeTests` 18 件通過（二人がかりの待ち時間が
   延びたのでテストの待ちを 9 → 14 秒に）。確認映像 `docs/verification/wallpin-split.gif` /
   `wallpin-split-hit.gif` を撮り直した。
