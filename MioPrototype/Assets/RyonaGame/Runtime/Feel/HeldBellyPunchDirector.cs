@@ -80,8 +80,8 @@ namespace Ryona.Game
         [Tooltip("顔面パンチ中のピボット上下。顔と拳が同じ画に入る高さ")]
         public float FaceCameraPivotOffset = 0.58f;
 
-        [Tooltip("顔面パンチ中の俯角オフセット。見上げ気味にすると顔が見える")]
-        public float FaceCameraPitchOffset = -3f;
+        [Tooltip("顔面パンチ中の俯角オフセット。大きいほど下へ向き、顔が画面の上寄りになって胸元と拳が入る（-3 で見上げ気味、9 で大きく見下ろす）")]
+        public float FaceCameraPitchOffset = 4f;
 
         [Tooltip("顔面パンチ中のヨーオフセット。腹パンと同程度に回り込んで、彼女の顔と拳を同時に見せる")]
         public float FaceCameraYawOffset = -36f;
