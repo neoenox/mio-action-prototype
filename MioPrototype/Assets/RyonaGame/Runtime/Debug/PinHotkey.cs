@@ -39,6 +39,12 @@ namespace Ryona.Game
             bool auto = LaunchOptions.Has("-pinnow") || LaunchOptions.Has("-wallpinnow");
             bool wall = LaunchOptions.Has("-wallpinnow");
 
+            // 出荷物に検証用ホットキーを残さない。リリースビルドでは P キーの入口を
+            // 生成しない（-pinnow / -wallpinnow を明示したときだけ有効）。
+            // Editor / Development Build は従来どおり常に使える。
+            if (!auto && !DebugEntryAllowed)
+                return;
+
             var go = new GameObject("Pin Hotkey");
             var hotkey = go.AddComponent<PinHotkey>();
             hotkey._wall = wall;
@@ -47,6 +53,22 @@ namespace Ryona.Game
                 hotkey._autoAt = Time.time + 1.5f;
                 GameLog.Log($"[Pin] {(wall ? "-wallpinnow" : "-pinnow")}: " +
                           "1.5 秒後に押さえつけを 1 回指示します");
+            }
+        }
+
+        /// <summary>
+        /// デバッグ用の入口を作ってよいか。リリースビルドでは作らない。
+        /// <c>-pinnow</c> / <c>-wallpinnow</c> を明示したときだけ例外として有効にする。
+        /// </summary>
+        static bool DebugEntryAllowed
+        {
+            get
+            {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                return true;
+#else
+                return false;
+#endif
             }
         }
 
