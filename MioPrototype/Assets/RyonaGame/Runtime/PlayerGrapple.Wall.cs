@@ -65,14 +65,14 @@ namespace Ryona.Game
             if (WallAssistCandidate != null)
             {
                 WallAssistCandidate.BeginWallAssist(this);
-                Debug.Log($"[WallSplit] candidate {WallAssistCandidate.name} dist={bestDistance:F2}");
+                GameLog.Log($"[WallSplit] candidate {WallAssistCandidate.name} dist={bestDistance:F2}");
             }
         }
 
         void SetWallStage(WallStage stage)
         {
             _session.SetStage(stage);
-            Debug.Log($"[WallSequence] {stage}");
+            GameLog.Log($"[WallSequence] {stage}");
         }
 
         void TickWallTransition()
@@ -203,7 +203,7 @@ namespace Ryona.Game
             if (!best.IsWallAssisting)
                 best.BeginWallAssist(this);
             StartCoroutine(WallSplitRoutine());
-            Debug.Log($"[WallSplit] begin captor={captor.name} assist={best.name} " +
+            GameLog.Log($"[WallSplit] begin captor={captor.name} assist={best.name} " +
                       $"dist={bestDistance:F2} ready={_session.SplitReady} need={RequiredInputs:F0}");
             return true;
         }

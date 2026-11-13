@@ -53,7 +53,7 @@ namespace Ryona.Game
 
             Build();
 
-            Debug.Log("[Title] 表示（何かキー / パッドのボタンで開始）");
+            GameLog.Log("[Title] 表示（何かキー / パッドのボタンで開始）");
         }
 
         void Update()
@@ -76,13 +76,13 @@ namespace Ryona.Game
                     {
                         _shot = true;
                         ScreenCapture.CaptureScreenshot(_shotPath);
-                        Debug.Log($"[Title] 撮影 {_shotPath}");
+                        GameLog.Log($"[Title] 撮影 {_shotPath}");
                     }
 
                     if (_age > 2.2f)
                     {
                         _fade = 0f;
-                        Debug.Log("[Title] 自動で開始");
+                        GameLog.Log("[Title] 自動で開始");
                     }
 
                     return;
@@ -92,7 +92,7 @@ namespace Ryona.Game
                     return;
 
                 _fade = 0f;
-                Debug.Log("[Title] 開始");
+                GameLog.Log("[Title] 開始");
             }
 
             // timeScale = 0 なので unscaled で進める

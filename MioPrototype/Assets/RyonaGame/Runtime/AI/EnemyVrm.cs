@@ -87,7 +87,7 @@ namespace Ryona.Game
             if (path == null)
             {
                 // 置かれるまではプリミティブのまま。毎回警告を出すと邪魔なので 1 回だけ
-                Debug.Log($"[Ryona] 敵 VRM は未配置（プリミティブで続行）: {FileName}  " +
+                GameLog.Log($"[Ryona] 敵 VRM は未配置（プリミティブで続行）: {FileName}  " +
                           $"探索={DescribeSearchPaths(FileName)}");
                 return false;
             }
@@ -99,9 +99,9 @@ namespace Ryona.Game
             Vrm10Instance vrm = null;
             try
             {
-                Debug.Log($"[Ryona] 敵 VRM 読み込み開始: {FileName} from={path}");
+                GameLog.Log($"[Ryona] 敵 VRM 読み込み開始: {FileName} from={path}");
                 vrm = await Vrm10.LoadPathAsync(path, canLoadVrm0X: true, showMeshes: true);
-                Debug.Log($"[Ryona] 敵 VRM 読み込み完了: {FileName} ok={(vrm != null)}");
+                GameLog.Log($"[Ryona] 敵 VRM 読み込み完了: {FileName} ok={(vrm != null)}");
             }
             catch (System.Exception e)
             {
@@ -296,7 +296,7 @@ namespace Ryona.Game
                 reaction.InvalidateParts();
 
             _ready = true;
-            Debug.Log($"[Ryona] 敵 VRM を差し込みました: {FileName}  " +
+            GameLog.Log($"[Ryona] 敵 VRM を差し込みました: {FileName}  " +
                       $"scale={_instance.transform.localScale.x:0.000} root={transform.position} " +
                       $"headRest={_head.position.y - transform.position.y:0.000} " +
                       $"hipsRest={_hips.position.y:0.000} proxyRest={proxyRest.y:0.000} " +
@@ -383,7 +383,7 @@ namespace Ryona.Game
             if (wrist == null)
                 return;
 
-            Debug.Log($"[VrmLog] hand-wrist={Vector3.Distance(_handR.position, wrist.position):F3}");
+            GameLog.Log($"[VrmLog] hand-wrist={Vector3.Distance(_handR.position, wrist.position):F3}");
         }
 
         /// <summary>骨の向きを、プリミティブ側の関節の位置関係に合わせる。</summary>

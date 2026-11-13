@@ -115,7 +115,7 @@ namespace Ryona.Game
                         float getUp = Mathf.Max(0.2f, GetUpSeconds);
                         SetState(State.GetUp, getUp);
                         Stats?.BeginGetUp(getUp);
-                        Debug.Log($"[Anim] ダウン終了 → 立ち上がり {GetUpSeconds:F2}s");
+                        GameLog.Log($"[Anim] ダウン終了 → 立ち上がり {GetUpSeconds:F2}s");
                         if (Stats != null)
                             Stats.AddStun(getUp);
                     }
@@ -124,7 +124,7 @@ namespace Ryona.Game
                 case State.GetUp:
                     if (_stateTime >= _stateDuration)
                     {
-                        Debug.Log("[Anim] 立ち上がり完了 → 構え");
+                        GameLog.Log("[Anim] 立ち上がり完了 → 構え");
                         _state = State.Idle;
                     }
                     break;
@@ -236,7 +236,7 @@ namespace Ryona.Game
                     // 怯みが終わったら結果を記録して終了（毎ヒット2行だとログが埋まる）
                     Vector3 f = body.forward;
                     f.y = 0f;
-                    Debug.Log($"[Turn] rest angle={Vector3.Angle(f, _faceYaw * Vector3.forward):F0}");
+                    GameLog.Log($"[Turn] rest angle={Vector3.Angle(f, _faceYaw * Vector3.forward):F0}");
                     _hasFaceYaw = false;
                 }
             }

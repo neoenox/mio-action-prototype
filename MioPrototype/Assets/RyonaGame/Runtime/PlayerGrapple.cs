@@ -481,7 +481,7 @@ namespace Ryona.Game
             if (Captor == null || !Captor.IsAlive)
             {
                 Release();
-                Debug.Log("[Grapple] 掴んでいた相手が倒れたので解放");
+                GameLog.Log("[Grapple] 掴んでいた相手が倒れたので解放");
                 return;
             }
 

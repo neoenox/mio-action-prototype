@@ -202,7 +202,7 @@ namespace Ryona.Game
                         {
                             // 体の正面方向への張り出しで「踏み込んだか」を測る
                             Vector3 local = figure.transform.InverseTransformPoint(weapon.position);
-                            Debug.Log($"[Shot] enemy swing={EnemySwing:F3} windup={EnemyWindup} " +
+                            GameLog.Log($"[Shot] enemy swing={EnemySwing:F3} windup={EnemyWindup} " +
                                       $"weaponLocal={local.x:F3},{local.y:F3},{local.z:F3}");
                         }
                     }
@@ -235,7 +235,7 @@ namespace Ryona.Game
                     go.SetActive(false);
                 }
 
-                Debug.Log($"[Shot] only character kept={kept}");
+                GameLog.Log($"[Shot] only character kept={kept}");
             }
 
             if (HideHair)
@@ -256,7 +256,7 @@ namespace Ryona.Game
                         hidden++;
                     }
                 }
-                Debug.Log($"[Shot] hid hair renderers={hidden}");
+                GameLog.Log($"[Shot] hid hair renderers={hidden}");
             }
 
             // 頭の近くにあるメッシュを列挙する（何が顔を隠しているか特定するため）
@@ -274,7 +274,7 @@ namespace Ryona.Game
                         foreach (var m in r.sharedMaterials)
                             mats.Append(m != null ? m.name : "null").Append('|');
 
-                        Debug.Log($"[Mesh] {r.gameObject.name} enabled={r.enabled} " +
+                        GameLog.Log($"[Mesh] {r.gameObject.name} enabled={r.enabled} " +
                                   $"dist={Vector3.Distance(r.bounds.center, hp):F2} mats={mats}");
                     }
                 }
@@ -283,7 +283,7 @@ namespace Ryona.Game
             // 落ち着いた状態を見たいので、長い時間で固定する
             for (int i = 0; i < anims.Length; i++)
             {
-                Debug.Log($"[Shot] animator[{i}] name={anims[i].name} pos={anims[i].transform.position} " +
+                GameLog.Log($"[Shot] animator[{i}] name={anims[i].name} pos={anims[i].transform.position} " +
                           $"rig={anims[i].Rig != null} ready={(anims[i].Rig != null && anims[i].Rig.Ready)}");
 
                 anims[i].ForceState(State, StateTime, StateDuration, StaggerTier.GuardBreak);
@@ -310,7 +310,7 @@ namespace Ryona.Game
 
                     face.PreviewAmount = Pain;
                     var shape = face.FacePain;
-                    Debug.Log($"[Shot] face {face.name} pain={Pain:F2} belly={face.PreviewBelly:F2} " +
+                    GameLog.Log($"[Shot] face {face.name} pain={Pain:F2} belly={face.PreviewBelly:F2} " +
                               $"angry={shape.Angry:F2} sad={shape.Sad:F2} " +
                               $"mouth={shape.Mouth:F2} grit={shape.Grit:F2} " +
                               $"blink={shape.Blink:F2}");
@@ -342,14 +342,14 @@ namespace Ryona.Game
                         ? "none"
                         : $"enabled={tpc.enabled} target={(tpc.Target != null ? tpc.Target.name : "null")} " +
                           $"pos={tpc.transform.position} dist={tpc.Distance}";
-                    Debug.Log($"[Shot] tick t={Time.time:F2} remain={(end - Time.time):F2} " +
+                    GameLog.Log($"[Shot] tick t={Time.time:F2} remain={(end - Time.time):F2} " +
                               $"state={anims[0].Current} tpc[{tpcInfo}]");
                 }
 
                 yield return null;
             }
 
-            Debug.Log("[Shot] settle done");
+            GameLog.Log("[Shot] settle done");
 
             var cam = Camera.main;
             for (int i = 0; i < anims.Length; i++)
@@ -363,7 +363,7 @@ namespace Ryona.Game
                     head = $"fwd={h.forward} upAngle={upAngle:F0} yaw={h.eulerAngles.y:F0}";
                 }
 
-                Debug.Log($"[Shot] at capture animator[{i}] state={anims[i].Current} " +
+                GameLog.Log($"[Shot] at capture animator[{i}] state={anims[i].Current} " +
                           $"hipsY={(rig != null && rig.Ready ? rig.Hips.position.y : -1f):F3} " +
                           $"headY={(rig != null && rig.Ready ? rig.Head.position.y : -1f):F3} " +
                           $"{head} cam={(cam != null ? cam.transform.position.ToString() : "none")}");
@@ -379,20 +379,20 @@ namespace Ryona.Game
                 {
                     float d = Vector3.Distance(r.bounds.center, center + Vector3.up * 1.0f);
                     if (d < 3f)
-                        Debug.Log($"[Near] {r.name} root={r.transform.root.name} d={d:F2} " +
+                        GameLog.Log($"[Near] {r.name} root={r.transform.root.name} d={d:F2} " +
                                   $"pos={r.transform.position} size={r.bounds.size}");
                 }
 
                 // 敵の状態（間合い・攻撃の可否）を確認する
                 var stats = anims[0].transform.root.GetComponent<PlayerStats>();
                 if (stats != null && stats.State != null)
-                    Debug.Log($"[Ai] hp={stats.State.Hp:F1} " +
+                    GameLog.Log($"[Ai] hp={stats.State.Hp:F1} " +
                               $"down={stats.State.IsDown} dead={stats.IsDead} t={Time.time:F1}");
 
                 foreach (var brain in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
                 {
                     float dist = Vector3.Distance(brain.transform.position, anims[0].transform.position);
-                    Debug.Log($"[Ai] {brain.name} phase={brain.Phase} dist={dist:F2} " +
+                    GameLog.Log($"[Ai] {brain.name} phase={brain.Phase} dist={dist:F2} " +
                               $"token={brain.HasAttackToken} pos={brain.transform.position}");
                 }
             }
@@ -419,7 +419,7 @@ namespace Ryona.Game
             yield return null;
 
             ScreenCapture.CaptureScreenshot(full);
-            Debug.Log($"[Shot] state={State} face={FaceCamera} path={full}");
+            GameLog.Log($"[Shot] state={State} face={FaceCamera} path={full}");
 
             yield return new WaitForSeconds(1.5f);
             Application.Quit();
@@ -456,8 +456,8 @@ namespace Ryona.Game
             cam.fieldOfView = fov;
         }
 
-        void OnApplicationQuit() => Debug.Log("[Shot] OnApplicationQuit");
-        void OnDestroy() => Debug.Log("[Shot] OnDestroy");
+        void OnApplicationQuit() => GameLog.Log("[Shot] OnApplicationQuit");
+        void OnDestroy() => GameLog.Log("[Shot] OnDestroy");
 
         static CharacterAnimator.State ParseState(string name, CharacterAnimator.State fallback)
         {
@@ -511,7 +511,7 @@ namespace Ryona.Game
                     if (!_logged)
                     {
                         _logged = true;
-                        Debug.Log($"[Shot] freeze {_state} t={_time:F2} hipsY={a.Rig.Hips.position.y:F3} " +
+                        GameLog.Log($"[Shot] freeze {_state} t={_time:F2} hipsY={a.Rig.Hips.position.y:F3} " +
                                   $"headY={a.Rig.Head.position.y:F3}");
                     }
                 }

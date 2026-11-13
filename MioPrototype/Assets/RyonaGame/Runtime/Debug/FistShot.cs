@@ -58,7 +58,7 @@ namespace Ryona.Game
             Vector3 r = anim.transform.InverseTransformPoint(rig.RHand.position);
             Vector3 le = anim.transform.InverseTransformPoint(rig.LLowerArm.position);
             Vector3 re = anim.transform.InverseTransformPoint(rig.RLowerArm.position);
-            Debug.Log($"[FistShot] {_taken} L=({l.x:0.00},{l.y:0.00},{l.z:0.00}) R=({r.x:0.00},{r.y:0.00},{r.z:0.00}) " +
+            GameLog.Log($"[FistShot] {_taken} L=({l.x:0.00},{l.y:0.00},{l.z:0.00}) R=({r.x:0.00},{r.y:0.00},{r.z:0.00}) " +
                 $"Lel=({le.y:0.00},{le.z:0.00}) Rel=({re.y:0.00},{re.z:0.00}) t={anim.StateTime:0.000}");
 
             StartCoroutine(Shoot());
@@ -75,7 +75,7 @@ namespace Ryona.Game
 
             string file = System.IO.Path.Combine(dir, $"{name}_{_taken}{ext}");
             ScreenCapture.CaptureScreenshot(file);
-            Debug.Log($"[FistShot] {_taken} 枚目 {file}");
+            GameLog.Log($"[FistShot] {_taken} 枚目 {file}");
 
             yield return new WaitForSecondsRealtime(0.25f);
             _busy = false;

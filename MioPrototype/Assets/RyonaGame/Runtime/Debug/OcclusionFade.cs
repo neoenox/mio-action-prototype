@@ -176,10 +176,10 @@ namespace Ryona.Game
                 _wasFaded = _alpha < 0.9f;
 
                 if (VerboseLog)
-                    Debug.Log($"[Occlusion] {name} alpha={_alpha:F2} " +
+                    GameLog.Log($"[Occlusion] {name} alpha={_alpha:F2} " +
                         $"angle={_dbgAngle:F1} dist={_dbgDist:F2}/{_dbgPlayerDist:F2} why={_dbgWhy}");
                 else
-                    Debug.Log($"[Occlusion] {name} alpha={_alpha:F2} on={_wasFaded}");
+                    GameLog.Log($"[Occlusion] {name} alpha={_alpha:F2} on={_wasFaded}");
             }
         }
 

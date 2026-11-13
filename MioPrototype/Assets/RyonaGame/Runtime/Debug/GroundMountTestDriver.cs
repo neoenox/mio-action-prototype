@@ -81,7 +81,7 @@ namespace Ryona.Game
             {
                 _capturing = true;
                 _nextShotAt = Time.unscaledTime;
-                Debug.Log($"[MountTest] capture start stage={_mount.Stage} side={_mount.Side:F0} " +
+                GameLog.Log($"[MountTest] capture start stage={_mount.Stage} side={_mount.Side:F0} " +
                           $"leftPunch={_mount.LeftPunch}");
             }
 
@@ -119,7 +119,7 @@ namespace Ryona.Game
                 (_player.transform.position - spot).normalized, Vector3.up);
             best.HoldFire(0f);
             _player.ForceDown(8f, "mounttest", best.transform, forward: _prone);
-            Debug.Log($"[MountTest] down by {best.name} prone={_prone} at {spot}");
+            GameLog.Log($"[MountTest] down by {best.name} prone={_prone} at {spot}");
         }
 
         void LateUpdate()
@@ -136,7 +136,7 @@ namespace Ryona.Game
                 if (!_hidden)
                 {
                     _hidden = true;
-                    Debug.Log("[MountTest] 敵を非表示（彼女の腕だけを見る）");
+                    GameLog.Log("[MountTest] 敵を非表示（彼女の腕だけを見る）");
                 }
                 // OcclusionFade が毎フレーム material を差し替えるので、
                 // enabled だけでなく forceRenderingOff も毎フレーム立てる。
@@ -184,7 +184,7 @@ namespace Ryona.Game
 
             string file = System.IO.Path.Combine(dir, $"{name}_{_shots:00}.png");
             ScreenCapture.CaptureScreenshot(file);
-            Debug.Log($"[MountTest] shot {_shots} stage={(_mount != null ? _mount.Stage.ToString() : "none")} {file}");
+            GameLog.Log($"[MountTest] shot {_shots} stage={(_mount != null ? _mount.Stage.ToString() : "none")} {file}");
 
             _shots++;
             _nextShotAt += ShotInterval;
@@ -216,7 +216,7 @@ namespace Ryona.Game
             _prevR = handR;
             _hasPrevHands = true;
 
-            Debug.Log($"[MountArm] stage={_mount.Stage} p={_mount.Progress:F3} side={_mount.Side:F0} " +
+            GameLog.Log($"[MountArm] stage={_mount.Stage} p={_mount.Progress:F3} side={_mount.Side:F0} " +
                       $"chest={_mount.ShoulderRoll:F3} pelvis={_mount.RollProgress:F3} | {left} | {right}{moved}");
         }
 

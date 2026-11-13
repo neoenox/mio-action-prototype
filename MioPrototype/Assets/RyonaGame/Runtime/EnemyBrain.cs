@@ -929,7 +929,7 @@ namespace Ryona.Game
                 if (!_feintDisabledLogged)
                 {
                     _feintDisabledLogged = true;
-                    Debug.Log("[Enemy] フェイント無効（-nofeint）");
+                    GameLog.Log("[Enemy] フェイント無効（-nofeint）");
                 }
             }
 
@@ -943,7 +943,7 @@ namespace Ryona.Game
                 // 予備動作は「パイプが光る」で示す（EnemyFigure.ApplyWeaponCharge）。
                 Destroy(Telegraph.gameObject);
                 Telegraph = null;
-                Debug.Log("[Ryona] 頭上に浮く予告球を廃止しました（予備動作はパイプの発光で示します）");
+                GameLog.Log("[Ryona] 頭上に浮く予告球を廃止しました（予備動作はパイプの発光で示します）");
             }
         }
 

@@ -103,7 +103,7 @@ namespace Ryona.Game
                         _grabContactRemaining = 0f;
                         receiver.TakeOverHold(CombatConstants.GrappleLimitSeconds + 4f);
                         sender.LockForHandOff(0.24f);
-                        Debug.Log($"[HandOff] pin → back {sender.name} → {receiver.name}");
+                        GameLog.Log($"[HandOff] pin → back {sender.name} → {receiver.name}");
                         Started?.Invoke(Kind);
                         yield break;
                     }
@@ -217,7 +217,7 @@ namespace Ryona.Game
             }
 
             next.BeginCatch(catchSeconds);
-            Debug.Log($"[HandOff] catch {next.name} kind={kind}");
+            GameLog.Log($"[HandOff] catch {next.name} kind={kind}");
             t = 0f;
             Quaternion catchRot = transform.rotation;
             Vector3 receiverStart = next.transform.position;

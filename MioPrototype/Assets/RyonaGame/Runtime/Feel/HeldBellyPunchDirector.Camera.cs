@@ -68,7 +68,7 @@ namespace Ryona.Game
 
             // ヒット時に押した値だけ出す（毎フレームの保持はログに出さない）
             if (hold >= 1.5f)
-                Debug.Log($"[HeldPunchCam] scale={EffectiveDistanceScale:F2} pivot={pivot:F2} " +
+                GameLog.Log($"[HeldPunchCam] scale={EffectiveDistanceScale:F2} pivot={pivot:F2} " +
                           $"pitch={ZonePitch:F0} yaw={yaw:F0} " +
                           $"liveScale={_camera.EffectDistanceScale:F2} livePivot={_camera.EffectPivotOffset:F2}");
         }

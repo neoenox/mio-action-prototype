@@ -102,7 +102,7 @@ namespace Ryona.Game
                 _anim.Footstep += OnFootstep;
                 _subscribed = true;
 
-                Debug.Log($"[Sfx] 足音の購読 {_anim.name}");
+                GameLog.Log($"[Sfx] 足音の購読 {_anim.name}");
             }
         }
 

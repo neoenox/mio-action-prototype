@@ -74,7 +74,7 @@ namespace Ryona.Game
                 }
             }
 
-            Debug.Log($"[Spacing] player={minPlayer:0.00} pair={minPair:0.00}");
+            GameLog.Log($"[Spacing] player={minPlayer:0.00} pair={minPair:0.00}");
 
             // 膠着の切り分け用: 敵ごとの状態。距離・トークン・クールダウン・向き。
             if (player != null)
@@ -87,7 +87,7 @@ namespace Ryona.Game
 
                     Vector3 to = Flat(player.position - b.transform.position);
                     float facing = to.sqrMagnitude > 0.0001f ? Vector3.Dot(Flat(b.transform.forward).normalized, to.normalized) : 0f;
-                    Debug.Log($"[SpacingEnemy] {b.name} phase={b.Phase} dist={to.magnitude:0.00} " +
+                    GameLog.Log($"[SpacingEnemy] {b.name} phase={b.Phase} dist={to.magnitude:0.00} " +
                         $"token={b.HasAttackToken} cd={b.AttackCooldownRemaining:0.0} facing={facing:0.00}");
                 }
             }

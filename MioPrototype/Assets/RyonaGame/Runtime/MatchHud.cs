@@ -521,7 +521,7 @@ namespace Ryona.Game
                 string.Empty, 15, TextAnchor.UpperRight);
             _bellyFill = NewBar(playerBlock, 0f, 105f, BlockWidth, 7f, BellyColor);
 
-            Debug.Log($"[Hud] uGUI 構築完了 font={(JapaneseFont != null ? JapaneseFont.name : "none")} " +
+            GameLog.Log($"[Hud] uGUI 構築完了 font={(JapaneseFont != null ? JapaneseFont.name : "none")} " +
                       $"あ={JapaneseFont != null && JapaneseFont.HasCharacter('あ')} " +
                       $"encounter={(_encounterText != null)}");
         }

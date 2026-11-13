@@ -58,7 +58,7 @@ namespace Ryona.Game
         {
             bool many = _times.Count > 1;
 
-            Debug.Log($"[HudShot] {_times.Count} 枚 撮ります path={System.IO.Path.GetFullPath(_path)} " +
+            GameLog.Log($"[HudShot] {_times.Count} 枚 撮ります path={System.IO.Path.GetFullPath(_path)} " +
                       $"times={string.Join("/", _times)}");
 
             float elapsed = 0f;
@@ -81,7 +81,7 @@ namespace Ryona.Game
 
                 string full = FileName(i, many);
                 ScreenCapture.CaptureScreenshot(full);
-                Debug.Log($"[HudShot] 撮影 {i + 1}/{_times.Count} t={elapsed:F2} path={full}");
+                GameLog.Log($"[HudShot] 撮影 {i + 1}/{_times.Count} t={elapsed:F2} path={full}");
 
                 yield return new WaitForSecondsRealtime(0.15f);
             }

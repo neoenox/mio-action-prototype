@@ -147,14 +147,14 @@ namespace Ryona.Game
             if (LaunchOptions.TryFloat("-screenspan", out float value) && value > 1f)
             {
                 ScreenSpan = value;
-                Debug.Log($"[Encounter] ScreenSpan={ScreenSpan:F1}（起動引数で上書き）");
+                GameLog.Log($"[Encounter] ScreenSpan={ScreenSpan:F1}（起動引数で上書き）");
             }
 
             // 0 を渡すと無限（計測用）
             if (LaunchOptions.TryInt("-maxwaves", out int waves) && waves >= 0)
             {
                 MaxWaves = waves;
-                Debug.Log($"[Encounter] MaxWaves={MaxWaves}（起動引数で上書き。0 は無限）");
+                GameLog.Log($"[Encounter] MaxWaves={MaxWaves}（起動引数で上書き。0 は無限）");
             }
         }
 
@@ -202,10 +202,10 @@ namespace Ryona.Game
             {
                 var pinner = _enemies[_enemies.Count - 1];
                 pinner.CanPin = true;
-                Debug.Log($"[Encounter] 押さえつけ担当: {pinner.name}");
+                GameLog.Log($"[Encounter] 押さえつけ担当: {pinner.name}");
             }
 
-            Debug.Log($"[Encounter] 敵 {_enemies.Count} 体を登録 1画面={ScreenSpan:F1}m " +
+            GameLog.Log($"[Encounter] 敵 {_enemies.Count} 体を登録 1画面={ScreenSpan:F1}m " +
                 $"（-screenspan=N で上書き可）");
         }
 
@@ -227,10 +227,10 @@ namespace Ryona.Game
             _pendingDrops.Add(brain != null ? brain.transform.position : transform.position);
             _pendingTimer = BodyDropDelay;
 
-            Debug.Log($"[Encounter] 撃破 {Kills} 残り {Alive} t={Time.time:F2}");
+            GameLog.Log($"[Encounter] 撃破 {Kills} 残り {Alive} t={Time.time:F2}");
 
             if (Alive <= 0)
-                Debug.Log($"[Encounter] 全滅 wave={Wave} 右へ進める t={Time.time:F2}");
+                GameLog.Log($"[Encounter] 全滅 wave={Wave} 右へ進める t={Time.time:F2}");
         }
 
         int CountAlive()
@@ -303,7 +303,7 @@ namespace Ryona.Game
                 // 終わったことを音でも知らせる（画面のバナーだけだと見落とす）
                 ProceduralSfx.Instance?.Play(SfxId.Clear, 1f);
 
-                Debug.Log($"[Encounter] STAGE CLEAR {Wave} 波 / 撃破 {Kills} " +
+                GameLog.Log($"[Encounter] STAGE CLEAR {Wave} 波 / 撃破 {Kills} " +
                     $"time={ClearTimeSeconds:F1}s best={BestClearSeconds:F1}s t={Time.time:F2}");
                 return;
             }
@@ -337,7 +337,7 @@ namespace Ryona.Game
 
             if (_stallTimer >= StallSeconds)
             {
-                Debug.Log($"[Encounter] {StallSeconds:F1} 秒進めないので次の一団を出します (x={playerX:F2})");
+                GameLog.Log($"[Encounter] {StallSeconds:F1} 秒進めないので次の一団を出します (x={playerX:F2})");
                 EnterWave(centerX);
             }
         }
@@ -390,7 +390,7 @@ namespace Ryona.Game
             Wave++;
             _nextTriggerX = centerX + ScreenSpan;
 
-            Debug.Log($"[Encounter] wave {Wave} 敵 {Alive} 体が右端から入場 (x={edge:F1}) t={Time.time:F2}");
+            GameLog.Log($"[Encounter] wave {Wave} 敵 {Alive} 体が右端から入場 (x={edge:F1}) t={Time.time:F2}");
 
             StartCoroutine(VerifyStanding());
         }
@@ -407,7 +407,7 @@ namespace Ryona.Game
 
                 var figure = brain.GetComponent<EnemyFigure>();
                 float fall = figure != null ? figure.FallAngle : -1f;
-                Debug.Log($"[Encounter] 起きあがり確認 {brain.name} phase={brain.Phase} fall={fall:F1} hp={brain.State.Hp:F0}");
+                GameLog.Log($"[Encounter] 起きあがり確認 {brain.name} phase={brain.Phase} fall={fall:F1} hp={brain.State.Hp:F0}");
             }
         }
     }

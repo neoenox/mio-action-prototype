@@ -164,7 +164,7 @@ namespace Ryona.Game
             _knockLeft = seconds;
             _knockStart = transform.position;
 
-            Debug.Log($"[Knockback] {distance:F2}m / {seconds:F2}s");
+            GameLog.Log($"[Knockback] {distance:F2}m / {seconds:F2}s");
         }
 
         // ダウンの放物線（吹き飛ばされ）
@@ -189,7 +189,7 @@ namespace Ryona.Game
             _verticalVelocity = _launchUp;
 
             Knockback(distance, air, direction);
-            Debug.Log($"[Launch] {distance:F2}m h={height:F2} air={air:F2}s");
+            GameLog.Log($"[Launch] {distance:F2}m h={height:F2} air={air:F2}s");
         }
         void LateUpdate()
         {
@@ -319,7 +319,7 @@ namespace Ryona.Game
                             }
                         }
 
-                        Debug.Log($"[Lunge] {_lungeId} moved={d.magnitude:F2}{foot}");
+                        GameLog.Log($"[Lunge] {_lungeId} moved={d.magnitude:F2}{foot}");
                     }
                 }
             }
@@ -339,7 +339,7 @@ namespace Ryona.Game
                 {
                     Vector3 moved = transform.position - _knockStart;
                     moved.y = 0f;
-                    Debug.Log($"[Knockback] moved={moved.magnitude:F2}m");
+                    GameLog.Log($"[Knockback] moved={moved.magnitude:F2}m");
                 }
             }
 
@@ -348,7 +348,7 @@ namespace Ryona.Game
             {
                 _launchLeft = Mathf.Max(0f, _launchLeft - Time.deltaTime);
                 if (_launchLeft <= 0f)
-                    Debug.Log($"[Launch] landed y={transform.position.y:F2}");
+                    GameLog.Log($"[Launch] landed y={transform.position.y:F2}");
             }
 
             IsMoving = _velocity.sqrMagnitude > 0.05f;

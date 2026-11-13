@@ -78,7 +78,7 @@ namespace Ryona.Game
                 ScreenCapture.CaptureScreenshot(System.IO.Path.Combine(dir, $"{name}_{i:00}.png"));
                 next += interval;
             }
-            Debug.Log($"[HandOff] burst {count} 枚 {_burstPrefix}_XX.png");
+            GameLog.Log($"[HandOff] burst {count} 枚 {_burstPrefix}_XX.png");
         }
 
         /// <summary>
@@ -94,7 +94,7 @@ namespace Ryona.Game
 
             bool roll = Random.value < Mathf.Clamp01(Chance);
             bool handed = roll && TryHandOff();
-            Debug.Log($"[HandOff] roll chance={Chance:F2} → " +
+            GameLog.Log($"[HandOff] roll chance={Chance:F2} → " +
                       (handed ? "渡した" : roll ? "渡し先なし（拘束継続）" : "渡さない（拘束継続）"));
             return handed;
         }
@@ -120,7 +120,7 @@ namespace Ryona.Game
 
             StartBurst();
             _grapple.HandOff(best, kind, shove: true);
-            Debug.Log($"[HandOff] {captor.name} → {best.name} kind={kind} " +
+            GameLog.Log($"[HandOff] {captor.name} → {best.name} kind={kind} " +
                       $"dist={Vector3.Distance(best.transform.position, _grapple.transform.position):F2}");
             return true;
         }

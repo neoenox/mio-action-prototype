@@ -45,7 +45,7 @@ namespace Ryona.Game
             if (auto)
             {
                 hotkey._autoAt = Time.time + 1.5f;
-                Debug.Log($"[Pin] {(wall ? "-wallpinnow" : "-pinnow")}: " +
+                GameLog.Log($"[Pin] {(wall ? "-wallpinnow" : "-pinnow")}: " +
                           "1.5 秒後に押さえつけを 1 回指示します");
             }
         }
@@ -73,7 +73,7 @@ namespace Ryona.Game
             var grapple = _player.GetComponent<PlayerGrapple>();
             if (grapple != null && grapple.IsGrappled)
             {
-                Debug.Log("[Pin] ホットキー: すでに掴まれているので指示しない");
+                GameLog.Log("[Pin] ホットキー: すでに掴まれているので指示しない");
                 return;
             }
 
@@ -87,7 +87,7 @@ namespace Ryona.Game
                     place.z = 0f;
                     _player.transform.position = place;
                     _player.transform.rotation = Quaternion.LookRotation(Vector3.right);
-                    Debug.Log($"[Pin] 壁の前へ移動 x={place.x:F2}");
+                    GameLog.Log($"[Pin] 壁の前へ移動 x={place.x:F2}");
                 }
             }
 
@@ -121,7 +121,7 @@ namespace Ryona.Game
             best.CanPin = true;
             best.QueuePin();
 
-            Debug.Log($"[Pin] ホットキー: {best.name} に押さえつけを指示");
+            GameLog.Log($"[Pin] ホットキー: {best.name} に押さえつけを指示");
         }
     }
 }

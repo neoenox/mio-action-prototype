@@ -44,7 +44,7 @@ namespace Ryona.Game
                 _rig = FindAnyObjectByType<ThirdPersonCamera>();
             if (_rig == null)
             {
-                Debug.Log("[CamLog] ThirdPersonCamera が見つからない");
+                GameLog.Log("[CamLog] ThirdPersonCamera が見つからない");
                 return;
             }
 
@@ -58,7 +58,7 @@ namespace Ryona.Game
             Transform target = _rig.Target;
             if (target == null)
             {
-                Debug.Log("[CamLog] Target=null（追尾していない）");
+                GameLog.Log("[CamLog] Target=null（追尾していない）");
                 return;
             }
 
@@ -110,7 +110,7 @@ namespace Ryona.Game
                 }
             }
 
-            Debug.Log(
+            GameLog.Log(
                 $"[CamLog] px={target.position.x:0.00} cx={_rig.CurrentX:0.00} sx={_rig.RenderedX:0.00}" +
                 $" vx={vx:0.000} vy=[{vFeetY:0.000}..{vHeadY:0.000}] lock={(_lock != null && _lock.IsLocked ? 1 : 0)} gate={gate} lim={lim}" +
                 $" enemyD={(float.IsPositiveInfinity(enemyD) ? -1f : enemyD):0.00} enemyVx={enemyVx:0.000}" +

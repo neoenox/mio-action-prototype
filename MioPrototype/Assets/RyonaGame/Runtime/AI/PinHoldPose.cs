@@ -123,7 +123,7 @@ namespace Ryona.Game
                     float depth = Vector3.Dot(knee - axisPoint, front);
                     float preDepth = Vector3.Dot(preKnee - axisPoint, front);
                     float penetration = surface + kneeRadius - depth;
-                    Debug.Log($"[Knee] pulse={hold.KneePulse:F2} depth={depth:F3} pre={preDepth:F3} pen={penetration:F3} " +
+                    GameLog.Log($"[Knee] pulse={hold.KneePulse:F2} depth={depth:F3} pre={preDepth:F3} pen={penetration:F3} " +
                               $"reach={_figure.LastPinKneeReach:F3} shift={_figure.LastPinKneeShift:F3} " +
                               $"hipsY={_figure.HipsBone.position.y - transform.position.y:F2} " +
                               $"kneeY={knee.y:F2} spineY={spine.y:F2} chestY={chest.y:F2} bellyY={belly.y:F2} " +
@@ -233,7 +233,7 @@ namespace Ryona.Game
                     if (cam != null)
                     {
                         Vector3 v = cam.WorldToViewportPoint(player.position + Vector3.up * 1.0f);
-                        Debug.Log($"[PinCenter] near={Time.time < _kneeCamUntil} " +
+                        GameLog.Log($"[PinCenter] near={Time.time < _kneeCamUntil} " +
                                   $"vp=({v.x:F2},{v.y:F2}) focusX={x:F2} beltX={_camera.CurrentX:F2}");
                     }
                 }

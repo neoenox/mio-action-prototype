@@ -235,7 +235,7 @@ namespace Ryona.Game
                 _voice.maxDistance = 22f;
                 _voice.volume = 1f;
 
-                Debug.Log($"[Sfx] 3D音源を作成 min={_voice.minDistance} max={_voice.maxDistance} " +
+                GameLog.Log($"[Sfx] 3D音源を作成 min={_voice.minDistance} max={_voice.maxDistance} " +
                           $"listener={(UnityEngine.Object.FindFirstObjectByType<AudioListener>() != null)}");
             }
 

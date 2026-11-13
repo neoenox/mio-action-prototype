@@ -42,7 +42,7 @@ namespace Ryona.Game
         void Start()
         {
             Subscribe();
-            Debug.Log($"[Feel] 被弾フラッシュ準備完了 stats={(Stats != null)}");
+            GameLog.Log($"[Feel] 被弾フラッシュ準備完了 stats={(Stats != null)}");
         }
 
         void OnEnable()

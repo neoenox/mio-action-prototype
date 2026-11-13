@@ -50,7 +50,7 @@ namespace Ryona.Game
             driver.BurstPrefix = prefix;
             driver.Attack = attack;
 
-            Debug.Log($"[Down] -downburst: {driver.FirstHitSeconds:F1} 秒後から {attack} を " +
+            GameLog.Log($"[Down] -downburst: {driver.FirstHitSeconds:F1} 秒後から {attack} を " +
                       $"{driver.IntervalSeconds:F2} 秒間隔で当てます");
         }
 
@@ -143,7 +143,7 @@ namespace Ryona.Game
                 from != null ? from.transform : null);
 
             _hits++;
-            Debug.Log($"[Down] hit #{_hits} attack={Attack} flinch={_stats.State.Flinch:F0}");
+            GameLog.Log($"[Down] hit #{_hits} attack={Attack} flinch={_stats.State.Flinch:F0}");
         }
 
         void CaptureTick()
@@ -164,7 +164,7 @@ namespace Ryona.Game
             if (_shots >= count)
             {
                 _capturing = false;
-                Debug.Log($"[Down] burst {count} 枚 {BurstPrefix}_XX.png");
+                GameLog.Log($"[Down] burst {count} 枚 {BurstPrefix}_XX.png");
             }
         }
     }

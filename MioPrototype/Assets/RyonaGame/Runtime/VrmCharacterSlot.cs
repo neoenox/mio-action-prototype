@@ -214,7 +214,7 @@ namespace Ryona.Game
             if (Placeholder != null)
                 Placeholder.gameObject.SetActive(false);
 
-            Debug.Log($"[Ryona] VRM を差し込みました: {FileName}");
+            GameLog.Log($"[Ryona] VRM を差し込みました: {FileName}");
             LoadFinished?.Invoke(true);
             return true;
         }

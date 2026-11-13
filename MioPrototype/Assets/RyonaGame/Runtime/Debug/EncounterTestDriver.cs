@@ -52,7 +52,7 @@ namespace Ryona.Game
             _director = FindFirstObjectByType<EncounterDirector>();
             _lock = FindFirstObjectByType<BeltScreenLock>();
 
-            Debug.Log("[Encounter] test 開始（2 秒ごとに 1 体倒します）");
+            GameLog.Log("[Encounter] test 開始（2 秒ごとに 1 体倒します）");
         }
 
         void Update()
@@ -69,7 +69,7 @@ namespace Ryona.Game
                     float cx = _director.Camera != null ? _director.Camera.CurrentX : float.NaN;
                     bool locked = _lock != null && _lock.IsLocked;
 
-                    Debug.Log($"[EncTest] t={Time.time:F1} playerX={px:F2} camX={cx:F2} " +
+                    GameLog.Log($"[EncTest] t={Time.time:F1} playerX={px:F2} camX={cx:F2} " +
                         $"next={_director.NextTriggerX:F2} alive={_director.Alive} wave={_director.Wave} locked={locked}");
 
                     // 進めない原因の切り分け: 彼女の周囲に何があるか
@@ -82,7 +82,7 @@ namespace Ryona.Game
                         foreach (var h in hits)
                             names += $"{h.name}@{h.bounds.center.x:F2} ";
 
-                        Debug.Log($"[EncTest] 停止中 y={pos.y:F2} 周囲=[{names}]");
+                        GameLog.Log($"[EncTest] 停止中 y={pos.y:F2} 周囲=[{names}]");
                     }
                 }
             }

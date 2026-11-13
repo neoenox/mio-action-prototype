@@ -28,7 +28,7 @@ namespace Ryona.Game
             if (captor != null)
                 captor.ForceStagger(CombatConstants.GrappleEscapeStun);
 
-            Debug.Log($"[Grapple] escape inputs={inputs} need={RequiredInputs:F1} t={spent:F2}s");
+            GameLog.Log($"[Grapple] escape inputs={inputs} need={RequiredInputs:F1} t={spent:F2}s");
             Escaped?.Invoke();
         }
 
@@ -63,7 +63,7 @@ namespace Ryona.Game
                 enemy.HoldFire(CombatConstants.GrappleReleaseGraceSeconds);
             }
 
-            Debug.Log($"[Grapple] release kind={Kind} inputs={inputs} need={RequiredInputs:F1}");
+            GameLog.Log($"[Grapple] release kind={Kind} inputs={inputs} need={RequiredInputs:F1}");
 
             Failed?.Invoke();
         }

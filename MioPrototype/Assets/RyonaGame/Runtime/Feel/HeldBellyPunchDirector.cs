@@ -329,14 +329,14 @@ namespace Ryona.Game
             _throwTimer = Mathf.Max(0.1f, ThrowDelaySeconds);
             _attempts = 0;
 
-            Debug.Log($"[HeldPunch] throw scheduled in {_throwTimer:F2}s");
+            GameLog.Log($"[HeldPunch] throw scheduled in {_throwTimer:F2}s");
         }
 
         void OnGrappleEnded()
         {
             // 連打で逃げた／時間切れで解放された。コンボ中なら中止する
             if (IsPerforming)
-                Debug.Log("[HeldPunch] cancel (hold ended)");
+                GameLog.Log("[HeldPunch] cancel (hold ended)");
 
             ResetHold();
         }
@@ -469,7 +469,7 @@ namespace Ryona.Game
                     _punchInFlight = false;
                     _nextPunchTimer = Mathf.Max(0.2f, RetrySeconds);
                     _attempts++;
-                    Debug.Log("[HeldPunch] retry (miss)");
+                    GameLog.Log("[HeldPunch] retry (miss)");
                 }
 
                 return;
@@ -490,7 +490,7 @@ namespace Ryona.Game
             if (_attempts >= Mathf.Max(1, MaxAttempts))
             {
                 // これ以上は当てられない。拘束を解放して詰みを防ぐ。
-                Debug.Log("[HeldPunch] give up (combo interrupted)");
+                GameLog.Log("[HeldPunch] give up (combo interrupted)");
                 FinishCombo();
                 return;
             }
@@ -564,12 +564,12 @@ namespace Ryona.Game
             if (_hits >= ComboHitsTotal)
             {
                 _comboEndTimer = Mathf.Max(0.1f, ComboTailSeconds, liftBeat);
-                Debug.Log($"[HeldPunch] combo {_hits}/{ComboHitsTotal} ({zone}) → finish");
+                GameLog.Log($"[HeldPunch] combo {_hits}/{ComboHitsTotal} ({zone}) → finish");
             }
             else
             {
                 _nextPunchTimer = Mathf.Max(0.1f, ComboIntervalSeconds, liftBeat);
-                Debug.Log($"[HeldPunch] combo {_hits}/{ComboHitsTotal} ({zone})");
+                GameLog.Log($"[HeldPunch] combo {_hits}/{ComboHitsTotal} ({zone})");
             }
 
             if (_hits == 1)
@@ -641,7 +641,7 @@ namespace Ryona.Game
             if (_comboZone == PunchZone.Body)
                 _anim?.PlayHeldThrowLead();
 
-            Debug.Log($"[HeldPunch] throw landed → combo start 0/{ComboHitsTotal} " +
+            GameLog.Log($"[HeldPunch] throw landed → combo start 0/{ComboHitsTotal} " +
                       $"captor={(_grapple.Captor != null ? _grapple.Captor.name : "none")} " +
                       $"attacker={attacker.name} " +
                       $"t={_grapple.HeldSeconds:F2}s");
@@ -669,7 +669,7 @@ namespace Ryona.Game
                     _grapple.Release();
                     _camera?.PushFocus(0f, 0f);
                     _stats.ResolveHeldBellyDown();
-                    Debug.Log($"[HeldPunch] combo end {hits}/{ComboHitsTotal} → down (prone)");
+                    GameLog.Log($"[HeldPunch] combo end {hits}/{ComboHitsTotal} → down (prone)");
                     HoldOthers(ReleaseGraceSeconds);
                     HasAttacker = false;
                     return;

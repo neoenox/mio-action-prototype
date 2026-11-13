@@ -93,7 +93,7 @@ namespace Ryona.Game
             _tagFacePower = zone == PunchZone.Face ? Mathf.Clamp(forcePower, 0.6f, 1.4f) : 1f;
             ForceZone = null;
 
-            Debug.Log($"[HeldPunch] order {name} zone={zone} dist={distance:F2} " +
+            GameLog.Log($"[HeldPunch] order {name} zone={zone} dist={distance:F2} " +
                       $"pos=({transform.position.x:F2},{transform.position.z:F2}) " +
                       $"side={(UsesLeftPunch ? "L" : "R")} power={_tagFacePower:F2}");
             return true;
@@ -131,7 +131,7 @@ namespace Ryona.Game
                     transform.rotation = Quaternion.LookRotation(look.normalized, Vector3.up);
             }
 
-            Debug.Log($"[HandOff] {name} が拘束を受け持つ {seconds:F1}s pin={pin}");
+            GameLog.Log($"[HandOff] {name} が拘束を受け持つ {seconds:F1}s pin={pin}");
         }
 
         /// <summary>外部から怯ませる（振りほどかれた時など）。</summary>
@@ -152,7 +152,7 @@ namespace Ryona.Game
             StaggerWeight = 1.6f;
             Phase = EnemyPhase.Stagger;
 
-            Debug.Log($"[Enemy] force stagger {name} {seconds:F2}s");
+            GameLog.Log($"[Enemy] force stagger {name} {seconds:F2}s");
         }
 
         /// <summary>
@@ -330,7 +330,7 @@ namespace Ryona.Game
             if (_pinLog && !pin && CanPin && Time.time >= _pinLogNextAt)
             {
                 _pinLogNextAt = Time.time + 1f;
-                Debug.Log($"[PinCheck] {name} id={id} dist={distance:F2} " +
+                GameLog.Log($"[PinCheck] {name} id={id} dist={distance:F2} " +
                           $"behind={IsBehindPlayer()} grappled={(_grapple != null && _grapple.IsGrappled)} " +
                           $"tok={HasAttackToken} sincePin={Time.time - _lastPinAt:F1} " +
                           $"range={CombatConstants.PinMinDistance:F2}-{CombatConstants.PinMaxDistance:F2}");
@@ -444,7 +444,7 @@ namespace Ryona.Game
             // 振りほどけなければ、押さえつけている間に膝を 5 発入れる。
             _pinKneesLeft = Mathf.Max(1, CombatConstants.PinKneeCount);
             _pinNextKneeAt = Time.time + CombatConstants.FrontGrappleEscapeSeconds;
-            Debug.Log($"[Pin] begin {name} dist={distance:F2} knees={_pinKneesLeft}");
+            GameLog.Log($"[Pin] begin {name} dist={distance:F2} knees={_pinKneesLeft}");
             return true;
         }
 
@@ -498,7 +498,7 @@ namespace Ryona.Game
             _pinKneesLeft = Mathf.Max(1, CombatConstants.PinKneeCount);
             _pinNextKneeAt = Time.time + CombatConstants.FrontGrappleEscapeSeconds;
 
-            Debug.Log($"[WallPin] begin {name} x={Player.transform.position.x:F2} " +
+            GameLog.Log($"[WallPin] begin {name} x={Player.transform.position.x:F2} " +
                       $"playerZ={playerZ:F2} captorZ={captorZ:F2} wall={site.name}");
             return true;
         }
@@ -516,7 +516,7 @@ namespace Ryona.Game
             IsBearHugging = true;
             IsHolding = true;
             _squeezeNextAt = Time.time + CombatConstants.FrontGrappleEscapeSeconds;
-            Debug.Log($"[BearHug] begin {name} dist={distance:F2}");
+            GameLog.Log($"[BearHug] begin {name} dist={distance:F2}");
             return true;
         }
 
@@ -605,7 +605,7 @@ namespace Ryona.Game
             if (Phase == EnemyPhase.Windup || Phase == EnemyPhase.Attack)
                 CancelWindup();
 
-            Debug.Log($"[WallSplit] assist {name} side={_wallAssistSide:F0}");
+            GameLog.Log($"[WallSplit] assist {name} side={_wallAssistSide:F0}");
         }
 
         /// <summary>二体がかりを降りる（6 発が終わった／脱出された）。</summary>
@@ -617,7 +617,7 @@ namespace Ryona.Game
             _wallAssistHold = null;
             _wallAssistReady = false;
             HoldFire(0.8f);
-            Debug.Log($"[WallSplit] assist {name} release");
+            GameLog.Log($"[WallSplit] assist {name} release");
         }
 
         /// <summary>アシストが来なかったとき、拘束役の膝蹴りを再開する。</summary>
@@ -671,7 +671,7 @@ namespace Ryona.Game
             if (!_wallAssistReady && (transform.position - spot).sqrMagnitude < 0.02f)
             {
                 _wallAssistReady = true;
-                Debug.Log($"[WallSplit] assist {name} ready");
+                GameLog.Log($"[WallSplit] assist {name} ready");
             }
         }
 

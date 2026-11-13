@@ -50,7 +50,7 @@ namespace Ryona.Game
 
             if (log && Rig != null && Rig.Ready)
             {
-                Debug.Log($"[Pose] {state} t={time:F2} hipsY={Rig.Hips.position.y:F3} " +
+                GameLog.Log($"[Pose] {state} t={time:F2} hipsY={Rig.Hips.position.y:F3} " +
                           $"footLz={Rig.LFoot.position.z:F3} footLx={Rig.LFoot.position.x:F3} " +
                           $"handRy={Rig.RHand.position.y:F3} handRz={Rig.RHand.position.z:F3}");
             }

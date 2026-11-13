@@ -39,7 +39,7 @@ namespace Ryona.Game
                     RestoreAll();
             }
 
-            Debug.Log($"[God] {(enabled ? "ON（体力自動回復）" : "OFF")}");
+            GameLog.Log($"[God] {(enabled ? "ON（体力自動回復）" : "OFF")}");
         }
 
         /// <summary>怯み時間を延長する。起き上がり中は動けないようにするために使う。</summary>
@@ -118,7 +118,7 @@ namespace Ryona.Game
             {
                 _statTimer = StatLogSeconds;
 
-                Debug.Log($"[Stat] hp={State.Hp:F0} flinch={State.Flinch:F0} stun={StunRemaining:F2}" +
+                GameLog.Log($"[Stat] hp={State.Hp:F0} flinch={State.Flinch:F0} stun={StunRemaining:F2}" +
                           $" arms={State.Body[BodyPart.Arms]:F0}" +
                           $" legs={State.Body[BodyPart.Legs]:F0} down={(State.IsDown ? 1 : 0)}");
             }
@@ -281,7 +281,7 @@ namespace Ryona.Game
                     motor.LaunchBack(launchDistance, launchHeight, dir);
             }
 
-            Debug.Log($"[Down] {reason} {length:F2}s flinch={State.Flinch:F0}" +
+            GameLog.Log($"[Down] {reason} {length:F2}s flinch={State.Flinch:F0}" +
                       $" hp={State.Hp:F0} forward={(DownIsForward ? 1 : 0)}" +
                       $" immune={CombatConstants.DownImmunitySeconds:F1}s");
         }
@@ -400,7 +400,7 @@ namespace Ryona.Game
             if (captor != null && attacker == captor)
                 return 1f;
 
-            Debug.Log($"[Grapple] damped hit from {(attacker != null ? attacker.name : "unknown")}" +
+            GameLog.Log($"[Grapple] damped hit from {(attacker != null ? attacker.name : "unknown")}" +
                       $" scale={CombatConstants.GrabbedDamageFromOthers:F2}");
 
             return CombatConstants.GrabbedDamageFromOthers;

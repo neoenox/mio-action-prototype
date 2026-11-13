@@ -105,7 +105,7 @@ namespace Ryona.Game
                 Vector3 pr = _targetRig.RHand.position;
                 Vector3 cl = _figure.WristBone(true).position;
                 Vector3 cr = _figure.WristBone(false).position;
-                Debug.Log($"[OverheadPose] w={weight:F2} adhere={adhere:F2} headY={head.y:F2} " +
+                GameLog.Log($"[OverheadPose] w={weight:F2} adhere={adhere:F2} headY={head.y:F2} " +
                           $"playerL=({pl.x:F2},{pl.y:F2},{pl.z:F2}) playerR=({pr.x:F2},{pr.y:F2},{pr.z:F2}) " +
                           $"elbowL=({_targetRig.LLowerArm.position.x:F2},{_targetRig.LLowerArm.position.z:F2}) " +
                           $"captorL=({cl.x:F2},{cl.y:F2},{cl.z:F2}) captorR=({cr.x:F2},{cr.y:F2},{cr.z:F2}) " +

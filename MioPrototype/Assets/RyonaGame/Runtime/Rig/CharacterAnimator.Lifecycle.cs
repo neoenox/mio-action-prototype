@@ -130,7 +130,7 @@ namespace Ryona.Game
             if (PlayerStats.StatLogging)
             {
                 string zone = CurrentHitZone?.ToString() ?? "none";
-                Debug.Log($"[Hurt] zone={zone} tier={result.Stagger} " +
+                GameLog.Log($"[Hurt] zone={zone} tier={result.Stagger} " +
                     $"side={_hurtSide} t={Time.time:F2}");
             }
 

@@ -170,30 +170,18 @@ namespace Ryona.Game
 
         void Awake()
         {
-            // シーンに古い値が残っていても効くよう、倒れカメラの値はここで確定させる
-            DownPivotHeight = 0.45f;
-            DownDistanceScale = 0.85f;
-            DownBlendSeconds = 0.45f;
-            // 寄りの演出（腹パン・顔パン）で顔と拳が読める距離まで寄せる下限。
-            // 通常の移動・戦闘では Distance 側が大きいので、この値は効かない。
-            BeltCloseUpMinDistance = 0.82f;
-            // 真横からのカメラなので、倒れたときに 180° 回すと反対側へ大きく振れてしまう。
-            // 同じ側のまま見下ろす（＝横から倒れた彼女を見る）。
-            DownYawBias = 0f;
-            DownPitchBias = 20f;
+            // 調整値は設定アセットから写す。シーンに保存された値は読まない
+            // （NonSerialized なので、そもそもシーンの値は入ってこない）。
+            ApplySettings(RyonaConfig.Instance.Camera);
 
-            // 構図の比較用: -camdist=5.2 でカメラの距離だけ差し替える（既定は scene の値）
-            if (LaunchOptions.TryFloat("-camdist", out float d) && d > 1f)
-            {
+            // 起動引数は「設定より優先する唯一の実行時上書き」。
+            // 構図を撮り比べるときだけ使う（既定値は設定アセット側）。
+            bool overridden = LaunchOptions.TryFloat("-camdist", out float d) && d > 1f;
+            if (overridden)
                 Distance = d;
-                Debug.Log($"[Cam] Distance={Distance:F2}（起動引数で上書き）");
-            }
 
-            // 実際に効いている距離を必ず出す（シーン値と起動引数のどちらが勝ったか分かるように）
-            if (Distance > 1f && Mathf.Abs(Distance - 5.2f) > 0.01f)
-                Debug.Log($"[Cam] Distance={Distance:F2}（既定 5.2 と違う値）");
-            else
-                Debug.Log($"[Cam] Distance={Distance:F2}");
+            GameLog.Log($"[Cam] Distance={Distance:F2}" +
+                        (overridden ? "（-camdist）" : "（RyonaConfig）"));
 
             _beltX = Target != null ? Target.position.x : transform.position.x;
             _initialDistance = Distance;
@@ -247,7 +235,7 @@ namespace Ryona.Game
             // マウスはホイールのズームだけに使う。カーソルが消えると他の操作ができない。
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
-            Debug.Log($"[Cursor] lock={Cursor.lockState} visible={Cursor.visible}（マウスはロックしない）");
+            GameLog.Log($"[Cursor] lock={Cursor.lockState} visible={Cursor.visible}（マウスはロックしない）");
         }
 
         void LateUpdate()
@@ -338,7 +326,7 @@ namespace Ryona.Game
                             who = $"{_hits[i].collider.name} <- {t.parent?.name}";
                             break;
                         }
-                    Debug.Log($"[Cam] blocked by {who} nearest={nearest:F2} desired={desired:F2} want={scaledDistance:F2}");
+                    GameLog.Log($"[Cam] blocked by {who} nearest={nearest:F2} desired={desired:F2} want={scaledDistance:F2}");
                 }
             }
 

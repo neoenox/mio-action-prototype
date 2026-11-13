@@ -79,7 +79,7 @@ namespace Ryona.Game
             if (snap)
                 runtime.RestoreInitialTransform();
 
-            Debug.Log($"[Hair] gravity x{scale:F2} joints={_joints.Length} snap={snap}");
+            GameLog.Log($"[Hair] gravity x{scale:F2} joints={_joints.Length} snap={snap}");
         }
     }
 }

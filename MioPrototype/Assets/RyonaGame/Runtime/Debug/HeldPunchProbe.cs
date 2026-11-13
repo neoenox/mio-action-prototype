@@ -103,7 +103,7 @@ namespace Ryona.Game
                     EndPunch();
                 if (_comboHits > 0 && Time.time - _lastActiveTime > 1.2f)
                 {
-                    Debug.Log($"[PunchCombo] hits={_comboHits}");
+                    GameLog.Log($"[PunchCombo] hits={_comboHits}");
                     _comboHits = 0;
                 }
             }
@@ -157,7 +157,7 @@ namespace Ryona.Game
             }
 
             float herHead = _rig.Head.position.y;
-            Debug.Log($"[PunchSum] hit={_hitIndex} left={_lastLeft} frames={_frames}" +
+            GameLog.Log($"[PunchSum] hit={_hitIndex} left={_lastLeft} frames={_frames}" +
                 $" fistMax={_peakFistSpeed:F2}m/s travel={_fistTravel:F2}m" +
                 $" reach={_peakReach:F2}m elbowMin={_minElbow:F0}deg" +
                 $" minFistHead={_minFistHead:F2}m" +
@@ -238,7 +238,7 @@ namespace Ryona.Game
             _peakHeadShift = Mathf.Max(_peakHeadShift, headShift);
             _peakTorsoYaw = Mathf.Max(_peakTorsoYaw, Mathf.Abs(_anim.DebugTorsoYaw));
 
-            Debug.Log($"[PunchLog] t={now:F2} phase={_puncher.Phase} windup={_puncher.WindupProgress:F2}" +
+            GameLog.Log($"[PunchLog] t={now:F2} phase={_puncher.Phase} windup={_puncher.WindupProgress:F2}" +
                 $" left={left} coil={_puncher.TagFaceCoil:F2} drive={_puncher.TagFaceDrive:F2}" +
                 $" fistSpeed={fistSpeed:F2} reach={reach:F2} elbow={elbowAngle:F0} fistHead={fistHead:F2}" +
                 $" chestYaw={chestYaw:F0} hipsFwd={hipsForward:F2} gap={gap:F2}" +

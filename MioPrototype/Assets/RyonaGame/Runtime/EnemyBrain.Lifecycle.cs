@@ -106,7 +106,7 @@ namespace Ryona.Game
             if (body != null)
                 body.enabled = false;
 
-            Debug.Log($"[Enemy] die {name}");
+            GameLog.Log($"[Enemy] die {name}");
             Died?.Invoke(this);
         }
 
@@ -145,7 +145,7 @@ namespace Ryona.Game
 
             RegisterGroup();
 
-            Debug.Log($"[Enemy] revive {name} hp={State.Hp:F0} rise={RiseSeconds:F2}s");
+            GameLog.Log($"[Enemy] revive {name} hp={State.Hp:F0} rise={RiseSeconds:F2}s");
         }
 
         // --- グループ連携 --------------------------------------------------------

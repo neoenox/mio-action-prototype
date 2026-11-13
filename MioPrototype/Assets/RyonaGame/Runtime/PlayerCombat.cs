@@ -162,7 +162,7 @@ namespace Ryona.Game
                 if (!_settleLogged)
                 {
                     _settleLogged = true;
-                    Debug.Log($"[Combat] settle travel={_motor.LungeTravel:F3}");
+                    GameLog.Log($"[Combat] settle travel={_motor.LungeTravel:F3}");
                 }
 
                 BufferAttackInput();
@@ -509,7 +509,7 @@ namespace Ryona.Game
                 }
             }
 
-            Debug.Log($"[Fist] {_attack.id} t={_elapsed:F3} animT={animT:F3} " +
+            GameLog.Log($"[Fist] {_attack.id} t={_elapsed:F3} animT={animT:F3} " +
                 $"z={f.z:F2} y={f.y:F2} aim={AimDistance:F2} " +
                 $"state={(_anim != null ? _anim.Current.ToString() : "-")} {arm}{other}");
         }
@@ -551,7 +551,7 @@ namespace Ryona.Game
                 gap = gapToAxis - BodyRadius - FistRadius;
             }
 
-            Debug.Log($"[HitGeom] {attack.id} step={_comboStep} {outcome} " +
+            GameLog.Log($"[HitGeom] {attack.id} step={_comboStep} {outcome} " +
                 $"fistZ={fistL.z:F2} fistY={fistL.y:F2} " +
                 $"enemyDist={(enemy != null ? dist : 0f):F2} fistToAxis={gapToAxis:F2} gapBody={gap:F2}");
 
@@ -560,7 +560,7 @@ namespace Ryona.Game
             {
                 Vector3 to = enemy.transform.position - transform.position;
                 to.y = 0f;
-                Debug.Log($"[Combat] miss {attack.id} dist={dist:F2} " +
+                GameLog.Log($"[Combat] miss {attack.id} dist={dist:F2} " +
                     $"angle={Vector3.Angle(transform.forward, to):F0} " +
                     $"phase={enemy.Phase} reach={FistRadius + BodyRadius:F2}");
             }

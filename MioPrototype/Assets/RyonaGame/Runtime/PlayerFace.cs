@@ -349,7 +349,7 @@ namespace Ryona.Game
             }
 
             s_envelopes[clip] = env;
-            Debug.Log($"[Face] voice envelope {clip.name}: sound {env.SoundStart:F2}-{env.SoundEnd:F2}s " +
+            GameLog.Log($"[Face] voice envelope {clip.name}: sound {env.SoundStart:F2}-{env.SoundEnd:F2}s " +
                       $"second={env.SecondPeak:F2}s");
             return env;
         }
@@ -490,7 +490,7 @@ namespace Ryona.Game
             Subscribe();
             FindWorriedBrow();
 
-            Debug.Log($"[Face] start stats={(Stats != null)} vrm={(Vrm != null)} anim={(Anim != null)}");
+            GameLog.Log($"[Face] start stats={(Stats != null)} vrm={(Vrm != null)} anim={(Anim != null)}");
         }
 
         /// <summary>Stats の被弾イベントを購読する（二重購読しない）。</summary>
@@ -563,7 +563,7 @@ namespace Ryona.Game
             _peak = Mathf.Max(_peak, Mathf.Clamp01(peak));
             _holdUntil = Mathf.Max(_holdUntil, Time.unscaledTime + hold);
 
-            Debug.Log($"[Face] hit tier={result.Stagger} " +
+            GameLog.Log($"[Face] hit tier={result.Stagger} " +
                       $"zone={(belly ? "belly" : "face")} peak={peak:F2} hold={hold:F2}");
         }
 
@@ -640,7 +640,7 @@ namespace Ryona.Game
             if (_eyeCheckAt > 0f && Time.unscaledTime >= _eyeCheckAt)
             {
                 _eyeCheckAt = -1f;
-                Debug.Log($"[Face] eye close blend={EyeCloseBlend():F0} (0=open 100=shut) eyeClose={_eyeClose:F2}");
+                GameLog.Log($"[Face] eye close blend={EyeCloseBlend():F0} (0=open 100=shut) eyeClose={_eyeClose:F2}");
             }
         }
 
@@ -783,7 +783,7 @@ namespace Ryona.Game
 
             Stats = found;
             Subscribe();
-            Debug.Log($"[Face] stats linked: {found.name}");
+            GameLog.Log($"[Face] stats linked: {found.name}");
         }
 
         /// <summary>倒れている／立ち上がっている間は、怯みが切れても顔を歪ませておく。</summary>
@@ -830,7 +830,7 @@ namespace Ryona.Game
             {
                 _blinkT = 0f;
                 if (_blinkCount++ < 3)
-                    Debug.Log($"[Face] blink ({_blinkCount})");
+                    GameLog.Log($"[Face] blink ({_blinkCount})");
             }
         }
 
@@ -869,12 +869,12 @@ namespace Ryona.Game
             {
                 _eyesShut = true;
                 _eyeCheckAt = Time.unscaledTime + 0.40f;
-                Debug.Log($"[Face] eyes shut (state={Anim.Current} t={Progress():F2})");
+                GameLog.Log($"[Face] eyes shut (state={Anim.Current} t={Progress():F2})");
             }
             else if (target < 0.5f && _eyesShut)
             {
                 _eyesShut = false;
-                Debug.Log($"[Face] eyes open (state={Anim.Current} t={Progress():F2})");
+                GameLog.Log($"[Face] eyes open (state={Anim.Current} t={Progress():F2})");
             }
         }
 

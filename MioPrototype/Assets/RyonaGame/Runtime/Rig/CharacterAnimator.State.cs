@@ -72,7 +72,7 @@ namespace Ryona.Game
             _hasAim = turn > 2f;
 
             if (_hasAim)
-                Debug.Log($"[Aim] turn={turn:F0} angle={Vector3.Angle(transform.forward, d):F0}");
+                GameLog.Log($"[Aim] turn={turn:F0} angle={Vector3.Angle(transform.forward, d):F0}");
         }
 
     }

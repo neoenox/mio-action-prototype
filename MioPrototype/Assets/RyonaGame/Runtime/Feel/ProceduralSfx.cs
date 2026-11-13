@@ -186,7 +186,7 @@ namespace Ryona.Game
             float gain = Mathf.Clamp01(volume) * Gain(id) * Mathf.Clamp01(MasterVolume);
 
             if (LogPlays)
-                Debug.Log($"[Sfx] play {id} vol={gain:F2} pitch={pitch:F2}");
+                GameLog.Log($"[Sfx] play {id} vol={gain:F2} pitch={pitch:F2}");
 
             var voice = _pool[_next];
             _next = (_next + 1) % _pool.Length;
@@ -245,7 +245,7 @@ namespace Ryona.Game
             source.PlayOneShot(clip, gain);
 
             if (LogPlays)
-                Debug.Log($"[Sfx] play {id} vol={gain:F2} at={position}");
+                GameLog.Log($"[Sfx] play {id} vol={gain:F2} at={position}");
         }
 
         /// <summary>
@@ -265,7 +265,7 @@ namespace Ryona.Game
             float gain = Mathf.Clamp01(volume) * Gain(id) * Mathf.Clamp01(MasterVolume);
 
             if (LogPlays)
-                Debug.Log($"[Sfx] play {id} vol={gain:F2} pitch={pitch:F2} 3D={source.name}");
+                GameLog.Log($"[Sfx] play {id} vol={gain:F2} pitch={pitch:F2} 3D={source.name}");
 
             source.pitch = Mathf.Clamp(pitch, 0.5f, 1.6f);
             source.PlayOneShot(clip, gain);
@@ -308,7 +308,7 @@ namespace Ryona.Game
 
             _clips[id] = clip;
             // どの素材がどの声に付いたかを 1 度だけ出す（差し替えの確認用）
-            Debug.Log($"[Sfx] voice {id} <- {path} ({clip.length:F2}s)");
+            GameLog.Log($"[Sfx] voice {id} <- {path} ({clip.length:F2}s)");
         }
 
         /// <summary>

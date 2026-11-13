@@ -250,11 +250,11 @@ namespace Ryona.Game
                 // 位置合わせに使った時間をヒット待ちの残りから差し引かない。
                 if (!openingThrow)
                     _hitTimeout = Mathf.Max(_hitTimeout, 1.5f);
-                Debug.Log($"[HeldPunch] placed {enemy.name} dist={distance:F2}m t={seconds:F2}s");
+                GameLog.Log($"[HeldPunch] placed {enemy.name} dist={distance:F2}m t={seconds:F2}s");
             }
             else
             {
-                Debug.Log($"[HeldPunch] place order failed {enemy.name} phase={enemy.Phase} " +
+                GameLog.Log($"[HeldPunch] place order failed {enemy.name} phase={enemy.Phase} " +
                           $"token={enemy.HasAttackToken} dist={distance:F2}m");
             }
         }

@@ -27,7 +27,7 @@ namespace Ryona.Game
             var chain = FindFirstObjectByType<GrappleHandOff>();
             if (chain != null && chain.TryChain())
             {
-                Debug.Log($"[HeldPunch] combo end {hits}/{ComboHitsTotal} → hand off");
+                GameLog.Log($"[HeldPunch] combo end {hits}/{ComboHitsTotal} → hand off");
                 HoldOthers(ReleaseGraceSeconds);
                 return;
             }
@@ -41,7 +41,7 @@ namespace Ryona.Game
             if (_grapple != null && _grapple.IsGrappled)
             {
                 _grapple.ClearStruggleSuppression();
-                Debug.Log($"[HeldPunch] combo end {_hits}/{ComboHitsTotal} → hold continues");
+                GameLog.Log($"[HeldPunch] combo end {_hits}/{ComboHitsTotal} → hold continues");
             }
 
             HoldOthers(ReleaseGraceSeconds);

@@ -32,7 +32,7 @@ namespace Ryona.Game
                     _attackReadyAt = Time.time + Mathf.Max(0.1f, FeintDelaySeconds);
                     ReleaseToken();
                     Phase = EnemyPhase.Chase;
-                    Debug.Log($"[Enemy] feint {name}");
+                    GameLog.Log($"[Enemy] feint {name}");
                     return;
                 }
 
@@ -93,13 +93,13 @@ namespace Ryona.Game
                     }
                     else if (_hitLog || (_grapple != null && _grapple.IsGrappled))
                     {
-                        Debug.Log($"[StrikeMiss] {name} tag={_tagPunchPending} zone={Zone} " +
+                        GameLog.Log($"[StrikeMiss] {name} tag={_tagPunchPending} zone={Zone} " +
                                   $"dist={distance:F2} range={_run.Range:F2}");
                     }
                 }
                 else if (_hitLog || (_grapple != null && _grapple.IsGrappled))
                 {
-                    Debug.Log($"[StrikeMiss] {name} out-of-range tag={_tagPunchPending} " +
+                    GameLog.Log($"[StrikeMiss] {name} out-of-range tag={_tagPunchPending} " +
                               $"dist={distance:F2} range={_run.Range:F2}+{StrikeTolerance:F2}");
                 }
             }
@@ -225,7 +225,7 @@ namespace Ryona.Game
             {
                 Transform wrist = figure.WristBone(UsesLeftPunch);
                 float wristGap = wrist != null ? Vector3.Distance(wrist.position, target) : -1f;
-                Debug.Log($"[BellyHit] att={name} pos=({transform.position.x:F2},{transform.position.z:F2}) " +
+                GameLog.Log($"[BellyHit] att={name} pos=({transform.position.x:F2},{transform.position.z:F2}) " +
                           $"yaw={transform.eulerAngles.y:F0} " +
                           $"fist=({fist.position.x:F2},{fist.position.y:F2},{fist.position.z:F2}) " +
                           $"target=({target.x:F2},{target.y:F2},{target.z:F2}) gap={gap:F2} wristGap={wristGap:F2} " +

@@ -92,7 +92,7 @@ namespace Ryona.Game
                 if (Camera != null)
                     Camera.SnapTo(_lockX);
 
-                Debug.Log($"[Screen] lock x={_lockX:F2}");
+                GameLog.Log($"[Screen] lock x={_lockX:F2}");
             }
 
             // プレイヤーを縛るのは「戦いの中心（ロックした位置）」。
