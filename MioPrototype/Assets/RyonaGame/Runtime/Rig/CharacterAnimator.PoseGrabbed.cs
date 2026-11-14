@@ -399,6 +399,13 @@ namespace Ryona.Game
                     pose.HeadYaw = Mathf.Atan2(toPuncher.x, toPuncher.z) * Mathf.Rad2Deg;
                 }
 
+                // 顔パン中は顔を上げたままにする。うつむくと前髪が落ちて表情が読めなくなる
+                // （プレビューで確認）。被弾の一瞬だけでなく、コンボの間ずっと保つ。
+                float faceComboTarget = _punchDirector != null && _punchDirector.IsFaceCombo ? 1f : 0f;
+                _faceComboLift = Mathf.MoveTowards(_faceComboLift, faceComboTarget, Time.deltaTime / 0.20f);
+                if (_faceComboLift > 0f)
+                    pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, Mathf.Min(pose.HeadPitch, -8f), _faceComboLift);
+
                 return pose;
             }
 

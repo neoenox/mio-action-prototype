@@ -17,8 +17,13 @@ namespace Ryona.Game
         [Tooltip("倒れている間の重力の割合。0 で無重力（立ち姿勢の髪のまま）")]
         public float DownGravity = 0.1f;
 
+        [Range(0f, 1f)]
+        [Tooltip("顔面パンのコンボ中の重力の割合。前髪が落ちて顔を覆うのを防ぐ")]
+        public float FaceComboGravity = 0.35f;
+
         Vrm10Instance _vrm;
         CharacterAnimator _anim;
+        HeldBellyPunchDirector _punch;
         VRM10SpringBoneJoint[] _joints;
         float[] _original;
 
@@ -42,7 +47,13 @@ namespace Ryona.Game
                 return;
 
             bool down = _anim != null && _anim.Current == CharacterAnimator.State.Down;
-            float want = down ? DownGravity : 1f;
+
+            // 顔面パンのコンボ中は、前髪が落ちて顔を覆うのを避けるため重力を弱める。
+            if (_punch == null)
+                _punch = FindFirstObjectByType<HeldBellyPunchDirector>();
+            bool faceCombo = _punch != null && _punch.isActiveAndEnabled && _punch.IsFaceCombo;
+
+            float want = faceCombo ? FaceComboGravity : down ? DownGravity : 1f;
 
             if (Mathf.Abs(want - _applied) < 0.01f)
                 return;

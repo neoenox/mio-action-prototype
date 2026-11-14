@@ -133,6 +133,12 @@ namespace Ryona.Game
                 ? _heldBellyPunchTotal - _heldBellyPunchRemaining
                 : 0f;
 
+        /// <summary>
+        /// 顔面パンのコンボ中に顔を上げておく度合い（0..1）。うつむいたままだと
+        /// 前髪が落ちて表情が読めないため、コンボの間だけ顎を上げる。
+        /// </summary>
+        float _faceComboLift;
+
         /// <summary>倒れている（立ち上がり中を含む）。移動できない区間。</summary>
         public bool IsDowned => _state == State.Down || _state == State.GetUp;
 

@@ -666,8 +666,15 @@
     「頭が振れていない（37°）」で落ちた。**40° 以上の振れが「顔パンが入った」画を作っている**。
 - **採用**: `FaceCameraDistanceScale` 0.17 → **0.22**（約 0.88 → 1.14m）。
   打つ側の体・拳が画に入り、彼女の顔も残る。テストの「顔パンは 0.34 未満まで寄る」は満たす。
-- **未解決**: 首を大きく振る回で**髪が顔を覆う**（#85）。振れ幅は 40° 以上が必要なので、
-  髪（`VrmHairSpring` / `VrmHairWallClamp`）側か照明で対処する必要がある。
+- **採用（追記）**: カメラだけでは変わらなかったため、**顔そのものを見せる**方向へ変えた。
+  - `PoseGrabbed`: 顔面パンのコンボ中（`IsFaceCombo`）は **頭を上げたまま**にする
+    （`_faceComboLift` で 0.20 秒かけて遷移。うつむくと前髪が落ちて表情が消える）。
+  - `VrmHairSpring`: 同じ間だけ**髪の重力を 0.35 倍**（`FaceComboGravity`）。前髪が顔に落ちない。
+  - 判断の根拠: カメラを 4 通り（pitch 4 / -8 × pivot 0.58 / 0.44）撮り比べても
+    どの案も「顔が髪で隠れる」ままで、**カメラはレバーではなかった**
+    （[face-punch-camera-sweep.png](docs/verification/face-punch-camera-sweep.png)）。
+- **未解決**: 首を大きく振る回で、まだ髪が横顔に掛かる。振れ幅は 40° 以上が必要なので、
+  これ以上の改善は髪の毛束単位の制御（コライダー/毛束の固定）になる。
 - **検証**: `HeldBellyPunchTests` 32 件通過。
   確認映像: [face-punch-after.gif](docs/verification/face-punch-after.gif) /
   [face-punch-before-after.png](docs/verification/face-punch-before-after.png)。
