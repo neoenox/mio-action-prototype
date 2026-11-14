@@ -75,7 +75,7 @@ namespace Ryona.Game
 
         [Header("Camera (face)")]
         [Tooltip("顔面パンチ中のカメラ距離倍率（1 未満で寄る）")]
-        public float FaceCameraDistanceScale = 0.17f;
+        public float FaceCameraDistanceScale = 0.22f;
 
         [Tooltip("顔面パンチ中のピボット上下。顔と拳が同じ画に入る高さ")]
         public float FaceCameraPivotOffset = 0.58f;

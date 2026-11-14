@@ -653,6 +653,25 @@
   確認映像: [belly-punch-after.gif](docs/verification/belly-punch-after.gif) /
   [belly-punch-before-after.png](docs/verification/belly-punch-before-after.png)。
 
+## 羽交い締めからの顔面パンを見直す（2026-11-14 追記）
+
+- **要望**: 「羽交い締めから顔面パンするモーションがあるが、ここをもっといい感じにできないか」。
+- **現状（プレビューで実測）**: `-grappletest -heldpunchface=1 -heldpunchburst` で撮影。
+  - 寄り `FaceCameraDistanceScale = 0.17`（約 0.88m）で彼女の顔は入るが、**打つ側の体と拳が画面外**。
+    5 発とも右端から腕だけが差し込む形で、「誰に殴られたか」が画から読めなかった。
+- **試して戻した（テストが設計意図を守っていた）**:
+  - `FaceCameraYawOffset` -36 → -24 … 「腹パンは斜め横から、顔パンはより正面寄りから撮る」が
+    0.57 となり許容（0.58〜0.88）の外。**ヨーは -36 のままが正しい**。
+  - 顔パンの首振り上限 46° → 36° … 「顔面パンチは当たる直前が一番速く左右交互に打つ」が
+    「頭が振れていない（37°）」で落ちた。**40° 以上の振れが「顔パンが入った」画を作っている**。
+- **採用**: `FaceCameraDistanceScale` 0.17 → **0.22**（約 0.88 → 1.14m）。
+  打つ側の体・拳が画に入り、彼女の顔も残る。テストの「顔パンは 0.34 未満まで寄る」は満たす。
+- **未解決**: 首を大きく振る回で**髪が顔を覆う**（#85）。振れ幅は 40° 以上が必要なので、
+  髪（`VrmHairSpring` / `VrmHairWallClamp`）側か照明で対処する必要がある。
+- **検証**: `HeldBellyPunchTests` 32 件通過。
+  確認映像: [face-punch-after.gif](docs/verification/face-punch-after.gif) /
+  [face-punch-before-after.png](docs/verification/face-punch-before-after.png)。
+
 ## 検証手段
 
 - `Ryona/Diagnostics/Capture Motion Strip` … 歩行 8 コマ＋攻撃 6 コマ（単体・背景なし）
