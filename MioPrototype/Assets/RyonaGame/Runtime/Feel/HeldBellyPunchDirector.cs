@@ -62,7 +62,7 @@ namespace Ryona.Game
 
         [Header("Camera")]
         [Tooltip("腹パン中のカメラ距離倍率（1 未満で寄る）。0.30 で約 1.6m（基本距離 5.2m × 0.30）")]
-        public float CameraDistanceScale = 0.18f;
+        public float CameraDistanceScale = 0.24f;
 
         [Tooltip("腹パン中のピボット上下（正で上がる）。脚を切って腹と顔を入れる高さ")]
         public float CameraPivotOffset = 0.48f;
