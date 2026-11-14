@@ -247,6 +247,7 @@ def main() -> int:
     parser.add_argument("--interval", type=float, help="撮影間隔（秒）")
     parser.add_argument("--compare", help="比較する前のキャプチャディレクトリ")
     parser.add_argument("--sheet-step", type=int, default=5, help="コマ送りの間引き（既定 5 = 0.25 秒ごと）")
+    parser.add_argument("--audit", action="store_true", help="撮ったあとにフレーム間の不連続を検査する")
     parser.add_argument("-a", "--arg", action="append", default=[], help="実行ファイルへ渡す追加引数")
     args = parser.parse_args()
 
@@ -287,6 +288,15 @@ def main() -> int:
     make_gif(files, outdir / "preview.gif")
     if args.compare:
         make_compare(Path(args.compare), outdir, outdir / "compare.png")
+
+    if args.audit:
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from motion_audit import report as audit_report
+            print("[audit]")
+            audit_report(outdir, top=6, threshold=None)
+        except Exception as e:      # 監査は補助なので、失敗しても撮影結果は残す
+            print(f"  ! 監査できなかった: {e}")
 
     print(f"\n完了: {outdir}")
     return 0

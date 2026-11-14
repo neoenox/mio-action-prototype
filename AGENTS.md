@@ -37,6 +37,22 @@ python tools/preview.py --list                        # 撮れる場面の一覧
 `sheet.png`（0.25 秒ごとのコマ送り）・`preview.gif`・`compare.png`。場面は
 `wallpin` / `frontpin` / `belly` / `face`。新しい場面は `preview.py` の `SCENARIOS` に足す。
 
+### 動きの不自然さは数字で拾う
+
+目視で全コマを見る前に、**隣り合うフレームの画像差分**で「飛んでいる場所」を絞る:
+
+```bash
+python tools/motion_audit.py Verify/preview/<dir>              # 上位の不連続を出す
+python tools/motion_audit.py Verify/preview/<dir> --threshold 5  # 5倍超で終了コード1
+python tools/motion_audit.py --compare <before> <after>        # 良くなったか比べる
+python tools/motion_audit.py Verify/preview/<dir> --strip 110 117 -o seq.png
+```
+
+- カメラの飛び・キャラのワープは平均の 3〜7 倍として出る。**打撃ごとの 3〜4 倍は
+  ヒットストップ由来で正常**なので、番号を見て中身を確かめてから判断する。
+- `preview.py --audit` を付けると、撮影のあとに同じ検査まで走る。
+- 直したら `--compare` で**下がったことを数字で示す**。下がっていなければ直っていない。
+
 生の引数で撮るとき: `-grappletest` / `-pintest` / `-nowallpin` ＋
 `-pinburst=<dir>\pin.png -pinburstframes=200 -pinburstinterval=0.05`。
 比較は「変更前後を同じフレーム番号で並べる」と判断しやすい。
