@@ -486,8 +486,10 @@ namespace Ryona.Game
             _bannerText = NewText(_bannerRoot, 0f, 0f, 900f, 150f, string.Empty, 56, TextAnchor.MiddleCenter);
             _bannerRoot.gameObject.SetActive(false);
 
-            // 掴まれている間の表示（中央下）。通常は非表示
-            _grappleRoot = NewRect("GrappleBlock", root, 0f, 232f, 560f, 84f,
+            // 掴まれている間の表示（中央下）。通常は非表示。
+            // 腹パンの被弾中はこの帯が殴られている腹に重なって画を隠すので、
+            // 画面中央から下（232 → 150）へ退けてある。
+            _grappleRoot = NewRect("GrappleBlock", root, 0f, 150f, 560f, 84f,
                 new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
 
             // 文字がキャラクターに重なると読みにくいので、薄い下地を敷く

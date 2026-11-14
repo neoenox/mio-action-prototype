@@ -34,10 +34,10 @@ namespace Ryona.Game
         public float FacePunchChance = 0.5f;
 
         [Tooltip("次の腹パンを指示するまでの秒数（前の一発が当たってから）")]
-        public float ComboIntervalSeconds = 0.55f;
+        public float ComboIntervalSeconds = 0.45f;
 
         [Tooltip("1 発ごとの被弾姿勢の長さ")]
-        public float HitPoseSeconds = 0.55f;
+        public float HitPoseSeconds = 0.62f;
 
         [Tooltip("腹に当ててから拳を引き切るまでの秒数")]
         public float FistHoldSeconds = 0.17f;
@@ -549,7 +549,9 @@ namespace Ryona.Game
                 {
                     float fatigue = Mathf.InverseLerp(1f, 4f, _bellyHits);
                     float poseSeconds = HitPoseSeconds + (ComboIntervalSeconds + 0.12f) * fatigue;
-                    _anim.PlayHeldBellyPunch(poseSeconds, fatigue);
+                    // 5 発の間は立ち直らない見せ方にする。1 発ごとに少しずつ長く折れ続ける。
+                    float hold = 0.30f + 0.02f * Mathf.Min(4, _bellyHits - 1);
+                    _anim.PlayHeldBellyPunch(poseSeconds, fatigue, 1f, hold);
                     if (_bellyHits >= 3)
                         liftBeat = poseSeconds * 0.90f;
                 }

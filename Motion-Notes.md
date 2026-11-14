@@ -629,6 +629,30 @@
   [wall-gang-sheet.png](docs/verification/wall-gang-sheet.png)。
   EditMode 34 件・PlayMode 拘束系 87 件は通過。
 
+## 羽交い締めからの腹パンを見直す（2026-11-14）
+
+- **要望**: 「羽交い締めから腹パンするモーションがあるが、ここをもっといい感じにできないか」。
+- **現状（プレビューで実測）**: `-grappletest -heldpunchburst` で撮って分かったこと。
+  - HUD の中央メッセージ（`MatchHud` の GrappleBlock）が**殴られている腹の真上**に重なっていた。
+  - 折れが `PoseGrabbed` の**固定 0.15 → 0.32 秒**で戻っていた。周期 0.55 秒なので
+    **サイクルの約 45% は立ち姿**に戻っており、5 発食らっているのに毎回立ち直って見えた。
+  - 打つ側の腕がカメラのすぐ前を横切る回がある（寄り 0.18 = 約 0.94m）。
+- **修正**:
+  - HUD の帯を 232 → **150** へ下げ、腹を空けた。
+  - `PlayHeldBellyPunch` に **holdSeconds** を追加し、折れたまま止まる長さを呼び出し側が決められるようにした
+    （0 のときは従来の疲労度ベース。壁の二体がかり・3 人がかりは従来のまま）。
+    後ろ拘束は **0.30 → 0.38 秒**（1 発ごとに +0.02）。
+  - 周期 0.55 → **0.45 秒**、被弾ポーズ 0.55 → **0.62 秒**。
+- **試して戻した**: カメラの `CameraPivotOffset` 0.40 → 0.48 / `CameraPitchOffset` -12 → -4。
+  頭は入るようになったが、**打つ腕がレンズ前を大きく横切って逆に読みにくくなった**ため既定へ戻した。
+  数値の変更だけで直す場所ではない（立ち位置かヨーの調整が要る）。
+- **未解決**: 打つ側の腕と体が、寄りの画で彼女の正面を横切る。腕の振りが見える位置に
+  打つ側を立たせる（`AttackerDistance` は 0.82 で、離すと拳が届かない実測がある）か、
+  カメラのヨーを振るかのどちらかが要る。
+- **検証**: `HeldBellyPunchTests` 32 件 + `WallPinRuntimeTests` 24 件 = **56 件通過**。
+  確認映像: [belly-punch-after.gif](docs/verification/belly-punch-after.gif) /
+  [belly-punch-before-after.png](docs/verification/belly-punch-before-after.png)。
+
 ## 検証手段
 
 - `Ryona/Diagnostics/Capture Motion Strip` … 歩行 8 コマ＋攻撃 6 コマ（単体・背景なし）

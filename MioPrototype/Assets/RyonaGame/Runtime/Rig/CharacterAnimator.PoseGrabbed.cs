@@ -302,7 +302,10 @@ namespace Ryona.Game
                     float hitTime = _heldBellyPunchTotal - _heldBellyPunchRemaining;
                     float bendIn = Mathf.SmoothStep(0f, 1f, (hitTime - 0.015f) / 0.055f);
                     float fold = Mathf.Lerp(_heldBellyCarry, recoil, bendIn);
-                    float straighten = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.15f, 0.32f, hitTime));
+                    // 折れたまま止まる長さ。従来は 0.15 秒で立ち直り始めていたため、
+                    // 5 発食らっている間も合間に立ち姿へ戻って見えた（プレビューで確認）。
+                    float holdAt = _heldBellyHoldSeconds > 0f ? _heldBellyHoldSeconds : 0.15f;
+                    float straighten = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(holdAt, holdAt + 0.17f, hitTime));
                     fold *= Mathf.Lerp(1f, 0.27f + 0.09f * _heldBellyFatigue, straighten);
                     pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, bodyCombo ? 43f : 52f, fold);
                     pose.TorsoYaw = Mathf.Lerp(pose.TorsoYaw, 0f, recoil);

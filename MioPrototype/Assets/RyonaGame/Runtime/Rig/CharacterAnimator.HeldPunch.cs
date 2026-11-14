@@ -54,7 +54,8 @@ namespace Ryona.Game
         /// 腹パンの被弾姿勢を再生する。拘束（Grabbed）の上に重ねるので、
         /// 呼んでも状態は Grabbed のまま。
         /// </summary>
-        public void PlayHeldBellyPunch(float seconds, float fatigue = 0f, float impact = 1f)
+        public void PlayHeldBellyPunch(float seconds, float fatigue = 0f, float impact = 1f,
+            float holdSeconds = 0f)
         {
             if (seconds <= 0f)
                 return;
@@ -62,9 +63,18 @@ namespace Ryona.Game
             _heldBellyCarry = HeldBellyPunchFold;
             _heldBellyFatigue = Mathf.Clamp01(fatigue);
             _heldBellyImpact = Mathf.Clamp(impact, 0.5f, 2f);
+            // 折れたまま止まっている秒数。0 なら従来の（疲労度から決まる）長さ。
+            _heldBellyHoldSeconds = Mathf.Max(0f, holdSeconds);
             _heldBellyPunchTotal = seconds;
             _heldBellyPunchRemaining = seconds;
         }
+
+        /// <summary>
+        /// 腹パンで折れたまま止まる秒数。0 のときは疲労度から決まる従来の長さ。
+        /// 後ろ拘束の腹パンは「5 発食らっている間は立ち直らない」見せ方にしたいので、
+        /// 呼び出し側が明示する。
+        /// </summary>
+        float _heldBellyHoldSeconds;
 
         /// <summary>
         /// 腹パンの反動の強さ（0..1）。素早く押し戻され、時間をかけて立て直す。
@@ -82,7 +92,9 @@ namespace Ryona.Game
                 // 膝が引くまでの間に膝を包むようにゆっくり折れる。
                 float inSeconds = Mathf.Lerp(0.055f, 0.14f, Mathf.InverseLerp(1.2f, 1.7f, _heldBellyImpact));
                 float inT = Mathf.SmoothStep(_heldBellyCarry, 1f, t / inSeconds);
-                float recoverAt = _heldBellyPunchTotal * Mathf.Lerp(0.26f, 0.72f, _heldBellyFatigue);
+                float recoverAt = _heldBellyHoldSeconds > 0f
+                    ? _heldBellyHoldSeconds
+                    : _heldBellyPunchTotal * Mathf.Lerp(0.26f, 0.72f, _heldBellyFatigue);
                 float outT = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(recoverAt, _heldBellyPunchTotal, t));
                 return Mathf.Clamp01(inT * outT);
             }
