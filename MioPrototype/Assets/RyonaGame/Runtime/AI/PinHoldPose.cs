@@ -249,6 +249,10 @@ namespace Ryona.Game
                         Vector3 her = player.position + Vector3.up * 0.95f;
                         Vector3 him = transform.position + Vector3.up * 0.95f;
                         Vector3 mid = Vector3.Lerp(her, him, 0.45f);
+                        // 顔も同じ画に入れる（カメラは彼女の顔が映ることを前提にする）。
+                        // 腹と膝だけに寄ると顔が上で切れる。
+                        Vector3 herFace = player.position + Vector3.up * 1.42f;
+                        Vector3 lookAt = Vector3.Lerp(herFace, mid, 0.45f);
                         Vector3 axis = Vector3.ProjectOnPlane(him - her, Vector3.up);
                         if (axis.sqrMagnitude < 1e-4f)
                             axis = Vector3.ProjectOnPlane(player.forward, Vector3.up);
@@ -262,10 +266,10 @@ namespace Ryona.Game
                         if (Vector3.Dot(side, camFlat) < 0f)
                             side = -side;
 
-                        Vector3 shot = mid + side * 1.85f + Vector3.up * 0.22f - axis * 0.15f;
+                        Vector3 shot = mid + side * 2.10f + Vector3.up * 0.42f - axis * 0.15f;
                         _camera.RequestCinematicShot(
                             Vector3.Lerp(_normalShotPos, shot, k),
-                            Vector3.Lerp(_normalShotTarget, mid, k));
+                            Vector3.Lerp(_normalShotTarget, lookAt, k));
                     }
                     else
                     {
