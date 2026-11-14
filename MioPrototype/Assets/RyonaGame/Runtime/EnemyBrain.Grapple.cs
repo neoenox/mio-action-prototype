@@ -440,7 +440,10 @@ namespace Ryona.Game
         bool TryPin()
         {
             // 壁の近くで正面から掴めたときは、レーンから壁へ押し出す（壁押さえつけ）。
-            WallPinSite site = Player != null ? WallPinSites.Find(Player.transform.position) : null;
+            // <c>-nowallpin</c> は検証用: 壁を無視して、レーンの正面拘束（その場での膝蹴り）を出す。
+            WallPinSite site = Player != null && !LaunchOptions.Has("-nowallpin")
+                ? WallPinSites.Find(Player.transform.position)
+                : null;
             if (site != null)
                 return TryWallPin(site);
 

@@ -216,17 +216,33 @@ namespace Ryona.Game
                     float frame = Mathf.SmoothStep(0f, 1f, _rearFraming);
                     _camera.HoldFocus(Mathf.Lerp(KneeCamDistance, 0.50f, frame), KneeCamPivot,
                         Mathf.Lerp(x, player.position.x, frame), 0.5f,
-                        KneeCamPitch, Mathf.Lerp(KneeCamYaw, -18f, frame) * sign);
-                }
-                else if (Time.time < _kneeCamUntil)
-                {
-                    // 秒数は腹パンと同じ 0.5。短くすると減衰で寄りが薄まる
-                    // （実測: 0.12 秒だと 0.28 指定でも実効 0.46 までしか寄らない）。
-                    _camera.HoldFocus(KneeCamDistance, KneeCamPivot, x, 0.5f, KneeCamPitch, KneeCamYaw * sign);
+                        KneeCamPitch, Mathf.Lerp(_kneeCamYaw, -18f, frame) * sign);
                 }
                 else
                 {
-                    _camera.HoldFocus(0.72f, -0.10f, x, 0.5f);
+                    // 膝が 0.65 秒間隔で続く間は、寄った横の画を保つ。
+                    // パルスごとに戻すとカメラが通常の画と往復して落ち着かない（実測）。
+                    if (hold.KneePulse > 0.05f)
+                    {
+                        _kneeShot = Mathf.MoveTowards(_kneeShot, 1f, Time.unscaledDeltaTime / 0.22f);
+                        _kneeShotIdle = 0f;
+                    }
+                    else
+                    {
+                        _kneeShotIdle += Time.unscaledDeltaTime;
+                        if (_kneeShotIdle > 1.2f)
+                            _kneeShot = Mathf.MoveTowards(_kneeShot, 0f, Time.unscaledDeltaTime / 0.45f);
+                    }
+
+                    // 膝の間は彼女の斜め横へ回り込む（彼の胴が膝の通り道を隠すため）。
+                    // レーンには壁が無いので、横から撮っても失う文脈が無い。
+                    float k = Mathf.SmoothStep(0f, 1f, _kneeShot);
+                    _camera.HoldFocus(
+                        Mathf.Lerp(0.72f, KneeCamDistance, k),
+                        Mathf.Lerp(-0.10f, KneeCamPivot, k),
+                        x, 0.5f,
+                        Mathf.Lerp(0f, KneeCamPitch, k),
+                        Mathf.Lerp(0f, _kneeCamYaw, k) * sign);
                 }
 
                 if (_pinLog && Time.time >= _pinCamLogAt)
@@ -249,7 +265,17 @@ namespace Ryona.Game
         const float KneeCamDistance = 0.28f;
         const float KneeCamPivot = 0.05f;
         const float KneeCamPitch = 2f;
-        const float KneeCamYaw = -32f;
+
+        /// <summary>
+        /// 膝の瞬間のヨー。彼の胴が膝の通り道を隠すので、横へ回り込む量を調整する。
+        /// 符号で回る側が変わる（負で大きくすると彼の背中側へ回って逆効果・実測）。
+        /// </summary>
+        float _kneeCamYaw = KneeCamYawDefault;
+        const float KneeCamYawDefault = -32f;
+
+        /// <summary>膝が続く間、横の画へ寄せ切った度合い（0..1）。</summary>
+        float _kneeShot;
+        float _kneeShotIdle;
 
         /// <summary>膝蹴りの寄りを保つ終了時刻。</summary>
         float _kneeCamUntil;
@@ -263,6 +289,9 @@ namespace Ryona.Game
         void Awake()
         {
             _pinLog = LaunchOptions.Has("-pinlog");
+            // 検証用: 膝の瞬間のカメラのヨーを差し替えて撮り比べる。
+            if (LaunchOptions.TryFloat("-kneecamyaw", out float yaw))
+                _kneeCamYaw = yaw;
         }
 
         void Solve(bool left, Transform shoulder, Transform lowerArm, Transform hand, float contact)
