@@ -680,6 +680,16 @@ namespace Ryona.Game
                 spot.y = transform.position.y;
             }
 
+            // 二人がかりが始まるまで（拘束・膝・猶予）は、持ち場ではなくカメラと反対側の奥で待つ。
+            // 壁のカメラは -X 側にあり、持ち場（-X 側の手前）で待つと、膝の間ずっと彼女の顔を隠す（実測）。
+            bool waiting = !hold.IsWallSplitStarted && hold.WallThird != this;
+            if (waiting)
+            {
+                spot = her + Vector3.right * CombatConstants.WallAssistWaitLateral
+                    + forward * CombatConstants.WallAssistWaitDepth;
+                spot.y = transform.position.y;
+            }
+
             // 持ち場へは小走りで寄る（通常の移動速度だと間に合わない）。
             float speed = Mathf.Max(2.4f, MoveSpeed * State.MoveSpeedMultiplier);
             transform.position = Vector3.MoveTowards(transform.position, spot, speed * dt);
@@ -696,7 +706,8 @@ namespace Ryona.Game
                     1f - Mathf.Exp(-10f * dt));
             }
 
-            if (!_wallAssistReady && (transform.position - spot).sqrMagnitude < 0.02f)
+            // 「着いた」は持ち場に着いたときだけ。待ち位置に着いても、二人がかりは始めない。
+            if (!_wallAssistReady && !waiting && (transform.position - spot).sqrMagnitude < 0.02f)
             {
                 _wallAssistReady = true;
                 GameLog.Log($"[WallSplit] assist {name} ready");

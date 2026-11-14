@@ -1030,6 +1030,92 @@ namespace Ryona.Tests
             Assert.Less(rightHandY, 1.05f, $"離された右腕も下がっていない（手の高さ {rightHandY:F2}m）");
         }
 
+        [UnityTest]
+        public IEnumerator 壁拘束の各段階で彼女の顔が画面に映っている()
+        {
+            yield return Load(withAssist: true, withThird: true);
+            Assert.IsNotNull(_third, "3 体目の敵が用意できない");
+            _captor.QueuePin();
+            yield return WaitForGrapple();
+
+            var anim = _player.GetComponentInChildren<CharacterAnimator>();
+            Assert.IsTrue(anim != null && anim.Rig != null && anim.Rig.Ready && anim.Rig.Head != null,
+                "彼女のリグが完成していない");
+
+            var figures = new System.Collections.Generic.List<EnemyFigure>(
+                Object.FindObjectsByType<EnemyFigure>(FindObjectsSortMode.None));
+
+            // 段階ごとに、顔の可視率が基準以上のコマの割合を数える。
+            string[] names = { "拘束・膝", "猶予", "二人がかり", "3 人がかり" };
+            var total = new int[names.Length];
+            var good = new int[names.Length];
+            var worst = new float[names.Length];
+            var blockers = new string[names.Length];
+            var hidden = new int[names.Length];     // 敵の体に隠れた・画面の外
+            var turned = new int[names.Length];     // うつむき・横向きで顔が読めない
+            var maxAngle = new float[names.Length];
+            // どの役割の敵が顔を隠しているか（名前と役割の対応は実行ごとに変わるので、役割で数える）。
+            var byRole = new System.Collections.Generic.Dictionary<string, int>[names.Length];
+            for (int i = 0; i < byRole.Length; i++)
+                byRole[i] = new System.Collections.Generic.Dictionary<string, int>();
+            for (int i = 0; i < worst.Length; i++) worst[i] = 1f;
+
+            float deadline = Time.realtimeSinceStartup + 70f;
+            while (_grapple.IsWallPin && _grapple.WallPhase == WallStage.Held &&
+                   Time.realtimeSinceStartup < deadline)
+            {
+                int phase = _grapple.IsWallGangActive ? 3
+                    : _grapple.IsWallSplitActive ? (_grapple.WallPauseRemaining > 0f ? 1 : 2)
+                    : _grapple.WallPauseRemaining > 0f ? 1 : 0;
+
+                var result = FaceVisibility.Measure(Camera.main, anim.Rig.Head, figures);
+                total[phase]++;
+                if (result.Readable)
+                    good[phase]++;
+                else if (result.Visible < FaceVisibility.GoodVisible)
+                {
+                    hidden[phase]++;
+                    if (result.Blocker != null)
+                    {
+                        string role = result.Blocker == _captor.name ? "拘束役"
+                            : _grapple.WallAssist != null && result.Blocker == _grapple.WallAssist.name ? "アシスト"
+                            : _grapple.WallThird != null && result.Blocker == _grapple.WallThird.name ? "3人目"
+                            : "待機中の敵";
+                        byRole[phase].TryGetValue(role, out int n);
+                        byRole[phase][role] = n + 1;
+                    }
+                }
+                else
+                    turned[phase]++;
+                maxAngle[phase] = Mathf.Max(maxAngle[phase], result.FacingAngle);
+                if (result.Visible < worst[phase])
+                {
+                    worst[phase] = result.Visible;
+                    blockers[phase] = result.Blocker;
+                }
+                yield return null;
+            }
+
+            for (int i = 0; i < names.Length; i++)
+            {
+                float ratio = total[i] > 0 ? good[i] / (float)total[i] : 1f;
+                UnityEngine.Debug.Log($"[FaceVisible] {names[i]}: readable {ratio:P0} ({good[i]}/{total[i]}) " +
+                                      $"hidden={hidden[i]} turned={turned[i]} maxAngle={maxAngle[i]:F0} " +
+                                      $"worst={worst[i]:F2} blocker={blockers[i] ?? "-"} byRole=" +
+                                      string.Join(",", System.Linq.Enumerable.Select(byRole[i], kv => $"{kv.Key}:{kv.Value}")));
+            }
+
+            Assert.Greater(total[3], 0, "3 人がかりの段階を測れていない");
+            for (int i = 0; i < names.Length; i++)
+            {
+                if (total[i] == 0)
+                    continue;
+                float ratio = good[i] / (float)total[i];
+                Assert.GreaterOrEqual(ratio, FaceVisibility.RequiredRatio[i],
+                    $"{names[i]} で彼女の顔が映っているコマが少ない（{ratio:P0}。遮蔽={blockers[i] ?? "-"}）");
+            }
+        }
+
         // --- 壁拘束の被弾と手首のクリアランス -----------------------
 
         [UnityTest]

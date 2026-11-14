@@ -299,6 +299,14 @@ namespace Ryona
         /// <summary>3 人目の蹴りの威力の倍率。</summary>
         public const float WallGangKickScale = 0.9f;
 
+        /// <summary>
+        /// 二人がかりが始まるまで、アシスト役が待つ位置（彼女の中心から +X 側へ / 前へ、m）。
+        /// 壁のカメラは -X 側にある。アシストの持ち場（-X 側の手前）で待つと、膝の間ずっと
+        /// カメラと彼女の間に立って顔を隠す（実測: 顔が読めるコマ 47〜72%）。カメラと反対側の奥で待つ。
+        /// </summary>
+        public const float WallAssistWaitLateral = 1.85f;
+        public const float WallAssistWaitDepth = 0.90f;
+
         /// <summary>二人がかりのときの脱出に必要な連打数（通常の 1.5 倍）。</summary>
         public const float WallSplitEscapeInputs = MashBasePin * 1.5f;
 

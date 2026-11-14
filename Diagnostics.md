@@ -134,7 +134,7 @@ python tools/grapple_verify.py compare before after    # 並べる
 
 | 引数 | 意味 |
 |---|---|
-| `--scenarios` | 既定 `belly,face,mount`。全部は `belly,face,face_far,mount,mount_prone,pin` |
+| `--scenarios` | 既定 `belly,face,mount`。全部は `belly,face,face_far,mount,mount_prone,pin,ankle`（`ankle` は足取りで、転倒まで撮る） |
 | `--baseline REF` | `REF`（`HEAD`・`HEAD~3`・ハッシュ）を専用ワークツリー `.claude/worktrees/verify-baseline` へ出して自動でビルド・撮影し、最後に比べる。**作業ツリーの未コミットの変更には触れない**。基準は `Verify/base-<ハッシュ>/` に保存して使い回す（`--refresh-baseline` で撮り直し）。初回は Library のコピーとビルドで数分。不要になったら `git worktree remove --force .claude/worktrees/verify-baseline` |
 | `--no-build` / `--build` | ビルド確認を飛ばす / 必ずビルドする（既定はソースが新しければ自動でビルド） |
 | `--count` `--cols` `--tile` | montage のコマ数・列数・1コマの幅 |

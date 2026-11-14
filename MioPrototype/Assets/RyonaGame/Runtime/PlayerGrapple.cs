@@ -98,6 +98,9 @@ namespace Ryona.Game
         /// <summary>二体目が横に着いて、二人で押さえ始めたか。</summary>
         public bool IsWallSplitActive => _session.IsSplitActive;
 
+        /// <summary>二人がかりが始まったか（アシストが持ち場へ向かい始めた）。始まる前のアシストは、カメラの外で待つ。</summary>
+        internal bool IsWallSplitStarted => _session.SplitStarted;
+
         /// <summary>いま殴る側（拘束役かアシスト）。null なら待ち。</summary>
         public EnemyBrain WallSplitPuncher => _session.SplitPuncher;
 

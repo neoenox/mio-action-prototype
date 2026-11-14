@@ -47,6 +47,9 @@ namespace Ryona.Game
         bool[] _fadeable;
 
         float _alpha = 1f;
+
+        /// <summary>いまの不透明度（1 = そのまま、0 = 完全に消えている）。顔の可視率の計測が、透けている敵を遮蔽から外すのに使う。</summary>
+        public float CurrentAlpha => _alpha;
         bool _applied;
         float _rescanTimer = 1f;
         bool _scannedVrm;

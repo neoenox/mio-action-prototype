@@ -20,18 +20,38 @@
 
 ### 変更したら撮って確かめる
 
-- 見た目の変更は、**プレイヤービルドで連番キャプチャを撮って確認する**。
-  数値やテストが通っても、画で読めなければ未達。
-- 例：`-grappletest` / `-pintest` / `-nowallpin` ＋ `-pinburst=<dir>\pin.png -pinburstframes=200 -pinburstinterval=0.05`
-- 比較は「変更前後を同じフレーム番号で並べる」と判断しやすい。
+見た目の変更は、**プレイヤービルドで連番キャプチャを撮って確認する**。
+数値やテストが通っても、画で読めなければ未達。
 
-### 対象のモーションを取り違えない
+**1 コマンドで「ビルド → 撮影 → コマ送り → GIF → 比較」まで出る**（推奨）:
 
-- 壁押さえつけ（`IsWallPin`）とレーンの正面拘束（`GrappleKind.Pin`）は**別物**。
-  レーン上では `WallPinSites.Find` に距離制限が無いため、壁の幅に入っていると必ず壁版になる。
-  正面拘束を見たいときは `-nowallpin` を使う。
-- 変更前に、ログで**そのモーションが実際に走っているか**を確認する
-  （例：`[Pin] knee` / `[HeldPunch] combo` / `[WallGang]`）。
+```bash
+cd MioPrototype
+python tools/preview.py frontpin                      # レーンの正面拘束
+python tools/preview.py belly --no-build              # ビルドを省く
+python tools/preview.py face --compare ../../preview-face2   # 変更前と横に並べる
+python tools/preview.py --list                        # 撮れる場面の一覧
+```
+
+出力は `MioPrototype/Verify/preview/<場面>-<時刻>/`（`Verify/` は `.gitignore` 済み）に
+`sheet.png`（0.25 秒ごとのコマ送り）・`preview.gif`・`compare.png`。場面は
+`wallpin` / `frontpin` / `belly` / `face`。新しい場面は `preview.py` の `SCENARIOS` に足す。
+
+生の引数で撮るとき: `-grappletest` / `-pintest` / `-nowallpin` ＋
+`-pinburst=<dir>\pin.png -pinburstframes=200 -pinburstinterval=0.05`。
+比較は「変更前後を同じフレーム番号で並べる」と判断しやすい。
+
+### 顔が映っているかを目視で判定しない
+
+`FaceVisibility.Measure(camera, head, enemies)` が、顔の 5 点について
+**画面内か／敵の体に隠れていないか**を計算し、可視率と遮蔽した敵の名前を返す
+（`EnemyFigure` のプリミティブ形状に対して線分交差を取る。コライダーは無いので物理は使わない）。
+`Readable` はさらに**顔の向き（`FacingLimit` 60° 以内）**も見る。
+
+- 目視の「なんとなく隠れている」ではなく、**段階ごとの可視率の下限**をテストで固定する
+  （`WallPinRuntimeTests` の `[FaceVisible]` ログと `FaceVisibility.RequiredRatio`）。
+- 下げてよいのは実測があるときだけ。基準を緩めるのは「直した」ではなく「見逃した」。
+- 測れないもの: 彼女自身の前髪・腕が顔にかかること、HUD の帯が重なること。
 
 ## テスト
 
