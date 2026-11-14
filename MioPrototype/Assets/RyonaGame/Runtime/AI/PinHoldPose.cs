@@ -234,15 +234,44 @@ namespace Ryona.Game
                             _kneeShot = Mathf.MoveTowards(_kneeShot, 0f, Time.unscaledDeltaTime / 0.45f);
                     }
 
-                    // 膝の間は彼女の斜め横へ回り込む（彼の胴が膝の通り道を隠すため）。
-                    // レーンには壁が無いので、横から撮っても失う文脈が無い。
+                    // 膝の間は「二人の中点」を横から見る。彼女を中心に回すと、彼が正面 0.7m に
+                    // 立っているため、どちらへ回しても彼か彼女が膝を隠す（-45/-70/-90/+20/+50/+80 で実測）。
                     float k = Mathf.SmoothStep(0f, 1f, _kneeShot);
-                    _camera.HoldFocus(
-                        Mathf.Lerp(0.72f, KneeCamDistance, k),
-                        Mathf.Lerp(-0.10f, KneeCamPivot, k),
-                        x, 0.5f,
-                        Mathf.Lerp(0f, KneeCamPitch, k),
-                        Mathf.Lerp(0f, _kneeCamYaw, k) * sign);
+                    if (k > 0.02f)
+                    {
+                        if (!_kneeShotHeld)
+                        {
+                            _kneeShotHeld = true;
+                            _normalShotPos = _camera.transform.position;
+                            _normalShotTarget = player.position + Vector3.up * 1.00f + player.forward * 0.30f;
+                        }
+
+                        Vector3 her = player.position + Vector3.up * 0.95f;
+                        Vector3 him = transform.position + Vector3.up * 0.95f;
+                        Vector3 mid = Vector3.Lerp(her, him, 0.45f);
+                        Vector3 axis = Vector3.ProjectOnPlane(him - her, Vector3.up);
+                        if (axis.sqrMagnitude < 1e-4f)
+                            axis = Vector3.ProjectOnPlane(player.forward, Vector3.up);
+                        axis.Normalize();
+                        Vector3 side = Vector3.Cross(Vector3.up, axis);
+                        if (side.sqrMagnitude < 1e-4f)
+                            side = player.right;
+                        side.Normalize();
+                        // いまカメラがいる側を保つ（跨ぐと画が跳ねる）
+                        Vector3 camFlat = Vector3.ProjectOnPlane(_camera.transform.position - mid, Vector3.up);
+                        if (Vector3.Dot(side, camFlat) < 0f)
+                            side = -side;
+
+                        Vector3 shot = mid + side * 1.85f + Vector3.up * 0.22f - axis * 0.15f;
+                        _camera.RequestCinematicShot(
+                            Vector3.Lerp(_normalShotPos, shot, k),
+                            Vector3.Lerp(_normalShotTarget, mid, k));
+                    }
+                    else
+                    {
+                        _kneeShotHeld = false;
+                        _camera.HoldFocus(0.72f, -0.10f, x, 0.5f);
+                    }
                 }
 
                 if (_pinLog && Time.time >= _pinCamLogAt)
@@ -276,6 +305,9 @@ namespace Ryona.Game
         /// <summary>膝が続く間、横の画へ寄せ切った度合い（0..1）。</summary>
         float _kneeShot;
         float _kneeShotIdle;
+        bool _kneeShotHeld;
+        Vector3 _normalShotPos;
+        Vector3 _normalShotTarget;
 
         /// <summary>膝蹴りの寄りを保つ終了時刻。</summary>
         float _kneeCamUntil;
