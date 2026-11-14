@@ -453,6 +453,44 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator 腹パン中も彼女の顔が画面に入る()
+        {
+            yield return LoadAndGrab(waitForAnimator: true);
+
+            _director.FacePunchChance = 0f;
+            PlaceAttackerInFront();
+            _attacker.HoldFire(10f);
+            LandOpeningThrow();
+
+            // カメラは彼女の顔が映ることを前提にする（AGENTS.md）。
+            // 腹パンは上体が折れるので、寄りすぎると頭が画面の上で切れる。
+            Transform head = _anim != null && _anim.Rig != null ? _anim.Rig.Head : null;
+            Assert.IsNotNull(head, "頭の骨が取れない");
+
+            var cam = Camera.main;
+            Assert.IsNotNull(cam, "カメラが無い");
+
+            float outside = 0f;
+            float deadline = Time.realtimeSinceStartup + 12f;
+            while (_director.IsPerforming && Time.realtimeSinceStartup < deadline)
+            {
+                if (_camera.IsFocusing)
+                {
+                    Vector3 vp = cam.WorldToViewportPoint(head.position);
+                    if (vp.z > 0f)
+                    {
+                        outside = Mathf.Max(outside,
+                            Mathf.Max(-vp.x, vp.x - 1f, -vp.y, vp.y - 1f));
+                    }
+                }
+                yield return null;
+            }
+
+            Assert.Less(outside, 0.02f,
+                $"腹パン中に彼女の頭が画面外へ出ている（はみ出し {outside:F2}）");
+        }
+
+        [UnityTest]
         public IEnumerator カメラが元に戻ってから間を置いて拘束を引き渡す()
         {
             yield return LoadAndGrab(waitForAnimator: true);

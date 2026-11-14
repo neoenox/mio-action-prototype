@@ -65,7 +65,7 @@ namespace Ryona.Game
         public float CameraDistanceScale = 0.18f;
 
         [Tooltip("腹パン中のピボット上下（正で上がる）。脚を切って腹と顔を入れる高さ")]
-        public float CameraPivotOffset = 0.40f;
+        public float CameraPivotOffset = 0.48f;
 
         [Tooltip("腹パン中の俯角オフセット（負で見上げる）")]
         public float CameraPitchOffset = -12f;
