@@ -679,6 +679,27 @@
   確認映像: [face-punch-after.gif](docs/verification/face-punch-after.gif) /
   [face-punch-before-after.png](docs/verification/face-punch-before-after.png)。
 
+## 押さえつけの膝蹴りを見直す（2026-11-14 追記 2）
+
+- **要望**: 「膝蹴りするモーションがあるが、ここをもっといい感じにできないか」。
+- **現状（プレビューで実測）**: `-grappletest -pintest -pinburst` で撮影。
+  - カメラが彼の**真後ろ**にあり、膝が彼の体の陰。`#108`/`#120` の「入る瞬間」も
+    腿と膝が白い塊として腹の前に出るだけで、輪郭が彼の体と同化して読めなかった。
+  - 膝の下りている間（`#102`/`#114`）は彼女の下半身が完全に隠れ、情報が無かった。
+  - オフセットは `(-2.25,0.47,-1.75)` → `(-1.35,0.32,-1.65)` の**ワールド固定方向**で、
+    彼がどこに立っていても同じ側から撮っていた。
+- **修正（案C）**:
+  - **カメラ**: 膝の瞬間だけ、二人を横から見るプロフィールへ回り込む（`PinHoldPose`）。
+    真横の向きは「彼女→彼」の軸の垂線から作り、**いまカメラがいる側を保つ**
+    （蹴る脚は「カメラ側の脚」で選ばれるので、側を跨ぐと脚が入れ替わって震える）。
+    `_kneeShot` で**膝が続く間は横ショットを保つ**（パルスごとに戻すとカメラが往復して落ち着かない）。
+  - **反応**: 腰の持ち上がり 0.14 → 0.19、feet 0.085 → 0.115、折れ 49° → 53°。
+    膝が隠れる回でも「入った」ことが読めるように。
+- **検証**: `WallPinRuntimeTests` + `PinGrappleTests` 42 件通過。膝の深さ（`AlignPinKnee`）は
+  毎フレーム合わせ直すので、彼女が動いても当たりは保たれる。
+  確認映像: [knee-pin-after.gif](docs/verification/knee-pin-after.gif) /
+  [knee-pin-before-after.png](docs/verification/knee-pin-before-after.png)。
+
 ## 検証手段
 
 - `Ryona/Diagnostics/Capture Motion Strip` … 歩行 8 コマ＋攻撃 6 コマ（単体・背景なし）

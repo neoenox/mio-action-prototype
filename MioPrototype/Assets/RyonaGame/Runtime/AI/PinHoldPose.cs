@@ -19,6 +19,13 @@ namespace Ryona.Game
         ThirdPersonCamera _camera;
         float _splitPush;
 
+        /// <summary>
+        /// 膝の連続中に横（プロフィール）ショットへ寄せ切った度合い（0..1）。
+        /// パルスごとに戻すとカメラが往復して落ち着かないので、膝が続く間は保つ。
+        /// </summary>
+        float _kneeShot;
+        float _kneeShotIdle;
+
         /// <summary>もがかれて肩が浮いた分（m）。手の狙いを上げる。</summary>
         float _lift;
         float _rearFraming;
@@ -190,10 +197,43 @@ namespace Ryona.Game
                     Vector3 her = pinned.position + Vector3.up * 1.02f;
                     Vector3 him = transform.position + Vector3.up * 1.02f;
                     Vector3 mid = Vector3.Lerp(her, him, 0.45f);
-                    float knee = Mathf.SmoothStep(0f, 1f, hold.KneePulse);
-                    Vector3 offset = Vector3.Lerp(
-                        new Vector3(-2.25f, 0.47f, -1.75f),
-                        new Vector3(-1.35f, 0.32f, -1.65f), knee);
+
+                    // 膝が 0.65 秒間隔で続く間は横ショットを保つ。
+                    // パルスに合わせて毎回戻すと、カメラが彼の背後と真横を往復して落ち着かない（実測）。
+                    if (hold.KneePulse > 0.05f)
+                    {
+                        _kneeShot = Mathf.MoveTowards(_kneeShot, 1f, Time.unscaledDeltaTime / 0.22f);
+                        _kneeShotIdle = 0f;
+                    }
+                    else
+                    {
+                        _kneeShotIdle += Time.unscaledDeltaTime;
+                        if (_kneeShotIdle > 1.2f)
+                            _kneeShot = Mathf.MoveTowards(_kneeShot, 0f, Time.unscaledDeltaTime / 0.45f);
+                    }
+
+                    // 既定は彼の背後から。膝が入る瞬間だけ、二人を横から見るプロフィールへ回り込む。
+                    // 真後ろのままだと彼の体が膝を隠し、白い塊が腹の前に出るだけに見えていた（実測）。
+                    Vector3 baseOffset = new Vector3(-2.25f, 0.47f, -1.75f);
+                    Vector3 axis = Vector3.ProjectOnPlane(him - her, Vector3.up);
+                    if (axis.sqrMagnitude < 1e-4f)
+                        axis = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
+                    axis.Normalize();
+                    Vector3 side = Vector3.Cross(Vector3.up, axis);
+                    if (side.sqrMagnitude < 1e-4f)
+                        side = Vector3.right;
+                    side.Normalize();
+
+                    // いまカメラがいる側を保つ。蹴る脚は「カメラ側」で選ばれるので、
+                    // 側を跨ぐと脚が入れ替わって震える。
+                    Vector3 camFlat = Vector3.ProjectOnPlane(_camera.transform.position - mid, Vector3.up);
+                    if (camFlat.sqrMagnitude < 1e-4f)
+                        camFlat = baseOffset;
+                    if (Vector3.Dot(side, camFlat) < 0f)
+                        side = -side;
+
+                    Vector3 profile = side * 1.75f + Vector3.up * 0.30f;
+                    Vector3 offset = Vector3.Lerp(baseOffset, profile, _kneeShot);
                     _camera.RequestCinematicShot(mid + offset, mid);
                     return;
                 }
