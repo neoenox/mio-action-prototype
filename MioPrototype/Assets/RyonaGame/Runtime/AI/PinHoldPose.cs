@@ -19,6 +19,18 @@ namespace Ryona.Game
         ThirdPersonCamera _camera;
         float _splitPush;
 
+        /// <summary>
+        /// 壁押さえつけ（膝・猶予）のカメラ位置（彼女と拘束役の間の注視点からのずれ、m）。
+        /// 以前の高さ 0.47m だと、拘束役の肩と腕越しに見下ろす形になり、彼女の顔が隠れた
+        /// （顔の可視率テストで、顔が読めるコマ 41〜72%。隠しているのは全て拘束役）。
+        /// 27 通りの候補を測り、見上げすぎずに顔が読める位置（85%）を選んだ
+        /// （WallPinRuntimeTests の「調査_壁拘束の膝のカメラ候補ごとの顔の可視率」）。
+        /// </summary>
+        static readonly Vector3 WallHeldShot = new Vector3(-2.60f, 0.15f, -1.75f);
+
+        /// <summary>膝が入る瞬間に寄るカメラ位置。高さは WallHeldShot と同じだけ下げる。</summary>
+        static readonly Vector3 WallKneeShot = new Vector3(-1.35f, 0.00f, -1.65f);
+
         /// <summary>もがかれて肩が浮いた分（m）。手の狙いを上げる。</summary>
         float _lift;
         float _rearFraming;
@@ -63,14 +75,14 @@ namespace Ryona.Game
                     float close = hold.WallPhase == WallStage.Restrain
                         ? Mathf.SmoothStep(0f, 1f, hold.WallPhaseProgress) : 0f;
                     Vector3 offset = Vector3.Lerp(new Vector3(-2.75f, 0.48f, -1.35f),
-                        new Vector3(-2.25f, 0.47f, -1.75f), close);
+                        WallHeldShot, close);
                     if (hold.IsWallToss)
                     {
                         float wide = hold.WallPhase == WallStage.TossWindup
                             ? hold.WallTossLower : 1f;
                         target = Vector3.Lerp(player, transform.position, 0.40f);
                         target.y = transform.position.y + Mathf.Lerp(1.02f, 0.86f, wide);
-                        offset = Vector3.Lerp(new Vector3(-2.25f, 0.47f, -1.75f),
+                        offset = Vector3.Lerp(WallHeldShot,
                             new Vector3(-2.70f, 0.52f, -2.20f), wide);
                     }
                     _camera.RequestCinematicShot(target + offset, target);
@@ -191,9 +203,7 @@ namespace Ryona.Game
                     Vector3 him = transform.position + Vector3.up * 1.02f;
                     Vector3 mid = Vector3.Lerp(her, him, 0.45f);
                     float knee = Mathf.SmoothStep(0f, 1f, hold.KneePulse);
-                    Vector3 offset = Vector3.Lerp(
-                        new Vector3(-2.25f, 0.47f, -1.75f),
-                        new Vector3(-1.35f, 0.32f, -1.65f), knee);
+                    Vector3 offset = Vector3.Lerp(WallHeldShot, WallKneeShot, knee);
                     _camera.RequestCinematicShot(mid + offset, mid);
                     return;
                 }
