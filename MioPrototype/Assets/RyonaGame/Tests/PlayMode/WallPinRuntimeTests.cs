@@ -1116,6 +1116,70 @@ namespace Ryona.Tests
             }
         }
 
+        /// <summary>
+        /// 調査用（常には走らせない）: 拘束・膝の間、カメラの候補位置ごとに顔の可視率を測って比べる。
+        /// 測定専用のカメラを、PinHoldPose の壁ショットと同じ注視点（彼女と拘束役の間）へ向けて置く。
+        /// </summary>
+        [UnityTest, Explicit("カメラ位置の調査用")]
+        public IEnumerator 調査_壁拘束の膝のカメラ候補ごとの顔の可視率()
+        {
+            yield return Load(withAssist: true, withThird: true);
+            _captor.QueuePin();
+            yield return WaitForGrapple();
+
+            var anim = _player.GetComponentInChildren<CharacterAnimator>();
+            var figures = new System.Collections.Generic.List<EnemyFigure>(
+                Object.FindObjectsByType<EnemyFigure>(FindObjectsSortMode.None));
+
+            var probeGo = new GameObject("Face Probe Camera");
+            var probe = probeGo.AddComponent<Camera>();
+            probe.enabled = false;
+            probe.fieldOfView = Camera.main.fieldOfView;
+            probe.nearClipPlane = Camera.main.nearClipPlane;
+
+            float[] xs = { -2.25f, -2.6f, -1.8f };
+            float[] ys = { 0.47f, 0.15f, -0.10f };
+            float[] zs = { -1.75f, -1.35f, -2.10f };
+            int count = xs.Length * ys.Length * zs.Length;
+            var good = new int[count];
+            var turned = new int[count];
+            int frames = 0;
+
+            float deadline = Time.realtimeSinceStartup + 40f;
+            while (_grapple.IsWallPin && _grapple.WallPhase == WallStage.Held &&
+                   !_grapple.IsWallSplitStarted && Time.realtimeSinceStartup < deadline)
+            {
+                Vector3 her = _player.transform.position + Vector3.up * 1.02f;
+                Vector3 him = _captor.transform.position + Vector3.up * 1.02f;
+                Vector3 mid = Vector3.Lerp(her, him, 0.45f);
+                int k = 0;
+                foreach (float x in xs)
+                    foreach (float y in ys)
+                        foreach (float z in zs)
+                        {
+                            probe.transform.position = mid + new Vector3(x, y, z);
+                            probe.transform.LookAt(mid);
+                            var r = FaceVisibility.Measure(probe, anim.Rig.Head, figures);
+                            if (r.Readable) good[k]++;
+                            else if (r.Visible >= FaceVisibility.GoodVisible) turned[k]++;
+                            k++;
+                        }
+                frames++;
+                yield return null;
+            }
+
+            Object.Destroy(probeGo);
+            int idx = 0;
+            foreach (float x in xs)
+                foreach (float y in ys)
+                    foreach (float z in zs)
+                    {
+                        UnityEngine.Debug.Log($"[CamCandidate] x={x:F2} y={y:F2} z={z:F2} " +
+                                              $"readable={good[idx] / (float)Mathf.Max(1, frames):P0} turned={turned[idx]}");
+                        idx++;
+                    }
+        }
+
         // --- 壁拘束の被弾と手首のクリアランス -----------------------
 
         [UnityTest]
