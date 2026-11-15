@@ -87,6 +87,14 @@ namespace Ryona.Game
         [Tooltip("倒れてから立ち上がり終わるまでの秒数")]
         public float GetUpSeconds = 0.80f;
 
+        float _pendingQuickGetUp;
+
+        /// <summary>
+        /// ダウンの最短時間を待たずに立ち上がりへ移る（次のフレームの更新で）。
+        /// 引きずり起こしを振りほどいたときに使う。
+        /// </summary>
+        internal void BeginQuickGetUp(float seconds) => _pendingQuickGetUp = Mathf.Max(0.2f, seconds);
+
         public State Current => _state;
         public float StateTime => _stateTime;
         public float StateDuration => _stateDuration;

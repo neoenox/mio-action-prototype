@@ -1025,7 +1025,7 @@ namespace Ryona.Game
             if (Target == null || Player == null)
                 return;
 
-            if (Player.GroundMount.Attacker == this)
+            if (Player.GroundMount.Owns(this))
                 return;
 
             if (_grapple == null)
@@ -1289,7 +1289,7 @@ namespace Ryona.Game
             if (IsWallAssisting)
                 return;
 
-            if (Target == null || (Player != null && Player.GroundMount.Attacker == this))
+            if (Target == null || (Player != null && Player.GroundMount.Owns(this)))
                 return;
             var position = transform.position;
             position.z = Target.position.z;

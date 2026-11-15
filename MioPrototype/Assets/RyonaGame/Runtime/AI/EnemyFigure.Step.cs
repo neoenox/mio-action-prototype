@@ -64,7 +64,42 @@ namespace Ryona.Game
             BuildPhasePose(ref pose, phase, speed, restY, dt, instant);
             BuildHeldPose(ref pose, phase, holdState, restY, out bool grabbing);
             BuildWristPose(ref pose, phase, holdState, grabbing, restY);
+            BuildHaulPose(ref pose);
             return pose;
+        }
+
+        /// <summary>
+        /// 引きずり起こし（<see cref="GroundHaulUp"/>）の体の使い方。
+        /// 腕は <see cref="HaulUpPose"/> が手首と裾へ合わせるので、ここは腰・脚・上体だけ。
+        /// かがんで掴み、立ちながら後ろへ反って引き上げる。
+        /// </summary>
+        void BuildHaulPose(ref PoseTarget pose)
+        {
+            if (Brain == null || Brain.Player == null)
+                return;
+            var haul = Brain.Player.GroundMount.Haul;
+            if (haul == null || haul.Attacker != Brain || haul.Stage < GroundHaulUp.Beat.Grab)
+                return;
+
+            // かがみは足取り（AnkleGrab）の低い姿勢を下敷きにする: 前の足を踏み込み、
+            // 後ろの足は膝を落として沈む。上体はそれより深く前へ（床の手首まで手を届かせる）。
+            // この骨格の TorsoPitch は「負 = 前傾」「正 = 後ろへ反る」。
+            float crouch = haul.Crouch;
+            float lean = haul.Lean;
+            float restY = Height * 0.515f;
+            pose.LegsExact = false;
+            pose.HipsY = Mathf.Lerp(pose.HipsY, restY - 0.36f, crouch);
+            pose.HipsZ = Mathf.Lerp(pose.HipsZ, 0.08f, crouch) - 0.06f * lean;
+            pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, -42f, crouch) + 22f * lean;
+            pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -12f, crouch) + 6f * lean;
+            pose.KneeR = Mathf.Lerp(pose.KneeR, 96f, crouch);
+            pose.KneeL = Mathf.Lerp(pose.KneeL, 74f, crouch);
+            pose.LegRPitch = Mathf.Lerp(pose.LegRPitch, -44f, crouch);
+            pose.LegLPitch = Mathf.Lerp(pose.LegLPitch, 20f, crouch);
+            // 引くときは足を前後に割って踏ん張る（後ろへ体重を掛ける）。
+            pose.KneeR += 18f * lean;
+            pose.LegRPitch -= 14f * lean;
+            pose.LegLPitch += 10f * lean;
         }
 
         /// <summary>フェーズごとの基本姿勢（立ち・歩き・攻撃・怯み・ダウン）。</summary>

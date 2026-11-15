@@ -151,6 +151,7 @@ namespace Ryona.Game
             bool grappled = _grapple != null && _grapple.IsGrappled && !Player.IsDead;
             var mount = Player.GroundMount;
             bool mounted = mount != null && mount.BlocksGetUp && !Player.IsDead;
+            bool hauled = mount != null && mount.Haul != null && mount.Haul.BlocksGetUp;
             bool show = grappled || mounted || _releasedRemaining > 0f;
 
             // 腹パンのコンボ中は腹が画面の中心に来る。中央下のままだと
@@ -169,14 +170,14 @@ namespace Ryona.Game
 
             if (mounted)
             {
-                _grappleText.text = mount.Stage switch
+                _grappleText.text = hauled ? "引きずり起こされる ─ 連打で振りほどく" : mount.Stage switch
                 {
                     GroundMountAttack.Beat.Roll => "仰向けに返される",
                     GroundMountAttack.Beat.Dismount => "押さえ込みが解ける",
                     _ => "マウント ─ 連打で脱出"
                 };
                 _grappleText.color = new Color(1f, 0.62f, 0.48f, 0.98f);
-                _grappleFill.fillAmount = mount.EscapeProgress;
+                _grappleFill.fillAmount = hauled ? mount.Haul.EscapeProgress : mount.EscapeProgress;
                 _grappleFill.color = new Color(0.95f, 0.45f, 0.35f, 0.95f);
                 return;
             }

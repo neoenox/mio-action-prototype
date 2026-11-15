@@ -74,7 +74,9 @@ namespace Ryona.Game
                 ForceDown();
             }
 
-            if (!_capturing && _mount != null && (_entry
+            if (!_capturing && _mount != null && (GroundHaulUp.Forced
+                ? _mount.Haul.Active
+                : _entry
                 ? _started && _player.IsDown
                 : _mount.Attacker != null && _mount.Stage >= GroundMountAttack.Beat.Mount &&
                     _mount.Stage < GroundMountAttack.Beat.Dismount))
@@ -188,7 +190,7 @@ namespace Ryona.Game
 
             _shots++;
             _nextShotAt += ShotInterval;
-            if (_shots >= (_entry ? 110 : ShotCount))
+            if (_shots >= (GroundHaulUp.Forced ? 100 : _entry ? 110 : ShotCount))
             {
                 _capturing = false;
                 Application.Quit();

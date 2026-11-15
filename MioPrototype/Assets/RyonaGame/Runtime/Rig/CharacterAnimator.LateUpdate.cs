@@ -100,6 +100,21 @@ namespace Ryona.Game
                 SetState(State.Down, Mathf.Max(0.4f, Stats.DownRemaining - GetUpSeconds));
             }
 
+            // 引きずり起こしを振りほどいた: ダウンの最短時間を待たずに立ち上がりへ入る。
+            // 途中まで持ち上がった姿勢から入るので、切り替えは長めに寄せる。
+            bool quickGetUp = false;
+            if (_pendingQuickGetUp > 0f)
+            {
+                float seconds = _pendingQuickGetUp;
+                _pendingQuickGetUp = 0f;
+                if (_state == State.Down && Stats != null && Stats.IsDown && !Stats.IsDead)
+                {
+                    SetState(State.GetUp, seconds);
+                    Stats.BeginGetUp(seconds);
+                    quickGetUp = true;
+                }
+            }
+
             switch (_state)
             {
                 case State.Stagger:
@@ -177,9 +192,10 @@ namespace Ryona.Game
                     State.Attack => AttackBlendSeconds,
                     State.Stagger => 0.04f,
                     State.Down => DownBlendSeconds,
-                    State.GetUp => 0.05f,
+                    State.GetUp => quickGetUp ? 0.30f : 0.05f,
                     State.Guard => GuardBlendSeconds,
-                    State.Grabbed => 0.08f,
+                    // 引きずり起こしから羽交い締めへは、吊られた姿勢からゆっくり寄せる。
+                    State.Grabbed => before == State.Down ? 0.25f : 0.08f,
                     _ => IdleBlendSeconds
                 };
             }

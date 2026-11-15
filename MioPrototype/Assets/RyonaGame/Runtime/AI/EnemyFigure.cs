@@ -134,6 +134,8 @@ namespace Ryona.Game
                 gameObject.AddComponent<WallAssistPose>();
             if (GetComponent<AnkleHoldPose>() == null)
                 gameObject.AddComponent<AnkleHoldPose>();
+            if (GetComponent<HaulUpPose>() == null)
+                gameObject.AddComponent<HaulUpPose>();
             if (GetComponent<WallKneeStrikePose>() == null)
                 gameObject.AddComponent<WallKneeStrikePose>();
             // 最初のフレームから正しい立ち姿勢にしておく

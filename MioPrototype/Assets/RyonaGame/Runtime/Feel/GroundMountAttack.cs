@@ -47,7 +47,20 @@ namespace Ryona.Game
         internal float Progress => Stage == Beat.Approach
             ? Mathf.InverseLerp(0f, _approachDistance, _approachTravel)
             : _duration > 0f ? Mathf.Clamp01(_elapsed / _duration) : 0f;
-        internal bool BlocksGetUp => Attacker != null && Stage >= Beat.Mount;
+        internal bool BlocksGetUp => MountBlocksGetUp || (Haul != null && Haul.BlocksGetUp);
+
+        /// <summary>寝技（跨り）そのものが起き上がりを止めているか（引き起こしは含まない）。</summary>
+        internal bool MountBlocksGetUp => Attacker != null && Stage >= Beat.Mount;
+
+        /// <summary>ダウンを引きずり起こす制御（寝技と同じ「一人を選ぶ」枠で動く）。</summary>
+        internal GroundHaulUp Haul { get; private set; }
+
+        /// <summary>この敵を、寝技か引き起こしが占有しているか（通常の敵 AI は譲る）。</summary>
+        internal bool Owns(EnemyBrain enemy) =>
+            enemy != null && (Attacker == enemy || (Haul != null && Haul.Attacker == enemy));
+
+        internal void DelayNextSearch(float seconds) =>
+            _nextSearch = Mathf.Max(_nextSearch, Time.time + seconds);
         internal float Fear => Stage switch
         {
             Beat.Mount when !_player.DownIsForward => Mathf.SmoothStep(0f, 1f, Progress),
@@ -116,6 +129,7 @@ namespace Ryona.Game
         {
             _player = GetComponent<PlayerStats>();
             _motor = GetComponent<PlayerMotor>();
+            Haul = gameObject.AddComponent<GroundHaulUp>();
         }
 
         /// <summary>
@@ -159,6 +173,7 @@ namespace Ryona.Game
                     End();
 
                 if (_downTime >= 0.75f && Time.time >= _nextSearch && !_player.GetUpRequested &&
+                    !Haul.Active &&
                     (_motor == null || !_motor.IsAirborne) &&
                     _animator != null && _animator.Current == CharacterAnimator.State.Down &&
                     TargetRig != null && TargetRig.Ready)
@@ -238,7 +253,17 @@ namespace Ryona.Game
             if (Attacker == null)
                 return;
 
-            _side = Vector3.Dot(Attacker.transform.position - TargetRig.Hips.position, transform.right) < 0f
+            // 寝技の代わりに、手首と裾を掴んで引きずり起こす（羽交い締めへつなぐ）。
+            if (Haul.ShouldHaul(Attacker))
+            {
+                var hauler = Attacker;
+                Attacker = null;
+                _figure = null;
+                Haul.Begin(hauler);
+                return;
+            }
+
+            _side =Vector3.Dot(Attacker.transform.position - TargetRig.Hips.position, transform.right) < 0f
                 ? -1f : 1f;
             SetApproachSpot();
             Begin(Beat.Approach, 0f);

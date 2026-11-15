@@ -81,7 +81,7 @@ namespace Ryona.Game
                 State.Walk => PoseWalk(),
                 State.Stagger => PoseStagger(),
                 State.Grabbed => PoseGrabbed(),
-                State.Down => PoseDown(),
+                State.Down => HauledNow ? PoseHauled(Stats.GroundMount.Haul) : PoseDown(),
                 State.GetUp => PoseGetUp(),
                 State.Attack => PoseAttack(),
                 _ => PoseDefaults(),

@@ -242,8 +242,11 @@ namespace Ryona.Game
                     facing * Rig.Hips.rotation);
             }
 
-            if (_state == State.Down && Stats != null && Stats.GroundMount.BlocksGetUp)
+            if (_state == State.Down && Stats != null && Stats.GroundMount.MountBlocksGetUp)
                 ApplyGroundMountReaction(Stats.GroundMount);
+
+            if (HauledNow)
+                ApplyHauledArm(Stats.GroundMount.Haul);
 
             // 状態が切り替わった直後は、切り替え前の姿勢から寄せる（カクつき防止）
             if (_blend < 1f)

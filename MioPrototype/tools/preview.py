@@ -60,6 +60,12 @@ SCENARIOS = {
     # 足取り（背後の足首掴み）。掴まれて 1.6 秒でもがけなければ前へ転ぶ。
     "ankle": dict(args=["-grappletest", "-anklegrabtest"], burst="-pinburst",
                   frames=90, interval=0.05),
+    # ダウンした彼女を引きずり起こし、羽交い締めへつなぐ（-haultest で必ず選ぶ）。
+    "haul": dict(args=["-haultest"], burst="-mountburst",
+                 frames=100, interval=0.05),
+    # 頭上拘束（両手首を上へ引き上げる）。
+    "overhead": dict(args=["-grappletest", "-overheadtest"], burst="-pinburst",
+                     frames=120, interval=0.05),
 }
 
 

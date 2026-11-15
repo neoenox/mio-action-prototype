@@ -163,6 +163,21 @@ namespace Ryona.Game
             _downImmuneUntil = Time.time + seconds + CombatConstants.DownImmunitySeconds;
         }
 
+        /// <summary>
+        /// 引きずり起こし（<see cref="GroundHaulUp"/>）で立たされた。起き上がりの動きを挟まず、
+        /// その場でダウンを終える（姿勢はもう立っている）。
+        /// </summary>
+        internal void EndDownByHaul()
+        {
+            if (!IsDown || IsDead)
+                return;
+            GetUpRequested = false;
+            _gettingUp = false;
+            _downRemaining = 0f;
+            State.IsDown = false;
+            _downImmuneUntil = Time.time + CombatConstants.DownImmunitySeconds;
+        }
+
         /// <summary>この時刻まではダウンしない（起き上がり直後の猶予）。</summary>
         float _downImmuneUntil;
 
