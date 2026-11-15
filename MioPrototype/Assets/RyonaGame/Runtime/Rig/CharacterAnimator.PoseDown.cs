@@ -109,9 +109,20 @@ namespace Ryona.Game
                 float bump = Mathf.Sin(landF * Mathf.PI);
                 pose.HipsOffset.y -= 0.012f * bump;
 
-                // うつ伏せのあとの浅い息
+                // うつ伏せのあとの浅い息。
+                // 3mm だと画に出ず、1 秒以上まったく動かないように見えた（合成シートの
+                // 時間方向の差分が平均の約 2%）。読める大きさまで上げる。
+                // 床のクランプ（下で 1 回だけ掛ける）に呼気が食われるので、
+                // 上下に振らず「0〜16mm の上昇」だけにする。
                 if (rise > 0.97f)
-                    pose.HipsOffset.y += Mathf.Sin(_stateTime * 2.4f) * 0.003f;
+                {
+                    float breath = Mathf.Sin(_stateTime * 2.4f);
+                    pose.HipsOffset.y += breath * 0.008f + 0.008f;
+                    // 呼吸に合わせて顔がわずかに揺れる。腰の上下だけだと画素の差が出ず、
+                    // 止まって見えた（合成シートの時間方向の差分で確認）。
+                    pose.HeadYaw += breath * 3f;
+                    pose.HeadPitch += breath * 2f;
+                }
 
                 pose.HipsOffset.y = Mathf.Max(pose.HipsOffset.y, 0.115f - Rig.RestHips.y);
 
@@ -246,8 +257,14 @@ namespace Ryona.Game
 
             // 倒れきったあとは浅い息。完全に止めると「止め絵」に見える。
             // 痛みで胸が小刻みに動く程度に留める（大きくすると寝返りに見える）。
+            // 3.5mm では画に出なかったので、0〜16mm の上昇にして読めるようにする。
             if (rise > 0.97f)
-                pose.HipsOffset.y += Mathf.Sin(_stateTime * 2.6f) * 0.0035f;
+            {
+                float breath = Mathf.Sin(_stateTime * 2.6f);
+                pose.HipsOffset.y += breath * 0.008f + 0.008f;
+                pose.HeadYaw += breath * 3f;
+                pose.HeadPitch += breath * 2f;
+            }
 
             // 床下がりのクランプは最後に 1 回だけ。先に掛けると、着地の沈みと呼吸で
             // 背中が床を突き抜けたり、クランプ位置で腰の軌道が折れたりする。
