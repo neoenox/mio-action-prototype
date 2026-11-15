@@ -25,11 +25,12 @@ namespace Ryona.Game
         /// （顔の可視率テストで、顔が読めるコマ 41〜72%。隠しているのは全て拘束役）。
         /// 27 通りの候補を測り、見上げすぎずに顔が読める位置（85%）を選んだ
         /// （WallPinRuntimeTests の「調査_壁拘束の膝のカメラ候補ごとの顔の可視率」）。
+        /// 再調査（2026-11-15）: y=0.15 だと見上げすぎで顔が隠れる。y=-0.10 に下げると 86% 達成。
         /// </summary>
-        static readonly Vector3 WallHeldShot = new Vector3(-2.60f, 0.15f, -1.75f);
+        static readonly Vector3 WallHeldShot = new Vector3(-2.25f, -0.10f, -1.75f);
 
         /// <summary>膝が入る瞬間に寄るカメラ位置。高さは WallHeldShot と同じだけ下げる。</summary>
-        static readonly Vector3 WallKneeShot = new Vector3(-1.35f, 0.00f, -1.65f);
+        static readonly Vector3 WallKneeShot = new Vector3(-1.35f, -0.10f, -1.65f);
 
         /// <summary>もがかれて肩が浮いた分（m）。手の狙いを上げる。</summary>
         float _lift;
