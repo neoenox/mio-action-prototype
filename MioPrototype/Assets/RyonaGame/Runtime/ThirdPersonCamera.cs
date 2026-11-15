@@ -156,15 +156,6 @@ namespace Ryona.Game
         float _focusPitch;
         float _focusYaw;
         float _focusRemaining;
-
-        /// <summary>フォーカスの効き（0 = 通常の画、1 = 寄り切った画）。演出の入り/戻りを飛ばさないために持つ。</summary>
-        float _focusWeight;
-
-        /// <summary>フォーカスへ寄せ切るまでの秒数。</summary>
-        const float FocusBlendSeconds = 0.25f;
-
-        /// <summary>フォーカスへ寄る間のピボット移動の上限（m/秒）。</summary>
-        const float FocusPivotSpeed = 3.2f;
         bool _cinematicRequested;
         bool _cinematicActive;
         bool _cinematicCut;
@@ -172,17 +163,6 @@ namespace Ryona.Game
         Vector3 _cinematicTarget;
         Vector3 _shotPosition;
         Vector3 _shotTarget;
-
-        /// <summary>ショットが終わったあと、直前の画から通常の画へ戻す残り秒。</summary>
-        float _releaseLeft;
-        Vector3 _releasePos;
-        Quaternion _releaseRot;
-
-        /// <summary>ショットの入り・戻りのブレンドの速さ（1/秒）。既存の追従と同じ 13 に合わせる。</summary>
-        const float ShotBlendSharpness = 13f;
-
-        /// <summary>ショットから通常の画へ戻すのにかける秒数。</summary>
-        const float ShotReleaseSeconds = 0.28f;
 
         // このフレームで実際に使う値（毎フレーム TickEffects が更新する）
         float _distanceScale = 1f;
@@ -371,45 +351,13 @@ namespace Ryona.Game
         {
             if (!_cinematicRequested)
             {
-                if (_cinematicActive)
-                {
-                    // ショットが終わった瞬間の画を覚えて、通常の画へ繋ぐ。
-                    // 以前は固定ショットが切れると、次のフレームで通常の画へ飛んでいた。
-                    Vector3 lastOffset = _shotPosition - _shotTarget;
-                    if (lastOffset.sqrMagnitude > 1e-6f)
-                    {
-                        _releasePos = _shotTarget + lastOffset;
-                        _releaseRot = Quaternion.LookRotation(-lastOffset, Vector3.up);
-                        _releaseLeft = ShotReleaseSeconds;
-                    }
-                    _cinematicActive = false;
-                }
-
-                if (_releaseLeft > 0f)
-                {
-                    _releaseLeft -= Time.unscaledDeltaTime;
-                    float k = 1f - Mathf.Exp(-ShotBlendSharpness * Time.unscaledDeltaTime);
-                    _releasePos = Vector3.Lerp(_releasePos, transform.position, k);
-                    _releaseRot = Quaternion.Slerp(_releaseRot, transform.rotation, k);
-                    transform.SetPositionAndRotation(_releasePos, _releaseRot);
-                }
+                _cinematicActive = false;
                 return;
             }
 
-            if (!_cinematicActive && !_cinematicCut)
-            {
-                // ショットの最初のフレームは、**いま映っている画から**狙いを引き継いで繋ぐ。
-                // 以前は follow=1 で目標位置へ即移動していたため、
-                // 押さえつけ→腹パン演出や膝ショットの入りで画が 1 フレームで飛んだ（実測）。
-                float distance = Mathf.Max(1f, Vector3.Distance(_cinematicPosition, _cinematicTarget));
-                _shotPosition = transform.position;
-                _shotTarget = transform.position + transform.forward * distance;
-            }
-
             // Cut to the other side of the actors, then track the shot without following each jolt.
-            float follow = _cinematicCut
-                ? 1f
-                : 1f - Mathf.Exp(-ShotBlendSharpness * Time.unscaledDeltaTime);
+            float follow = _cinematicActive && !_cinematicCut
+                ? 1f - Mathf.Exp(-13f * Time.unscaledDeltaTime) : 1f;
             _shotPosition = Vector3.Lerp(_shotPosition, _cinematicPosition, follow);
             _shotTarget = Vector3.Lerp(_shotTarget, _cinematicTarget, follow);
             // 固定ショットも、狙いと角度を保ったままホイールで距離を変える。
@@ -421,7 +369,6 @@ namespace Ryona.Game
             transform.SetPositionAndRotation(_shotTarget + zoomedOffset, Quaternion.LookRotation(-offset));
             _cinematicActive = true;
             _cinematicRequested = false;
-            _releaseLeft = 0f;
         }
 
         /// <summary>
@@ -437,14 +384,8 @@ namespace Ryona.Game
 
             bool focusing = _focusRemaining > 0f;
 
-            // フォーカスの効きを 0..1 で馴染ませる。以前は focusing の真偽で
-            // 俯角・ヨーを即座に切り替えていたため、演出の入り/戻りで画が 1 フレーム飛んだ（実測）。
-            _focusWeight = Mathf.MoveTowards(_focusWeight, focusing ? 1f : 0f,
-                Time.unscaledDeltaTime / FocusBlendSeconds);
-            float focusBlend = Mathf.SmoothStep(0f, 1f, _focusWeight);
-
             // 腹パン中は見下ろしを弱め、折れて下を向いた顔を画面に入れる。
-            float pitch = BeltPitch + _focusPitch * focusBlend;
+            float pitch = BeltPitch + (focusing ? _focusPitch : 0f);
             // 通常時の最大ズームでも、演出で寄った画から顔や拳が大きく切れないようにする。
             float baseDistance = focusing && _distanceScale < 1f
                 ? Mathf.Max(Distance, _initialDistance * ClosestShotZoom)
@@ -486,13 +427,12 @@ namespace Ryona.Game
                 // 演出中は関所（画面ロック）のクランプを外す。ロックの端で彼女が
                 // 画面の外へ寄り、寄せた画で「中心に居ない」ように見えるため。
                 // ステージ端だけは守る。
+                _beltX = Mathf.Clamp(_focusX, BeltMinX, BeltMaxX);
             }
-
-            // 寄せ先の X へは飛ばさず寄せる（以前は代入で 1 フレーム移動していた）。
-            float wantX = focusing
-                ? Mathf.Clamp(_focusX, BeltMinX, BeltMaxX)
-                : Mathf.Clamp(_beltX, minX, maxX);
-            _beltX = Mathf.Lerp(_beltX, wantX, 1f - Mathf.Exp(-14f * Time.unscaledDeltaTime));
+            else
+            {
+                _beltX = Mathf.Clamp(_beltX, minX, maxX);
+            }
 
             Vector3 pivot = new Vector3(
                 _beltX,
@@ -505,21 +445,12 @@ namespace Ryona.Game
             float follow = focusing
                 ? 26f
                 : Mathf.Lerp(BeltFollowSharpness, DownFollowSharpness, _downBlend);
-            follow = Mathf.Lerp(BeltFollowSharpness, follow, Mathf.Max(focusBlend, 0f));
             float followDt = focusing ? Time.unscaledDeltaTime : Time.deltaTime;
 
-            Vector3 nextPivot = Vector3.Lerp(_smoothPivot, pivot,
+            _smoothPivot = Vector3.Lerp(_smoothPivot, pivot,
                 1f - Mathf.Exp(-follow * followDt));
 
-            // フォーカスへ寄る間は、横移動に上限を置く。追従を速くしたまま寄せ先が
-            // 遠いと、0.1 秒で 1m 以上動いて「飛んだ」ように見える（実測）。
-            if (focusBlend < 0.999f)
-                nextPivot = Vector3.MoveTowards(_smoothPivot, nextPivot,
-                    FocusPivotSpeed * Time.unscaledDeltaTime);
-
-            _smoothPivot = nextPivot;
-
-            Quaternion rotation = Quaternion.Euler(pitch, BeltYaw + _focusYaw * focusBlend, 0f);
+            Quaternion rotation = Quaternion.Euler(pitch, BeltYaw + (focusing ? _focusYaw : 0f), 0f);
             Vector3 direction = rotation * Vector3.back;
 
             transform.position = _smoothPivot + direction * distance;

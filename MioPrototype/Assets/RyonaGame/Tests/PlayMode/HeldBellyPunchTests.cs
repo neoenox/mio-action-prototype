@@ -435,7 +435,10 @@ namespace Ryona.Tests
             Assert.Greater(_anim.HeldThrowLead, 0.6f, "The throw leaves her in the belly stance");
             Assert.IsTrue(_anim.IsHeldBellyPunch, "The first punch starts her recoil");
             Assert.IsTrue(_camera.IsFocusing, "Camera must center on the player for the punches");
-            Assert.Less(_camera.EffectDistanceScale, 0.25f, "腹パンも彼女の表情と拳が読める距離まで寄る");
+            // 2026-11-15: 「もう少し画面を離してほしい」の要望で CameraDistanceScale を
+            // 0.18 -> 0.24 にした（実測 0.2506）。0.25 のままだと要望と矛盾するので 0.30 に上げる。
+            // 「表情が読める」ことは、別テスト「腹パン中も彼女の顔が画面に入る」が受け持つ。
+            Assert.Less(_camera.EffectDistanceScale, 0.30f, "腹パンも彼女の表情と拳が読める距離まで寄る");
 
             // 5 発を食らっても拘束は続く
             float deadline = Time.realtimeSinceStartup + 10f;
