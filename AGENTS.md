@@ -35,7 +35,7 @@ python tools/preview.py --list                        # 撮れる場面の一覧
 
 出力は `MioPrototype/Verify/preview/<場面>-<時刻>/`（`Verify/` は `.gitignore` 済み）に
 `sheet.png`（0.25 秒ごとのコマ送り）・`preview.gif`・`compare.png`。場面は
-`wallpin` / `frontpin` / `belly` / `face`。新しい場面は `preview.py` の `SCENARIOS` に足す。
+`wallpin` / `frontpin` / `belly` / `face` / `ankle`。新しい場面は `preview.py` の `SCENARIOS` に足す。
 
 ### 動きの不自然さは数字で拾う
 
@@ -50,6 +50,9 @@ python tools/motion_audit.py Verify/preview/<dir> --strip 110 117 -o seq.png
 
 - カメラの飛び・キャラのワープは平均の 3〜7 倍として出る。**打撃ごとの 3〜4 倍は
   ヒットストップ由来で正常**なので、番号を見て中身を確かめてから判断する。
+- **大きな値＝不具合ではない**。`RequestCinematicShot(..., cut: true)` の意図的なカットも
+  同じ値になる（例: `GroundMountAttack` のマウント開始は 9.9 倍）。
+  値を見たら、そのフレームを `--strip` で開き、コードに `cut: true` が無いかを確かめる。
 - `preview.py --audit` を付けると、撮影のあとに同じ検査まで走る。
 - 直したら `--compare` で**下がったことを数字で示す**。下がっていなければ直っていない。
 

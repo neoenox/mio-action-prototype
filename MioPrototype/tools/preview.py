@@ -57,6 +57,9 @@ SCENARIOS = {
     # 羽交い締めからの顔面パン。
     "face": dict(args=["-grappletest", "-heldpunchface=1"], burst="-heldpunchburst",
                  frames=140, interval=0.05),
+    # 足取り（背後の足首掴み）。掴まれて 1.6 秒でもがけなければ前へ転ぶ。
+    "ankle": dict(args=["-grappletest", "-anklegrabtest"], burst="-pinburst",
+                  frames=90, interval=0.05),
 }
 
 
