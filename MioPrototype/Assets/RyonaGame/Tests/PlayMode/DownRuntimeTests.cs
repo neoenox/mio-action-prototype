@@ -553,6 +553,31 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator ダウン中も呼吸で体がわずかに動く()
+        {
+            yield return LoadPlayer();
+
+            // ダウン姿勢を時刻を変えて作り、腰の高さの振れ幅を見る。
+            // 以前は呼吸が 3mm で、合成シートの時間方向の差分が平均の約 2% しかなく
+            // 「止め絵」に見えていた（docs/motion-audit.md）。その退行を止める。
+            var rig = _anim.Rig;
+            float min = float.MaxValue;
+            float max = float.MinValue;
+
+            for (float t = 1.0f; t <= 1.99f; t += 0.05f)
+            {
+                _anim.ForceState(CharacterAnimator.State.Down, t, 2f, StaggerTier.None, log: false);
+                yield return null;
+                float y = rig.Hips.position.y;
+                if (y < min) min = y;
+                if (y > max) max = y;
+            }
+
+            Assert.Greater(max - min, 0.008f,
+                $"ダウン中に体がほとんど動かない（振れ幅 {max - min:F3}m）。呼吸が効いていない");
+        }
+
+        [UnityTest]
         public IEnumerator ダウンは操作するまで続き起き上がり中も移動できない()
         {
             yield return LoadPlayer();
