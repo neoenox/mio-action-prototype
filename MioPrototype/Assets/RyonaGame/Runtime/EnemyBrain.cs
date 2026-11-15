@@ -442,6 +442,20 @@ namespace Ryona.Game
         float _grabReadyAt;
         float _ringJitter = 1f;
 
+        /// <summary>演出側が立ち位置を決めている間、AI の移動を止める期限。</summary>
+        float _plantedUntil;
+
+        /// <summary>
+        /// 演出（腹パンの連撃など）が立ち位置を決めている間、AI の間合い補正を止める。
+        /// 攻撃の進行（予備動作・判定・硬直）は止めない。
+        /// </summary>
+        internal void StayPlanted(float seconds) =>
+            _plantedUntil = Mathf.Max(_plantedUntil, Time.time + Mathf.Max(0f, seconds));
+
+        internal bool IsPlanted => Time.time < _plantedUntil;
+
+        internal void ClearPlanted() => _plantedUntil = 0f;
+
         /// <summary>デバッグ用: 次の攻撃を掴みに固定する（-grappletest）。</summary>
         bool _forceGrab;
 
@@ -955,6 +969,12 @@ namespace Ryona.Game
             // タメが読めることと、判定と見た目がズレないことを優先する。
             if (distance > 0.001f && CanTurn())
                 Face(toTarget / distance, dt);
+
+            // 演出側（HeldBellyPunchDirector）が位置を決めている間は、AI の移動を止める。
+            // 殴ったあと Recover が明けて Chase/Strafe に入ると、間合いを 1.23m へ戻す
+            // 補正で一歩下がり、次の発注でまた前に出る（実測: 0.37m の往復）。
+            if (IsPlanted && (Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe))
+                return;
 
             // 倒れた相手には攻撃を出さない（フェアネス規定）。
             bool playerDown = Player.IsDead || Player.IsDown;

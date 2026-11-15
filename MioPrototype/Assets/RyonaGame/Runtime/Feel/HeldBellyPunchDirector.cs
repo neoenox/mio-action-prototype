@@ -198,6 +198,12 @@ namespace Ryona.Game
         float _hitTimeout;
         int _attempts;
 
+        // 5 連撃のあいだ固定する立ち位置。殴り手が交代したときだけ決め直す。
+        bool _comboSpotSet;
+        Vector3 _comboSpot;
+        Quaternion _comboFace;
+        EnemyBrain _comboPuncher;
+
         float _cooldown;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
@@ -349,6 +355,8 @@ namespace Ryona.Game
                 _camera.PushFocus(0f, 0f);
 
             _phase = Phase.Idle;
+            _comboPuncher?.ClearPlanted();
+            _thrower?.ClearPlanted();
             _throwTimer = 0f;
             _thrower = null;
             SetPunchGuard(null);
@@ -358,6 +366,8 @@ namespace Ryona.Game
             _punchInFlight = false;
             _hitTimeout = 0f;
             _attempts = 0;
+            _comboSpotSet = false;
+            _comboPuncher = null;
             HasAttacker = false;
             SetDreadTarget(null);
             _anim?.EndHeldThrowLead();
@@ -452,6 +462,7 @@ namespace Ryona.Game
                 _thrower = null;
                 // 投げた距離のままだと顔面パンチが近すぎる。打つ前に一歩ぶん下がらせる。
                 PlaceForOpeningPunch(openingPuncher, _comboZone);
+                openingPuncher.StayPlanted(1.2f);
                 if (openingPuncher.TryStartOpeningPunch(_comboZone, FistHoldSeconds,
                         FacePunchPower(0)))
                 {
@@ -616,6 +627,9 @@ namespace Ryona.Game
 
             _phase = Phase.Combo;
             _comboZone = ChooseComboZone();
+            // 最初の立ち位置は、このあと最初の 1 発を発注するときに決める。
+            _comboSpotSet = false;
+            _comboPuncher = null;
             // カメラはコンボ中に寄って動くので、「遠い腕」は開始時の構図で決めておく。
             _cameraOnHerRight = ComputeCameraOnHerRight();
             _hits = 0;
@@ -654,6 +668,7 @@ namespace Ryona.Game
             int hits = _hits;
 
             _phase = Phase.Idle;
+            _comboPuncher?.ClearPlanted();
             SetDreadTarget(null);
             // 投げの崩れが残ったままコンボを終えない（崩れた姿勢のまま次の拘束へ入らない）。
             _anim?.EndHeldThrowLead();

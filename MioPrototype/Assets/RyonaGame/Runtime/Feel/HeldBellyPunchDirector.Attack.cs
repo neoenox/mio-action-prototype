@@ -13,9 +13,12 @@ namespace Ryona.Game
             EnemyBrain best = null;
             float bestDistance = Mathf.Max(1f, AttackerSearchRange);
 
-            // 立たせる基準は「拳が狙う腹の座標」にする。root を基準にすると、
-            // 腹とのずれのぶんだけ向きが狂い、拳が 0.3m 外れる（実測: gap 0.33）。
-            Vector3 anchor = openingThrow ? _stats.transform.position : BodyAnchor();
+            // 立たせる基準は彼女の root。拘束中は root が動かないので、5 発のあいだ
+            // 立ち位置が安定する。腹の座標は「向き」だけに使う。
+            // 腹を基準に毎発スポットを決め直すと、殴られて上体が折れるたびに基準点が
+            // 後ろへずれ、敵が一歩ずつ下がって見える（実測）。
+            Vector3 standAnchor = _stats.transform.position;
+            Vector3 aim = openingThrow ? standAnchor : BodyAnchor();
 
             foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
             {
@@ -28,7 +31,7 @@ namespace Ryona.Game
                     enemy.Phase == EnemyPhase.Stagger)
                     continue;
 
-                float distance = Vector3.Distance(enemy.transform.position, anchor);
+                float distance = Vector3.Distance(enemy.transform.position, standAnchor);
                 if (distance >= bestDistance)
                     continue;
 
@@ -73,15 +76,35 @@ namespace Ryona.Game
             // 下限はカプセルが重ならない距離（彼女 0.30 + 敵 0.40 = 0.70m）に置く。
             // 0.8 に固定していたときは AttackerDistance が効かず、拳が届く位置まで
             // 踏み込めなかった（実測の立ち位置は常に 0.8m）。
-            Vector3 spot = anchor + forward * standOff;
+            Vector3 spot = standAnchor + forward * standOff;
             spot.z = _stats.transform.position.z;
             spot.y = best.transform.position.y;
 
-            Vector3 toPlayer = anchor - spot;
+            Vector3 toPlayer = aim - spot;
             toPlayer.y = 0f;
             Quaternion face = toPlayer.sqrMagnitude > 1e-4f
                 ? Quaternion.LookRotation(toPlayer.normalized, Vector3.up)
                 : best.transform.rotation;
+
+            // 5 発のあいだは、最初に決めた立ち位置をそのまま使う。
+            // 彼女の上体が折れて腹の座標や向きが動くたびにスポットを決め直すと、
+            // 敵が毎発一歩ずつ歩き直して「後ろに下がる」ように見える（実測）。
+            // 殴り手が交代したときだけ、新しい立ち位置を決め直す。
+            if (!openingThrow)
+            {
+                if (_comboSpotSet && _comboPuncher == best)
+                {
+                    spot = _comboSpot;
+                    face = _comboFace;
+                }
+                else
+                {
+                    _comboSpot = spot;
+                    _comboFace = face;
+                    _comboPuncher = best;
+                    _comboSpotSet = true;
+                }
+            }
 
             // 歩き始める前に攻撃トークンを確保する。取れなければ位置も動かさず、
             // 次の機会（0.3 秒後）に選び直す。
@@ -124,6 +147,8 @@ namespace Ryona.Game
 
         bool BeginOrderedAttack(EnemyBrain enemy, PunchZone zone, bool openingThrow)
         {
+            // 次の発注までの間、AI が間合いを詰め直して動かないよう固定する。
+            enemy.StayPlanted(1.2f);
             if (openingThrow)
                 return enemy.TryStartHeldThrow(positioned: true);
 
