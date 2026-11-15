@@ -196,6 +196,10 @@ namespace Ryona.Game
             if (Instance.GetComponent<VrmHairWallClamp>() == null)
                 Instance.AddComponent<VrmHairWallClamp>();
 
+            // 毛束の板が体・服へめり込まないよう、胴と腕のコライダーを少し広げる
+            if (Instance.GetComponent<VrmHairBodyMargin>() == null)
+                Instance.AddComponent<VrmHairBodyMargin>();
+
             // 殴られたら顔を歪ませる（眉・口・目を重ねて苦悶を作る）
             var face = Instance.AddComponent<PlayerFace>();
             face.Vrm = vrm;

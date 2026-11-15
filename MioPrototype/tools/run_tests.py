@@ -37,9 +37,9 @@ BATCHES: dict[str, tuple[str, str | None, str, int]] = {
              "戦闘ルール・関節可動域（EditMode）", 900),
     "grapple": ("PlayMode", "WallPinRuntime|PinGrapple|HeldBellyPunch|BearHug|OverheadRuntime|AnkleGrab",
                 "拘束・壁・腹パン（PlayMode）", 2400),
-    "motion": ("PlayMode", "DownRuntime|FeelRuntime|HurtPose|JointRomRuntime",
+    "motion": ("PlayMode", "DownRuntime|HaulUpRuntime|FeelRuntime|HurtPose|JointRomRuntime",
                "ダウン・手応え・被弾姿勢（PlayMode）", 1800),
-    "misc": ("PlayMode", "EnemyAiRuntime|PlayabilityRegression|PlayerFaceRuntime|TestAudio|UiRuntime|VrmRuntime",
+    "misc": ("PlayMode", "EnemyAiRuntime|PlayabilityRegression|PlayerFaceRuntime|TestAudio|UiRuntime|VrmRuntime|HairBodyRuntime",
              "AI・UI・表情・VRM・遊びの回帰（PlayMode）", 2400),
 }
 
