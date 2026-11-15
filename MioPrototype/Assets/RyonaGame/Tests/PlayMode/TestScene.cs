@@ -64,6 +64,8 @@ namespace Ryona.Tests
         {
             SilenceAudio();
 
+            TestOverrides.ResetAll();
+
             SceneManager.LoadScene("Prototype");
             yield return null;
             yield return null;

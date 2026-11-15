@@ -64,7 +64,7 @@ namespace Ryona.Game
                 return false;
 
             if (_grapple == null)
-                _grapple = Player.GetComponent<PlayerGrapple>();
+                _grapple = Hold;
             if (_grapple == null || _grapple.IsGrappled)
                 return false;
 
@@ -107,7 +107,7 @@ namespace Ryona.Game
             int count = 0;
 
             // すでに誰かが掴んでいるなら、掴みは選ばない（二重に掴めない）
-            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            var grapple = Player != null ? Hold : null;
             bool alreadyGrappled = grapple != null && grapple.IsGrappled;
 
             for (int i = 0; i < AttackCount; i++)
@@ -175,8 +175,8 @@ namespace Ryona.Game
             // 狙いを決める。崩しは腹、素早い一撃は顔寄り、重い一撃は腹寄り。
             Zone = ForceZone ?? id switch
             {
-                AttackId.Jab => UnityEngine.Random.value < JabFaceChance ? PunchZone.Face : PunchZone.Body,
-                AttackId.Heavy => UnityEngine.Random.value < HeavyFaceChance ? PunchZone.Face : PunchZone.Body,
+                AttackId.Jab => UnityEngine.Random.value < S.JabFaceChance ? PunchZone.Face : PunchZone.Body,
+                AttackId.Heavy => UnityEngine.Random.value < S.HeavyFaceChance ? PunchZone.Face : PunchZone.Body,
                 AttackId.Break => PunchZone.Body,
                 _ => PunchZone.Face
             };
@@ -261,17 +261,17 @@ namespace Ryona.Game
                 // 見た目の拳が届く距離に合わせる。シーンに保存された値（1.45 / 1.70 / 1.55）を
                 // そのまま使うと、届かない距離から振って空振りする（実測: Jab は 1.25m まで）。
                 case AttackId.Jab: return Mathf.Min(
-                    JabRange > 0f ? JabRange : AttackRange, MaxJabReach);
+                    S.JabRange > 0f ? S.JabRange : S.AttackRange, MaxJabReach);
                 case AttackId.Heavy: return Mathf.Min(
-                    HeavyRange > 0f ? HeavyRange : AttackRange, MaxHeavyReach);
+                    S.HeavyRange > 0f ? S.HeavyRange : S.AttackRange, MaxHeavyReach);
                 case AttackId.Break: return Mathf.Min(
-                    BreakRange > 0f ? BreakRange : AttackRange, MaxBreakReach);
+                    S.BreakRange > 0f ? S.BreakRange : S.AttackRange, MaxBreakReach);
                 case AttackId.Grab:
                     // 掴みは「攻撃を始める間合い（EngageDistance）」で必ず選べるようにする。
                     // GrabRange が EngageDistance より狭いと、敵が間合いに入った瞬間に
                     // 掴みが候補から外れて出番がなくなる。
-                    return Mathf.Max(GrabRange > 0f ? GrabRange : AttackRange, EngageDistance);
-                default: return AttackRange;
+                    return Mathf.Max(S.GrabRange > 0f ? S.GrabRange : S.AttackRange, EngageDistance);
+                default: return S.AttackRange;
             }
         }
 
@@ -279,11 +279,11 @@ namespace Ryona.Game
         {
             switch (id)
             {
-                case AttackId.Jab: return JabSeconds > 0f ? JabSeconds : WindupSeconds;
-                case AttackId.Heavy: return HeavySeconds > 0f ? HeavySeconds : WindupSeconds;
-                case AttackId.Break: return BreakSeconds > 0f ? BreakSeconds : WindupSeconds;
-                case AttackId.Grab: return GrabSeconds > 0f ? GrabSeconds : WindupSeconds;
-                default: return WindupSeconds;
+                case AttackId.Jab: return JabSeconds > 0f ? JabSeconds : S.WindupSeconds;
+                case AttackId.Heavy: return S.HeavySeconds > 0f ? S.HeavySeconds : S.WindupSeconds;
+                case AttackId.Break: return S.BreakSeconds > 0f ? S.BreakSeconds : S.WindupSeconds;
+                case AttackId.Grab: return S.GrabSeconds > 0f ? S.GrabSeconds : S.WindupSeconds;
+                default: return S.WindupSeconds;
             }
         }
 
@@ -291,10 +291,10 @@ namespace Ryona.Game
         {
             switch (id)
             {
-                case AttackId.Jab: return JabDamage;
-                case AttackId.Heavy: return HeavyDamage;
-                case AttackId.Break: return BreakDamage;
-                case AttackId.Grab: return GrabDamage;
+                case AttackId.Jab: return S.JabDamage;
+                case AttackId.Heavy: return S.HeavyDamage;
+                case AttackId.Break: return S.BreakDamage;
+                case AttackId.Grab: return S.GrabDamage;
                 default: return 0f;
             }
         }
@@ -304,20 +304,20 @@ namespace Ryona.Game
         {
             _jab = AttackLibrary.Light();
             _jab.id = "enemy_jab";
-            _jab.damage = Mathf.Max(0f, JabDamage);
+            _jab.damage = Mathf.Max(0f, S.JabDamage);
 
             _heavy = AttackLibrary.Heavy();
             _heavy.id = "enemy_heavy";
-            _heavy.damage = Mathf.Max(0f, HeavyDamage);
+            _heavy.damage = Mathf.Max(0f, S.HeavyDamage);
 
             _break = AttackLibrary.BreakAttack();
             _break.id = "enemy_break";
-            _break.damage = Mathf.Max(0f, BreakDamage);
+            _break.damage = Mathf.Max(0f, S.BreakDamage);
 
             // 掴み。ダメージは低く、当たったらレバガチャ（PlayerGrapple）に移る
             _grab = AttackLibrary.GrappleAttack();
             _grab.id = "enemy_grab";
-            _grab.damage = Mathf.Max(0f, GrabDamage);
+            _grab.damage = Mathf.Max(0f, S.GrabDamage);
         }
 
         // --- 被弾・死亡 ----------------------------------------------------------

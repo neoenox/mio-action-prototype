@@ -41,7 +41,7 @@ namespace Ryona.Game
             if (HasAttackToken || Group == null)
                 return EngageDistance;
 
-            return EngageDistance * Mathf.Max(1.1f, WaitingRingScale) * _ringJitter;
+            return EngageDistance * Mathf.Max(1.1f, S.WaitingRingScale) * _ringJitter;
         }
 
         /// <summary>仲間と近すぎるときに、横へ逃げる力。密集して1点に固まるのを防ぐ。</summary>
@@ -92,7 +92,7 @@ namespace Ryona.Game
             // 間合いを維持するための前後補正。近すぎれば離れ、遠ければ詰める。
             float desired = DesiredRing();
             if (HasAttackToken && _strafeCloseIn)
-                desired *= StrafeCloseInScale;
+                desired *= S.StrafeCloseInScale;
 
             // 引き離されすぎたら追い直す
             if (distance > desired * 1.45f)
@@ -108,7 +108,7 @@ namespace Ryona.Game
 
             Vector3 direction = correction + Separation();
             if (Mathf.Abs(direction.x) > 0.06f)
-                Move(direction.normalized, MoveSpeed * StrafeSpeedScale);
+                Move(direction.normalized, MoveSpeed * S.StrafeSpeedScale);
 
             if (_timer <= 0f)
                 EnterStrafe();
@@ -118,8 +118,8 @@ namespace Ryona.Game
         {
             Phase = EnemyPhase.Strafe;
 
-            _timer = Mathf.Max(0.1f, StrafeSeconds) * UnityEngine.Random.Range(0.75f, 1.25f);
-            _strafeCloseIn = UnityEngine.Random.value < StrafeCloseInChance;
+            _timer = Mathf.Max(0.1f, S.StrafeSeconds) * UnityEngine.Random.Range(0.75f, 1.25f);
+            _strafeCloseIn = UnityEngine.Random.value < S.StrafeCloseInChance;
         }
 
         // --- フェーズ: Windup / Attack / Recover ---------------------------------

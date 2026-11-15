@@ -16,7 +16,7 @@ namespace Ryona.Game
         /// </summary>
         internal bool TryGrab()
         {
-            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            var grapple = Player != null ? Hold : null;
             if (grapple == null || grapple.IsGrappled)
                 return false;
 
@@ -65,7 +65,7 @@ namespace Ryona.Game
             if (Player == null || Player.IsDead)
                 return false;
 
-            var grapple = Player.GetComponent<PlayerGrapple>();
+            var grapple = Hold;
             if (grapple == null || !grapple.IsGrappled || grapple.IsHandingOff || grapple.Captor == this)
                 return false;
 
@@ -122,7 +122,7 @@ namespace Ryona.Game
             ReleaseToken();
 
             // 正面拘束（Pin）を引き継いだときは、そのまま膝蹴りまで続ける。
-            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            var grapple = Player != null ? Hold : null;
             bool pin = grapple != null && grapple.Kind == GrappleKind.Pin;
             IsPinning = pin;
             _pinKneesLeft = pin ? Mathf.Max(1, CombatConstants.PinKneeCount) : 0;
@@ -198,7 +198,7 @@ namespace Ryona.Game
                 return false;
 
             if (_grapple == null)
-                _grapple = Player.GetComponent<PlayerGrapple>();
+                _grapple = Hold;
 
             if (IsPreparingHeldThrow)
                 return !CanTargetHeldThrow() || _grapple.Captor != _heldThrowCaptor;
@@ -268,7 +268,7 @@ namespace Ryona.Game
                 return false;
 
             if (_grapple == null)
-                _grapple = Player.GetComponent<PlayerGrapple>();
+                _grapple = Hold;
 
             // 回り込み直後は反対を向いていることがある。予備動作中は旋回を
             // 固定するため、向き直る前に攻撃を始めると必ず空振りになる。
@@ -385,7 +385,7 @@ namespace Ryona.Game
                 return false;
 
             if (_grapple == null)
-                _grapple = Player.GetComponent<PlayerGrapple>();
+                _grapple = Hold;
 
             if (_grapple == null || _grapple.IsGrappled)
                 return false;
@@ -417,7 +417,7 @@ namespace Ryona.Game
         {
             distance = 0f;
 
-            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            var grapple = Player != null ? Hold : null;
             if (grapple == null || grapple.IsGrappled)
                 return false;
 
@@ -465,7 +465,7 @@ namespace Ryona.Game
         /// </summary>
         bool TryWallPin(WallPinSite site)
         {
-            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            var grapple = Player != null ? Hold : null;
             if (grapple == null || grapple.IsGrappled)
                 return false;
 
@@ -534,7 +534,7 @@ namespace Ryona.Game
         /// <summary>ベアハッグの締め付け。掴んだまま HP を少し削る（ダウンは狙わない）。</summary>
         void DoBearHugSqueeze()
         {
-            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            var grapple = Player != null ? Hold : null;
             if (grapple == null || !grapple.IsGrappled || grapple.Captor != this
                 || grapple.Kind != GrappleKind.BearHug)
                 return;
@@ -566,7 +566,7 @@ namespace Ryona.Game
         /// </summary>
         void DoPinKnee()
         {
-            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            var grapple = Player != null ? Hold : null;
             if (grapple == null || !grapple.IsGrappled || grapple.Captor != this)
                 return;
 
@@ -647,6 +647,45 @@ namespace Ryona.Game
             _pinNextKneeAt = Time.time + 0.25f;
         }
 
+        /// <summary>
+        /// 二人・3 人がかりで打つ側が立つ位置と、彼女へ体を開く向き。
+        /// アシストと拘束役で同じ計算を使う（片方だけ直すと立ち位置がズレる）。
+        /// <paramref name="side"/> は +1 が彼女の左側（拘束役）、-1 が右側（アシスト）。
+        /// </summary>
+        void ResolveWallPunchSlot(PlayerGrapple hold, float side, out Vector3 spot, out Quaternion facing)
+        {
+            Vector3 her = hold.transform.position;
+            Vector3 forward = Vector3.ProjectOnPlane(hold.transform.forward, Vector3.up).normalized;
+
+            // 二人とも彼女の正面側へ立つ。横に並ぶと腹パンが横から棒で叩く形になる（実測）。
+            // 膝・蹴りの踏み込みに合わせて、横と前の持ち場を詰める。
+            float kneeStep = hold.WallSplitKick ? 0f
+                : Mathf.Max(hold.WallSplitKneeWeight(this), hold.WallSplitFaceStep(this));
+            float gap = Mathf.Lerp(CombatConstants.WallSplitStandGap, CombatConstants.WallSplitKneeGap, kneeStep);
+            float front = Mathf.Lerp(CombatConstants.WallSplitStandFront, CombatConstants.WallSplitKneeFront, kneeStep);
+            float lateral = side * gap;
+            float depth = front;
+
+            // 3 人がかりでは、打つ側は前の持ち場、待つ側は横の持ち場へ入る（3 人目と交代）。
+            if (hold.TryGetWallGangSlot(this, out float slotLateral, out float slotDepth))
+            {
+                lateral = Mathf.Lerp(slotLateral, CombatConstants.WallSplitKneeGap, kneeStep);
+                depth = Mathf.Lerp(slotDepth, CombatConstants.WallSplitKneeFront, kneeStep);
+            }
+
+            spot = her + Vector3.right * lateral + forward * depth;
+            spot.y = transform.position.y;
+
+            // 真横を向いたままだと、空き手が腹を横切って「太鼓を叩いている」画になる。
+            // カメラ（プレイヤー）側へ体を開いて、前から腹へ入る形にする。
+            Vector3 look = her - spot;
+            look.y = 0f;
+            facing = look.sqrMagnitude > 0.0004f
+                ? Quaternion.AngleAxis(-side * 15f, Vector3.up)
+                    * Quaternion.LookRotation(look.normalized, Vector3.up)
+                : transform.rotation;
+        }
+
         /// <summary>横の持ち場へ寄り、彼女の方を向く。着いたら ready を立てる。</summary>
         void UpdateWallAssist(float dt)
         {
@@ -657,44 +696,13 @@ namespace Ryona.Game
                 return;
             }
 
-            Vector3 her = hold.transform.position;
-            Vector3 forward = Vector3.ProjectOnPlane(hold.transform.forward, Vector3.up).normalized;
-            // 二人とも彼女の正面側へ立つ。横に並ぶと腹パンが横から棒で叩く形になる（実測）。
-            // 締めの膝入れは腹の真正面まで踏み込む。
-            // 蹴りは脚を伸ばして遠くから入れるので、膝のように踏み込まない。
-            float kneeStep = hold.WallSplitKick ? 0f
-                : Mathf.Max(hold.WallSplitKneeWeight(this), hold.WallSplitFaceStep(this));
-            float gap = Mathf.Lerp(CombatConstants.WallSplitStandGap, CombatConstants.WallSplitKneeGap, kneeStep);
-            float front = Mathf.Lerp(CombatConstants.WallSplitStandFront, CombatConstants.WallSplitKneeFront, kneeStep);
-            Vector3 spot = her
-                + Vector3.right * (_wallAssistSide * gap)
-                + forward * front;
-            spot.y = transform.position.y;
-
-            // 3 人がかり（最後の段階）の 3 人目は、打つときは前の持ち場、待つときは横の持ち場へ入る。
-            if (hold.TryGetWallGangSlot(this, out float slotLateral, out float slotDepth))
-            {
-                slotLateral = Mathf.Lerp(slotLateral, CombatConstants.WallSplitKneeGap, kneeStep);
-                slotDepth = Mathf.Lerp(slotDepth, CombatConstants.WallSplitKneeFront, kneeStep);
-                spot = her + Vector3.right * slotLateral + forward * slotDepth;
-                spot.y = transform.position.y;
-            }
+            ResolveWallPunchSlot(hold, _wallAssistSide, out Vector3 spot, out Quaternion facing);
 
             // 持ち場へは小走りで寄る（通常の移動速度だと間に合わない）。
             float speed = Mathf.Max(2.4f, MoveSpeed * State.MoveSpeedMultiplier);
             transform.position = Vector3.MoveTowards(transform.position, spot, speed * dt);
-
-            Vector3 look = her - transform.position;
-            look.y = 0f;
-            if (look.sqrMagnitude > 0.0004f)
-            {
-                // 真横を向いたままだと、空き手が腹を横切って「太鼓を叩いている」画になる。
-                // カメラ（プレイヤー）側へ体を開いて、前から腹へ入る形にする。
-                Quaternion facing = Quaternion.LookRotation(look.normalized, Vector3.up);
-                facing = Quaternion.AngleAxis(-_wallAssistSide * 15f, Vector3.up) * facing;
-                transform.rotation = Quaternion.Slerp(transform.rotation, facing,
-                    1f - Mathf.Exp(-10f * dt));
-            }
+            transform.rotation = Quaternion.Slerp(transform.rotation, facing,
+                1f - Mathf.Exp(-10f * dt));
 
             if (!_wallAssistReady && (transform.position - spot).sqrMagnitude < 0.02f)
             {
@@ -709,41 +717,13 @@ namespace Ryona.Game
         /// </summary>
         void UpdateWallSplitCaptor(float dt, PlayerGrapple hold)
         {
-            Vector3 her = hold.transform.position;
-            Vector3 forward = Vector3.ProjectOnPlane(hold.transform.forward, Vector3.up).normalized;
-            // 蹴りは脚を伸ばして遠くから入れるので、膝のように踏み込まない。
-            float kneeStep = hold.WallSplitKick ? 0f
-                : Mathf.Max(hold.WallSplitKneeWeight(this), hold.WallSplitFaceStep(this));
-            float gap = Mathf.Lerp(CombatConstants.WallSplitStandGap, CombatConstants.WallSplitKneeGap, kneeStep);
-            float front = Mathf.Lerp(CombatConstants.WallSplitStandFront, CombatConstants.WallSplitKneeFront, kneeStep);
-            Vector3 spot = her
-                + Vector3.right * gap
-                + forward * front;
-            spot.y = transform.position.y;
-
-            // 3 人がかりでは、拘束役も打つ側として前へ入り、待つ側として横へ下がる（3 人目と交代）。
-            if (hold.TryGetWallGangSlot(this, out float slotLateral, out float slotDepth))
-            {
-                slotLateral = Mathf.Lerp(slotLateral, CombatConstants.WallSplitKneeGap, kneeStep);
-                slotDepth = Mathf.Lerp(slotDepth, CombatConstants.WallSplitKneeFront, kneeStep);
-                spot = her + Vector3.right * slotLateral + forward * slotDepth;
-                spot.y = transform.position.y;
-            }
+            ResolveWallPunchSlot(hold, 1f, out Vector3 spot, out Quaternion facing);
 
             // 押さえつけ中は移動速度倍率が 0 のことがあるので、位置合わせは定速で行う。
             float speed = Mathf.Max(hold.IsWallGangActive ? 2.4f : 1.2f, MoveSpeed);
             transform.position = Vector3.MoveTowards(transform.position, spot, speed * dt);
-
-            Vector3 look = her - transform.position;
-            look.y = 0f;
-            if (look.sqrMagnitude > 0.0004f)
-            {
-                // アシストと同じく、カメラ（プレイヤー）側へ体を開く。
-                Quaternion facing = Quaternion.LookRotation(look.normalized, Vector3.up);
-                facing = Quaternion.AngleAxis(-15f, Vector3.up) * facing;
-                transform.rotation = Quaternion.Slerp(transform.rotation, facing,
-                    1f - Mathf.Exp(-10f * dt));
-            }
+            transform.rotation = Quaternion.Slerp(transform.rotation, facing,
+                1f - Mathf.Exp(-10f * dt));
         }
 
         /// <summary>二人がかりの腹パン 1 発。見た目は空き手のポーズ側が作る。</summary>

@@ -35,7 +35,7 @@ namespace Ryona.Game
         {
             if (IsHolding && Player != null)
             {
-                var hold = Player.GetComponent<PlayerGrapple>();
+                var hold = Hold;
                 if (hold != null && hold.IsGrappled && hold.Captor == this)
                     hold.Release();
                 IsHolding = false;
@@ -73,11 +73,11 @@ namespace Ryona.Game
             switch (tier)
             {
                 case StaggerTier.Small:
-                    return StaggerSecondsSmall > 0f ? StaggerSecondsSmall : CombatConstants.StunSmall;
+                    return S.StaggerSecondsSmall > 0f ? S.StaggerSecondsSmall : CombatConstants.StunSmall;
                 case StaggerTier.Medium:
-                    return StaggerSecondsMedium > 0f ? StaggerSecondsMedium : CombatConstants.StunMedium;
+                    return S.StaggerSecondsMedium > 0f ? S.StaggerSecondsMedium : CombatConstants.StunMedium;
                 case StaggerTier.Large:
-                    return StaggerSecondsLarge > 0f ? StaggerSecondsLarge : CombatConstants.StunLarge;
+                    return S.StaggerSecondsLarge > 0f ? S.StaggerSecondsLarge : CombatConstants.StunLarge;
                 default:
                     return 0f;
             }
@@ -133,7 +133,7 @@ namespace Ryona.Game
             ClearGrappleState(clearAttackState: true, resetKneeTimer: true);
             _pinOrder = false;
             _bearHugOrder = false;
-            _riseTimer = RiseSeconds * UnityEngine.Random.Range(1f, 1.4f);   // 見た目はここから起き上がる（少しずつずらす）
+            _riseTimer = S.RiseSeconds * UnityEngine.Random.Range(1f, 1.4f);   // 見た目はここから起き上がる（少しずつずらす）
 
             Phase = EnemyPhase.Chase;
             enabled = true;
@@ -145,7 +145,7 @@ namespace Ryona.Game
 
             RegisterGroup();
 
-            GameLog.Log($"[Enemy] revive {name} hp={State.Hp:F0} rise={RiseSeconds:F2}s");
+            GameLog.Log($"[Enemy] revive {name} hp={State.Hp:F0} rise={S.RiseSeconds:F2}s");
         }
 
         // --- グループ連携 --------------------------------------------------------

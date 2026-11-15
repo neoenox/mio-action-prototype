@@ -189,6 +189,25 @@ namespace Ryona.Game
             [Tooltip("着弾判定の余裕 m。見た目と当たり判定のズレを吸収する")]
             public float StrikeTolerance = 0.35f;
 
+            [Tooltip("予備動作まで見せてから振らずに引く確率（0 で無効）。1 回の接近につき 1 度だけ")]
+            [Range(0f, 1f)] public float FeintChance = 0.22f;
+
+            [Tooltip("フェイント後に再び踏み込むまでの秒数。短いほど「二度撃ち」に見える")]
+            public float FeintDelaySeconds = 0.45f;
+
+            [Tooltip("彼女の体との最小距離（m）。0 以下なら押し出さない")]
+            public float MinPlayerGap = 0f;
+
+            [Header("Damage")]
+            [Tooltip("Jab のダメージ")]
+            public float JabDamage = 3f;
+
+            [Tooltip("Heavy のダメージ。ひるみは AttackLibrary.Heavy の値を使う")]
+            public float HeavyDamage = 7f;
+
+            [Tooltip("Break のダメージ")]
+            public float BreakDamage = 5f;
+
             [Header("Strafe")]
             [Tooltip("横回りを続ける秒数の基準値。実際は 0.75〜1.25 倍でばらつく")]
             public float StrafeSeconds = 1.1f;
@@ -221,11 +240,20 @@ namespace Ryona.Game
             public float StaggerSecondsMedium = 0.4f;
             public float StaggerSecondsLarge = 0.8f;
 
+            [Tooltip("立ち上がりにかける秒数")]
+            public float RiseSeconds = 1.6f;
+
             [Header("Punch Zone")]
             [Range(0f, 1f)] public float JabFaceChance = 0.65f;
             [Range(0f, 1f)] public float HeavyFaceChance = 0.35f;
             [Tooltip("拳が狙いの座標にこの距離まで届いたら当たり（m）")]
             public float PunchHitRadius = 0.3f;
+
+            /// <summary>
+            /// 個体ごとの実行時コピーを作る。敵はアセットを直接書き換えず、
+            /// このコピーを <see cref="EnemyBrain"/> が持つ（テストの個体別調整のため）。
+            /// </summary>
+            public EnemySettings Clone() => (EnemySettings)MemberwiseClone();
         }
 
         /// <summary>敵の被弾演出（<see cref="EnemyReaction"/>）の調整値。</summary>

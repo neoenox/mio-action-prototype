@@ -34,9 +34,7 @@ namespace Ryona.Game
             // --- 目標姿勢を組み立てる ---------------------------------
 
             // 掴まれている最中か（姿勢の分岐と踏み込みの両方が見る）。
-            var holdState = Brain != null && Brain.Player != null
-                ? Brain.Player.GetComponent<PlayerGrapple>()
-                : null;
+            var holdState = Brain != null ? Brain.Hold : null;
 
             var pose = BuildTargetPose(dt, instant, phase, speed, holdState);
             ApplyPoseTarget(pose, dt, instant, phase, holdState);
@@ -420,7 +418,7 @@ namespace Ryona.Game
             BuildPushPose(ref pose, phase, holdState, restY);
             BuildCatchPose(ref pose, phase, holdState, restY);
             BuildHugPinPose(ref pose, phase, holdState, restY);
-            BuildWallSplitKneePose(ref pose);
+            BuildWallSplitKneePose(ref pose, holdState);
             BuildGetUpPose(ref pose, phase, holdState, restY, out grabbing);
         }
 
@@ -491,8 +489,7 @@ namespace Ryona.Game
                     pose.KneeL = Mathf.Lerp(22f, 10f, retract);
                     pose.LegRPitch = 0f;
                     pose.LegLPitch = 0f;
-                    var hold = Brain != null && Brain.Player != null
-                        ? Brain.Player.GetComponent<PlayerGrapple>() : null;
+                    var hold = holdState;
                     if (holding && hold != null && hold.Kind == GrappleKind.Back)
                     {
                         pose.ArmRPitch = -78f;
@@ -768,7 +765,7 @@ namespace Ryona.Game
             // ベアハッグ: 胴を抱え込むので上体を前へ寄せ、膝を落として締める。
             if (Brain != null && Brain.IsBearHugging)
             {
-                var hug = Brain.Player.GetComponent<PlayerGrapple>();
+                var hug = holdState;
                 float progress = hug != null ? Mathf.Clamp01(hug.Progress) : 0f;
                 float lift = hug != null ? hug.LiftPulse : 0f;
                 float squeeze = hug != null ? hug.SqueezePulse : 0f;
@@ -787,7 +784,7 @@ namespace Ryona.Game
             // もがかれるほど押し返されて上体が起こされる（振りほどきが効いているのが見える）。
             if (Brain != null && Brain.IsPinning)
             {
-                var pin = Brain.Player.GetComponent<PlayerGrapple>();
+                var pin = holdState;
                 float progress = pin != null ? Mathf.Clamp01(pin.Progress) : 0f;
                 pose.TorsoPitch += Mathf.Lerp(12f, -6f, progress);
                 pose.HipsY -= 0.06f;
@@ -856,12 +853,12 @@ namespace Ryona.Game
         /// 腰を沈めて骨盤を彼女の腹の中心線へずらし、カメラ側の膝を引き上げる
         /// （奥の脚だと自分の体に隠れる）。
         /// </summary>
-        void BuildWallSplitKneePose(ref PoseTarget pose)
+        void BuildWallSplitKneePose(ref PoseTarget pose, PlayerGrapple holdState)
         {
             if (Brain == null || Brain.Player == null)
                 return;
 
-            var hold = Brain.Player.GetComponent<PlayerGrapple>();
+            var hold = holdState;
             float coil = hold != null ? hold.WallSplitKneeWeight(Brain) : 0f;
             float thrust = hold != null ? hold.WallSplitKneeThrust(Brain) : 0f;
             if (coil <= 0f && thrust <= 0f)

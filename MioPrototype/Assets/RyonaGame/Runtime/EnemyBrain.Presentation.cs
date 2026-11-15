@@ -31,15 +31,15 @@ namespace Ryona.Game
 
             float grow = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t));
 
-            float maxScale = Mathf.Max(0.01f, TelegraphMaxScale);
-            float minScale = Mathf.Clamp(TelegraphStartScale, 0.01f, maxScale);
+            float maxScale = Mathf.Max(0.01f, S.TelegraphMaxScale);
+            float minScale = Mathf.Clamp(S.TelegraphStartScale, 0.01f, maxScale);
             float scale = Mathf.Lerp(minScale, maxScale, grow);
 
-            if (_timer <= Mathf.Max(0f, TelegraphMaxHoldSeconds))
+            if (_timer <= Mathf.Max(0f, S.TelegraphMaxHoldSeconds))
                 scale = maxScale;
 
             Telegraph.localScale = _baseTelegraphScale * scale;
-            ApplyTelegraphColor(Color.Lerp(TelegraphStartColor, TelegraphColor, grow));
+            ApplyTelegraphColor(Color.Lerp(S.TelegraphStartColor, S.TelegraphColor, grow));
         }
 
         void EnsureTelegraphMaterial()
@@ -66,16 +66,5 @@ namespace Ryona.Game
                 _telegraphMaterial.SetColor(BaseColorId, color);
         }
 
-#if UNITY_EDITOR
-        void OnValidate()
-        {
-            if (TelegraphMaxScale < 0.01f)
-                TelegraphMaxScale = 0.01f;
-            if (StrafeSpeedScale < 0f)
-                StrafeSpeedScale = 0f;
-            if (MoveSpeed < 0f)
-                MoveSpeed = 0f;
-        }
-#endif
     }
 }
