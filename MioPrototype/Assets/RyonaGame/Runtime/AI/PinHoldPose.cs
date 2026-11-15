@@ -262,7 +262,8 @@ namespace Ryona.Game
                         Vector3 mid = Vector3.Lerp(her, him, 0.45f);
                         // 顔も同じ画に入れる（カメラは彼女の顔が映ることを前提にする）。
                         // 腹と膝だけに寄ると顔が上で切れる。
-                        Vector3 herFace = player.position + Vector3.up * 1.42f;                        Vector3 axis = Vector3.ProjectOnPlane(him - her, Vector3.up);
+                        Vector3 herFace = player.position + Vector3.up * 1.42f;
+                        Vector3 axis = Vector3.ProjectOnPlane(him - her, Vector3.up);
                         if (axis.sqrMagnitude < 1e-4f)
                             axis = Vector3.ProjectOnPlane(player.forward, Vector3.up);
                         axis.Normalize();
@@ -276,7 +277,11 @@ namespace Ryona.Game
                             side = -side;
 
                         Vector3 lookAtFace = Vector3.Lerp(herFace, mid, 0.45f);
-                        Vector3 shot = mid + side * 2.10f + Vector3.up * 0.42f - axis * 0.15f;
+                        // 真横だと彼女の背中側になり、彼の体で膝が隠れる。正面すぎると
+                        // 彼が彼女を覆う。二人の関係軸から 45° の斜め正面に置き、
+                        // 彼女の顔・腹と、入る膝を同じ画に収める。
+                        // axis は「彼女 → 彼」の向き。+axis 側が彼女の正面。
+                        Vector3 shot = mid + side * 1.55f + axis * 1.55f + Vector3.up * 0.45f;
                         _camera.RequestCinematicShot(
                             Vector3.Lerp(_normalShotPos, shot, k),
                             Vector3.Lerp(_normalShotTarget, lookAtFace, k));
