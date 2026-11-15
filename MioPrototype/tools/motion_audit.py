@@ -81,6 +81,51 @@ def report(d: Path, top: int, threshold: float | None) -> float:
     return ratio
 
 
+def audit_sheet(path: Path, rows: int, cols: int, top: int) -> float:
+    """Editor の合成シート（1 枚に複数コマ）を、行ごとのコマ間差分で監査する。
+
+    合成シートは「サンプリングした時刻を並べたもの」なので、隣り合うコマの差が
+    極端に小さい区間は「動きが止まって見える」候補になる。
+    """
+    from PIL import Image, ImageChops, ImageStat
+
+    im = Image.open(path).convert("L")
+    w, h = im.size
+    cw, ch = w // cols, h // rows
+    print(f"{Path(path).name}  {w}x{h}  {rows}行 x {cols}列（1 コマ {cw}x{ch}）")
+
+    worst_ratio = 0.0
+    grid = []
+    for r in range(rows):
+        row = []
+        for c in range(cols):
+            box = (c * cw, r * ch, (c + 1) * cw, (r + 1) * ch)
+            row.append(im.crop(box).resize((160, 90), Image.BILINEAR))
+        grid.append(row)
+
+    for r in range(rows):
+        diffs = [ImageStat.Stat(ImageChops.difference(grid[r][c], grid[r][c + 1])).mean[0]
+                 for c in range(cols - 1)]
+        if not diffs:
+            continue
+        avg = sum(diffs) / len(diffs)
+        print(f"  {r + 1} 行目（視点の違い）: 平均差 {avg:.2f}  " +
+              " ".join(f"{d:.1f}" for d in diffs))
+
+    if rows > 1:
+        for c in range(cols):
+            diffs = [ImageStat.Stat(ImageChops.difference(grid[r][c], grid[r + 1][c])).mean[0]
+                     for r in range(rows - 1)]
+            avg = sum(diffs) / len(diffs)
+            print(f"  {c + 1} 列目（時間の変化）: 平均差 {avg:.2f}  " +
+                  " ".join(f"{d:.1f}" for d in diffs))
+            for r, dv in enumerate(diffs):
+                if avg > 0.5 and dv < avg * 0.25:
+                    print(f"    ほぼ同じ: {r + 1}行目→{r + 2}行目（差 {dv:.2f} / 平均 {avg:.2f}）")
+
+    return worst_ratio
+
+
 def strip(d: Path, a: int, b: int, out: Path) -> None:
     from PIL import Image, ImageDraw
 
@@ -142,6 +187,9 @@ def main() -> int:
     parser.add_argument("--compare", nargs=2, metavar=("BEFORE", "AFTER"), help="2 つを比べる")
     parser.add_argument("--strip", nargs=2, type=int, metavar=("START", "END"),
                         help="その区間を 1 枚に並べる（1 つ目の dir に対して）")
+    parser.add_argument("--sheet", help="Editor の合成シート（1 枚に複数コマ）を監査する")
+    parser.add_argument("--rows", type=int, default=1, help="--sheet の行数")
+    parser.add_argument("--cols", type=int, default=1, help="--sheet の列数")
     parser.add_argument("--list", action="store_true", help="直近のキャプチャ一覧")
     parser.add_argument("-o", "--out", default="strip.png", help="--strip の出力名")
     args = parser.parse_args()
@@ -163,6 +211,10 @@ def main() -> int:
 
     if args.compare:
         return compare(Path(args.compare[0]), Path(args.compare[1]))
+
+    if args.sheet:
+        audit_sheet(Path(args.sheet), args.rows, args.cols, args.top)
+        return 0
 
     if not args.dirs:
         parser.print_help()
