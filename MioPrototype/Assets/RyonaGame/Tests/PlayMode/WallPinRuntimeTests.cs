@@ -347,6 +347,12 @@ namespace Ryona.Tests
         }
 
         /// <summary>壁の前（レーン上）に彼女と押さえ役を置く。</summary>
+        static float HeightOf(EnemyBrain enemy)
+        {
+            var figure = enemy != null ? enemy.GetComponent<EnemyFigure>() : null;
+            return figure != null ? figure.Height : float.MaxValue;
+        }
+
         IEnumerator Load(bool withAssist = false, bool withThird = false)
         {
             yield return TestScene.LoadPrototype();
@@ -360,27 +366,39 @@ namespace Ryona.Tests
             var enemies = Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None);
             Assert.GreaterOrEqual(enemies.Length, 1, "押さえ役が必要");
 
+            // 拘束役は「最も背の低い敵」に固定する。FindObjectsByType の順序は
+            // シーンの読み直しで変わるため、enemies[0] のままだと背の高い/低いが入れ替わり、
+            // 壁カメラに対する顔の可視率が実行ごとに 66% / 84% と変わってしまう（実測）。
             _captor = enemies[0];
-            _assist = null;
-            _third = null;
-            for (int i = 1; i < enemies.Length; i++)
+            float captorHeight = HeightOf(_captor);
+            foreach (var enemy in enemies)
             {
-                // 3 人がかりのテストでは、3 体目も残す。
-                if (withThird && i == 2)
+                float height = HeightOf(enemy);
+                if (height < captorHeight)
                 {
-                    _third = enemies[i];
-                    enemies[i].enabled = true;
-                    continue;
+                    _captor = enemy;
+                    captorHeight = height;
                 }
+            }
 
-                // 二体がかりのテストでは、2 体目だけ残して横に立たせる。
-                if (withAssist && i == 1)
-                {
-                    _assist = enemies[i];
-                    enemies[i].enabled = true;
+            var others = new System.Collections.Generic.List<EnemyBrain>();
+            foreach (var enemy in enemies)
+            {
+                if (enemy != null && enemy != _captor)
+                    others.Add(enemy);
+            }
+
+            _assist = withAssist && others.Count > 0 ? others[0] : null;
+            _third = withThird && others.Count > 1 ? others[1] : null;
+
+            foreach (var enemy in enemies)
+            {
+                if (enemy == null)
                     continue;
-                }
-                enemies[i].enabled = false;
+
+                enemy.enabled = enemy == _captor || enemy == _assist || enemy == _third;
+                if (enemy != _captor)
+                    enemy.CanPin = false;
             }
 
             // 無効化した敵が攻撃トークンを持ったままだと、押さえ役が予備動作に入れない。

@@ -205,6 +205,15 @@ namespace Ryona.Game
                     Vector3 mid = Vector3.Lerp(her, him, 0.45f);
                     float knee = Mathf.SmoothStep(0f, 1f, hold.KneePulse);
                     Vector3 offset = Vector3.Lerp(WallHeldShot, WallKneeShot, knee);
+
+                    // 背の低い拘束役は、彼の頭と肩が彼女の顔の高さに来て顔を隠す。
+                    // カメラを彼女の側へ寄せて、彼の体の横から顔を覗く。
+                    // 1.79m 以上は従来のまま（Enemy 2 / 3）、1.72m で最大。
+                    float shortT = _figure != null
+                        ? Mathf.InverseLerp(1.79f, 1.72f, _figure.Height)
+                        : 0f;
+                    offset += new Vector3(0.65f, -0.15f, 0.55f) * shortT;
+
                     _camera.RequestCinematicShot(mid + offset, mid);
                     return;
                 }
