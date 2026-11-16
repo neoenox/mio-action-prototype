@@ -117,6 +117,23 @@ namespace Ryona.Game
             }
         }
 
+        /// <summary>髪を掴んでいる敵の手（ワールド）。</summary>
+        internal Vector3 GrabHand
+        {
+            get
+            {
+                if (_figure != null)
+                {
+                    Transform wrist = _figure.WristBone(EnemyLeftArm);
+                    if (wrist != null)
+                        return wrist.position;
+                }
+                return TargetRig != null
+                    ? TargetRig.Head.position + Vector3.up * 0.15f
+                    : transform.position + Vector3.up;
+            }
+        }
+
         /// <summary>手首を掴む敵の肩（ワールド）。</summary>
         internal Vector3 EnemyShoulder
         {
@@ -285,7 +302,7 @@ namespace Ryona.Game
         {
             // 頭側へ立つ。髪を掴む手が届き、彼女の顔も画に入る。
             Vector3 head = TargetRig.Head.position;
-            Vector3 spot = head + _axis * 0.05f + _flank * (0.45f + pull);
+            Vector3 spot = head + _axis * 0.05f + _flank * (0.35f + pull);
             spot.y = Attacker.transform.position.y;
             return spot;
         }
@@ -359,7 +376,7 @@ namespace Ryona.Game
                 Yank = 1f;
             }
 
-            Follow(Spot(PullBack * Mathf.Sin(Mathf.PI * Mathf.Clamp01(u * 1.3f))), dt, 18f);
+            Follow(Spot(PullBack * Mathf.Sin(Mathf.PI * Mathf.Clamp01(u * 1.3f))), dt, 26f);
 
             if (u >= 1f)
                 BeginStage(Beat.Release, ReleaseSeconds);
@@ -429,6 +446,7 @@ namespace Ryona.Game
                 GrappleKind kind = prone ? GrappleKind.Pin : GrappleKind.Back;
                 _animator?.BeginHaulDaze(0.8f);
                 _grapple.Begin(enemy, kind);
+                _grapple.HaulHandoff = true;
                 enemy.TakeOverHold(float.PositiveInfinity);
                 GameLog.Log($"[Haul] hand off to {kind} {enemy.name}");
             }

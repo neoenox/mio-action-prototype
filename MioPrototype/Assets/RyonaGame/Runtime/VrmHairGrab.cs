@@ -16,6 +16,7 @@ namespace Ryona.Game
     {
         readonly List<Transform> _roots = new List<Transform>();
         readonly List<Quaternion> _rest = new List<Quaternion>();
+        readonly List<Transform> _tips = new List<Transform>();
 
         Vrm10Instance _vrm;
         PlayerStats _player;
@@ -58,6 +59,25 @@ namespace Ryona.Game
                 Quaternion target = Quaternion.AngleAxis(-(angle + jitter), axis.normalized) * _rest[i];
                 root.localRotation = Quaternion.Slerp(root.localRotation, target, 0.35f);
             }
+
+            // 根だけでなく毛先も掴んだ手へ寄せる。手を当てただけでは髪が動かないので、
+            // シミュレーション後の位置を手へ少しずつ寄せ、引っ張られている形を作る。
+            Vector3 hand = haul.GrabHand;
+            float k = 1f - Mathf.Exp(-9f * Time.unscaledDeltaTime);
+            for (int i = 0; i < _tips.Count; i++)
+            {
+                Transform tip = _tips[i];
+                if (tip == null)
+                    continue;
+
+                float distance = Vector3.Distance(tip.position, hand);
+                float falloff = Mathf.Clamp01(1f - distance / 0.55f);
+                if (falloff <= 0.001f)
+                    continue;
+
+                Vector3 delta = hand + Vector3.up * 0.03f - tip.position;
+                tip.position += delta * (weight * falloff * k * 0.6f);
+            }
         }
 
         GroundHaulUp ResolveHaul()
@@ -82,6 +102,7 @@ namespace Ryona.Game
 
             _roots.Clear();
             _rest.Clear();
+            _tips.Clear();
             for (int i = 0; i < joints.Length; i++)
             {
                 var joint = joints[i];
@@ -90,7 +111,10 @@ namespace Ryona.Game
 
                 Transform parent = joint.transform.parent;
                 if (parent != null && parent.GetComponent<VRM10SpringBoneJoint>() != null)
-                    continue;      // 毛束の途中ではなく根だけ
+                {
+                    _tips.Add(joint.transform);   // 毛束の途中。手へ寄せる側
+                    continue;
+                }
 
                 _roots.Add(joint.transform);
                 _rest.Add(joint.transform.localRotation);

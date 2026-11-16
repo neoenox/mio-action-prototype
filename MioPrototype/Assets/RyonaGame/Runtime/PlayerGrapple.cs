@@ -331,6 +331,9 @@ namespace Ryona.Game
         /// <summary>掴まれているか。</summary>
         public bool IsGrappled { get; private set; }
 
+        /// <summary>引き起こしから直接入った拘束か。入った直後は腕を下ろしたままにする。</summary>
+        internal bool HaulHandoff { get; set; }
+
         /// <summary>突き飛ばしから受け止めまで。新しい拘束はまだ始まっていない。</summary>
         public bool IsHandingOff { get; private set; }
 

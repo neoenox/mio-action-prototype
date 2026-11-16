@@ -278,13 +278,11 @@ namespace Ryona.Game
         }
 
         /// <summary>起き上がり。手をつく → 片膝 → 立ち。</summary>
-        PoseValues PoseGetUp()
+        PoseValues PoseGetUp(float uOverride = -1f)
         {
             var pose = PoseDefaults();
             // 倒れた姿勢から、横に転がって上体を起こし、立ち上がる。
-            float u = _stateDuration > 100f
-                ? 1f
-                : Mathf.Clamp01(_stateTime / Mathf.Max(0.01f, _stateDuration));
+            float u = uOverride >= 0f ? Mathf.Clamp01(uOverride) : (_stateDuration > 100f ? 1f : Mathf.Clamp01(_stateTime / Mathf.Max(0.01f, _stateDuration)));
 
             // うつ伏せからの起き上がりは別物:
             //   1) 両手を頭の横について上体を押し上げる

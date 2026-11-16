@@ -87,7 +87,7 @@ namespace Ryona.Game
                 _ => PoseDefaults(),
             };
 
-            if (_state == State.Grabbed && Time.time < _haulDazeUntil)
+            if (_state == State.Grabbed && (Time.time < _haulDazeUntil || (Grapple != null && Grapple.HaulHandoff)))
 
                 ApplyHaulDaze(ref pose);
 

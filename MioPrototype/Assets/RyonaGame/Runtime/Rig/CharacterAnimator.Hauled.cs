@@ -17,6 +17,11 @@ namespace Ryona.Game
 
         PoseValues PoseHauled(GroundHaulUp haul)
         {
+            // うつ伏せは仰向けの「横に転がる」曲線を使うと体がひねれて崩れる。
+            // 自力でうつ伏せから起きる PoseGetUp の脚・腰を借り、腕と首だけ髪を掴まれた形にする。
+            if (_downForward)
+                return PoseHauledProne(haul);
+
             // 寝た姿勢（と、その終わりの値）は毎フレーム作る。持ち上がる前はこれがそのまま出る。
             var down = PoseDown();
             float lift = haul.Lift;
@@ -97,6 +102,41 @@ namespace Ryona.Game
             // 持ち上がり始めるまでは寝た姿勢のまま。
             float enter = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, 0.12f, lift));
             return LerpPose(down, pose, enter);
+        }
+
+        /// <summary>うつ伏せからの引き起こし。脚と腰は PoseGetUp に任せ、腕・首だけ髪を掴まれた形にする。</summary>
+        PoseValues PoseHauledProne(GroundHaulUp haul)
+        {
+            float lift = haul.Lift;
+            float yank = haul.Yank;
+            float side = haul.GrabbedLeftSide ? -1f : 1f;
+            var pose = PoseGetUp(lift);
+
+            Vector3 reachUpper = new Vector3(0.30f, 0.90f, 0.18f);
+            Vector3 reachFore = new Vector3(0.28f, 0.88f, 0.24f);
+            pose.ArmLUpper = Vector3.Lerp(DownArmLUpper, reachUpper, lift);
+            pose.ArmLFore = Vector3.Lerp(DownArmLFore, reachFore, lift);
+            pose.ArmRUpper = Vector3.Lerp(DownArmRUpper, Mirror(reachUpper), lift);
+            pose.ArmRFore = Vector3.Lerp(DownArmRFore, Mirror(reachFore), lift);
+
+            pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -10f, lift) - 30f * yank;
+            pose.HeadRoll = -side * (10f * lift + 18f * yank);
+            pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, 8f, lift) + 10f * yank;
+            pose.HipsOffset.y += 0.05f * yank;
+
+            float release = (1f - Mathf.Clamp01(haul.Grip))
+                            * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.85f, 1f, lift));
+            if (release > 0f)
+            {
+                pose.ArmLUpper = Vector3.Lerp(pose.ArmLUpper, new Vector3(0.18f, -0.96f, 0.04f), release);
+                pose.ArmLFore = Vector3.Lerp(pose.ArmLFore, new Vector3(0.06f, -0.95f, 0.15f), release);
+                pose.ArmRUpper = Vector3.Lerp(pose.ArmRUpper, new Vector3(-0.18f, -0.96f, 0.04f), release);
+                pose.ArmRFore = Vector3.Lerp(pose.ArmRFore, new Vector3(-0.06f, -0.95f, 0.15f), release);
+                pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, -24f, release);
+                pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, 18f, release);
+            }
+
+            return pose;
         }
 
         /// <summary>髪を掴まれている敵の手首へ、両手で縋る。</summary>

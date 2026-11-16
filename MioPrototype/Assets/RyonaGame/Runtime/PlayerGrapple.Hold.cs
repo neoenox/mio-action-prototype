@@ -11,6 +11,8 @@ namespace Ryona.Game
             if (IsGrappled || Stats == null || Stats.IsDead)
                 return;
 
+            HaulHandoff = false;
+
             // 前の壁押さえつけから戻っている途中なら、ここでレーンへ戻しきる。
             if (!IsWallPin && _wallExitRemaining > 0f)
                 ClearWallExit();

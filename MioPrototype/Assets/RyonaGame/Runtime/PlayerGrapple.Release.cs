@@ -25,6 +25,7 @@ namespace Ryona.Game
             }
 
             IsGrappled = false;
+            HaulHandoff = false;
             FrontEscapeEffort = 0f;
             _frontEffortHold = 0f;
             _grabContactRemaining = 0f;
