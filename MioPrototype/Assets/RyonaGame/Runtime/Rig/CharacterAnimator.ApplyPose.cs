@@ -246,8 +246,7 @@ namespace Ryona.Game
                 ApplyGroundMountReaction(Stats.GroundMount);
 
             if (HauledNow)
-                ApplyHauledArm(Stats.GroundMount.Haul);
-
+    
             // 状態が切り替わった直後は、切り替え前の姿勢から寄せる（カクつき防止）
             if (_blend < 1f)
             {

@@ -24,8 +24,8 @@ namespace Ryona.Game
         internal enum Beat { Idle, Approach, Grab, Haul, Release, Settle }
 
         const int EscapeInputs = 6;
-        const float GrabSeconds = 0.65f;
-        const float HaulSeconds = 1.25f;
+        const float GrabSeconds = 0.70f;
+        const float HaulSeconds = 1.10f;
         const float ReleaseSeconds = 0.50f;
         const float SettleSeconds = 0.40f;
 
@@ -379,7 +379,7 @@ namespace Ryona.Game
             Follow(Spot(PullBack * Mathf.Sin(Mathf.PI * Mathf.Clamp01(u * 1.3f))), dt, 26f);
 
             if (u >= 1f)
-                BeginStage(Beat.Release, ReleaseSeconds);
+                BeginStage(Beat.Settle, SettleSeconds);
         }
 
         void TickRelease(float dt)
@@ -444,9 +444,7 @@ namespace Ryona.Game
                 // Begin（BeginContact ではなく）で直接拘束へ入る。ハンドオフの「手を離して
                 // 受け直す」姿勢を挟むと、髪から離した手がもう一度頭へ行くように見える。
                 GrappleKind kind = prone ? GrappleKind.Pin : GrappleKind.Back;
-                _animator?.BeginHaulDaze(30f);
                 _grapple.Begin(enemy, kind);
-                _grapple.HaulHandoff = true;
                 enemy.TakeOverHold(float.PositiveInfinity);
                 GameLog.Log($"[Haul] hand off to {kind} {enemy.name}");
             }

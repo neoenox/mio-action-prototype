@@ -52,39 +52,22 @@ namespace Ryona.Game
             pose.TorsoRoll = -side * (16f * drag + 8f * stand);
             pose.TorsoYaw = side * 10f * drag;
 
-            // 首: 髪を掴まれて上へ引かれるので、立っても頭は後ろへ残る。
-            pose.HeadPitch = -30f * drag - 8f * stand - 34f * yank;
+            // 首は力なく垂れる。脇を抱えられているだけなので、頭を引かれる形にはしない。
+            pose.HeadPitch = -8f * drag + 14f * stand;
             pose.HeadYaw = -side * 6f;
-            pose.HeadRoll = -side * (12f * stand + 18f * yank);
+            pose.HeadRoll = -side * 8f * stand;
 
-            // 両腕は自由。髪を掴んでいる敵の手首へ縋る（下地は頭の上へ伸ばす）。
-            Vector3 reachUpper = new Vector3(0.30f, 0.90f, 0.18f);
-            Vector3 reachFore = new Vector3(0.28f, 0.88f, 0.24f);
-            pose.ArmLUpper = Vector3.Lerp(DownArmLUpper, reachUpper, sit);
-            pose.ArmLFore = Vector3.Lerp(DownArmLFore, reachFore, sit);
-            pose.ArmRUpper = Vector3.Lerp(DownArmRUpper, Mirror(reachUpper), sit);
-            pose.ArmRFore = Vector3.Lerp(DownArmRFore, Mirror(reachFore), sit);
+            // 腕は脱力して垂れる。抱え上げられるので、自分では掴まらない。
+            Vector3 hangUpper = new Vector3(0.20f, -0.95f, 0.05f);
+            Vector3 hangFore = new Vector3(0.06f, -0.95f, 0.15f);
+            pose.ArmLUpper = Vector3.Lerp(DownArmLUpper, hangUpper, sit);
+            pose.ArmLFore = Vector3.Lerp(DownArmLFore, hangFore, sit);
+            pose.ArmRUpper = Vector3.Lerp(DownArmRUpper, Mirror(hangUpper), sit);
+            pose.ArmRFore = Vector3.Lerp(DownArmRFore, Mirror(hangFore), sit);
             pose.Grip = 0.12f;
 
-            // 脚: 髪に引かれながら、自分で足を踏ん張って立ち上がる（引きずられない）。
-            float plant = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.18f, 0.90f, lift));
-            pose.FootL = Vector3.Lerp(pose.FootL, StanceFootL, plant);
-            pose.FootR = Vector3.Lerp(pose.FootR, StanceFootR, plant);
-            pose.FootPitchL = 0f;
-            pose.FootPitchR = 0f;
-
-            // 髪を離された直後: 少し前かがみに崩れ、腕も下ろす。
-            float release = (1f - Mathf.Clamp01(haul.Grip))
-                            * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.85f, 1f, lift));
-            if (release > 0f)
-            {
-                pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, -28f, release);
-                pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, 22f, release);
-                pose.ArmLUpper = Vector3.Lerp(pose.ArmLUpper, new Vector3(0.18f, -0.96f, 0.04f), release);
-                pose.ArmLFore = Vector3.Lerp(pose.ArmLFore, new Vector3(0.06f, -0.95f, 0.15f), release);
-                pose.ArmRUpper = Vector3.Lerp(pose.ArmRUpper, new Vector3(-0.18f, -0.96f, 0.04f), release);
-                pose.ArmRFore = Vector3.Lerp(pose.ArmRFore, new Vector3(-0.06f, -0.95f, 0.15f), release);
-            }
+            // 抱え上げられるので脚は踏ん張らない。膝が抜けて足が垂れる。
+            pose.LegTuck = 0.35f * stand;
 
             // 脚: 自分では踏ん張らない。引き上げの間は膝が曲がって足が床を擦り、
             // 立たされても膝が抜けて、つま先が床に残る。
@@ -112,29 +95,16 @@ namespace Ryona.Game
             float side = haul.GrabbedLeftSide ? -1f : 1f;
             var pose = PoseGetUp(lift);
 
-            Vector3 reachUpper = new Vector3(0.30f, 0.90f, 0.18f);
-            Vector3 reachFore = new Vector3(0.28f, 0.88f, 0.24f);
-            pose.ArmLUpper = Vector3.Lerp(DownArmLUpper, reachUpper, lift);
-            pose.ArmLFore = Vector3.Lerp(DownArmLFore, reachFore, lift);
-            pose.ArmRUpper = Vector3.Lerp(DownArmRUpper, Mirror(reachUpper), lift);
-            pose.ArmRFore = Vector3.Lerp(DownArmRFore, Mirror(reachFore), lift);
+            Vector3 hangUpper = new Vector3(0.20f, -0.95f, 0.05f);
+            Vector3 hangFore = new Vector3(0.06f, -0.95f, 0.15f);
+            pose.ArmLUpper = Vector3.Lerp(pose.ArmLUpper, hangUpper, lift);
+            pose.ArmLFore = Vector3.Lerp(pose.ArmLFore, hangFore, lift);
+            pose.ArmRUpper = Vector3.Lerp(pose.ArmRUpper, Mirror(hangUpper), lift);
+            pose.ArmRFore = Vector3.Lerp(pose.ArmRFore, Mirror(hangFore), lift);
 
-            pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -10f, lift) - 30f * yank;
-            pose.HeadRoll = -side * (10f * lift + 18f * yank);
-            pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, 8f, lift) + 10f * yank;
-            pose.HipsOffset.y += 0.05f * yank;
-
-            float release = (1f - Mathf.Clamp01(haul.Grip))
-                            * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.85f, 1f, lift));
-            if (release > 0f)
-            {
-                pose.ArmLUpper = Vector3.Lerp(pose.ArmLUpper, new Vector3(0.18f, -0.96f, 0.04f), release);
-                pose.ArmLFore = Vector3.Lerp(pose.ArmLFore, new Vector3(0.06f, -0.95f, 0.15f), release);
-                pose.ArmRUpper = Vector3.Lerp(pose.ArmRUpper, new Vector3(-0.18f, -0.96f, 0.04f), release);
-                pose.ArmRFore = Vector3.Lerp(pose.ArmRFore, new Vector3(-0.06f, -0.95f, 0.15f), release);
-                pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, -24f, release);
-                pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, 18f, release);
-            }
+            pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, 12f, lift);
+            pose.HeadRoll = -side * 8f * lift;
+            pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, 8f, lift);
 
             return pose;
         }

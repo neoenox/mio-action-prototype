@@ -82,36 +82,20 @@ namespace Ryona.Tests
             yield return WaitStage(haul, GroundHaulUp.Beat.Haul, 3f);
             var rig = _anim.Rig;
             Transform head = rig.Head;
-            var figure = _enemy.GetComponent<EnemyFigure>();
-            Transform enemyHand = figure.WristBone(haul.EnemyLeftArm);
             float ground = _stats.transform.position.y;
             float headStart = head.position.y - ground;
 
             // 引き上げの間: 彼女は自分では起き上がらない（起き上がりの状態に入らない）。
-            // 髪を掴んだ敵の手は、彼女の後頭部から離れない。
-            float worstGap = 0f;
-            float worstAt = 0f;
             while (haul.Stage == GroundHaulUp.Beat.Haul)
             {
                 yield return null;
                 Assert.IsFalse(_stats.IsGettingUp, "引き起こしの間は自分で起き上がる動きを使わない");
-                if (haul.Stage == GroundHaulUp.Beat.Haul && haul.Progress > 0.05f && haul.Grip > 0.95f)
-                {
-                    float gap = Vector3.Distance(enemyHand.position, head.position);
-                    if (gap > worstGap)
-                    {
-                        worstGap = gap;
-                        worstAt = haul.Progress;
-                    }
-                }
             }
-            Assert.AreEqual(GroundHaulUp.Beat.Release, haul.Stage);
+            Assert.AreEqual(GroundHaulUp.Beat.Settle, haul.Stage);
             float headEnd = head.position.y - ground;
-            Debug.Log($"[HaulCheck] head {headStart:F2}->{headEnd:F2} " +
-                      $"gap(max)={worstGap:F3} at={worstAt:F2}");
-            Assert.Greater(headEnd, 1.15f, "引き上げ終わったら頭が立った高さにある");
-            Assert.Greater(headEnd - headStart, 0.70f, "頭が大きく引き上げられる");
-            Assert.Less(worstGap, 0.18f, "引き上げの間、髪を掴んだ敵の手が後頭部から離れない");
+            Debug.Log($"[HaulCheck] head {headStart:F2}->{headEnd:F2}");
+            Assert.Greater(headEnd, 1.15f, "抱え上げたら頭が立った高さにある");
+            Assert.Greater(headEnd - headStart, 0.70f, "頭が大きく持ち上げられる");
 
             float deadline = Time.realtimeSinceStartup + 3f;
             while (!_grapple.IsGrappled && Time.realtimeSinceStartup < deadline)
@@ -120,7 +104,6 @@ namespace Ryona.Tests
             Assert.IsFalse(_stats.IsDown, "羽交い締めのときは立っている");
             Assert.AreEqual(GrappleKind.Back, _grapple.Kind);
             Assert.AreSame(_enemy, _grapple.Captor);
-            Assert.IsTrue(_grapple.HaulHandoff, "引き起こしから入った拘束フラグ");
             Assert.IsTrue(_enemy.IsHolding, "引き渡し後は敵も拘束状態に入る");
             Assert.AreEqual(EnemyPhase.Recover, _enemy.Phase, "引き渡し後は敵が硬直（拘束）になる");
             Assert.IsFalse(haul.Active);
