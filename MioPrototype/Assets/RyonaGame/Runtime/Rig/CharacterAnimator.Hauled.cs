@@ -75,10 +75,10 @@ namespace Ryona.Game
             {
                 pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, -28f, release);
                 pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, 22f, release);
-                pose.ArmLUpper = Vector3.Lerp(pose.ArmLUpper, StanceArmLUpper, release);
-                pose.ArmLFore = Vector3.Lerp(pose.ArmLFore, StanceArmLFore, release);
-                pose.ArmRUpper = Vector3.Lerp(pose.ArmRUpper, StanceArmRUpper, release);
-                pose.ArmRFore = Vector3.Lerp(pose.ArmRFore, StanceArmRFore, release);
+                pose.ArmLUpper = Vector3.Lerp(pose.ArmLUpper, new Vector3(0.18f, -0.96f, 0.04f), release);
+                pose.ArmLFore = Vector3.Lerp(pose.ArmLFore, new Vector3(0.06f, -0.95f, 0.15f), release);
+                pose.ArmRUpper = Vector3.Lerp(pose.ArmRUpper, new Vector3(-0.18f, -0.96f, 0.04f), release);
+                pose.ArmRFore = Vector3.Lerp(pose.ArmRFore, new Vector3(-0.06f, -0.95f, 0.15f), release);
             }
 
             // 脚: 自分では踏ん張らない。引き上げの間は膝が曲がって足が床を擦り、
@@ -161,6 +161,22 @@ namespace Ryona.Game
                 HandRollL = Mathf.Lerp(a.HandRollL, b.HandRollL, t),
                 HandRollR = Mathf.Lerp(a.HandRollR, b.HandRollR, t),
             };
+        }
+        /// <summary>相手の腕を掴み返さず腕を下ろしている秒数。</summary>
+        float _haulDazeUntil;
+
+        internal void BeginHaulDaze(float seconds) => _haulDazeUntil = Time.time + Mathf.Max(0.1f, seconds);
+
+        void ApplyHaulDaze(ref PoseValues pose)
+        {
+            Vector3 hangL = new Vector3(0.18f, -0.96f, 0.04f);
+            Vector3 hangR = new Vector3(-0.18f, -0.96f, 0.04f);
+            pose.ArmLUpper = Vector3.Lerp(pose.ArmLUpper, hangL, 0.85f);
+            pose.ArmLFore = Vector3.Lerp(pose.ArmLFore, new Vector3(0.06f, -0.95f, 0.15f), 0.85f);
+            pose.ArmRUpper = Vector3.Lerp(pose.ArmRUpper, hangR, 0.85f);
+            pose.ArmRFore = Vector3.Lerp(pose.ArmRFore, new Vector3(-0.06f, -0.95f, 0.15f), 0.85f);
+            pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, 12f, 0.6f);
+            pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, 14f, 0.6f);
         }
     }
 }

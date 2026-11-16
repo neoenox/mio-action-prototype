@@ -87,6 +87,12 @@ namespace Ryona.Game
                 _ => PoseDefaults(),
             };
 
+            if (_state == State.Grabbed && Time.time < _haulDazeUntil)
+
+                ApplyHaulDaze(ref pose);
+
+            
+
             // 壁から戻るあいだは掴みが解けて Idle などへ移っている。
             // 壁の反りは重みで抜く（PoseGrabbed の中では膝蹴りの前後関係を保つため
             // 先に掛けているので、二重に掛けない）。倒れ姿勢には掛けない。

@@ -24,9 +24,9 @@ namespace Ryona.Game
         internal enum Beat { Idle, Approach, Grab, Haul, Release, Settle }
 
         const int EscapeInputs = 6;
-        const float GrabSeconds = 0.45f;
-        const float HaulSeconds = 0.75f;
-        const float ReleaseSeconds = 0.40f;
+        const float GrabSeconds = 0.65f;
+        const float HaulSeconds = 1.25f;
+        const float ReleaseSeconds = 0.50f;
         const float SettleSeconds = 0.40f;
 
         /// <summary>彼女の腰の脇へ立つ距離（m）。</summary>
@@ -424,8 +424,11 @@ namespace Ryona.Game
             if (_grapple != null && !_grapple.IsGrappled && enemy != null && enemy.IsAlive)
             {
                 // 仰向けは背後拘束、うつ伏せは前方拘束。
+                // Begin（BeginContact ではなく）で直接拘束へ入る。ハンドオフの「手を離して
+                // 受け直す」姿勢を挟むと、髪から離した手がもう一度頭へ行くように見える。
                 GrappleKind kind = prone ? GrappleKind.Pin : GrappleKind.Back;
-                _grapple.BeginContact(enemy, kind);
+                _animator?.BeginHaulDaze(0.8f);
+                _grapple.Begin(enemy, kind);
                 enemy.TakeOverHold(float.PositiveInfinity);
                 GameLog.Log($"[Haul] hand off to {kind} {enemy.name}");
             }
@@ -488,9 +491,16 @@ namespace Ryona.Game
             Vector3 her = Vector3.Lerp(TargetRig.Hips.position, TargetRig.Head.position, 0.55f);
             Vector3 enemyChest = _figure != null ? _figure.HeadBone.position - Vector3.up * 0.35f
                 : Attacker.transform.position + Vector3.up;
-            Vector3 target = Vector3.Lerp(her, enemyChest, 0.35f);
+            bool prone = _player.DownIsForward;
+            Vector3 target = prone
+                ? Vector3.Lerp(TargetRig.Head.position, enemyChest, 0.4f)
+                : Vector3.Lerp(her, enemyChest, 0.35f);
             Vector3 front = -_axis;
-            Vector3 offset = front * 2.5f + _flank * 0.55f + Vector3.up * (1.05f + 0.15f * Lift);
+            // うつ伏せのとき、正面（足元）から撮ると彼女の背中と敵の体しか映らない。
+            // 敵と反対の脇へ回り、横から髪を掴む手と体を見せる。
+            Vector3 offset = prone
+                ? -_flank * 2.4f + front * 0.7f + Vector3.up * (1.15f + 0.20f * Lift)
+                : front * 2.5f + _flank * 0.55f + Vector3.up * (1.05f + 0.15f * Lift);
             _camera.RequestCinematicShot(target + offset, target, cut: _firstShot);
             _firstShot = false;
         }
