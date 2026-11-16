@@ -24,13 +24,6 @@ namespace Ryona.Game
             // 寝返り・片膝・立ちの自然な曲線。ここに腕だけ「抱えられて開いた」形を重ねる。
             var pose = PoseGetUp(lift);
 
-            Vector3 openUpper = new Vector3(0.46f, -0.62f, 0.12f);
-            Vector3 openFore = new Vector3(0.22f, -0.72f, 0.28f);
-            pose.ArmLUpper = Vector3.Lerp(pose.ArmLUpper, openUpper, lift);
-            pose.ArmLFore = Vector3.Lerp(pose.ArmLFore, openFore, lift);
-            pose.ArmRUpper = Vector3.Lerp(pose.ArmRUpper, Mirror(openUpper), lift);
-            pose.ArmRFore = Vector3.Lerp(pose.ArmRFore, Mirror(openFore), lift);
-
             pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, 14f, lift);
             pose.HeadRoll = -side * 6f * lift;
             return pose;
