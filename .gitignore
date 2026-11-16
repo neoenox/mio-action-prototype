@@ -58,3 +58,7 @@ __pycache__/
 /preview-front5/
 /preview-belly4/
 /preview-belly5/
+
+# Agent tool state
+/.commandcode/
+
