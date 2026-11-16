@@ -120,6 +120,7 @@ namespace Ryona.Tests
             Assert.IsFalse(_stats.IsDown, "羽交い締めのときは立っている");
             Assert.AreEqual(GrappleKind.Back, _grapple.Kind);
             Assert.AreSame(_enemy, _grapple.Captor);
+            Assert.IsTrue(_grapple.HaulHandoff, "引き起こしから入った拘束フラグ");
             Assert.IsTrue(_enemy.IsHolding, "引き渡し後は敵も拘束状態に入る");
             Assert.AreEqual(EnemyPhase.Recover, _enemy.Phase, "引き渡し後は敵が硬直（拘束）になる");
             Assert.IsFalse(haul.Active);

@@ -444,7 +444,7 @@ namespace Ryona.Game
                 // Begin（BeginContact ではなく）で直接拘束へ入る。ハンドオフの「手を離して
                 // 受け直す」姿勢を挟むと、髪から離した手がもう一度頭へ行くように見える。
                 GrappleKind kind = prone ? GrappleKind.Pin : GrappleKind.Back;
-                _animator?.BeginHaulDaze(0.8f);
+                _animator?.BeginHaulDaze(30f);
                 _grapple.Begin(enemy, kind);
                 _grapple.HaulHandoff = true;
                 enemy.TakeOverHold(float.PositiveInfinity);

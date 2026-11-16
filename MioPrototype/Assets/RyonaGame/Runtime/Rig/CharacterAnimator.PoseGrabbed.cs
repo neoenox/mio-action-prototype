@@ -5,8 +5,29 @@ namespace Ryona.Game
     public sealed partial class CharacterAnimator
     {
         /// <summary>拘束（後ろ / 正面 / ベアハッグ / 押さえつけ）。</summary>
+        PoseValues PoseGrabbedDazed()
+        {
+            var pose = PoseDefaults();
+            pose.FootL += StanceFootL;
+            pose.FootR += StanceFootR;
+            // 腕は体の後ろへ。下ろすだけだと相手の腕を掴み返す形と区別しづらい。
+            pose.ArmLUpper = new Vector3(0.30f, -0.55f, -0.55f);
+            pose.ArmLFore = new Vector3(0.15f, -0.35f, -0.85f);
+            pose.ArmRUpper = new Vector3(-0.30f, -0.55f, -0.55f);
+            pose.ArmRFore = new Vector3(-0.15f, -0.35f, -0.85f);
+            pose.TorsoPitch = 10f;
+            pose.HeadPitch = 14f;
+            pose.Grip = 0.3f;
+            return pose;
+        }
+
         PoseValues PoseGrabbed()
         {
+            // 引き起こしから直接入った拘束は、腕を下ろしたまま固定する。
+            // 通常の拘束ポーズは「相手の腕を掴み返す」ので、髪から離した手がまた頭へ行く。
+            if (Grapple != null && Grapple.HaulHandoff)
+                return PoseGrabbedDazed();
+
             var pose = PoseDefaults();
             if (Grapple != null && Grapple.IsHandingOff)
             {

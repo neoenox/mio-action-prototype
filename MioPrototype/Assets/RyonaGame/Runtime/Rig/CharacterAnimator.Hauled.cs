@@ -146,6 +146,10 @@ namespace Ryona.Game
             if (weight <= 0.001f)
                 return;
 
+            // うつ伏せは手をついて起き上がる。両手を髪へ上げると体が泳いで見える。
+            if (Stats != null && Stats.DownIsForward)
+                return;
+
             Transform head = Rig.Head;
             if (head == null)
                 return;
