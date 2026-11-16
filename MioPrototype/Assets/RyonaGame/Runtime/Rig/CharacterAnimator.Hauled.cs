@@ -29,34 +29,66 @@ namespace Ryona.Game
             return pose;
         }
 
-        /// <summary>髪を掴まれている敵の手首へ、両手で縋る。</summary>
-        void ApplyHauledArm(GroundHaulUp haul)
+        /// <summary>
+        /// うつ伏せの引き起こし中の腕。掴まれている側の腕は敵の引く手（<see cref="GroundHaulUp.PullAnchor"/>）へ
+        /// IK で引かれて伸び、反対側の腕は床の体勢から体の脇へ自然に下がる。
+        /// </summary>
+        void ApplyProneHauledArms(GroundHaulUp haul, Vector3 fwd, Vector3 left, Vector3 up,
+            float handRollL, float handRollR)
         {
-            float weight = haul.ArmPull;
-            if (weight <= 0.001f)
+            float lift = Mathf.Clamp01(haul.Lift);
+            float dropT = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.05f, 0.80f, lift));
+
+            Vector3 downUpperL = (fwd * 0.92f + left * 0.22f - up * 0.10f).normalized;
+            Vector3 downForeL = (fwd * 0.96f + left * 0.10f - up * 0.04f).normalized;
+            Vector3 downUpperR = (fwd * 0.52f - left * 0.62f - up * 0.20f).normalized;
+            Vector3 downForeR = (fwd * 0.58f + left * 0.52f - up * 0.26f).normalized;
+
+            Vector3 hangUpperL = (left * 0.18f - up * 0.96f + fwd * 0.10f).normalized;
+            Vector3 hangForeL = (left * 0.06f - up * 0.94f + fwd * 0.28f).normalized;
+            Vector3 hangUpperR = (-left * 0.18f - up * 0.96f + fwd * 0.10f).normalized;
+            Vector3 hangForeR = (-left * 0.06f - up * 0.94f + fwd * 0.28f).normalized;
+
+            Rig.SetArm(true,
+                Vector3.Slerp(downUpperL, hangUpperL, dropT),
+                Vector3.Slerp(downForeL, hangForeL, dropT),
+                handRollL);
+            Rig.SetArm(false,
+                Vector3.Slerp(downUpperR, hangUpperR, dropT),
+                Vector3.Slerp(downForeR, hangForeR, dropT),
+                handRollR);
+
+            float pull = Mathf.Clamp01(haul.ArmPull);
+            if (pull <= 0.001f)
                 return;
 
-            // うつ伏せは手をついて起き上がる。両手を髪へ上げると体が泳いで見える。
-            if (Stats != null && Stats.DownIsForward)
+            bool grabbedLeft = haul.GrabbedLeftSide;
+            Transform upper = grabbedLeft ? Rig.LUpperArm : Rig.RUpperArm;
+            Transform elbow = grabbedLeft ? Rig.LLowerArm : Rig.RLowerArm;
+            Transform hand = grabbedLeft ? Rig.LHand : Rig.RHand;
+            if (upper == null || elbow == null || hand == null)
                 return;
 
-            Transform head = Rig.Head;
-            if (head == null)
-                return;
+            float armLen = Vector3.Distance(upper.position, elbow.position)
+                + Vector3.Distance(elbow.position, hand.position);
+            Vector3 anchor = haul.PullAnchor;
+            Vector3 toAnchor = anchor - upper.position;
+            float maxReach = armLen * 0.90f;
+            Vector3 goal = toAnchor.magnitude > maxReach && toAnchor.sqrMagnitude > 1e-6f
+                ? upper.position + toAnchor.normalized * maxReach
+                : anchor;
 
-            Vector3 hair = head.position + Vector3.up * 0.10f;
-            Vector3 right = transform.right;
-            SolveHand(Rig.LUpperArm, Rig.LLowerArm, Rig.LHand, hair + right * 0.06f, -right, weight);
-            SolveHand(Rig.RUpperArm, Rig.RLowerArm, Rig.RHand, hair - right * 0.06f, right, weight);
+            Vector3 outward = grabbedLeft ? left : -left;
+            Vector3 pole = elbow.position + outward * 0.20f - up * (0.18f * (1f - lift)) - fwd * (0.18f * lift);
+            SolveHand(upper, elbow, hand, goal, pole, pull);
         }
 
         void SolveHand(Transform upper, Transform elbow, Transform hand,
-            Vector3 goal, Vector3 outward, float weight)
+            Vector3 goal, Vector3 pole, float weight)
         {
             if (upper == null || elbow == null || hand == null)
                 return;
 
-            Vector3 pole = elbow.position + outward * 0.25f - Vector3.up * 0.10f;
             Quaternion upperPose = upper.rotation;
             Quaternion elbowPose = elbow.rotation;
             ProceduralRig.SolveTwoBone(upper, elbow, hand, goal, pole, transform.right);

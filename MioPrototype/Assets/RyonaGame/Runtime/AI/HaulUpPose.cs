@@ -29,6 +29,25 @@ namespace Ryona.Game
             if (rig == null || !rig.Ready || rig.LUpperArm == null || rig.RUpperArm == null)
                 return;
 
+            float weight = Mathf.SmoothStep(0f, 1f, haul.Grip);
+            if (haul.IsProne)
+            {
+                bool grabbedLeft = haul.GrabbedLeftSide;
+                Transform herUpper = grabbedLeft ? rig.LUpperArm : rig.RUpperArm;
+                Transform herElbow = grabbedLeft ? rig.LLowerArm : rig.RLowerArm;
+                Transform herHand = grabbedLeft ? rig.LHand : rig.RHand;
+                if (herUpper != null && herElbow != null && herHand != null)
+                {
+                    // 手首と上腕・肘を両手で掴んで引き起こす。腕が交差しないように左右を割り当てる。
+                    bool leftForWrist = Vector3.Dot(herHand.position - herUpper.position, transform.right) < 0f;
+                    Vector3 wristGoal = herHand.position;
+                    Vector3 armGoal = Vector3.Lerp(herUpper.position, herElbow.position, 0.65f);
+                    SolveArm(leftForWrist, wristGoal, weight);
+                    SolveArm(!leftForWrist, armGoal, weight);
+                    return;
+                }
+            }
+
             // 彼女の体の中心から見て、敵のいる側へ少しだけ手を回す。
             Vector3 toEnemy = transform.position - rig.Hips.position;
             toEnemy.y = 0f;
@@ -36,8 +55,8 @@ namespace Ryona.Game
             Vector3 under = toEnemy * 0.10f - Vector3.up * 0.10f;
 
             // 脇の下へ。手首は上腕の少し内側・下。
-            SolveArm(true, rig.LUpperArm.position + under, Mathf.SmoothStep(0f, 1f, haul.Grip));
-            SolveArm(false, rig.RUpperArm.position + under, Mathf.SmoothStep(0f, 1f, haul.Grip));
+            SolveArm(true, rig.LUpperArm.position + under, weight);
+            SolveArm(false, rig.RUpperArm.position + under, weight);
         }
 
         void SolveArm(bool left, Vector3 goal, float weight)

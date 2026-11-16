@@ -65,6 +65,7 @@ namespace Ryona.Game
         internal EnemyBrain Attacker { get; private set; }
         internal Beat Stage { get; private set; }
         internal bool Active => Attacker != null;
+        internal bool IsProne => _player != null && _player.DownIsForward;
 
         /// <summary>掴んでから羽交い締めへ移るまでは、自分では起き上がれない。</summary>
         internal bool BlocksGetUp => Active && Stage >= Beat.Grab;
@@ -226,9 +227,9 @@ namespace Ryona.Game
             _approachDistance = Vector3.Distance(enemy.transform.position, _approachSpot);
             _approachTravel = 0f;
 
-            // 後頭部の髪を掴むので、掴む側は頭の向きで決める。
-            Vector3 herHead = TargetRig.Head.position;
-            GrabbedLeftSide = Vector3.Dot(herHead - hips, _flank) > 0f;
+            // 敵に近い側の腕を掴む（仰向けでは左右の目安としても使う）。
+            GrabbedLeftSide = Vector3.Distance(enemy.transform.position, TargetRig.LUpperArm.position)
+                <= Vector3.Distance(enemy.transform.position, TargetRig.RUpperArm.position);
 
             BeginStage(Beat.Approach, 0f);
             GameLog.Log($"[Haul] begin {enemy.name} distance={_approachDistance:F2} herLeft={GrabbedLeftSide}");
