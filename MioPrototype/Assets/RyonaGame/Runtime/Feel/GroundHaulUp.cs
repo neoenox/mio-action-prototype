@@ -302,7 +302,7 @@ namespace Ryona.Game
         {
             // 頭側へ立つ。髪を掴む手が届き、彼女の顔も画に入る。
             Vector3 head = TargetRig.Head.position;
-            Vector3 spot = head + _axis * 0.25f + _flank * 0.10f + _flank * pull;
+            Vector3 spot = head + _axis * 0.12f + _flank * 0.45f + _flank * pull;
             spot.y = Attacker.transform.position.y;
             return spot;
         }
