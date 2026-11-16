@@ -191,6 +191,12 @@ namespace Ryona.Game
         {
             if (Active || enemy == null)
                 return false;
+
+            // 遠くから歩いて寄ってくる引き起こしは狙わない。近くにいる敵だけが、
+            // 倒れた彼女のそばで抱え上げる。
+            if (!Forced && Vector3.Distance(enemy.transform.position, _player.transform.position) > 2.2f)
+                return false;
+
             return Forced || Random.value < Chance;
         }
 

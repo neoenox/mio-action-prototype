@@ -56,8 +56,14 @@ namespace Ryona.Game
         internal GroundHaulUp Haul { get; private set; }
 
         /// <summary>この敵を、寝技か引き起こしが占有しているか（通常の敵 AI は譲る）。</summary>
-        internal bool Owns(EnemyBrain enemy) =>
-            enemy != null && (Attacker == enemy || (Haul != null && Haul.Attacker == enemy));
+        internal bool Owns(EnemyBrain enemy)
+        {
+            // 引き起こし中は全員の AI を止める。他の敵が横を歩き回ると、
+            // 抱え上げている二人の横をすり抜けて「ちょこちょこ歩く」画になる。
+            if (enemy != null && Haul != null && Haul.Active)
+                return true;
+            return enemy != null && Attacker == enemy;
+        }
 
         internal void DelayNextSearch(float seconds) =>
             _nextSearch = Mathf.Max(_nextSearch, Time.time + seconds);
