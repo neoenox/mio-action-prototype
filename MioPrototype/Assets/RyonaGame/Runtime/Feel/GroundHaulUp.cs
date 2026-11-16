@@ -21,11 +21,12 @@ namespace Ryona.Game
     [DefaultExecutionOrder(21100)]
     internal sealed class GroundHaulUp : MonoBehaviour
     {
-        internal enum Beat { Idle, Approach, Grab, Haul, Settle }
+        internal enum Beat { Idle, Approach, Grab, Haul, Release, Settle }
 
         const int EscapeInputs = 6;
         const float GrabSeconds = 0.45f;
         const float HaulSeconds = 0.75f;
+        const float ReleaseSeconds = 0.25f;
         const float SettleSeconds = 0.40f;
 
         /// <summary>彼女の腰の脇へ立つ距離（m）。</summary>
@@ -41,6 +42,7 @@ namespace Ryona.Game
         internal static bool Forced;
 
         PlayerStats _player;
+        PlayerFace _face;
         GroundMountAttack _mount;
         CharacterAnimator _animator;
         ThirdPersonCamera _camera;
@@ -162,14 +164,15 @@ namespace Ryona.Game
         void Awake()
         {
             _player = GetComponent<PlayerStats>();
+            _face = GetComponent<PlayerFace>();
             _mount = GetComponent<GroundMountAttack>();
             _grapple = GetComponent<PlayerGrapple>();
         }
 
-        /// <summary>この敵が彼女を引き起こすか（寝技の代わりに）。仰向けのときだけ。</summary>
+        /// <summary>この敵が彼女を引き起こすか（寝技の代わりに）。仰向けもうつ伏せも。</summary>
         internal bool ShouldHaul(EnemyBrain enemy)
         {
-            if (Active || enemy == null || _player.DownIsForward)
+            if (Active || enemy == null)
                 return false;
             return Forced || Random.value < Chance;
         }
@@ -238,6 +241,15 @@ namespace Ryona.Game
             Yank = Mathf.MoveTowards(Yank, 0f, dt * 5.5f);
             _elapsed += dt;
 
+            // 髪を引かれている間は痛み顔。離した直後も少しだけ余韻を残す。
+            if (_face != null)
+            {
+                if (Stage == Beat.Haul)
+                    _face.Apply(0.85f, 0.8f);
+                else if (Stage == Beat.Release)
+                    _face.Apply(0.45f, 0.9f);
+            }
+
             // 掴んでから引き上げの間は、連打で振りほどける。
             if ((Stage == Beat.Grab || Stage == Beat.Haul) && InputReader.StrugglePressed())
             {
@@ -251,6 +263,7 @@ namespace Ryona.Game
                 case Beat.Approach: TickApproach(dt); break;
                 case Beat.Grab: TickGrab(dt); break;
                 case Beat.Haul: TickHaul(dt); break;
+                case Beat.Release: TickRelease(dt); break;
                 case Beat.Settle: TickSettle(); break;
             }
 
@@ -270,8 +283,9 @@ namespace Ryona.Game
         /// <summary>彼女の腰の脇、敵の立つ位置（<paramref name="pull"/> だけ離れる）。足元の高さは敵のまま。</summary>
         Vector3 Spot(float pull)
         {
-            Vector3 hips = TargetRig.Hips.position;
-            Vector3 spot = hips + _axis * 0.05f + _flank * (FlankDistance + pull);
+            // 頭側へ立つ。髪を掴む手が届き、彼女の顔も画に入る。
+            Vector3 head = TargetRig.Head.position;
+            Vector3 spot = head + _axis * 0.05f + _flank * (0.45f + pull);
             spot.y = Attacker.transform.position.y;
             return spot;
         }
@@ -348,19 +362,37 @@ namespace Ryona.Game
             Follow(Spot(PullBack * Mathf.Sin(Mathf.PI * Mathf.Clamp01(u * 1.3f))), dt, 18f);
 
             if (u >= 1f)
+                BeginStage(Beat.Release, ReleaseSeconds);
+        }
+
+        void TickRelease(float dt)
+        {
+            // 彼女がほぼ立ち上がったら髪を離す。彼女は少し前かがみに崩れる。
+            float u = Progress;
+            Crouch = 0f;
+            Lean = 0f;
+            Lift = 1f;
+            Grip = 1f - Mathf.SmoothStep(0f, 1f, u);
+            ArmPull = 0f;
+
+            Follow(Spot(0f), dt, 12f);
+
+            if (u >= 1f)
                 BeginStage(Beat.Settle, SettleSeconds);
         }
 
         void TickSettle()
         {
-            // 吊ったまま背後へ回る。手首を離して羽交い締めの位置へ。
+            // 離したあと、仰向けなら背後へ、うつ伏せなら前方へ回って拘束位置へ。
+            bool prone = _player.DownIsForward;
             Vector3 her = transform.position;
-            Vector3 behind = her - transform.forward * CombatConstants.BackGrabStandoff;
-            behind.y = _fromPosition.y;
+            Vector3 standDir = prone ? transform.forward : -transform.forward;
+            Vector3 holdSpot = her + standDir * CombatConstants.BackGrabStandoff;
+            holdSpot.y = _fromPosition.y;
             float t = Mathf.SmoothStep(0f, 1f, Progress);
             Quaternion facing = Quaternion.LookRotation(
-                Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized, Vector3.up);
-            Attacker.transform.SetPositionAndRotation(Vector3.Lerp(_fromPosition, behind, t),
+                prone ? -transform.forward : transform.forward, Vector3.up);
+            Attacker.transform.SetPositionAndRotation(Vector3.Lerp(_fromPosition, holdSpot, t),
                 Quaternion.Slerp(_fromRotation, facing, t));
             Crouch = 0f;
             Lean = 0f;
@@ -386,15 +418,16 @@ namespace Ryona.Game
         void Finish()
         {
             var enemy = Attacker;
+            bool prone = _player.DownIsForward;
             ResetState();
             _player.EndDownByHaul();
             if (_grapple != null && !_grapple.IsGrappled && enemy != null && enemy.IsAlive)
             {
-                _grapple.BeginContact(enemy, GrappleKind.Back);
-                // 敵も「掴んだまま硬直」の状態へ。これが無いと彼女だけが拘束姿勢で固まり、
-                // 敵は通常 AI のままなので、誰も掴んでいない画になる。
+                // 仰向けは背後拘束、うつ伏せは前方拘束。
+                GrappleKind kind = prone ? GrappleKind.Pin : GrappleKind.Back;
+                _grapple.BeginContact(enemy, kind);
                 enemy.TakeOverHold(float.PositiveInfinity);
-                GameLog.Log($"[Haul] hand off to back hold {enemy.name}");
+                GameLog.Log($"[Haul] hand off to {kind} {enemy.name}");
             }
         }
 

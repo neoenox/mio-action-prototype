@@ -66,6 +66,8 @@ SCENARIOS = {
     # ダウンした彼女を引きずり起こし、羽交い締めへつなぐ（-haultest で必ず選ぶ）。
     "haul": dict(args=["-haultest"], burst="-mountburst",
                  frames=100, interval=0.05),
+    "haulprone": dict(args=["-haultest", "-mountprone"], burst="-mountburst",
+                      frames=100, interval=0.05),
     # 頭上拘束（両手首を上へ引き上げる）。
     "overhead": dict(args=["-grappletest", "-overheadtest"], burst="-pinburst",
                      frames=120, interval=0.05),

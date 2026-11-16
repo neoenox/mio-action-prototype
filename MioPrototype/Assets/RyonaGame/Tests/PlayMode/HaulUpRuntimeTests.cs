@@ -28,7 +28,7 @@ namespace Ryona.Tests
             GroundHaulUp.Forced = false;
         }
 
-        IEnumerator Load()
+        IEnumerator Load(bool prone = false)
         {
             yield return TestScene.LoadPrototype();
             GroundHaulUp.Forced = true;
@@ -54,7 +54,7 @@ namespace Ryona.Tests
                 enemy.enabled = enemy == _enemy;
             _enemy.LockForHandOff(0.1f);
             _enemy.transform.position = _stats.transform.position + Vector3.right * 1.6f;
-            _stats.ForceDown(6f, "haul-test", launchDistance: 0f, forward: false);
+            _stats.ForceDown(6f, "haul-test", launchDistance: 0f, forward: prone);
         }
 
         IEnumerator WaitStage(GroundHaulUp haul, GroundHaulUp.Beat stage, float seconds)
@@ -105,7 +105,7 @@ namespace Ryona.Tests
                     }
                 }
             }
-            Assert.AreEqual(GroundHaulUp.Beat.Settle, haul.Stage);
+            Assert.AreEqual(GroundHaulUp.Beat.Release, haul.Stage);
             float headEnd = head.position.y - ground;
             Debug.Log($"[HaulCheck] head {headStart:F2}->{headEnd:F2} " +
                       $"gap(max)={worstGap:F3} at={worstAt:F2}");
@@ -122,6 +122,25 @@ namespace Ryona.Tests
             Assert.AreSame(_enemy, _grapple.Captor);
             Assert.IsTrue(_enemy.IsHolding, "引き渡し後は敵も拘束状態に入る");
             Assert.AreEqual(EnemyPhase.Recover, _enemy.Phase, "引き渡し後は敵が硬直（拘束）になる");
+            Assert.IsFalse(haul.Active);
+        }
+
+        [UnityTest]
+        public IEnumerator HaulsProneUpIntoFrontHold()
+        {
+            yield return Load(prone: true);
+            var haul = _stats.GroundMount.Haul;
+
+            yield return WaitStage(haul, GroundHaulUp.Beat.Haul, 8f);
+            float deadline = Time.realtimeSinceStartup + 4f;
+            while (!_grapple.IsGrappled && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.IsTrue(_grapple.IsGrappled, "うつ伏せから起こしたら前方拘束へつなぐ");
+            Assert.IsFalse(_stats.IsDown, "拘束のときは立っている");
+            Assert.AreEqual(GrappleKind.Pin, _grapple.Kind, "うつ伏せダウンは前方拘束");
+            Assert.AreSame(_enemy, _grapple.Captor);
+            Assert.IsTrue(_enemy.IsHolding, "前方拘束でも敵が拘束状態に入る");
             Assert.IsFalse(haul.Active);
         }
 

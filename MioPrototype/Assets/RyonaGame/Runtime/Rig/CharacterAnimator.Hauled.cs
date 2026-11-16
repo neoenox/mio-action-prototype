@@ -43,13 +43,12 @@ namespace Ryona.Game
 
             // 上体: 引かれた肩が先に上がり（引かれる側へ傾く）、立つと前へ折れて垂れる。
             float drag = sit * (1f - stand);
-            pose.TorsoPitch = 10f * drag + 22f * stand + 10f * yank;
+            pose.TorsoPitch = 10f * drag + 8f * stand + 12f * yank;
             pose.TorsoRoll = -side * (16f * drag + 8f * stand);
             pose.TorsoYaw = side * 10f * drag;
 
-            // 首: 髪を掴まれて上へ引かれるので、引き上げの間は後ろへ残り、
-            // 立たされても前へ垂れきらない（そのまま引かれている）。
-            pose.HeadPitch = -30f * drag + 4f * stand - 34f * yank;
+            // 首: 髪を掴まれて上へ引かれるので、立っても頭は後ろへ残る。
+            pose.HeadPitch = -30f * drag - 8f * stand - 34f * yank;
             pose.HeadYaw = -side * 6f;
             pose.HeadRoll = -side * (12f * stand + 18f * yank);
 
@@ -61,6 +60,26 @@ namespace Ryona.Game
             pose.ArmRUpper = Vector3.Lerp(DownArmRUpper, Mirror(reachUpper), sit);
             pose.ArmRFore = Vector3.Lerp(DownArmRFore, Mirror(reachFore), sit);
             pose.Grip = 0.12f;
+
+            // 脚: 髪に引かれながら、自分で足を踏ん張って立ち上がる（引きずられない）。
+            float plant = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.18f, 0.90f, lift));
+            pose.FootL = Vector3.Lerp(pose.FootL, StanceFootL, plant);
+            pose.FootR = Vector3.Lerp(pose.FootR, StanceFootR, plant);
+            pose.FootPitchL = 0f;
+            pose.FootPitchR = 0f;
+
+            // 髪を離された直後: 少し前かがみに崩れ、腕も下ろす。
+            float release = (1f - Mathf.Clamp01(haul.Grip))
+                            * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.85f, 1f, lift));
+            if (release > 0f)
+            {
+                pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, -20f, release);
+                pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, 16f, release);
+                pose.ArmLUpper = Vector3.Lerp(pose.ArmLUpper, StanceArmLUpper, release);
+                pose.ArmLFore = Vector3.Lerp(pose.ArmLFore, StanceArmLFore, release);
+                pose.ArmRUpper = Vector3.Lerp(pose.ArmRUpper, StanceArmRUpper, release);
+                pose.ArmRFore = Vector3.Lerp(pose.ArmRFore, StanceArmRFore, release);
+            }
 
             // 脚: 自分では踏ん張らない。引き上げの間は膝が曲がって足が床を擦り、
             // 立たされても膝が抜けて、つま先が床に残る。
