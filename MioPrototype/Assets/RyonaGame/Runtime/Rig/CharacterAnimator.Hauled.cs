@@ -58,8 +58,8 @@ namespace Ryona.Game
             pose.HeadRoll = -side * 8f * stand;
 
             // 腕は脱力して垂れる。抱え上げられるので、自分では掴まらない。
-            Vector3 hangUpper = new Vector3(0.20f, -0.95f, 0.05f);
-            Vector3 hangFore = new Vector3(0.06f, -0.95f, 0.15f);
+            Vector3 hangUpper = new Vector3(0.46f, -0.62f, 0.12f);
+            Vector3 hangFore = new Vector3(0.22f, -0.72f, 0.28f);
             pose.ArmLUpper = Vector3.Lerp(DownArmLUpper, hangUpper, sit);
             pose.ArmLFore = Vector3.Lerp(DownArmLFore, hangFore, sit);
             pose.ArmRUpper = Vector3.Lerp(DownArmRUpper, Mirror(hangUpper), sit);

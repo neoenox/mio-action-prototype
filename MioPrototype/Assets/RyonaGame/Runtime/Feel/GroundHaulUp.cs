@@ -515,8 +515,8 @@ namespace Ryona.Game
             // うつ伏せのとき、正面（足元）から撮ると彼女の背中と敵の体しか映らない。
             // 敵と反対の脇へ回り、横から髪を掴む手と体を見せる。
             Vector3 offset = prone
-                ? -_flank * 2.4f + front * 0.7f + Vector3.up * (1.15f + 0.20f * Lift)
-                : front * 2.5f + _flank * 0.55f + Vector3.up * (1.05f + 0.15f * Lift);
+                ? -_flank * 1.7f + front * 0.45f + Vector3.up * (1.05f + 0.15f * Lift)
+                : front * 1.7f + _flank * 0.95f + Vector3.up * (1.00f + 0.15f * Lift);
             _camera.RequestCinematicShot(target + offset, target, cut: _firstShot);
             _firstShot = false;
         }

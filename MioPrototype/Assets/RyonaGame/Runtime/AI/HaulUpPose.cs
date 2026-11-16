@@ -33,11 +33,11 @@ namespace Ryona.Game
             Vector3 toEnemy = transform.position - rig.Hips.position;
             toEnemy.y = 0f;
             toEnemy = toEnemy.sqrMagnitude > 0.001f ? toEnemy.normalized : transform.forward;
-            Vector3 under = toEnemy * 0.07f - Vector3.up * 0.04f;
+            Vector3 under = toEnemy * 0.22f - Vector3.up * 0.08f;
 
             // 脇の下へ。手首は上腕の少し内側・下。
-            SolveArm(true, rig.LUpperArm.position + under, haul.Grip);
-            SolveArm(false, rig.RUpperArm.position + under, haul.Grip);
+            SolveArm(true, rig.LUpperArm.position + under, Mathf.SmoothStep(0f, 1f, haul.Grip));
+            SolveArm(false, rig.RUpperArm.position + under, Mathf.SmoothStep(0f, 1f, haul.Grip));
         }
 
         void SolveArm(bool left, Vector3 goal, float weight)
@@ -51,7 +51,7 @@ namespace Ryona.Game
                 return;
 
             Vector3 outward = transform.right * (left ? -1f : 1f);
-            Vector3 pole = upper.position + outward * 0.35f - Vector3.up * 0.35f;
+            Vector3 pole = upper.position + outward * 0.45f - Vector3.up * 0.25f;
             Quaternion previousUpper = upper.rotation;
             Quaternion previousElbow = elbow.rotation;
             ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, transform.right);
