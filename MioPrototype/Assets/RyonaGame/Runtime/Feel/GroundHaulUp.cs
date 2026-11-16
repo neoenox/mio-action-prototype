@@ -25,7 +25,7 @@ namespace Ryona.Game
 
         const int EscapeInputs = 6;
         const float GrabSeconds = 0.70f;
-        const float HaulSeconds = 1.10f;
+        const float HaulSeconds = 2.00f;
         const float ReleaseSeconds = 0.50f;
         const float SettleSeconds = 0.40f;
 
@@ -302,7 +302,7 @@ namespace Ryona.Game
         {
             // 頭側へ立つ。髪を掴む手が届き、彼女の顔も画に入る。
             Vector3 head = TargetRig.Head.position;
-            Vector3 spot = head + _axis * 0.05f + _flank * (0.35f + pull);
+            Vector3 spot = head + _axis * 0.25f + _flank * 0.10f + _flank * pull;
             spot.y = Attacker.transform.position.y;
             return spot;
         }
@@ -514,9 +514,10 @@ namespace Ryona.Game
             Vector3 front = -_axis;
             // うつ伏せのとき、正面（足元）から撮ると彼女の背中と敵の体しか映らない。
             // 敵と反対の脇へ回り、横から髪を掴む手と体を見せる。
+            // 寄せすぎると敵の体の中へ入る。敵と反対の脇から 2.0m。
             Vector3 offset = prone
-                ? -_flank * 1.7f + front * 0.45f + Vector3.up * (1.05f + 0.15f * Lift)
-                : front * 1.7f + _flank * 0.95f + Vector3.up * (1.00f + 0.15f * Lift);
+                ? -_flank * 2.2f + front * 0.35f + Vector3.up * (1.15f + 0.10f * Lift)
+                : front * 2.2f + _flank * 0.35f + Vector3.up * (1.15f + 0.10f * Lift);
             _camera.RequestCinematicShot(target + offset, target, cut: _firstShot);
             _firstShot = false;
         }

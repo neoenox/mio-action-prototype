@@ -1,3 +1,4 @@
+using System.IO;
 using UnityEngine;
 
 namespace Ryona.Game
@@ -18,6 +19,9 @@ namespace Ryona.Game
         int _phase;
         bool _prone;
         float _nextAction;
+        string _shotDir;
+        float _nextShot;
+        int _shot;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
@@ -35,10 +39,14 @@ namespace Ryona.Game
         void Start()
         {
             _nextAction = Time.time + 1.5f;
+            _shotDir = LaunchOptions.Value("-hauldemoshots");
+            _nextShot = Time.time + 0.5f;
         }
 
         void Update()
         {
+            CaptureIfRequested();
+
             if (_player == null)
             {
                 _player = FindFirstObjectByType<PlayerStats>();
@@ -96,6 +104,16 @@ namespace Ryona.Game
                     }
                     break;
             }
+        }
+
+        void CaptureIfRequested()
+        {
+            if (string.IsNullOrEmpty(_shotDir) || Time.time < _nextShot)
+                return;
+            _nextShot = Time.time + 0.1f;
+            Directory.CreateDirectory(_shotDir);
+            ScreenCapture.CaptureScreenshot(Path.Combine(_shotDir, $"shot_{_shot:000}.png"));
+            _shot++;
         }
 
         void ForceDown(bool prone)
