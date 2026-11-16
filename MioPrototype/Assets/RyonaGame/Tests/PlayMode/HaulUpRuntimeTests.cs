@@ -81,24 +81,23 @@ namespace Ryona.Tests
 
             yield return WaitStage(haul, GroundHaulUp.Beat.Haul, 3f);
             var rig = _anim.Rig;
-            Transform hand = haul.HerLeftWrist ? rig.LHand : rig.RHand;
+            Transform head = rig.Head;
             var figure = _enemy.GetComponent<EnemyFigure>();
             Transform enemyHand = figure.WristBone(haul.EnemyLeftArm);
             float ground = _stats.transform.position.y;
-            float headStart = rig.Head.position.y - ground;
-            float handStart = hand.position.y - ground;
+            float headStart = head.position.y - ground;
 
             // 引き上げの間: 彼女は自分では起き上がらない（起き上がりの状態に入らない）。
-            // 掴まれた手首は敵の手と合ったまま、上へ持ち上がる。
+            // 髪を掴んだ敵の手は、彼女の後頭部から離れない。
             float worstGap = 0f;
             float worstAt = 0f;
             while (haul.Stage == GroundHaulUp.Beat.Haul)
             {
                 yield return null;
                 Assert.IsFalse(_stats.IsGettingUp, "引き起こしの間は自分で起き上がる動きを使わない");
-                if (haul.Stage == GroundHaulUp.Beat.Haul && haul.Grip > 0.95f)
+                if (haul.Stage == GroundHaulUp.Beat.Haul && haul.Progress > 0.05f && haul.Grip > 0.95f)
                 {
-                    float gap = Vector3.Distance(hand.position, enemyHand.position);
+                    float gap = Vector3.Distance(enemyHand.position, head.position);
                     if (gap > worstGap)
                     {
                         worstGap = gap;
@@ -107,17 +106,12 @@ namespace Ryona.Tests
                 }
             }
             Assert.AreEqual(GroundHaulUp.Beat.Settle, haul.Stage);
-            float headEnd = rig.Head.position.y - ground;
-            float handEnd = hand.position.y - ground;
-            Debug.Log($"[HaulCheck] head {headStart:F2}->{headEnd:F2} hand {handStart:F2}->{handEnd:F2} " +
+            float headEnd = head.position.y - ground;
+            Debug.Log($"[HaulCheck] head {headStart:F2}->{headEnd:F2} " +
                       $"gap(max)={worstGap:F3} at={worstAt:F2}");
             Assert.Greater(headEnd, 1.15f, "引き上げ終わったら頭が立った高さにある");
-            // 掴まれた瞬間に手首は床から少し浮く（実測 0.47m）ので、上がり量ではなく
-            // 「立ったときに肩の高さ以上まで吊り上げられている」ことと、大きく動いたことを見る
-            // （実測: 0.47 → 1.27m）。
-            Assert.Greater(handEnd, 1.20f, "掴まれた手首が肩の高さ以上まで吊り上げられる");
-            Assert.Greater(handEnd - handStart, 0.70f, "掴まれた手首が上へ大きく引き上げられる");
-            Assert.Less(worstGap, 0.12f, "引き上げの間、掴まれた手首と敵の手が離れない");
+            Assert.Greater(headEnd - headStart, 0.70f, "頭が大きく引き上げられる");
+            Assert.Less(worstGap, 0.18f, "引き上げの間、髪を掴んだ敵の手が後頭部から離れない");
 
             float deadline = Time.realtimeSinceStartup + 3f;
             while (!_grapple.IsGrappled && Time.realtimeSinceStartup < deadline)
@@ -126,6 +120,8 @@ namespace Ryona.Tests
             Assert.IsFalse(_stats.IsDown, "羽交い締めのときは立っている");
             Assert.AreEqual(GrappleKind.Back, _grapple.Kind);
             Assert.AreSame(_enemy, _grapple.Captor);
+            Assert.IsTrue(_enemy.IsHolding, "引き渡し後は敵も拘束状態に入る");
+            Assert.AreEqual(EnemyPhase.Recover, _enemy.Phase, "引き渡し後は敵が硬直（拘束）になる");
             Assert.IsFalse(haul.Active);
         }
 

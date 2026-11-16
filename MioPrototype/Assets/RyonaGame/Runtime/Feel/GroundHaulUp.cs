@@ -24,15 +24,15 @@ namespace Ryona.Game
         internal enum Beat { Idle, Approach, Grab, Haul, Settle }
 
         const int EscapeInputs = 6;
-        const float GrabSeconds = 0.55f;
-        const float HaulSeconds = 0.90f;
-        const float SettleSeconds = 0.45f;
+        const float GrabSeconds = 0.45f;
+        const float HaulSeconds = 0.75f;
+        const float SettleSeconds = 0.40f;
 
         /// <summary>彼女の腰の脇へ立つ距離（m）。</summary>
-        const float FlankDistance = 0.40f;
+        const float FlankDistance = 0.15f;
 
         /// <summary>引き上げの間に、敵が彼女から下がる距離（m）。腕が張って見える。</summary>
-        const float PullBack = 0.16f;
+        const float PullBack = 0.0f;
 
         /// <summary>寝技の代わりに引き起こしを選ぶ割合。</summary>
         internal static float Chance = 0.35f;
@@ -89,7 +89,7 @@ namespace Ryona.Game
         internal float Yank { get; private set; }
 
         /// <summary>掴まれたのは彼女の左手首か。</summary>
-        internal bool HerLeftWrist { get; private set; }
+        internal bool GrabbedLeftSide { get; private set; }
 
         /// <summary>手首を掴むのは敵の左腕か（もう片方の腕で服の裾を掴む）。</summary>
         internal bool EnemyLeftArm { get; private set; }
@@ -200,13 +200,12 @@ namespace Ryona.Game
             _approachDistance = Vector3.Distance(enemy.transform.position, _approachSpot);
             _approachTravel = 0f;
 
-            // 敵の側にある手首を掴む。
-            Vector3 l = TargetRig.LHand.position;
-            Vector3 r = TargetRig.RHand.position;
-            HerLeftWrist = Vector3.Dot(l - r, _flank) > 0f;
+            // 後頭部の髪を掴むので、掴む側は頭の向きで決める。
+            Vector3 herHead = TargetRig.Head.position;
+            GrabbedLeftSide = Vector3.Dot(herHead - hips, _flank) > 0f;
 
             BeginStage(Beat.Approach, 0f);
-            GameLog.Log($"[Haul] begin {enemy.name} distance={_approachDistance:F2} herLeft={HerLeftWrist}");
+            GameLog.Log($"[Haul] begin {enemy.name} distance={_approachDistance:F2} herLeft={GrabbedLeftSide}");
         }
 
         void BeginStage(Beat stage, float duration)
@@ -272,7 +271,7 @@ namespace Ryona.Game
         Vector3 Spot(float pull)
         {
             Vector3 hips = TargetRig.Hips.position;
-            Vector3 spot = hips + _axis * 0.18f + _flank * (FlankDistance + pull);
+            Vector3 spot = hips + _axis * 0.05f + _flank * (FlankDistance + pull);
             spot.y = Attacker.transform.position.y;
             return spot;
         }
@@ -296,9 +295,9 @@ namespace Ryona.Game
 
             if (_approachTravel >= _approachDistance)
             {
-                // 手首に近い側の腕で掴む（もう片方の腕で服の裾）。
-                Vector3 wrist = HerLeftWrist ? TargetRig.LHand.position : TargetRig.RHand.position;
-                EnemyLeftArm = Vector3.Dot(wrist - Attacker.transform.position, Attacker.transform.right) < 0f;
+                // 後頭部に近い側の腕で髪を掴む。
+                Vector3 head = TargetRig.Head.position;
+                EnemyLeftArm = Vector3.Dot(head - Attacker.transform.position, Attacker.transform.right) < 0f;
                 BeginStage(Beat.Grab, GrabSeconds);
             }
         }
@@ -327,18 +326,17 @@ namespace Ryona.Game
             // 敵は体を起こしながら後ろへ反り、少し下がる。手首を引く手が肩の上まで上がる。
             float u = Progress;
 
-            // 先に立ち上がりきると、まだ床近くにある手首へ腕が届かず手が離れる（実測 0.34m）。
-            // 彼女の持ち上がり（Lift）と同じ速さで体を起こす。
-            Crouch = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.10f, 0.70f, u));
-            Lean = Mathf.Sin(Mathf.PI * Mathf.Clamp01(u * 1.3f)) * 1.1f;
-            Grip = 1f;
-            ArmPull = Mathf.Lerp(0.60f, 1f, Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, 0.08f, u)));
-
-            // 乱暴な 2 段引き。最初に一気に引き、途中で一度沈んでから、もう一度引き上げる。
+            // 先に立ち上がりきると、まだ床近くにある頭へ腕が届かず手が離れる。
+            // 彼女の持ち上がり（Lift）に合わせて、敵も腰を落としたまま起こす。
             float pull1 = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.06f, 0.38f, u));
             float pull2 = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.55f, 0.92f, u));
             float sag = Mathf.Sin(Mathf.PI * Mathf.InverseLerp(0.38f, 0.55f, u)) * 0.06f;
             Lift = Mathf.Clamp01(pull1 * 0.55f + pull2 * 0.55f - sag + 0.05f * Yank);
+
+            Crouch = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.45f, 1f, Lift));
+            Lean = Mathf.Sin(Mathf.PI * Mathf.Clamp01(u * 1.3f)) * 1.1f;
+            Grip = 1f;
+            ArmPull = Mathf.Lerp(0.60f, 1f, Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, 0.08f, u)));
 
             // 2 回目の「ぐいっ」。1 回目は掴み終わり（TickGrab）で立てている。
             if (!_secondYank && u >= 0.50f)
@@ -393,6 +391,9 @@ namespace Ryona.Game
             if (_grapple != null && !_grapple.IsGrappled && enemy != null && enemy.IsAlive)
             {
                 _grapple.BeginContact(enemy, GrappleKind.Back);
+                // 敵も「掴んだまま硬直」の状態へ。これが無いと彼女だけが拘束姿勢で固まり、
+                // 敵は通常 AI のままなので、誰も掴んでいない画になる。
+                enemy.TakeOverHold(float.PositiveInfinity);
                 GameLog.Log($"[Haul] hand off to back hold {enemy.name}");
             }
         }

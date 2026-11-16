@@ -86,13 +86,13 @@ namespace Ryona.Game
             float lean = haul.Lean;
             float restY = Height * 0.515f;
             pose.LegsExact = false;
-            pose.HipsY = Mathf.Lerp(pose.HipsY, restY - 0.36f, crouch);
+            pose.HipsY = Mathf.Lerp(pose.HipsY, restY - 0.55f, crouch);
             pose.HipsZ = Mathf.Lerp(pose.HipsZ, 0.08f, crouch) - 0.06f * lean;
-            pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, -42f, crouch) + 22f * lean;
-            pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -12f, crouch) + 6f * lean;
-            pose.KneeR = Mathf.Lerp(pose.KneeR, 96f, crouch);
-            pose.KneeL = Mathf.Lerp(pose.KneeL, 74f, crouch);
-            pose.LegRPitch = Mathf.Lerp(pose.LegRPitch, -44f, crouch);
+            pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, -68f, crouch) + 22f * lean;
+            pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -20f, crouch) + 6f * lean;
+            pose.KneeR = Mathf.Lerp(pose.KneeR, 120f, crouch);
+            pose.KneeL = Mathf.Lerp(pose.KneeL, 100f, crouch);
+            pose.LegRPitch = Mathf.Lerp(pose.LegRPitch, -60f, crouch);
             pose.LegLPitch = Mathf.Lerp(pose.LegLPitch, 20f, crouch);
             // 引くときは足を前後に割って踏ん張る（後ろへ体重を掛ける）。
             pose.KneeR += 18f * lean;

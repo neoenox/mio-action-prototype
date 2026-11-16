@@ -3,12 +3,11 @@ using UnityEngine;
 namespace Ryona.Game
 {
     /// <summary>
-    /// 引きずり起こし（<see cref="GroundHaulUp"/>）で、掴む側の腕を彼女の手首と服の裾へ合わせる。
+    /// 引きずり起こし（<see cref="GroundHaulUp"/>）で、掴む側の腕を彼女の髪（後頭部）へ合わせる。
     /// 体のかがみ・反りは <see cref="EnemyFigure"/> の姿勢（<c>BuildHaulPose</c>）が作る。
     ///
-    /// 実行順は彼女の姿勢（<see cref="CharacterAnimator"/>、20000）より後。彼女の腕は
-    /// 敵の肩の前（<see cref="GroundHaulUp.PullAnchor"/>）へ向けて張られているので、
-    /// ここでは「張った結果の手首」をそのまま握りに行く（二人の手が必ず合う）。
+    /// 手首ではなく後頭部を掴むので、彼女の腕は自由。両手でその手首へ縋る姿勢は
+    /// <see cref="CharacterAnimator"/> 側が作る。
     /// </summary>
     [DefaultExecutionOrder(21000)]
     public sealed class HaulUpPose : MonoBehaviour
@@ -28,19 +27,18 @@ namespace Ryona.Game
                 return;
 
             ProceduralRig rig = haul.TargetRig;
-            if (rig == null || !rig.Ready || rig.LHand == null || rig.RHand == null || rig.Hips == null)
+            if (rig == null || !rig.Ready || rig.Head == null)
                 return;
 
-            Transform wrist = haul.HerLeftWrist ? rig.LHand : rig.RHand;
+            // 後頭部の髪を掴む。手は頭の少し上・後ろ。
+            Vector3 hair = rig.Head.position + Vector3.up * 0.10f - rig.Head.forward * 0.03f;
             bool leftArm = haul.EnemyLeftArm;
-            SolveArm(leftArm, wrist.position, haul.Grip);
+            SolveArm(leftArm, hair, haul.Grip);
 
-            // 服の裾（腰の、敵に近い側）。立たされたら離して手首だけで吊る。
-            Vector3 here = transform.position;
-            Vector3 toMe = Vector3.ProjectOnPlane(here - rig.Hips.position, Vector3.up).normalized;
-            Vector3 hem = rig.Hips.position + toMe * 0.12f + Vector3.up * 0.02f;
-            float hemWeight = haul.Grip * (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.55f, 0.85f, haul.Lift)));
-            SolveArm(!leftArm, hem, hemWeight);
+            // 空き手で近い側の上腕を押さえる（暴れられないように）。
+            Transform control = haul.EnemyLeftArm ? rig.RUpperArm : rig.LUpperArm;
+            if (control != null)
+                SolveArm(!leftArm, control.position, haul.Grip * 0.55f);
         }
 
         void SolveArm(bool left, Vector3 goal, float weight)
