@@ -35,7 +35,24 @@ python tools/preview.py --list                        # 撮れる場面の一覧
 
 出力は `MioPrototype/Verify/preview/<場面>-<時刻>/`（`Verify/` は `.gitignore` 済み）に
 `sheet.png`（0.25 秒ごとのコマ送り）・`preview.gif`・`compare.png`。場面は
-`wallpin` / `frontpin` / `belly` / `face` / `ankle`。新しい場面は `preview.py` の `SCENARIOS` に足す。
+`wallpin` / `frontpin` / `belly` / `bellybody` / `face` / `ankle` / `haul`。新しい場面は
+`preview.py` の `SCENARIOS` に足す。
+
+### 毎回のプレビュー（1 コマンド）
+
+見た目に触る変更は、最後にこれを実行して **1 本の GIF** を残す:
+
+```bash
+cd MioPrototype
+python tools/preview.py --reel
+```
+
+- 腹パン（体）・正面拘束の膝・髪の 3 場面を撮り、タイトル付きで
+  `Verify/preview/reel/preview-reel.gif` にまとめる。
+- 各場面の `sheet.png` / `preview.gif` も `Verify/preview/<場面>-<時刻>/` に残る。
+- before/after の比較シートも作る場合:
+  `python tools/preview_reel.py --belly-before <dir> --pin-before <dir>`。
+- 「撮ったが見ていない」を防ぐため、変更を完了とする前に GIF を開いて確認する。
 
 ### 動きの不自然さは数字で拾う
 

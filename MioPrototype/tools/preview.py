@@ -250,10 +250,53 @@ def make_compare(old_dir: Path, new_dir: Path, out: Path, picks: int = 4, width:
 
 # --- 入口 --------------------------------------------------------------
 
+def run_reel(args) -> int:
+    """主要 3 場面を撮って、1 本の GIF にまとめる（毎回の確認用）。"""
+    try:
+        from PIL import Image  # noqa: F401
+    except ImportError:
+        print("! Pillow が無い。画像の組み立てに必要。")
+        return 1
+
+    if not args.no_build and not build_player():
+        return 1
+
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    dirs: dict[str, Path] = {}
+    for name in ("bellybody", "frontpin", "haul"):
+        spec = SCENARIOS[name]
+        frames = args.frames or spec["frames"]
+        interval = args.interval or spec["interval"]
+        outdir = OUT_ROOT / f"{name}-{stamp}"
+        got = capture(name, outdir, frames, interval, args.arg)
+        if got < 10:
+            print(f"! {name} のフレームが撮れていない")
+            return 1
+
+        files = frame_paths(outdir)
+        print(f"[image] {name}")
+        make_sheet(files, outdir / "sheet.png", args.sheet_step)
+        make_gif(files, outdir / "preview.gif")
+        dirs[name] = outdir
+
+    print("[reel]")
+    subprocess.run(
+        [sys.executable, str(Path(__file__).resolve().parent / "preview_reel.py"),
+         "--belly", str(dirs["bellybody"]),
+         "--pin", str(dirs["frontpin"]),
+         "--hair", str(dirs["haul"])],
+        check=False,
+    )
+    print(f"\n完了: {OUT_ROOT / 'reel'}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="演出を撮って確かめる一括ツール")
     parser.add_argument("scenario", nargs="?", help="撮る場面（--list で一覧）")
     parser.add_argument("--list", action="store_true", help="場面の一覧を出して終了")
+    parser.add_argument("--reel", action="store_true",
+                        help="主要3場面（腹パン・正面拘束・髪）を撮って1本のGIFにまとめる")
     parser.add_argument("--no-build", action="store_true", help="プレイヤーのビルドを省く")
     parser.add_argument("--frames", type=int, help="撮る枚数（既定は場面ごと）")
     parser.add_argument("--interval", type=float, help="撮影間隔（秒）")
@@ -263,10 +306,14 @@ def main() -> int:
     parser.add_argument("-a", "--arg", action="append", default=[], help="実行ファイルへ渡す追加引数")
     args = parser.parse_args()
 
+    if args.reel:
+        return run_reel(args)
+
     if args.list or not args.scenario:
         print("場面:")
         for name, spec in SCENARIOS.items():
             print(f"  {name:9s} {spec['frames']} 枚 / {spec['interval']}s  {' '.join(spec['args'])}")
+        print("\n毎回の確認: python tools/preview.py --reel")
         return 0
 
     if args.scenario not in SCENARIOS:
