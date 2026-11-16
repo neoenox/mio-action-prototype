@@ -26,7 +26,7 @@ namespace Ryona.Game
         const int EscapeInputs = 6;
         const float GrabSeconds = 0.45f;
         const float HaulSeconds = 0.75f;
-        const float ReleaseSeconds = 0.25f;
+        const float ReleaseSeconds = 0.40f;
         const float SettleSeconds = 0.40f;
 
         /// <summary>彼女の腰の脇へ立つ距離（m）。</summary>

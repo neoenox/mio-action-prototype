@@ -73,8 +73,8 @@ namespace Ryona.Game
                             * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.85f, 1f, lift));
             if (release > 0f)
             {
-                pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, -20f, release);
-                pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, 16f, release);
+                pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, -28f, release);
+                pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, 22f, release);
                 pose.ArmLUpper = Vector3.Lerp(pose.ArmLUpper, StanceArmLUpper, release);
                 pose.ArmLFore = Vector3.Lerp(pose.ArmLFore, StanceArmLFore, release);
                 pose.ArmRUpper = Vector3.Lerp(pose.ArmRUpper, StanceArmRUpper, release);
