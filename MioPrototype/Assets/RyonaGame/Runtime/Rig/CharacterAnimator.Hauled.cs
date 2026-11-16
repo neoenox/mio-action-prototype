@@ -49,9 +49,10 @@ namespace Ryona.Game
 
             // 首: 引き上げの間は後ろへ残り（一拍遅れる）、立たされると前へ垂れる。
             // 顔は正面（足の先のカメラ）へ。垂れすぎると前髪で顔が隠れるので、前への垂れは浅く。
-            pose.HeadPitch = -24f * drag + 12f * stand - 16f * yank;
+            // ぐいっ（Yank）のたびに首が持っていかれる（乱暴さ）。
+            pose.HeadPitch = -24f * drag + 12f * stand - 30f * yank;
             pose.HeadYaw = -side * 6f;
-            pose.HeadRoll = -side * 10f * stand;
+            pose.HeadRoll = -side * (10f * stand + 16f * yank);
 
             // 空いている腕は力なく垂れる（寝た形から、体の横にぶら下がる形へ）。
             Vector3 limpUpper = new Vector3(0.14f, -0.98f, 0.06f);
@@ -81,8 +82,9 @@ namespace Ryona.Game
             pose.FootPitchL = 14f * stand;
             pose.FootPitchR = 8f * stand;
 
-            // 引かれた瞬間に体が浮く（ぐいっ）。
-            pose.HipsOffset.y += 0.03f * yank;
+            // 引かれた瞬間に体が浮く（ぐいっ）。上体も一拍遅れてついてくる。
+            pose.HipsOffset.y += 0.05f * yank;
+            pose.TorsoPitch += 9f * yank;
             pose.HipsOffset.y = Mathf.Max(pose.HipsOffset.y, 0.11f - Rig.RestHips.y);
 
             // 持ち上がり始めるまでは寝た姿勢のまま。

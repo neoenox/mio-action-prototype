@@ -24,15 +24,15 @@ namespace Ryona.Game
         internal enum Beat { Idle, Approach, Grab, Haul, Settle }
 
         const int EscapeInputs = 6;
-        const float GrabSeconds = 0.70f;
-        const float HaulSeconds = 1.50f;
-        const float SettleSeconds = 0.55f;
+        const float GrabSeconds = 0.55f;
+        const float HaulSeconds = 0.90f;
+        const float SettleSeconds = 0.45f;
 
         /// <summary>彼女の腰の脇へ立つ距離（m）。</summary>
         const float FlankDistance = 0.40f;
 
         /// <summary>引き上げの間に、敵が彼女から下がる距離（m）。腕が張って見える。</summary>
-        const float PullBack = 0.08f;
+        const float PullBack = 0.16f;
 
         /// <summary>寝技の代わりに引き起こしを選ぶ割合。</summary>
         internal static float Chance = 0.35f;
@@ -58,6 +58,7 @@ namespace Ryona.Game
         float _duration;
         int _struggles;
         bool _firstShot = true;
+        bool _secondYank;
 
         internal EnemyBrain Attacker { get; private set; }
         internal Beat Stage { get; private set; }
@@ -182,6 +183,7 @@ namespace Ryona.Game
             _figure = enemy.GetComponent<EnemyFigure>();
             _struggles = 0;
             _firstShot = true;
+            _secondYank = false;
             Crouch = Lean = Grip = Lift = ArmPull = Yank = 0f;
 
             Vector3 hips = TargetRig.Hips.position;
@@ -234,7 +236,7 @@ namespace Ryona.Game
             }
 
             StrugglePulse = Mathf.MoveTowards(StrugglePulse, 0f, dt * 4f);
-            Yank = Mathf.MoveTowards(Yank, 0f, dt * 3.5f);
+            Yank = Mathf.MoveTowards(Yank, 0f, dt * 5.5f);
             _elapsed += dt;
 
             // 掴んでから引き上げの間は、連打で振りほどける。
@@ -324,18 +326,28 @@ namespace Ryona.Game
         {
             // 敵は体を起こしながら後ろへ反り、少し下がる。手首を引く手が肩の上まで上がる。
             float u = Progress;
+
             // 先に立ち上がりきると、まだ床近くにある手首へ腕が届かず手が離れる（実測 0.34m）。
             // 彼女の持ち上がり（Lift）と同じ速さで体を起こす。
-            // （進行 33% で敵の起き上がり 3 割・彼女 1 割のずれがあり、手が 0.11m 離れた）
-            Crouch = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.18f, 0.88f, u));
-            Lean = Mathf.Sin(Mathf.PI * Mathf.Clamp01(u * 1.1f)) * 0.9f;
+            Crouch = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.10f, 0.70f, u));
+            Lean = Mathf.Sin(Mathf.PI * Mathf.Clamp01(u * 1.3f)) * 1.1f;
             Grip = 1f;
-            ArmPull = Mathf.Lerp(0.60f, 1f, Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, 0.12f, u)));
+            ArmPull = Mathf.Lerp(0.60f, 1f, Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, 0.08f, u)));
 
-            // 体は腕に一拍遅れて付いてくる（腕が先に張って肩が床から浮き、上体が引きずられる）。
-            Lift = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.16f, 0.95f, u));
+            // 乱暴な 2 段引き。最初に一気に引き、途中で一度沈んでから、もう一度引き上げる。
+            float pull1 = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.06f, 0.38f, u));
+            float pull2 = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.55f, 0.92f, u));
+            float sag = Mathf.Sin(Mathf.PI * Mathf.InverseLerp(0.38f, 0.55f, u)) * 0.06f;
+            Lift = Mathf.Clamp01(pull1 * 0.55f + pull2 * 0.55f - sag + 0.05f * Yank);
 
-            Follow(Spot(PullBack * Mathf.Sin(Mathf.PI * Mathf.Clamp01(u * 1.2f))), dt);
+            // 2 回目の「ぐいっ」。1 回目は掴み終わり（TickGrab）で立てている。
+            if (!_secondYank && u >= 0.50f)
+            {
+                _secondYank = true;
+                Yank = 1f;
+            }
+
+            Follow(Spot(PullBack * Mathf.Sin(Mathf.PI * Mathf.Clamp01(u * 1.3f))), dt, 18f);
 
             if (u >= 1f)
                 BeginStage(Beat.Settle, SettleSeconds);
@@ -362,9 +374,9 @@ namespace Ryona.Game
                 Finish();
         }
 
-        void Follow(Vector3 spot, float dt)
+        void Follow(Vector3 spot, float dt, float sharpness = 12f)
         {
-            Attacker.transform.position = Vector3.Lerp(Attacker.transform.position, spot, 1f - Mathf.Exp(-12f * dt));
+            Attacker.transform.position = Vector3.Lerp(Attacker.transform.position, spot, 1f - Mathf.Exp(-sharpness * dt));
             Vector3 toHer = TargetRig.Hips.position - Attacker.transform.position;
             toHer.y = 0f;
             if (toHer.sqrMagnitude > 0.001f)
