@@ -10,9 +10,9 @@ namespace Ryona.Game
         {
             Vector3 leftFoot = _ankleL.position;
             Vector3 rightFoot = _ankleR.position;
-            _hips.localPosition = new Vector3(_hipsX, _hipsY - 0.065f * fold + 0.045f * lift,
-                _hipsZ - 0.035f * fold - 0.06f * lift) + braceOffset;
-            BraceHoldUpperBody(-19f * fold + 18f * lift + leanBack, leanSide, -8f * fold + 8f * lift + chin);
+            _hips.localPosition = new Vector3(_hipsX, _hipsY - 0.065f * fold + 0.055f * lift,
+                _hipsZ - 0.035f * fold - 0.075f * lift) + braceOffset;
+            BraceHoldUpperBody(-19f * fold + 24f * lift + leanBack, leanSide, -8f * fold + 10f * lift + chin);
             PlantHoldFeet(leftFoot, rightFoot);
         }
 

@@ -411,12 +411,26 @@ namespace Ryona.Game
         /// 押さえる側（膝）と彼女（崩れ）の両方が見る。
         /// </summary>
         public float KneePulse { get; private set; }
+        public int KneeCount { get; private set; }
+
+        /// <summary>膝蹴りと膝蹴りの合間に、押さえ役が彼女の両肩を引き起こして腹を晒させる度合い（0..1）。</summary>
+        public float KneeResetLift =>
+            IsGrappled && Kind == GrappleKind.Pin && !IsWallPin && KneeCount > 0 && KneeCount < CombatConstants.PinKneeCount
+                ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.45f, 0.08f, KneePulse))
+                : 0f;
+
+        /// <summary>5発の膝蹴りを食らい切ったあとの脱力・膝崩れ度合い（0..1）。</summary>
+        public float KneeExhaustion =>
+            IsGrappled && Kind == GrappleKind.Pin && !IsWallPin && KneeCount >= CombatConstants.PinKneeCount
+                ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.55f, 0.10f, KneePulse))
+                : 0f;
 
         /// <summary>押さえつけ中に膝蹴りの見た目を立てる（押さえる側から呼ぶ）。</summary>
         public void KickKnee()
         {
             _kneeHold = KneeHoldSeconds;
             KneePulse = 1f;
+            KneeCount++;
         }
 
         /// <summary>膝蹴りの形を保つ秒。姿勢の補間（約 0.1 秒）が追いついてから減衰させる。</summary>

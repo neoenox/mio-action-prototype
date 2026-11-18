@@ -89,7 +89,10 @@ namespace Ryona.Game
                         // タッグ腹パンは、当たった瞬間から拳を腹に押し込む。
                         // 外れた／別の部位なら押し込まない（空振りで腕だけ残ると不自然）。
                         if (_bellyPunchPendingHold > 0f && Zone == PunchZone.Body)
+                        {
+                            _punchPoseHoldTotal = _bellyPunchPendingHold;
                             _punchPoseHoldSeconds = _bellyPunchPendingHold;
+                        }
                     }
                     else if (_hitLog || (_grapple != null && _grapple.IsGrappled))
                     {

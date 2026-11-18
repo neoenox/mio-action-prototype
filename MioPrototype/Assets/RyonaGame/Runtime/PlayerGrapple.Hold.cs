@@ -42,6 +42,7 @@ namespace Ryona.Game
             FrontEscapeEffort = 0f;
             _frontEffortHold = 0f;
             KneePulse = 0f;
+            KneeCount = 0;
             if (kind == GrappleKind.BearHug)
             {
                 _hugStage = HugStage.Rest;

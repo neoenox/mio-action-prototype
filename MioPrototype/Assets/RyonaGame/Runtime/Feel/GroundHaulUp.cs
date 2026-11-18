@@ -25,7 +25,7 @@ namespace Ryona.Game
 
         const int EscapeInputs = 6;
         const float GrabSeconds = 0.70f;
-        const float HaulSeconds = 2.00f;
+        const float HaulSeconds = 2.20f;
         const float ReleaseSeconds = 0.50f;
         const float SettleSeconds = 0.40f;
 
@@ -66,6 +66,11 @@ namespace Ryona.Game
         internal Beat Stage { get; private set; }
         internal bool Active => Attacker != null;
         internal bool IsProne => _player != null && _player.DownIsForward;
+
+        /// <summary>引き起こしで「肩の下から上体を起こす(0)」→「抱きかかえて立たせる(1)」の重み。</summary>
+        internal float EmbraceWeight =>
+            Stage == Beat.Haul ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.34f, 0.62f, Progress))
+            : Stage == Beat.Settle ? 1f : 0f;
 
         /// <summary>掴んでから羽交い締めへ移るまでは、自分では起き上がれない。</summary>
         internal bool BlocksGetUp => Active && Stage >= Beat.Grab;
@@ -292,6 +297,7 @@ namespace Ryona.Game
             }
 
             RequestShot();
+            LogFaceVisibility();
         }
 
         /// <summary>連打 1 回ぶん。規定回数で振りほどく（テストからも呼ぶ）。</summary>
@@ -300,6 +306,7 @@ namespace Ryona.Game
             if (Attacker == null || (Stage != Beat.Grab && Stage != Beat.Haul))
                 return;
             StrugglePulse = 1f;
+            ProceduralSfx.Instance?.Play(SfxId.Tell, 0.45f);
             if (++_struggles >= EscapeInputs)
                 End(true);
         }
@@ -355,35 +362,44 @@ namespace Ryona.Game
             if (Progress >= 1f)
             {
                 Yank = 1f;
+                TriggerYankFeedback(false);
                 BeginStage(Beat.Haul, HaulSeconds);
             }
         }
 
         void TickHaul(float dt)
         {
-            // 敵は体を起こしながら後ろへ反り、少し下がる。手首を引く手が肩の上まで上がる。
+            // 敵は体を起こしながら後ろへ反り、少し下がる。2段目で抱え直してから無理やり立たせる。
             float u = Progress;
 
             // 先に立ち上がりきると、まだ床近くにある頭へ腕が届かず手が離れる。
             // 彼女の持ち上がり（Lift）に合わせて、敵も腰を落としたまま起こす。
-            float pull1 = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.06f, 0.38f, u));
-            float pull2 = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.55f, 0.92f, u));
-            float sag = Mathf.Sin(Mathf.PI * Mathf.InverseLerp(0.38f, 0.55f, u)) * 0.06f;
-            Lift = Mathf.Clamp01(pull1 * 0.55f + pull2 * 0.55f - sag + 0.05f * Yank);
+            float pull1 = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.06f, 0.34f, u));
+            float sag = Mathf.Sin(Mathf.PI * Mathf.InverseLerp(0.34f, 0.58f, u)) * 0.08f;
+            float pull2 = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.58f, 0.94f, u));
+            Lift = Mathf.Clamp01(pull1 * 0.52f + pull2 * 0.52f - sag + 0.05f * Yank);
 
-            Crouch = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.45f, 1f, Lift));
-            Lean = Mathf.Sin(Mathf.PI * Mathf.Clamp01(u * 1.3f)) * 1.1f;
+            Crouch = Mathf.Clamp01(1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.45f, 1f, Lift)) + sag * 1.6f);
+            Lean = Mathf.Sin(Mathf.PI * Mathf.Clamp01(u * 1.25f)) * 1.1f;
             Grip = 1f;
             ArmPull = Mathf.Lerp(0.60f, 1f, Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, 0.08f, u)));
 
-            // 2 回目の「ぐいっ」。1 回目は掴み終わり（TickGrab）で立てている。
-            if (!_secondYank && u >= 0.50f)
+            // 2 回目の「ぐいっ」（抱え直してから立ち上げに入る瞬間）。
+            if (!_secondYank && u >= 0.58f)
             {
                 _secondYank = true;
                 Yank = 1f;
+                TriggerYankFeedback(true);
             }
 
-            Follow(Spot(PullBack * Mathf.Sin(Mathf.PI * Mathf.Clamp01(u * 1.3f))), dt, 26f);
+            Vector3 targetSpot = Spot(PullBack * Mathf.Sin(Mathf.PI * Mathf.Clamp01(u * 1.3f)));
+            Vector3 herCenter = TargetRig != null ? TargetRig.Hips.position : transform.position;
+            Vector3 hugSpot = IsProne
+                ? herCenter + _axis * 0.50f + _flank * 0.18f
+                : herCenter - transform.forward * 0.46f + _flank * 0.12f;
+            hugSpot.y = Attacker.transform.position.y;
+            targetSpot = Vector3.Lerp(targetSpot, hugSpot, EmbraceWeight);
+            Follow(targetSpot, dt, 26f);
 
             if (u >= 1f)
                 BeginStage(Beat.Settle, SettleSeconds);
@@ -469,6 +485,8 @@ namespace Ryona.Game
             if (escaped)
             {
                 enemy.ForceStagger(CombatConstants.GrappleEscapeStun);
+                ProceduralSfx.Instance?.Play(SfxId.Swing, 0.85f);
+                FindFirstObjectByType<CameraShake>()?.Shake(0.08f, 0.18f);
                 GameLog.Log($"[Haul] escaped {enemy.name}");
             }
             else if (enemy.IsAlive)
@@ -476,7 +494,11 @@ namespace Ryona.Game
 
             // 途中まで持ち上がっていたら、そこから立ち上がりへ（床へ戻してから起きると二度手間に見える）。
             if (_player.IsDown && !_player.IsDead && _animator != null && (escaped || lifted))
-                _animator.BeginQuickGetUp(0.70f);
+            {
+                _animator.BeginQuickGetUp(escaped ? 0.50f : 0.70f);
+                if (escaped)
+                    _animator.PreviewShove(0.75f);
+            }
 
             _mount?.DelayNextSearch(2.5f);
         }
@@ -507,26 +529,75 @@ namespace Ryona.Game
             if (_camera == null)
                 return;
 
-            // 二人の関係軸（彼女 ↔ 敵 = 横方向）に対して横、つまり彼女の足の先（正面）から撮る。
-            // 敵の反対側の脇から撮ると、引かれる腕が彼女の体の陰になって見えない（実測）。
-            // 正面からなら、仰向けの顔・引き上げられて伸びた腕・引く敵が一つの画に入る。
-            // 少しだけ敵の側へ振って、敵が彼女の後ろに重ならないようにする。
-            Vector3 her = Vector3.Lerp(TargetRig.Hips.position, TargetRig.Head.position, 0.55f);
+            // 彼女の顔が映ることが前提（AGENTS.md）。敵は彼女の頭側の脇で屈んで抱える。
+            // 敵と同じ側から撮ると、抱える敵の頭・肩が顔を覆う。
+            // そこで敵と反対の斜め前（彼女の足の先の方向）から撮る。敵は彼女の体の向こうになる。
+            //   仰向け: 足元の斜め上から、顔を見下ろす（顔は真上を向いているので、低いと読めない）。
+            //           引き起こされて立つほど、目の高さへ下りて正面へ回る（立った彼女の顔が正面から読める）。
+            //   うつ伏せ: 顔は床の横を向く。高めの斜め前から、横顔と持ち上がる肩を見せる。
+            // 構図は引き上げの進み（Lift）で連続に変わる。段ごとに別のカメラへ切り替えない。
             Vector3 enemyChest = _figure != null ? _figure.HeadBone.position - Vector3.up * 0.35f
                 : Attacker.transform.position + Vector3.up;
             bool prone = _player.DownIsForward;
-            Vector3 target = prone
-                ? Vector3.Lerp(TargetRig.Head.position, enemyChest, 0.4f)
-                : Vector3.Lerp(her, enemyChest, 0.35f);
+            float lift = Mathf.SmoothStep(0f, 1f, Lift);
+            float grabIn = Stage == Beat.Grab ? Mathf.SmoothStep(0f, 1f, Progress) : 1f;
             Vector3 front = -_axis;
-            // うつ伏せのとき、正面（足元）から撮ると彼女の背中と敵の体しか映らない。
-            // 敵と反対の脇へ回り、横から髪を掴む手と体を見せる。
-            // 寄せすぎると敵の体の中へ入る。敵と反対の脇から 2.0m。
-            Vector3 offset = prone
-                ? -_flank * 2.2f + front * 0.35f + Vector3.up * (1.15f + 0.10f * Lift)
-                : front * 2.2f + _flank * 0.35f + Vector3.up * (1.15f + 0.10f * Lift);
+            Vector3 face = TargetRig.Head.position;
+            Vector3 chest = Vector3.Lerp(TargetRig.Hips.position, face, 0.8f);
+
+            // 仰向け: 足元の斜め上（敵と反対の脇寄り）から顔を見下ろす。立つほど正面へ回り、目の高さへ下りる。
+            //   敵は彼女の頭の脇で屈んで覆いかぶさるので、敵と同じ側・低い位置からだと顔が隠れる
+            //   （実測: 顔が見えるコマの割合 62% → 97%、顔が読める割合 50% → 97%）。
+            // うつ伏せ: 敵が頭の真上に跨るので、どの角度でも顔は隠れやすい（実測 78〜85%、読めるコマ 0%）。
+            //   従来どおり、敵と反対の脇から低めに撮る。
+            Vector3 target;
+            Vector3 offset;
+            if (prone)
+            {
+                target = Vector3.Lerp(face, enemyChest, 0.4f);
+                offset = -_flank * 2.15f + front * 0.65f + Vector3.up * (1.05f + 0.12f * Lift);
+            }
+            else
+            {
+                target = Vector3.Lerp(Vector3.Lerp(face, chest, 0.35f), enemyChest, 0.20f + 0.10f * lift);
+                offset = -_flank * Mathf.Lerp(0.85f, 0.35f, lift)
+                    + front * Mathf.Lerp(1.45f, 1.95f, lift)
+                    + Vector3.up * Mathf.Lerp(1.50f, 1.10f, lift);
+            }
+
+            // 掴む瞬間にぐっと寄る（出だしだけ少し遠く、掴んだら本来の距離）。
+            offset *= Mathf.Lerp(1.12f, 1.0f, grabIn);
             _camera.RequestCinematicShot(target + offset, target, cut: _firstShot);
             _firstShot = false;
+        }
+
+        float _faceLogAt;
+
+        /// <summary>引き起こし中の顔の見え方を 0.25 秒ごとに出す（<c>-haullog</c>）。</summary>
+        void LogFaceVisibility()
+        {
+            if (!LaunchOptions.Has("-haullog") || Time.unscaledTime < _faceLogAt)
+                return;
+            _faceLogAt = Time.unscaledTime + 0.25f;
+            var cam = Camera.main;
+            if (cam == null || TargetRig == null || TargetRig.Head == null)
+                return;
+            var enemies = new System.Collections.Generic.List<EnemyFigure>(
+                FindObjectsByType<EnemyFigure>(FindObjectsSortMode.None));
+            var r = FaceVisibility.Measure(cam, TargetRig.Head, enemies);
+            GameLog.Log($"[HaulFace] prone={(_player.DownIsForward ? 1 : 0)} stage={Stage} lift={Lift:F2} visible={r.Visible:F2} " +
+                $"facing={r.FacingAngle:F0} readable={r.Readable} blocker={r.Blocker ?? "-"}");
+        }
+
+        void TriggerYankFeedback(bool heavy)
+        {
+            var sfx = ProceduralSfx.Instance;
+            if (sfx != null)
+            {
+                sfx.Play(SfxId.Tell, heavy ? 0.85f : 0.65f);
+                sfx.Play(SfxId.HurtSmall, heavy ? 0.80f : 0.55f);
+            }
+            FindFirstObjectByType<CameraShake>()?.Shake(heavy ? 0.065f : 0.045f, 0.16f);
         }
     }
 }

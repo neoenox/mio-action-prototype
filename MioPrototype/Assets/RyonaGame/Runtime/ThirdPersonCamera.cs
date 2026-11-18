@@ -156,6 +156,7 @@ namespace Ryona.Game
         float _focusPitch;
         float _focusYaw;
         float _focusRemaining;
+        float _focusDuration;
         bool _cinematicRequested;
         bool _cinematicActive;
         bool _cinematicCut;
@@ -167,6 +168,8 @@ namespace Ryona.Game
         // このフレームで実際に使う値（毎フレーム TickEffects が更新する）
         float _distanceScale = 1f;
         float _pivotOffsetY;
+        bool _holdingFocusThisFrame;
+        bool _holdingFocusBelt;
 
         void Awake()
         {
@@ -383,9 +386,12 @@ namespace Ryona.Game
                 1f - Mathf.Exp(-4f * Time.deltaTime));
 
             bool focusing = _focusRemaining > 0f;
+            float focusWeight = focusing && _focusDuration > 0f
+                ? Envelope(_focusRemaining, _focusDuration)
+                : (focusing ? 1f : 0f);
 
             // 腹パン中は見下ろしを弱め、折れて下を向いた顔を画面に入れる。
-            float pitch = BeltPitch + (focusing ? _focusPitch : 0f);
+            float pitch = BeltPitch + (focusing ? _focusPitch * focusWeight : 0f);
             // 通常時の最大ズームでも、演出で寄った画から顔や拳が大きく切れないようにする。
             float baseDistance = focusing && _distanceScale < 1f
                 ? Mathf.Max(Distance, _initialDistance * ClosestShotZoom)
@@ -423,7 +429,10 @@ namespace Ryona.Game
 
             if (focusing)
             {
-                _focusRemaining = Mathf.Max(0f, _focusRemaining - Time.unscaledDeltaTime);
+                if (_holdingFocusBelt)
+                    _holdingFocusBelt = false;
+                else
+                    _focusRemaining = Mathf.Max(0f, _focusRemaining - Time.unscaledDeltaTime);
                 // 演出中は関所（画面ロック）のクランプを外す。ロックの端で彼女が
                 // 画面の外へ寄り、寄せた画で「中心に居ない」ように見えるため。
                 // ステージ端だけは守る。
@@ -431,6 +440,7 @@ namespace Ryona.Game
             }
             else
             {
+                _holdingFocusBelt = false;
                 _beltX = Mathf.Clamp(_beltX, minX, maxX);
             }
 
@@ -450,7 +460,7 @@ namespace Ryona.Game
             _smoothPivot = Vector3.Lerp(_smoothPivot, pivot,
                 1f - Mathf.Exp(-follow * followDt));
 
-            Quaternion rotation = Quaternion.Euler(pitch, BeltYaw + (focusing ? _focusYaw : 0f), 0f);
+            Quaternion rotation = Quaternion.Euler(pitch, BeltYaw + (focusing ? _focusYaw * focusWeight : 0f), 0f);
             Vector3 direction = rotation * Vector3.back;
 
             transform.position = _smoothPivot + direction * distance;
@@ -579,6 +589,8 @@ namespace Ryona.Game
             if (seconds <= 0f)
             {
                 _focusRemaining = 0f;
+                _focusDuration = 0f;
+                _holdingFocusBelt = false;
                 return;
             }
 
@@ -586,6 +598,7 @@ namespace Ryona.Game
             _focusPitch = pitchOffset;
             _focusYaw = yawOffset;
             _focusRemaining = Mathf.Max(_focusRemaining, seconds);
+            _focusDuration = Mathf.Max(_focusDuration, _focusRemaining);
         }
 
         /// <summary>
@@ -630,6 +643,9 @@ namespace Ryona.Game
             _focusPitch = pitchOffset;
             _focusYaw = yawOffset;
             _focusRemaining = seconds;
+            _focusDuration = seconds;
+            _holdingFocusThisFrame = true;
+            _holdingFocusBelt = true;
         }
 
         void OnDisable()
@@ -638,6 +654,9 @@ namespace Ryona.Game
             ResetDistanceEffect();
             ResetPivotEffect();
             _focusRemaining = 0f;
+            _focusDuration = 0f;
+            _holdingFocusThisFrame = false;
+            _holdingFocusBelt = false;
             _cinematicRequested = _cinematicActive = false;
             _focusPitch = 0f;
             _focusYaw = 0f;
@@ -646,7 +665,8 @@ namespace Ryona.Game
         /// <summary>演出の残り時間を進め、このフレームで使う倍率・オフセットを決める。</summary>
         void TickEffects(float deltaTime)
         {
-            float dt = Mathf.Max(0f, deltaTime);
+            float dt = _holdingFocusThisFrame ? 0f : Mathf.Max(0f, deltaTime);
+            _holdingFocusThisFrame = false;
 
             _pushRemaining = Mathf.Max(0f, _pushRemaining - dt);
             _pullRemaining = Mathf.Max(0f, _pullRemaining - dt);

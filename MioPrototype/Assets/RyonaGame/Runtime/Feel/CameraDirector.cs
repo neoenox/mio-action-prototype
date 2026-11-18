@@ -72,6 +72,14 @@ namespace Ryona.Game
         bool _started;
         bool _dead;
         float _deathElapsed;
+        HeldBellyPunchDirector _heldPunch;
+
+        bool IsHeldPunchCameraActive()
+        {
+            if (_heldPunch == null)
+                _heldPunch = FindFirstObjectByType<HeldBellyPunchDirector>();
+            return _heldPunch != null && _heldPunch.isActiveAndEnabled && _heldPunch.IsCameraActive;
+        }
 
         /// <summary>調整値は <see cref="RyonaConfig.CameraDirection"/> が真実源。シーンの保存値は使わない。</summary>
         void ApplySettings(RyonaConfig.CameraDirectionSettings s)
@@ -189,7 +197,7 @@ namespace Ryona.Game
 
         void OnHitReceived(HitResult result)
         {
-            if (Rig == null)
+            if (Rig == null || IsHeldPunchCameraActive())
                 return;
 
             // Large 以上の怯みは Staggered 側でより強く演出する。
@@ -203,7 +211,7 @@ namespace Ryona.Game
 
         void OnStaggered(HitResult result)
         {
-            if (Rig == null)
+            if (Rig == null || IsHeldPunchCameraActive())
                 return;
 
             if (result.Stagger < StaggerTier.Large)

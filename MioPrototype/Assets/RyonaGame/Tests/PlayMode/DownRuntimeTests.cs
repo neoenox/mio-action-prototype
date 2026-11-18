@@ -600,5 +600,34 @@ namespace Ryona.Tests
             Assert.AreEqual(CharacterAnimator.State.Idle, _anim.Current,
                 $"起き上がって構えに戻っていない（{_anim.Current}）");
         }
+
+        [UnityTest]
+        public IEnumerator MountedEscapeShovesEnemyIntoStagger()
+        {
+            yield return LoadPlayer(holdEnemies: false);
+            var attacker = PrepareMount(forward: false);
+            var mount = _stats.GetComponent<GroundMountAttack>();
+
+            float deadline = Time.realtimeSinceStartup + 6f;
+            while (mount.Stage != GroundMountAttack.Beat.Windup && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.AreEqual(GroundMountAttack.Beat.Windup, mount.Stage, "マウントに入らない");
+
+            for (int i = 0; i < 6; i++)
+                mount.Struggle();
+            Assert.IsTrue(mount.Escaped, "連打で脱出状態に入らない");
+            Assert.AreEqual(GroundMountAttack.Beat.Dismount, mount.Stage);
+
+            deadline = Time.realtimeSinceStartup + 2f;
+            while (mount.Stage != GroundMountAttack.Beat.Idle && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.AreEqual(GroundMountAttack.Beat.Idle, mount.Stage, "Dismount が完了しない");
+            Assert.AreEqual(EnemyPhase.Stagger, attacker.Phase, "跳ね除けられた敵がよろけていない");
+            yield return null;
+            Assert.IsTrue(_stats.GetUpRequested || _stats.IsGettingUp, "脱出後に起き上がり要求/開始に入っていない");
+
+            yield return new WaitForSeconds(_anim.GetUpSeconds + 0.3f);
+            Assert.IsFalse(_stats.IsDown, "脱出後に立ち上がれていない");
+        }
     }
 }

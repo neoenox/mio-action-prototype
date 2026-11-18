@@ -35,6 +35,7 @@ namespace Ryona.Game
             _hugStage = HugStage.Rest;
             _hugTime = 0f;
             _hugPhase = 0f;
+            KneeCount = 0;
             PullPulse = 0f;
 
             if (wasGrappled)
@@ -106,6 +107,21 @@ namespace Ryona.Game
             Vector3 spot = captor.transform.position + dir * distance;
             spot.y = transform.position.y;
             return spot;
+        }
+
+        internal void ResetForMotionPreview()
+        {
+            Release();
+            ClearWallExit();
+            WallPinWeight = 0f;
+            WallAdhereWeight = 0f;
+            KneePulse = 0f;
+            KneeCount = 0;
+            SqueezePulse = 0f;
+            PullPulse = 0f;
+            LiftPulse = 0f;
+            PushPulse = 0f;
+            StrugglePulse = 0f;
         }
 
     }

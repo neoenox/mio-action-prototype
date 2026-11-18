@@ -198,6 +198,7 @@ namespace Ryona.Game
 
         public float HeldBellyDamage => _heldBellyDamage;
         public bool HasHeldBellyDown => _heldBellyDamage >= CombatConstants.MaxHeldBellyDamage;
+        internal void ClearHeldBellyDamage() => _heldBellyDamage = 0f;
 
         // コンボを途中で切らず、自然に拘束が解けるときだけ腹ダウンを消化する。
         public void ResolveHeldBellyDown()

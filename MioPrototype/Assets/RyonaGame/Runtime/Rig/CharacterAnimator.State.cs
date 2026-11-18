@@ -13,6 +13,8 @@ namespace Ryona.Game
             if (state == State.Down)
             {
                 _groundRolled = false;
+                _downLandedAt = -1f;
+                _downLandRaised = false;
                 // 吹き飛ばされて倒れるときは、倒れきる時刻を着地に合わせる。
                 // 空中にいるのに「その場で崩れる」速さで倒れると、足が地面を滑って見える。
                 _downForward = Stats != null && Stats.DownIsForward;
@@ -26,6 +28,7 @@ namespace Ryona.Game
                     : (_downLaunched ? DownFallSeconds * 0.34f : DownFallSeconds);
 
                 _airBlend = _downLaunched ? 1f : 0f;
+                GameLog.Log($"[Anim] Down launched={_downLaunched} forward={_downForward} fall={_downFallSeconds:F2}s airborne={(Motor != null && Motor.IsAirborne)}");
                 _downEndLay = _downForward ? 92f : -92f;
             }
         }

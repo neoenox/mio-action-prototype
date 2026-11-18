@@ -67,6 +67,8 @@ namespace Ryona.Game
 
         internal void DelayNextSearch(float seconds) =>
             _nextSearch = Mathf.Max(_nextSearch, Time.time + seconds);
+
+        internal void ClearSearchDelay() => _nextSearch = 0f;
         internal float Fear => Stage switch
         {
             Beat.Mount when !_player.DownIsForward => Mathf.SmoothStep(0f, 1f, Progress),
@@ -81,6 +83,7 @@ namespace Ryona.Game
         internal bool RollLeftShoulder { get; private set; }
         internal bool LeftPunch => (_punches & 1) != 0;
         internal float Side => _side;
+        internal bool Escaped => _escaped;
         internal float StrugglePulse { get; private set; }
         internal Vector3 StrikeTarget { get; private set; }
         internal Vector3 StrikeSide => Attacker.transform.right * (LeftPunch ? -1f : 1f);
@@ -89,10 +92,14 @@ namespace Ryona.Game
         internal Vector3 ShotOffset => _shotOffset;
         internal Vector3 AttackerHead => _figure.HeadBone.position;
         internal bool HasTakenPunch { get; private set; }
-        internal float HeadRecoil => ImpactWasLeftPunch
+        internal int PunchesLanded => _punches;
+        internal float MountFatigue => Mathf.Clamp01(_punches / (float)MaxPunches);
+        internal bool IsMountKnockedOut => _punches >= MaxPunches && _reactionAge > 0.22f;
+        float RecoilScale => Mathf.Lerp(1f, 1.25f, MountFatigue);
+        internal float HeadRecoil => (ImpactWasLeftPunch
             ? Recoil(-0.012f, 0.058f, 0.24f)
-            : Recoil(-0.018f, 0.036f, 0.22f);
-        internal float TorsoRecoil => Recoil(0.010f, 0.073f, 0.28f);
+            : Recoil(-0.018f, 0.036f, 0.22f)) * RecoilScale;
+        internal float TorsoRecoil => Recoil(0.010f, 0.073f, 0.28f) * RecoilScale;
         internal float ArmRecoil => Recoil(-0.052f, 0.10f, 0.30f);
         internal float LegRecoil => Recoil(0.044f, 0.118f, 0.33f);
         internal bool IsApplyingPunch => Attacker != null && Stage == Beat.Strike && _reactionAge == 0f;
@@ -222,7 +229,10 @@ namespace Ryona.Game
             else if (Stage == Beat.Mount)
                 MoveTowardsPose(MountSpot(), TargetRig.Head.position, Mathf.InverseLerp(0.04f, 0.94f, Progress));
             else if (Stage == Beat.Dismount)
-                MoveTowardsPose(FeetSpot(), TargetRig.Head.position, Progress);
+            {
+                Vector3 retreat = _escaped ? FeetSpot() - BodyAxis() * 0.45f : FeetSpot();
+                MoveTowardsPose(retreat, TargetRig.Head.position, Progress);
+            }
 
             if (Progress >= 1f && Stage != Beat.Strike && Stage != Beat.Roll)
                 Advance();
@@ -233,9 +243,12 @@ namespace Ryona.Game
             if (Stage < Beat.Mount || Stage >= Beat.Dismount || _player.DownIsForward)
                 return;
             StrugglePulse = 1f;
+            ProceduralSfx.Instance?.Play(SfxId.Tell, 0.45f);
             if (++_struggles >= EscapeInputs)
             {
                 _escaped = true;
+                ProceduralSfx.Instance?.Play(SfxId.Swing, 0.85f);
+                FindFirstObjectByType<CameraShake>()?.Shake(0.08f, 0.18f);
                 Begin(Beat.Dismount, 0.40f);
             }
         }
@@ -405,9 +418,14 @@ namespace Ryona.Game
                     break;
                 case Beat.Dismount:
                     bool escaped = _escaped;
+                    var enemy = Attacker;
                     End();
                     if (escaped)
+                    {
+                        if (enemy != null && enemy.IsAlive)
+                            enemy.ForceStagger(CombatConstants.GrappleEscapeStun);
                         _player.RequestGetUp();
+                    }
                     break;
             }
         }

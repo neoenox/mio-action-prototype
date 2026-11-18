@@ -155,8 +155,8 @@ namespace Ryona.Game
             if (_attack != null)
                 return;
 
-            // 攻撃は終わったが踏み込みの足が戻り切っていない間も、次は撃たせない。
-            if (FeetNotSettled)
+            // コンボ受付時間外だけ踏み込みの足が戻るのを待つ（連打コンボ中は待たずに次段へ繋ぐ）。
+            if (FeetNotSettled && Time.time > _comboUntil)
             {
 
                 if (!_settleLogged)

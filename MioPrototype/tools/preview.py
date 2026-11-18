@@ -51,15 +51,15 @@ SCENARIOS = {
     # レーンの正面拘束（-nowallpin で壁版を避ける）。膝蹴りが入る。
     "frontpin": dict(args=["-grappletest", "-pintest", "-nowallpin"], burst="-pinburst",
                      frames=140, interval=0.05),
-    # 羽交い締めからの腹パン。
+    # 羽交い締めからの腹パン（5連撃→グロッキー→引き起こし→トドメ→崩れ落ち）。
     "belly": dict(args=["-grappletest"], burst="-heldpunchburst",
-                  frames=140, interval=0.05),
-    # 羽交い締めからの顔面パン。
+                  frames=195, interval=0.05),
+    # 羽交い締めからの顔面パン（5連撃→グロッキー→引き起こし→トドメ→仰向けダウン）。
     "face": dict(args=["-grappletest", "-heldpunchface=1"], burst="-heldpunchburst",
-                 frames=140, interval=0.05),
-    # 腹パン（体）を固定。殴るたびに敵が後ろへ下がらないことを見る。
+                 frames=195, interval=0.05),
+    # 腹パン（体）を固定。左右交互のみぞおち打ち込みからトドメ崩れ落ちまでを見る。
     "bellybody": dict(args=["-grappletest", "-heldpunchface=0"], burst="-heldpunchburst",
-                      frames=140, interval=0.05),
+                      frames=195, interval=0.05),
     # 足取り（背後の足首掴み）。掴まれて 1.6 秒でもがけなければ前へ転ぶ。
     "ankle": dict(args=["-grappletest", "-anklegrabtest"], burst="-pinburst",
                   frames=90, interval=0.05),

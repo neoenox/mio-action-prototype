@@ -23,6 +23,16 @@ namespace Ryona.Game
         Quaternion _faceContactElbow = Quaternion.identity;
         bool _hasFaceContactPose;
 
+        // 腹パン連撃で左右の腕を切り替えるとき、抜いた側の腕が 1 フレームで跳ねないよう補間する。
+        bool _hasLastBellyPose;
+        bool _lastBellyLeft;
+        Quaternion _lastBellyUpper = Quaternion.identity;
+        Quaternion _lastBellyElbow = Quaternion.identity;
+        bool _prevBellyFadeLeft;
+        Quaternion _prevBellyFadeUpper = Quaternion.identity;
+        Quaternion _prevBellyFadeElbow = Quaternion.identity;
+        float _prevBellyFade;
+
         void LateUpdate()
         {
             if (_figure == null) _figure = GetComponent<EnemyFigure>();
@@ -34,6 +44,22 @@ namespace Ryona.Game
             float punchWeight = _brain.PunchPoseWeight;
             if (punchWeight > 0f || _brain.KeepsBellyPunchArm)
                 AimPunch(punchWeight);
+            else
+            {
+                _hasLastBellyPose = false;
+                _prevBellyFade = 0f;
+            }
+            if (_prevBellyFade > 0f)
+            {
+                _prevBellyFade = Mathf.MoveTowards(_prevBellyFade, 0f, Time.deltaTime / 0.12f);
+                var prevUpper = _figure.ShoulderBone(_prevBellyFadeLeft);
+                var prevElbow = _figure.ElbowBone(_prevBellyFadeLeft);
+                if (prevUpper != null && prevElbow != null && _prevBellyFade > 0f)
+                {
+                    prevUpper.localRotation = Quaternion.Slerp(prevUpper.localRotation, _prevBellyFadeUpper, _prevBellyFade);
+                    prevElbow.localRotation = Quaternion.Slerp(prevElbow.localRotation, _prevBellyFadeElbow, _prevBellyFade);
+                }
+            }
             float grabGrip = _brain.IsPreparingGrab
                 ? Mathf.InverseLerp(0.65f, 0.95f, _brain.WindupProgress)
                 : _brain.HeldThrowPull;
@@ -84,27 +110,31 @@ namespace Ryona.Game
             float lift = _targetAnimator != null ? _targetAnimator.HeldBellyCaptorLift : 0f;
             float ready = _targetAnimator != null ? _targetAnimator.HeldFaceCaptorBrace : 0f;
             float impact = _targetAnimator != null ? Mathf.Clamp01(_targetAnimator.HeldFacePunchImpulse) : 0f;
+            float dangle = _targetAnimator != null ? _targetAnimator.HeldComboDangle : 0f;
+            float hoist = _targetAnimator != null ? _targetAnimator.FinisherHoistWeight : 0f;
+            float captorLift = Mathf.Max(lift, hoist * 0.72f);
+            float captorDangle = dangle * (1f - 0.65f * hoist);
             // 羽交い締めの上体を基準に、顔パンチでは膝を沈めて肩を逃がす。
             // 構えと命中時の反りは重ねず、大きい方だけを使う。
-            if (_targetAnimator != null && (belly > 0f || impact > 0f || ready > 0f || Time.deltaTime <= 0f))
+            if (_targetAnimator != null && (belly > 0f || lift > 0f || impact > 0f || ready > 0f || dangle > 0f || hoist > 0f || Time.deltaTime <= 0f))
             {
                 float fold = belly * Mathf.SmoothStep(0f, 1f,
                     Mathf.InverseLerp(12f, 45f, _targetAnimator.DebugTorsoPitch));
                 Vector3 headOffset = _targetRig.Head.position - _brain.Player.transform.position;
                 float headSide = Mathf.Clamp(Vector3.Dot(headOffset, transform.right) / 0.08f, -1f, 1f);
-                float leanBack = Mathf.Max(3f * ready, 9f * impact);
+                float leanBack = Mathf.Max(3f * ready, 9f * impact) - 5f * captorDangle + 4f * hoist;
                 // 膝と股関節で重心を引き、胸の角度を足さずに肩を澪の後ろへ逃がす。
-                Vector3 braceOffset = new Vector3(0f, -impact * Mathf.Lerp(0.025f, 0.10f, ready),
-                    -ready * (0.06f + 0.025f * impact));
-                _figure.PoseBackHold(fold, lift, braceOffset, leanBack, 6f * impact * headSide, 3f * impact);
+                Vector3 braceOffset = new Vector3(0f, -impact * Mathf.Lerp(0.025f, 0.10f, ready) - 0.04f * captorDangle + 0.025f * hoist,
+                    -ready * (0.06f + 0.025f * impact) + 0.025f * captorDangle - 0.02f * hoist);
+                _figure.PoseBackHold(fold, captorLift, braceOffset, leanBack, 6f * impact * headSide, 3f * impact + 4f * captorDangle);
             }
 
             // 胸が傾いても、そのフレームの肩幅と胴の向きに合わせて腕を回す。
             // 前回コミット（849ac5e）と同じ腕の形にする。服との当たりを避けて肘の向きを
             // 探索したり、必要以上に体を引いたりすると、彼女から腕が離れて
             // 「脇の下をくぐっていない」画になるため、羽交い締めでは行わない。
-            Solve(false, _targetRig.RUpperArm, hold.GrabContactWeight, belly, face, lift, impact * ready);
-            Solve(true, _targetRig.LUpperArm, hold.GrabContactWeight, belly, face, lift, impact * ready);
+            Solve(false, _targetRig.RUpperArm, hold.GrabContactWeight, belly, face, captorLift, impact * ready, captorDangle);
+            Solve(true, _targetRig.LUpperArm, hold.GrabContactWeight, belly, face, captorLift, impact * ready, captorDangle);
         }
 
         void AimShoulderGrip(bool left, Transform shoulder, float weight, bool shove = false)
@@ -171,25 +201,43 @@ namespace Ryona.Game
             bool keepsBellyArm = _brain.KeepsBellyPunchArm;
             if (_brain.IsBellyPunch || keepsBellyArm)
             {
+                if (_hasLastBellyPose && _lastBellyLeft != left)
+                {
+                    _prevBellyFadeLeft = _lastBellyLeft;
+                    _prevBellyFadeUpper = _lastBellyUpper;
+                    _prevBellyFadeElbow = _lastBellyElbow;
+                    _prevBellyFade = 1f;
+                }
+
                 // 腹の正面に拳の中心を合わせる。肘は下に残し、前腕を斜め上へ差し込む。
                 end = _figure.Fist(left);
-                // 溜めの拳も肘より前に置き、伸ばす途中で肘の曲がる面をまたがない。
-                Vector3 chamber = upper.position + outside * 0.07f
-                    - transform.up * 0.20f + transform.forward * 0.19f;
-                Vector3 contact = target + _brain.Player.transform.forward * 0.13f;
+                // 溜めの拳も肘より前に置き、伸ばす途中で肘の曲がる面をまたがない。後半の打数ほど深く低く引く。
+                float power = _brain.IsTagPunch ? _brain.TagFacePower : 1f;
+                float extraPull = power - 1f;
+                Vector3 chamber = upper.position + outside * (0.08f + 0.04f * extraPull)
+                    - transform.up * (0.24f + 0.07f * extraPull)
+                    + transform.forward * (0.18f - 0.09f * extraPull);
+                float sink = _brain.BellySinkDrive;
+                float sinkDepth = power > 1.55f ? 0.095f : 0.065f;
+                float sinkRise = power > 1.55f ? 0.045f : 0.032f;
+                Vector3 contact = target + _brain.Player.transform.forward * (0.13f - sinkDepth * sink)
+                    + Vector3.up * (sinkRise * sink);
                 float drive = _brain.IsBellyPunch ? _brain.BellyPunchDrive : 0f;
                 if (keepsBellyArm)
                 {
-                    // 次の一発まで同じ溜めへ戻す。途中で通常ガードを挟むと拳が上下に揺れる。
+                    // 次の一発まで同じ溜めへ戻す。左右が切り替わるときだけ溜め始めを滑らかに繋ぐ。
                     if (_brain.Phase == EnemyPhase.Recover)
                         drive *= weight;
-                    weight = 1f;
+                    weight = _brain.Phase == EnemyPhase.Windup && _brain.IsBellyPunch
+                        ? Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_brain.WindupProgress / 0.16f))
+                        : 1f;
                 }
                 goal = Vector3.Lerp(chamber, contact, drive);
                 pole = upper.position + outside * 0.12f - transform.up * 0.52f;
             }
             else
             {
+                _hasLastBellyPose = false;
                 // 顔は手前の表面で止める。通常の腹パンチは少しめり込ませる。
                 float reach = zone == PunchZone.Face ? 0.09f : -0.03f;
                 goal = target + toMe * reach;
@@ -205,6 +253,14 @@ namespace Ryona.Game
             Quaternion aimedElbow = elbow.rotation;
             upper.rotation = Quaternion.Slerp(oldUpper, aimedUpper, weight);
             elbow.rotation = Quaternion.Slerp(oldElbow, aimedElbow, weight);
+
+            if (_brain.IsBellyPunch || keepsBellyArm)
+            {
+                _hasLastBellyPose = true;
+                _lastBellyLeft = left;
+                _lastBellyUpper = upper.localRotation;
+                _lastBellyElbow = elbow.localRotation;
+            }
         }
 
         /// <summary>
@@ -308,7 +364,7 @@ namespace Ryona.Game
         /// 前回コミット（849ac5e）と同じ狙い。彼女の腕の下（脇の下）をくぐって、
         /// 手を首の後ろ〜上腕のあたりへ回す。`shoulder` は彼女の上腕（左右で渡す）。
         /// </summary>
-        void Solve(bool left, Transform shoulder, float contact, float belly, float face, float lift, float duck)
+        void Solve(bool left, Transform shoulder, float contact, float belly, float face, float lift, float duck, float dangle)
         {
             var upper = _figure.ShoulderBone(left);
             var elbow = _figure.ElbowBone(left);
@@ -318,22 +374,33 @@ namespace Ryona.Game
 
             float side = left ? -1f : 1f;
             Transform player = _brain.Player.transform;
+            Vector3 shoulderSpan = _targetRig.RUpperArm.position - _targetRig.LUpperArm.position;
+            shoulderSpan.y = 0f;
+            Vector3 torsoRight = shoulderSpan.sqrMagnitude > 1e-4f ? shoulderSpan.normalized : player.right;
+            Vector3 torsoForward = Vector3.Cross(torsoRight, Vector3.up);
 
-            // 手は首の後ろ（後頭部の下）から上腕のあたりへ。高く置くと上腕が水平になり、
-            // 彼女の腕の「上」を通ってしまうので、やや低めにする。
-            Vector3 goal = _targetRig.Neck.position
-                + player.forward * 0.04f
-                + player.right * (side * (0.18f + 0.045f * face + 0.025f * duck))
-                - Vector3.up * (0.06f + 0.025f * belly + 0.05f * face + 0.035f * duck);
+            // 手は彼女の脇の前の縁（上腕の付け根の真下、胸の上部の側面）を掴む。肩の上・首の横へ
+            // 回すと、手が肩の上に乗って見える（実機の画で確認）。前腕は脇の下を下から通る。
+            // 上腕の付け根（肩の関節）そのものへ置くと前腕が上腕を串刺しにする
+            // （実測: 中心線の距離 2〜3cm、二の腕↔前腕 5cm 超の貫通）ので、付け根より下へ置く。
+            // 前後は体の前側へ +3cm。拳が胸の上部の側面に見えて「掴んでいる」ことが伝わる。
+            // 左右・上下は、彼女の見た目メッシュ（袖・胴）との距離で決めた（2026-11-19 実測、顔パン 5 連撃）。
+            // 内側へ寄せる（脇の真下・胸の中央寄り）と拳が胴を突き抜けて、胸に黒い点が透ける
+            // （胴のめり込み 平均 3.4cm）。体側へ 8cm・下へ 14cm 置くと、胴 平均 0.2cm、
+            // 上腕・前腕の袖へのめり込みは 0。残りは掴み始めの 0.2 秒と、持ち上げ終わりの約 0.3 秒。
+            Vector3 goal = shoulder.position
+                + torsoForward * (0.03f - 0.015f * dangle)
+                + torsoRight * (side * 0.08f)
+                - Vector3.up * (0.14f + 0.015f * belly + 0.02f * face + 0.015f * duck);
 
-            // 肘は彼女の脇の下（体の側面、やや前）へ入れる。腕が「肘を前、手を後ろ」に
-            // 折れて、彼女の腕の下をくぐるのが真横からも見える。
-            Vector3 pole = shoulder.position - transform.up * 0.55f
-                + player.right * (side * (0.34f + 0.10f * face))
-                + player.forward * 0.28f;
+            // 肘は彼女の脇の下（体側よりやや外）へ通す。前（+z）へ寄せると、肩に近い姿勢
+            // （後ろから持ち上げる場面）で肘が彼女の上腕へ突き出す。
+            Vector3 pole = shoulder.position - transform.up * (0.36f - 0.04f * dangle)
+                + torsoRight * (side * 0.16f)
+                + torsoForward * (-0.04f + 0.02f * dangle);
 
             goal = Vector3.Lerp(goal, shoulder.position - transform.forward * 0.045f, contact);
-            goal += (Vector3.up * 0.085f - player.forward * 0.075f) * lift;
+            goal += (Vector3.up * 0.055f - torsoForward * (0.025f * (1f - 0.6f * dangle))) * lift;
             pole = Vector3.Lerp(pole,
                 upper.position + transform.right * (side * 0.25f) - transform.up * 0.24f, contact);
 

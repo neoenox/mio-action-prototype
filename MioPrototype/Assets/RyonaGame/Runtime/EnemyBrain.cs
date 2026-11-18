@@ -245,6 +245,7 @@ namespace Ryona.Game
 
         /// <summary>腹パンが当たった瞬間から、拳を腹に押し込んでおく残り秒。</summary>
         float _punchPoseHoldSeconds;
+        float _punchPoseHoldTotal;
 
         /// <summary>
         /// タッグ腹パンの発注時に受け取った保持秒。
@@ -288,8 +289,8 @@ namespace Ryona.Game
         /// <summary>通常の Body 狙い（腰と胸のあいだ）。</summary>
         const float DefaultBodyBias = 0.40f;
 
-        /// <summary>腹パンだけは低め（へそ寄り）を狙う。</summary>
-        const float BellyPunchBodyBias = 0.34f;
+        /// <summary>腹パンだけは低め（みぞおち・へそ寄り）を狙う。</summary>
+        const float BellyPunchBodyBias = 0.28f;
 
         /// <summary>
         /// Body 狙いのとき、腰から胸のどこを狙うか（0=腰, 1=胸）。
@@ -306,6 +307,23 @@ namespace Ryona.Game
         internal float BellyPunchDrive => Phase == EnemyPhase.Windup
             ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.40f, 0.86f, WindupProgress))
             : 1f;
+
+        /// <summary>腹パン命中後、拳を腹の奥・斜め上へ二段目で押し込む量（0..1）。</summary>
+        internal float BellySinkDrive
+        {
+            get
+            {
+                if (_punchPoseHoldSeconds <= 0f || _punchPoseHoldTotal <= 0f)
+                    return 0f;
+                if (Phase != EnemyPhase.Attack && Phase != EnemyPhase.Recover)
+                    return 0f;
+                float held = _punchPoseHoldTotal - _punchPoseHoldSeconds;
+                float pushIn = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.015f, 0.11f, held));
+                float pullOut = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_punchPoseHoldSeconds / 0.10f));
+                return pushIn * pullOut;
+            }
+        }
+
         internal bool HoldsBellyPunchGuard { get; set; }
         internal bool KeepsBellyPunchArm => HoldsBellyPunchGuard && !IsTagFacePunch
             && (IsBellyPunch || Phase == EnemyPhase.Recover || Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe);
@@ -319,8 +337,11 @@ namespace Ryona.Game
         /// <summary>テスト用: タッグパンチの構えを直接立てる（反射を使わないため）。</summary>
         internal void SetTagPunchSwingForTest(bool value) => _tagPunchSwing = value;
         internal bool IsTagFacePunch => _tagPunchSwing && Zone == PunchZone.Face;
-        public bool UsesLeftPunch => IsTagFacePunch ? _tagFaceLeft
-            : (IsTagPunch || KeepsBellyPunchArm) && Player != null && Player.transform.forward.x < -0.1f;
+        bool? _tagBellyLeftOverride;
+        public bool UsesLeftPunch => IsTagFacePunch
+            ? _tagFaceLeft
+            : (IsTagPunch || KeepsBellyPunchArm)
+                && (_tagBellyLeftOverride ?? (Player != null && Player.transform.forward.x < -0.1f));
         internal Vector3 TagFaceOutside => transform.right * (UsesLeftPunch ? -1f : 1f);
         bool _tagFaceLeft;
 
@@ -482,6 +503,19 @@ namespace Ryona.Game
 
         /// <summary>いまベアハッグで締め付けているか。見た目と締め付けに使う。</summary>
         public bool IsBearHugging { get; private set; }
+
+        /// <summary>次の膝蹴り発火までの予備動作タメ（0..1）。直前 0.22 秒で立ち上がる。</summary>
+        internal float PinKneePrep
+        {
+            get
+            {
+                if (!IsPinning || _pinKneesLeft <= 0 || Hold == null || !Hold.IsGrappled
+                    || Hold.IsHandingOff || Hold.IsWallTransition || Hold.Captor != this
+                    || Hold.FrontEscapeRemaining > 0f)
+                    return 0f;
+                return Mathf.Clamp01(1f - (_pinNextKneeAt - Time.time) / 0.22f);
+            }
+        }
 
         /// <summary>次の締め付けまでの時刻。</summary>
         float _squeezeNextAt;
@@ -884,6 +918,8 @@ namespace Ryona.Game
 
             float dt = Time.deltaTime;
             _punchPoseHoldSeconds = Mathf.Max(0f, _punchPoseHoldSeconds - dt);
+            if (_punchPoseHoldSeconds <= 0f)
+                _punchPoseHoldTotal = 0f;
 
             State.Tick(dt);
 

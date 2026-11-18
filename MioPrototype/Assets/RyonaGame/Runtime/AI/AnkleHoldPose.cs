@@ -12,6 +12,7 @@ namespace Ryona.Game
         EnemyFigure _figure;
         EnemyBrain _brain;
         ProceduralRig _targetRig;
+        ThirdPersonCamera _camera;
 
         void LateUpdate()
         {
@@ -29,10 +30,21 @@ namespace Ryona.Game
             if (_targetRig == null || !_targetRig.Ready || _targetRig.LFoot == null)
                 return;
 
-            // 足首に近い側の腕で掴む。
+            // 足首に近い側の腕で足首を、もう片方の腕ですね（少し上）を掴んで両手で引き止める。
             Vector3 grip = _targetRig.LFoot.position + Vector3.up * 0.03f;
+            Vector3 shin = Vector3.Lerp(_targetRig.LFoot.position, _targetRig.Hips.position, 0.24f);
             bool left = Vector3.Dot(grip - transform.position, transform.right) < 0f;
             SolveArm(left, grip);
+            SolveArm(!left, shin);
+
+            if (_camera == null)
+                _camera = FindFirstObjectByType<ThirdPersonCamera>();
+            if (_camera != null)
+            {
+                Transform p = _brain.Player.transform;
+                float sign = Mathf.Abs(p.forward.x) > 0.1f ? Mathf.Sign(p.forward.x) : 1f;
+                _camera.HoldFocus(0.44f, -0.04f, p.position.x - sign * 0.22f, 0.35f, 4f, -18f * sign);
+            }
         }
 
         void SolveArm(bool left, Vector3 goal)

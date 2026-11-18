@@ -15,7 +15,7 @@ namespace Ryona.Game
         /// <summary>撮影先（<c>.../d.png</c> なら d_00.png 〜 d_39.png）。</summary>
         public string BurstPrefix;
 
-        /// <summary>当てる攻撃（light / heavy / break / belly）。</summary>
+        /// <summary>当てる攻撃（light / heavy / break / belly / face / body / faceheavy / bodyheavy）。</summary>
         public string Attack = "light";
 
         /// <summary>攻撃の間隔（秒）。</summary>
@@ -91,6 +91,16 @@ namespace Ryona.Game
             if (_captured)
                 return;
 
+            // -downhits=face / body: 一発だけ当てて、その瞬間から撮る（ダウンしない食らいの確認用）
+            if ((Attack == "face" || Attack == "body" || Attack == "bodyheavy" || Attack == "faceheavy") && _hits > 0)
+            {
+                _capturing = true;
+                _captured = true;
+                _shots = 0;
+                _nextShotAt = Time.unscaledTime;
+                return;
+            }
+
             if (_stats.State != null && _stats.State.IsDown)
             {
                 _capturing = true;
@@ -114,7 +124,7 @@ namespace Ryona.Game
         void Hit()
         {
             var attack = AttackLibrary.Light();
-            if (Attack == "heavy")
+            if (Attack == "heavy" || Attack == "faceheavy" || Attack == "bodyheavy")
                 attack = AttackLibrary.Heavy();
             else if (Attack == "break")
                 attack = AttackLibrary.BreakAttack();
@@ -136,11 +146,18 @@ namespace Ryona.Game
             }
 
             // 腹を殴られた扱いにする（前へ崩れるダウンの確認用）
-            if (Attack == "belly")
+            if (Attack == "belly" || Attack.StartsWith("body"))
                 _stats.LastHitZone = PunchZone.Body;
+            else if (Attack.StartsWith("face"))
+                _stats.LastHitZone = PunchZone.Face;
 
-            _stats.ReceiveHit(from != null ? from.State : null, attack,
-                from != null ? from.transform : null);
+            // -downhits=prone: 前へ崩れる（うつ伏せ）ダウンを直接起こす。カメラは通常のベルトのままなので、倒れ込みが画に入る。
+            if (Attack == "prone")
+                _stats.ForceDown(CombatConstants.DownDuration, "test-prone",
+                    from != null ? from.transform : null, forward: true);
+            else
+                _stats.ReceiveHit(from != null ? from.State : null, attack,
+                    from != null ? from.transform : null);
 
             _hits++;
             GameLog.Log($"[Down] hit #{_hits} attack={Attack} flinch={_stats.State.Flinch:F0}");

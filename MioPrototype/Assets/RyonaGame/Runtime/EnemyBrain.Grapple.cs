@@ -43,16 +43,18 @@ namespace Ryona.Game
         /// 演出側（<see cref="HeldBellyPunchDirector"/>）が位置と向きを合わせてから呼ぶ。
         /// </summary>
         public bool TryStartTagPunch(PunchZone zone, bool allowRecover = false, float holdPoseSeconds = 0f,
-            bool? forceLeft = null, float forcePower = 1f)
-            => TryStartTagPunch(zone, allowRecover, holdPoseSeconds, fromThrow: false, forceLeft, forcePower);
+            bool? forceLeft = null, float forcePower = 1f, float windupScale = 1f)
+            => TryStartTagPunch(zone, allowRecover, holdPoseSeconds, fromThrow: false,
+                forceLeft, forcePower, windupScale);
 
-        internal bool TryStartOpeningPunch(PunchZone zone, float holdPoseSeconds, float forcePower = 1f)
+        internal bool TryStartOpeningPunch(PunchZone zone, float holdPoseSeconds, float forcePower = 1f,
+            bool? forceLeft = null)
             => isActiveAndEnabled &&
                 TryStartTagPunch(zone, true, holdPoseSeconds, fromThrow: zone == PunchZone.Body,
-                    forceLeft: null, forcePower: forcePower);
+                    forceLeft: forceLeft, forcePower: forcePower);
 
         bool TryStartTagPunch(PunchZone zone, bool allowRecover, float holdPoseSeconds, bool fromThrow,
-            bool? forceLeft = null, float forcePower = 1f)
+            bool? forceLeft = null, float forcePower = 1f, float windupScale = 1f)
         {
             if (Phase == EnemyPhase.Dead || Phase == EnemyPhase.Windup ||
                 Phase == EnemyPhase.Attack || Phase == EnemyPhase.Stagger || IsRising)
@@ -87,6 +89,11 @@ namespace Ryona.Game
 
             ForceZone = zone;
             BeginAttackWindup(AttackId.Jab, fromThrow);
+            if (windupScale > 1.001f)
+            {
+                _run.Windup *= windupScale;
+                _timer = _run.Windup;
+            }
 
             // 彼女が折れる間、拳を腹に押し込んだままにする。数え始めは「当たった瞬間」
             // （Strike）。ここで数えると予備動作の 0.35 秒を食って、折れている間に足りなくなる。
@@ -94,11 +101,12 @@ namespace Ryona.Game
             _bellyPunchPendingHold = zone == PunchZone.Body ? Mathf.Max(0f, holdPoseSeconds) : 0f;
             _tagPunchPending = true;
             _tagPunchSwing = true;
+            _tagBellyLeftOverride = zone == PunchZone.Body ? forceLeft : null;
             Camera camera = Camera.main;
             _tagFaceLeft = zone == PunchZone.Face &&
                 (forceLeft ?? (camera != null &&
                     Vector3.Dot(camera.transform.position - transform.position, transform.right) > 0f));
-            _tagFacePower = zone == PunchZone.Face ? Mathf.Clamp(forcePower, 0.6f, 1.4f) : 1f;
+            _tagFacePower = Mathf.Clamp(forcePower, 0.6f, 1.95f);
             ForceZone = null;
 
             GameLog.Log($"[HeldPunch] order {name} zone={zone} dist={distance:F2} " +
@@ -254,10 +262,22 @@ namespace Ryona.Game
             _heldThrowPullUntil = 0f;
             _tagPunchPending = false;
             _tagPunchSwing = false;
+            _tagBellyLeftOverride = null;
             _bellyPunchPendingHold = 0f;
             _punchPoseHoldSeconds = 0f;
+            _punchPoseHoldTotal = 0f;
             _pinPending = false;
             _bearHugPending = false;
+        }
+
+        internal void CancelBystanderWindup(float holdSeconds)
+        {
+            if (Phase == EnemyPhase.Windup && !IsHolding && !_tagPunchPending &&
+                !IsPreparingHeldThrow && !IsPinning && !IsBearHugging)
+            {
+                CancelWindup();
+            }
+            HoldFire(holdSeconds);
         }
 
         // --- 攻撃の抽選 ----------------------------------------------------------
@@ -750,6 +770,70 @@ namespace Ryona.Game
                 zone == PunchZone.Body ? CombatConstants.WallSplitPunchBelly * scale : 0f);
             PlaySfx(SfxId.Impact, Mathf.Clamp01(0.7f + 0.1f * scale));
             GameLog.Log($"[WallSplit] punch {name} hp={Player.State.Hp:F0} belly={Player.HeldBellyDamage:F0}");
+        }
+
+        internal bool ForceStartBackGrab(GrappleKind kind)
+        {
+            var grapple = Player != null ? Hold : null;
+            if (grapple == null || grapple.IsGrappled)
+                return false;
+
+            ClearGrappleState(clearAttackState: true);
+            grapple.BeginContact(this, kind);
+            _currentAttack = AttackId.Grab;
+            Phase = EnemyPhase.Recover;
+            _timer = CombatConstants.GrappleLimitSeconds + 0.2f;
+            IsHolding = true;
+            ReleaseToken();
+            return true;
+        }
+
+        internal bool ForceStartPin(bool wall)
+        {
+            var grapple = Player != null ? Hold : null;
+            if (grapple == null || grapple.IsGrappled)
+                return false;
+
+            bool started;
+            if (wall)
+            {
+                var site = WallPinSites.Nearest(Player.transform.position);
+                started = site != null && TryWallPin(site);
+            }
+            else
+            {
+                started = TryBeginFrontGrapple(GrappleKind.Pin, out _);
+                if (started)
+                {
+                    ClearGrappleState();
+                    IsPinning = true;
+                    _pinKneesLeft = Mathf.Max(1, CombatConstants.PinKneeCount);
+                    _pinNextKneeAt = Time.time + CombatConstants.FrontGrappleEscapeSeconds;
+                }
+            }
+
+            if (!started)
+                return false;
+
+            _currentAttack = AttackId.Grab;
+            Phase = EnemyPhase.Recover;
+            _timer = CombatConstants.GrappleLimitSeconds + 0.2f;
+            IsHolding = true;
+            ReleaseToken();
+            return true;
+        }
+
+        internal bool ForceStartBearHug()
+        {
+            if (!TryBearHug())
+                return false;
+
+            _currentAttack = AttackId.Grab;
+            Phase = EnemyPhase.Recover;
+            _timer = CombatConstants.BearHugLimitSeconds + 0.2f;
+            IsHolding = true;
+            ReleaseToken();
+            return true;
         }
 
     }

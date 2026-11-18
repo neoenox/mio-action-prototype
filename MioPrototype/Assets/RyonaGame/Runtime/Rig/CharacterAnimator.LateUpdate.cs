@@ -32,10 +32,24 @@ namespace Ryona.Game
 
             // 腹パンと顔パンの反動。ヒットストップ中は dt=0 なので、当たった瞬間の姿勢で止まる。
             _heldBellyPunchRemaining = Mathf.Max(0f, _heldBellyPunchRemaining - dt);
-            if (Grapple != null && (!Grapple.IsGrappled || Grapple.IsHandingOff))
-                _heldBellyPunchRemaining = 0f;
             if (Time.frameCount != _heldFacePunchStartFrame)
                 _heldFacePunchRemaining = Mathf.Max(0f, _heldFacePunchRemaining - dt);
+
+            if (Grapple == null || !Grapple.IsGrappled || Grapple.IsHandingOff || Grapple.Kind != GrappleKind.Back)
+            {
+                if (Grapple != null && (!Grapple.IsGrappled || Grapple.IsHandingOff))
+                    _heldBellyPunchRemaining = 0f;
+                ClearHeldGroggy();
+                _finisherHoistTarget = false;
+                FinisherHoistWeight = 0f;
+                _heldFaceFatigue = 0f;
+            }
+            else
+            {
+                _rearHoldGroggy = Mathf.Max(_rearHoldGroggy, Mathf.Max(HeldBellyDangle, HeldFaceDangle));
+                FinisherHoistWeight = Mathf.MoveTowards(FinisherHoistWeight, _finisherHoistTarget ? 1f : 0f,
+                    dt / (_finisherHoistTarget ? 0.24f : 0.10f));
+            }
 
             // 投げの崩れ。引き込まれる動きなので、パンチの折れ（0.07 秒）よりゆっくり入れる。
             if (Grapple == null || !Grapple.IsGrappled)
@@ -196,6 +210,9 @@ namespace Ryona.Game
                     State.Guard => GuardBlendSeconds,
                     // 引きずり起こしから羽交い締めへは、吊られた姿勢からゆっくり寄せる。
                     State.Grabbed => before == State.Down ? 0.25f : 0.08f,
+                    // 怯みから戻るときは長めに寄せる。被弾姿勢は 0.2 秒で終わるので、短いと
+                    // 食らった形から立ち姿へ 1 コマで戻って見える（実測: 顔を殴られた直後）。
+                    State.Idle when before == State.Stagger => 0.30f,
                     _ => IdleBlendSeconds
                 };
             }

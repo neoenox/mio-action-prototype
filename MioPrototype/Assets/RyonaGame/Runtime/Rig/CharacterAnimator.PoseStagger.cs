@@ -141,11 +141,10 @@ namespace Ryona.Game
 
             if (faceBlow)
             {
-                // 顔を殴られたら、顔がカメラ側へ弾かれるように横を向く。
-                // 一瞬で振られ、少し止まり、ゆっくり戻る（往復して痙攣しない）。
-                float turn = Mathf.SmoothStep(0f, 1f, hit / 0.07f)
-                             * (1f - Mathf.SmoothStep(0f, 1f, (hit - hold) / 0.35f));
-
+                // 顔を殴られたら、頭が先に振られ、胸と肩が遅れて付いてくる。腕は慣性で流れる。
+                // 以前は両腕を肘から上へ跳ね上げ（万歳のような形）、腰を 9.5cm 落として屈んでいた。
+                // 軽い一撃で全身が縮こまると「殴られた」より「驚いた」に見える（実測）。
+                // 顔はカメラ側へ弾かれて横を向く（顔が読めるように）。
                 float toCamera = 0f;
                 var cam = Camera.main;
                 if (cam != null)
@@ -155,44 +154,70 @@ namespace Ryona.Game
                     Vector3 local = transform.InverseTransformDirection(to.normalized);
                     toCamera = Mathf.Clamp(Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg, -75f, 75f);
                 }
+                float camSign = Mathf.Sign(toCamera == 0f ? 1f : toCamera);
 
-                pose.HeadYaw = StanceHeadYaw + toCamera * 0.9f * turn;
-                pose.HeadRoll = -Mathf.Sign(toCamera == 0f ? 1f : toCamera) * 9f * turn;
-                pose.HeadPitch = StanceHeadPitch - 6f * turn;
-                // 首だけでなく肩も少し付いていく。ただし「殴られた方向への 20° のねじれ」は
-                // 消さずに足す（上書きすると、横から殴られたときだけ上体が正面を向く）。
-                // side が 0 の正面ヒットでは 20*kv*0 ＝ 0 なので、従来と同じ値になる。
+                // 頭: 40ms で振り切り、少し行き過ぎてから戻る。
+                float whipIn = Mathf.SmoothStep(0f, 1f, hit / 0.04f);
+                float settleOut = 1f - Mathf.SmoothStep(0f, 1f, (hit - hold) / 0.42f);
+                float overshoot = 1f + 0.18f * Mathf.Sin(Mathf.Clamp01((hit - 0.04f) / 0.14f) * Mathf.PI);
+                float turn = whipIn * settleOut;
+
+                // 胸・肩: 頭より 30ms 遅れて付いてくる（頭が先、体が後）。
+                float chest = Mathf.SmoothStep(0f, 1f, (hit - 0.03f) / 0.07f) * settleOut;
+
+                pose.HeadYaw = StanceHeadYaw + toCamera * 0.9f * turn * overshoot;
+                pose.HeadRoll = -camSign * 14f * turn;
+                pose.HeadPitch = StanceHeadPitch - 12f * turn;
+                pose.TorsoPitch = StanceTorsoPitch - 9f * chest;
+                pose.TorsoRoll = -camSign * 4.5f * chest;
                 pose.TorsoYaw = StanceTorsoYaw
-                    + Mathf.Clamp(20f * kv * side + toCamera * 0.22f * turn, -34f, 34f);
+                    + Mathf.Clamp(14f * kv * side + toCamera * 0.22f * chest, -28f, 28f);
+
+                // 腰は少しだけ引いて沈む。足が先に動くと「自分で下がった」ように見える。
+                pose.HipsOffset.y = StanceHipsY - 0.035f * chest;
+                pose.HipsOffset.z = StanceHipsZ - 0.065f * chest;
+                pose.FootR += new Vector3(0f, 0f, -0.07f * chest);
+
+                // 腕: 胸が回る反動で、前の手（左）は外へ流れ、後ろの手（右）は体の脇に残る。
+                // 手が上がるのは、頭が戻り始めてから（庇う動き）。肘を上げて拳を上へ向けない。
+                float guard = Mathf.SmoothStep(0f, 1f, (hit - 0.09f) / 0.11f) * settleOut;
+                Vector3 flungUpperL = new Vector3(0.62f, -0.76f, -0.16f);
+                Vector3 flungForeL = new Vector3(0.32f, -0.30f, 0.74f);
+                Vector3 flungUpperR = new Vector3(-0.30f, -0.88f, 0.00f);
+                Vector3 flungForeR = new Vector3(-0.06f, -0.22f, 0.96f);
+                Vector3 guardUpperR = new Vector3(-0.28f, -0.62f, 0.40f);
+                Vector3 guardForeR = new Vector3(0.18f, 0.52f, 0.66f);
+
+                pose.ArmLUpper = Vector3.Lerp(StanceArmLUpper, flungUpperL, chest);
+                pose.ArmLFore = Vector3.Lerp(StanceArmLFore, flungForeL, chest);
+                pose.ArmRUpper = Vector3.Lerp(Vector3.Lerp(StanceArmRUpper, flungUpperR, chest), guardUpperR, guard);
+                pose.ArmRFore = Vector3.Lerp(Vector3.Lerp(StanceArmRFore, flungForeR, chest), guardForeR, guard);
             }
             else if (bodyBlow)
             {
-                // 腹を殴られたら、腰を引いて上体を「く」の字に折る。腹を抱えて頭が落ちる。
-                // 当たった瞬間に折れ、少し耐えてから起き上がる。
+                // 腹を殴られたら、腰を引いて上体を「く」の字に折る。両腕で腹を抱えてうずくまる。
                 float fold = Mathf.SmoothStep(0f, 1f, hit / 0.09f)
                              * (1f - Mathf.SmoothStep(0f, 1f, (hit - hold) / 0.45f));
 
                 pose.TorsoPitch = StanceTorsoPitch + Mathf.Min(bend * 1.25f, 66f) * fold;
-                // 横から殴られたときは、折れながら殴られた方向へ少しねじれる。
-                // 前へ折れる動きが主役なので、顔（20°）より控えめの 12°。
-                // 正面ヒットでは lateralSide が 0 なので、従来どおりまっすぐ折れる。
                 pose.TorsoYaw = StanceTorsoYaw + 12f * kv * lateralSide;
                 pose.TorsoRoll = 0f;
-                pose.HeadPitch = StanceHeadPitch + bend * 0.55f * fold;
+                pose.HeadPitch = StanceHeadPitch - Mathf.Min(bend * 1.15f, 64f) * fold;
                 pose.HeadYaw = StanceHeadYaw;
                 pose.HeadRoll = 0f;
 
-                // 腰は後ろへ引いて沈む。上体が前、腰が後ろで「く」の形になる。
-                pose.HipsOffset.y = StanceHipsY - 0.13f * fold;
-                pose.HipsOffset.z = StanceHipsZ - 0.20f * fold;
+                // 膝がガクッと落ちて沈み、片足を半歩引く（お辞儀に見せない）。
+                pose.HipsOffset.y = StanceHipsY - 0.165f * fold;
+                pose.HipsOffset.z = StanceHipsZ - 0.145f * fold;
+                pose.FootL += new Vector3(0f, 0f, -0.075f * fold);
 
-                // 両手は腹へ。
-                var bellyUpper = new Vector3(0.30f, -0.88f, 0.25f);
-                var bellyFore = new Vector3(-0.70f, -0.20f, 0.68f);
-                pose.ArmLUpper = Vector3.Lerp(StanceArmLUpper, bellyUpper, fold);
-                pose.ArmLFore = Vector3.Lerp(StanceArmLFore, bellyFore, fold);
-                pose.ArmRUpper = Vector3.Lerp(StanceArmRUpper, bellyUpper, fold);
-                pose.ArmRFore = Vector3.Lerp(StanceArmRFore, bellyFore, fold);
+                // 両腕は左右対称に腹を抱え込む。
+                var bellyUpperL = new Vector3(0.24f, -0.85f, 0.42f);
+                var bellyForeL = new Vector3(-0.76f, 0.08f, 0.64f);
+                pose.ArmLUpper = Vector3.Lerp(StanceArmLUpper, bellyUpperL, fold);
+                pose.ArmLFore = Vector3.Lerp(StanceArmLFore, bellyForeL, fold);
+                pose.ArmRUpper = Vector3.Lerp(StanceArmRUpper, MirrorX(bellyUpperL), fold);
+                pose.ArmRFore = Vector3.Lerp(StanceArmRFore, MirrorX(bellyForeL), fold);
             }
 
             pose.HandRollL = StanceHandRollL;

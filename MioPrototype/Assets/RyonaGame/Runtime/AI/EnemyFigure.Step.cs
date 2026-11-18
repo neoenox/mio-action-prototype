@@ -566,12 +566,16 @@ namespace Ryona.Game
                 float bw = Brain.PunchPoseWeight;
                 if (Brain.IsBellyPunch)
                 {
-                    // 先に膝を曲げて拳を脇に溜め、前足に体重を移しながら腰を返す。
+                    // 先に膝を曲げて拳を脇に溜め、前足に体重を移しながら腰を返す。後半の打数ほど大きく振る。
                     float bodyDrive = Brain.BellyPunchDrive;
-                    pose.TorsoYaw = Mathf.Lerp(24f, -31f, bodyDrive) * bw;
-                    pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, Mathf.Lerp(-14f, -33f, bodyDrive), bw);
-                    pose.HipsY = Mathf.Lerp(pose.HipsY, restY - Mathf.Lerp(0.27f, 0.23f, bodyDrive), bw);
-                    pose.HipsZ = Mathf.Lerp(pose.HipsZ, 0.11f * bodyDrive, bw);
+                    float sinkDrive = Brain.BellySinkDrive;
+                    float power = Brain.IsTagPunch ? Brain.TagFacePower : 1f;
+                    float leanPower = Mathf.Min(1.08f, power);
+                    pose.TorsoYaw = Mathf.Lerp(24f * power, -26f * leanPower, bodyDrive) * bw;
+                    pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch,
+                        Mathf.Lerp(-14f, -30f * Mathf.Lerp(1f, leanPower, 0.35f), bodyDrive) - 2.0f * sinkDrive, bw);
+                    pose.HipsY = Mathf.Lerp(pose.HipsY, restY - Mathf.Lerp(0.27f, 0.24f, bodyDrive) * Mathf.Lerp(1f, power, 0.35f), bw);
+                    pose.HipsZ = Mathf.Lerp(pose.HipsZ, (0.095f * bodyDrive + 0.032f * sinkDrive) * leanPower, bw);
                     pose.KneeR = Mathf.Lerp(pose.KneeR, Mathf.Lerp(48f, 67f, bodyDrive), bw);
                     pose.KneeL = Mathf.Lerp(pose.KneeL, Mathf.Lerp(61f, 34f, bodyDrive), bw);
                     pose.LegRPitch = Mathf.Lerp(pose.LegRPitch, Mathf.Lerp(-20f, -29f, bodyDrive), bw);
@@ -775,6 +779,7 @@ namespace Ryona.Game
                 // 引き寄せでは体重を後ろへ預けて、腕で彼女を引きずり込む。
                 pose.TorsoPitch += Mathf.Lerp(8f, -4f, progress)
                     - 4f * lift + 2f * squeeze - 7f * yank;
+                pose.HeadPitch += 8f * squeeze;
                 pose.HipsZ += 0.05f + 0.02f * squeeze - 0.03f * yank;
                 pose.HipsY += 0.03f * lift - 0.03f + 0.02f * yank;
                 pose.KneeR += 8f - 4f * lift + 5f * yank;
@@ -786,10 +791,13 @@ namespace Ryona.Game
             {
                 var pin = holdState;
                 float progress = pin != null ? Mathf.Clamp01(pin.Progress) : 0f;
-                pose.TorsoPitch += Mathf.Lerp(12f, -6f, progress);
-                pose.HipsY -= 0.06f;
-                pose.KneeR += 10f;
-                pose.KneeL += 10f;
+                float prep = Brain.PinKneePrep;
+                float lanePrep = Brain.IsWallPinning ? 0f : prep;
+                pose.TorsoPitch += Mathf.Lerp(12f, -6f, progress) - 8f * lanePrep;
+                pose.HipsY -= 0.06f + 0.03f * lanePrep;
+                pose.KneeR += 10f + 12f * prep;
+                pose.KneeL += 10f + 12f * prep;
+                pose.LegLPitch += 16f * prep;
 
                 // 壁押さえつけは、壁へ体重を預けて押し込む。上体を起こしたまま前へ出る。
                 if (Brain.IsWallPinning)

@@ -55,5 +55,33 @@ namespace Ryona.Game
                           $"handRy={Rig.RHand.position.y:F3} handRz={Rig.RHand.position.z:F3}");
             }
         }
+
+        internal void ResetForMotionPreview()
+        {
+            _heldBellyPunchRemaining = 0f;
+            _heldBellyPunchTotal = 0f;
+            _heldBellyFinalHit = false;
+            _heldBellyCarry = 0f;
+            _heldBellyFatigue = 0f;
+            _heldFacePunchRemaining = 0f;
+            _heldFacePunchTotal = 0f;
+            _heldFaceFinalHit = false;
+            _heldFaceFatigue = 0f;
+            _rearHoldGroggy = 0f;
+            _finisherHoistTarget = false;
+            FinisherHoistWeight = 0f;
+            _heldThrowLeadOn = false;
+            _heldThrowLead = 0f;
+            _faceComboLift = 0f;
+            _pendingQuickGetUp = 0f;
+            _shoveTime = 0f;
+            _guardRecoil = 0f;
+            _airBlend = 0f;
+            _downLaunched = false;
+            _downForward = false;
+            _groundRolled = false;
+            CancelAim();
+            SetState(State.Idle, 1f);
+        }
     }
 }

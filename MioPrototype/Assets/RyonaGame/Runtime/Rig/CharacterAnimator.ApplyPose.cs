@@ -212,6 +212,22 @@ namespace Ryona.Game
                         foreL = Vector3.Slerp((Rig.LHand.position - Rig.LLowerArm.position).normalized, foreL, reach);
                         upperR = Vector3.Slerp((Rig.RLowerArm.position - Rig.RUpperArm.position).normalized, upperR, reach);
                         foreR = Vector3.Slerp((Rig.RHand.position - Rig.RLowerArm.position).normalized, foreR, reach);
+
+                        // 着地で手をつく。倒れる途中は腕が浮き（受け身を取ろうと前へ出る）、床に着いた瞬間に
+                        // 叩きつけられ、わずかに跳ねてから落ち着く。補間だけだと腕が最後の位置へ滑り込むだけで、
+                        // 床に着いた手の衝撃が無い。
+                        float fallRise = Mathf.Clamp01(_stateTime / Mathf.Max(0.05f, _downFallSeconds));
+                        float sinceLand = DownSinceLanding();
+                        float handLift = 0.45f * Mathf.Sin(Mathf.Clamp01((fallRise - 0.30f) / 0.50f) * Mathf.PI);
+                        if (sinceLand >= 0f)
+                            handLift += 0.22f * Mathf.Max(0f, Mathf.Sin(sinceLand * 17f)) * Mathf.Exp(-sinceLand * 9f);
+                        if (handLift > 0.001f)
+                        {
+                            upperL = (upperL + up * handLift).normalized;
+                            upperR = (upperR + up * handLift).normalized;
+                            foreL = (foreL + up * (handLift * 0.7f)).normalized;
+                            foreR = (foreR + up * (handLift * 0.7f)).normalized;
+                        }
                     }
                     else
                     {

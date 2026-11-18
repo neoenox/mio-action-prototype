@@ -43,7 +43,7 @@ namespace Ryona.Game
                 ? Vector3.Lerp(_targetRig.Spine.position, _targetRig.Chest != null
                     ? _targetRig.Chest.position : _targetRig.Spine.position, 0.80f)
                 : player.position + player.up * 1.17f;
-            center -= player.forward * 0.105f;
+            center -= player.forward * 0.098f;
 
             // 抱え上げるほど手を上へ、締め付けるほど手を内側へ寄せる。
             // 締め付け中は細かく震わせて、力を込めているのを見せる。
@@ -64,7 +64,7 @@ namespace Ryona.Game
             // 引き寄せでは手を自分の胸元へ引き込み、彼女を抱き寄せる。
             Vector3 pull = player.up * (0.035f * lift + 0.028f * squeeze + tremor)
                 + player.forward * (0.025f * yank);
-            float spread = Mathf.Lerp(0.085f, 0.068f, squeeze);
+            float spread = Mathf.Lerp(0.088f, 0.076f, squeeze);
 
             WrapArm(false, player, center + pull, spread);
             WrapArm(true, player, center + pull, spread);

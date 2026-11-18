@@ -36,9 +36,20 @@ namespace Ryona.Game
             Vector3 guardOffset = Rig.Head.position - Rig.RUpperArm.position;
 
             // Follow the side of the fist at contact, even as the other hand begins winding up.
-            Rig.Hips.position += (bodyAxis * 0.022f - crossBody * (0.027f * impactSide)) * torsoRecoil * guard;
-            Rig.Chest.rotation = Quaternion.AngleAxis((incomingSide * 5f * windup + impactSide * 22f * torsoRecoil)
-                * guard, bodyAxis) * Quaternion.AngleAxis(9f * torsoRecoil, crossBody) * Rig.Chest.rotation;
+            float struggleTwist = Mathf.Sin(Time.time * 26f) * 14f * effort;
+            Rig.Hips.position += (bodyAxis * 0.022f - crossBody * (0.027f * impactSide)) * torsoRecoil * guard
+                + Vector3.up * (0.032f * effort * guard);
+            Rig.Chest.rotation = Quaternion.AngleAxis((incomingSide * 5f * windup + impactSide * 22f * torsoRecoil
+                + struggleTwist) * guard, bodyAxis) * Quaternion.AngleAxis(9f * torsoRecoil, crossBody) * Rig.Chest.rotation;
+
+            if (mount.Stage == GroundMountAttack.Beat.Dismount && mount.Escaped)
+            {
+                float shove = Mathf.Sin(Mathf.PI * Mathf.Clamp01(mount.Progress));
+                Rig.Chest.rotation = Quaternion.AngleAxis(-14f * shove, crossBody) * Rig.Chest.rotation;
+                Vector3 pushUp = (Vector3.up * 0.85f + bodyAxis * 0.25f).normalized;
+                Rig.SetArm(true, (pushUp + left * 0.30f).normalized, pushUp);
+                Rig.SetArm(false, (pushUp - left * 0.30f).normalized, pushUp);
+            }
             float defaultHeadRecoil = mount.ImpactWasLeftPunch ? 0f : headRecoil;
             if (Rig.Neck != null)
                 Rig.Neck.rotation = Quaternion.AngleAxis(impactSide * 11f * defaultHeadRecoil * guard, bodyAxis)
@@ -64,7 +75,9 @@ namespace Ryona.Game
                 Vector3 toAttacker = mount.AttackerHead - Rig.Head.position;
                 Quaternion look = Quaternion.FromToRotation(Rig.Head.forward, toAttacker);
                 Quaternion turn = Quaternion.RotateTowards(Quaternion.identity, look, 42f);
-                Rig.Head.rotation = Quaternion.Slerp(Quaternion.identity, turn, lookWeight) * Rig.Head.rotation;
+                Quaternion tremble = Quaternion.AngleAxis(Mathf.Sin(Time.time * 13f) * 1.4f, bodyAxis)
+                    * Quaternion.AngleAxis(Mathf.Sin(Time.time * 9.5f) * 1.0f, crossBody);
+                Rig.Head.rotation = Quaternion.Slerp(Quaternion.identity, turn * tremble, lookWeight) * Rig.Head.rotation;
             }
 
             if (legRecoil > 0.001f)
@@ -76,7 +89,7 @@ namespace Ryona.Game
             }
 
             float flinch = mount.ArmRecoil;
-            float brace = windup + 0.5f * effort;
+            float brace = (windup + 0.5f * effort) * (1f - 0.65f * mount.MountFatigue);
             float give = mount.Stage == GroundMountAttack.Beat.Strike ? 0.28f * mount.Drive : 0f;
             bool rightNearCamera = Vector3.Dot(-left, mount.ShotOffset) > 0f;
             float leftBrace = brace * (incomingLeft ? 1f : 0.35f);

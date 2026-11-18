@@ -30,33 +30,32 @@ namespace Ryona.Game
                 return;
 
             float weight = Mathf.SmoothStep(0f, 1f, haul.Grip);
-            if (haul.IsProne)
-            {
-                bool grabbedLeft = haul.GrabbedLeftSide;
-                Transform herUpper = grabbedLeft ? rig.LUpperArm : rig.RUpperArm;
-                Transform herElbow = grabbedLeft ? rig.LLowerArm : rig.RLowerArm;
-                Transform herHand = grabbedLeft ? rig.LHand : rig.RHand;
-                if (herUpper != null && herElbow != null && herHand != null)
-                {
-                    // 手首と上腕・肘を両手で掴んで引き起こす。腕が交差しないように左右を割り当てる。
-                    bool leftForWrist = Vector3.Dot(herHand.position - herUpper.position, transform.right) < 0f;
-                    Vector3 wristGoal = herHand.position;
-                    Vector3 armGoal = Vector3.Lerp(herUpper.position, herElbow.position, 0.65f);
-                    SolveArm(leftForWrist, wristGoal, weight);
-                    SolveArm(!leftForWrist, armGoal, weight);
-                    return;
-                }
-            }
+            Transform shL = rig.LUpperArm;
+            Transform shR = rig.RUpperArm;
+            bool leftIsHerLeft = Vector3.Dot(shL.position - shR.position, transform.right) < 0f;
+            Vector3 center = (shL.position + shR.position) * 0.5f;
+            Vector3 torso = rig.Chest != null
+                ? Vector3.Lerp(rig.Hips.position, rig.Chest.position, 0.55f)
+                : rig.Hips.position + Vector3.up * 0.25f;
+            Vector3 toHer = Vector3.ProjectOnPlane(torso - transform.position, Vector3.up);
+            toHer = toHer.sqrMagnitude > 1e-4f ? toHer.normalized : transform.forward;
+            Vector3 shoulderAxis = Vector3.ProjectOnPlane(shL.position - shR.position, Vector3.up);
+            Vector3 toHerLeft = shoulderAxis.sqrMagnitude > 1e-4f ? shoulderAxis.normalized : -transform.right;
 
-            // 彼女の体の中心から見て、敵のいる側へ少しだけ手を回す。
-            Vector3 toEnemy = transform.position - rig.Hips.position;
-            toEnemy.y = 0f;
-            toEnemy = toEnemy.sqrMagnitude > 0.001f ? toEnemy.normalized : transform.forward;
-            Vector3 under = toEnemy * 0.10f - Vector3.up * 0.10f;
+            Vector3 underL = Vector3.Lerp(shL.position, center, 0.15f) - Vector3.up * 0.08f;
+            Vector3 underR = Vector3.Lerp(shR.position, center, 0.15f) - Vector3.up * 0.08f;
 
-            // 脇の下へ。手首は上腕の少し内側・下。
-            SolveArm(true, rig.LUpperArm.position + under, weight);
-            SolveArm(false, rig.RUpperArm.position + under, weight);
+            // うつ伏せは正面から胴へ、仰向けは背後から脇の下を通して抱え上げる。
+            Vector3 hugL = haul.IsProne
+                ? torso + toHerLeft * 0.15f + toHer * 0.06f
+                : torso + toHerLeft * 0.16f + toHer * 0.05f;
+            Vector3 hugR = haul.IsProne
+                ? torso - toHerLeft * 0.15f + toHer * 0.06f
+                : torso - toHerLeft * 0.16f + toHer * 0.05f;
+
+            float embrace = haul.EmbraceWeight;
+            SolveArm(leftIsHerLeft, Vector3.Lerp(underL, hugL, embrace), weight);
+            SolveArm(!leftIsHerLeft, Vector3.Lerp(underR, hugR, embrace), weight);
         }
 
         void SolveArm(bool left, Vector3 goal, float weight)

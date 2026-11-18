@@ -21,33 +21,74 @@ namespace Ryona.Game
             float lift = Mathf.Clamp01(haul.Lift);
             float side = haul.GrabbedLeftSide ? -1f : 1f;
 
-            // 寝返り・片膝・立ちの自然な曲線。ここに腕だけ「抱えられて開いた」形を重ねる。
+            // 寝返り・片膝・立ちの自然な曲線。腕は自分で床を押さず、脱力して垂らす。
             var pose = PoseGetUp(lift);
 
-            pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, 14f, lift);
-            pose.HeadRoll = -side * 6f * lift;
+            float limp = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.05f, 0.70f, lift));
+            Vector3 hangLUpper = new Vector3(0.24f, -0.94f, 0.04f);
+            Vector3 hangLFore = new Vector3(0.14f, -0.95f, 0.18f);
+            pose.ArmLUpper = Vector3.Lerp(DownArmLUpper, hangLUpper, limp);
+            pose.ArmLFore = Vector3.Lerp(DownArmLFore, hangLFore, limp);
+            pose.ArmRUpper = Vector3.Lerp(DownArmRUpper, Mirror(hangLUpper), limp);
+            pose.ArmRFore = Vector3.Lerp(DownArmRFore, Mirror(hangLFore), limp);
+            pose.Grip = 0.15f;
+
+            // 引き上げ途中の足元の引きずり遅れと、立ち上がり直前の膝のふらつき。
+            float drag = Mathf.Sin(Mathf.PI * lift) * 0.08f;
+            pose.FootL.z -= drag;
+            pose.FootR.z -= drag * 0.85f;
+
+            float wobble = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.65f, 0.90f, lift))
+                * (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.90f, 1f, lift)));
+            pose.TorsoRoll += Mathf.Sin(lift * 28f) * 3.5f * wobble;
+            pose.HipsOffset.y -= 0.025f * wobble;
+
+            // ぐいっと引かれた瞬間は頭が後ろへ残り、立たされても前髪で顔が隠れないよう少し顔を上げつつカメラ側へ傾ける。
+            float toCam = CameraYawToMe();
+            pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, 2f, lift) - 12f * Mathf.Clamp01(haul.Yank);
+            pose.HeadYaw = Mathf.Lerp(pose.HeadYaw, Mathf.Clamp(toCam * 0.35f, -24f, 24f), lift);
+            pose.HeadRoll = -side * 9f * lift;
+
+            // 連打のもがき揺れ（肩と首を振って抵抗する）。
+            float pulse = Mathf.Clamp01(haul.StrugglePulse);
+            if (pulse > 0.001f)
+            {
+                float twist = Mathf.Sin(Time.time * 28f) * pulse;
+                pose.TorsoYaw += 10f * twist;
+                pose.TorsoRoll += 6f * twist;
+                pose.HeadYaw -= 8f * twist;
+                pose.HipsOffset.y -= 0.02f * pulse;
+            }
             return pose;
         }
 
         /// <summary>
-        /// うつ伏せの引き起こし中の腕。掴まれている側の腕は敵の引く手（<see cref="GroundHaulUp.PullAnchor"/>）へ
-        /// IK で引かれて伸び、反対側の腕は床の体勢から体の脇へ自然に下がる。
+        /// うつ伏せの引き起こし中の腕。敵が肩の下へ手を入れて上体を起こし、
+        /// 抱きかかえて立たせる間、両腕は力なく床側〜体の脇へ垂れ下がる。
         /// </summary>
         void ApplyProneHauledArms(GroundHaulUp haul, Vector3 fwd, Vector3 left, Vector3 up,
             float handRollL, float handRollR)
         {
             float lift = Mathf.Clamp01(haul.Lift);
-            float dropT = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.05f, 0.80f, lift));
+            float dropT = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.05f, 0.55f, lift));
 
             Vector3 downUpperL = (fwd * 0.92f + left * 0.22f - up * 0.10f).normalized;
             Vector3 downForeL = (fwd * 0.96f + left * 0.10f - up * 0.04f).normalized;
             Vector3 downUpperR = (fwd * 0.52f - left * 0.62f - up * 0.20f).normalized;
             Vector3 downForeR = (fwd * 0.58f + left * 0.52f - up * 0.26f).normalized;
 
-            Vector3 hangUpperL = (left * 0.18f - up * 0.96f + fwd * 0.10f).normalized;
-            Vector3 hangForeL = (left * 0.06f - up * 0.94f + fwd * 0.28f).normalized;
-            Vector3 hangUpperR = (-left * 0.18f - up * 0.96f + fwd * 0.10f).normalized;
-            Vector3 hangForeR = (-left * 0.06f - up * 0.94f + fwd * 0.28f).normalized;
+            Vector3 hangUpperL = (left * 0.22f - up * 0.96f + fwd * 0.08f).normalized;
+            Vector3 hangForeL = (left * 0.12f - up * 0.96f + fwd * 0.22f).normalized;
+            Vector3 hangUpperR = (-left * 0.22f - up * 0.96f + fwd * 0.08f).normalized;
+            Vector3 hangForeR = (-left * 0.12f - up * 0.96f + fwd * 0.22f).normalized;
+
+            float pulse = Mathf.Clamp01(haul.StrugglePulse);
+            if (pulse > 0.001f)
+            {
+                float flail = Mathf.Sin(Time.time * 28f) * pulse;
+                hangUpperL = (hangUpperL + fwd * (0.25f * pulse) + left * (0.20f * flail)).normalized;
+                hangUpperR = (hangUpperR + fwd * (0.25f * pulse) - left * (0.20f * flail)).normalized;
+            }
 
             Rig.SetArm(true,
                 Vector3.Slerp(downUpperL, hangUpperL, dropT),
@@ -57,43 +98,6 @@ namespace Ryona.Game
                 Vector3.Slerp(downUpperR, hangUpperR, dropT),
                 Vector3.Slerp(downForeR, hangForeR, dropT),
                 handRollR);
-
-            float pull = Mathf.Clamp01(haul.ArmPull);
-            if (pull <= 0.001f)
-                return;
-
-            bool grabbedLeft = haul.GrabbedLeftSide;
-            Transform upper = grabbedLeft ? Rig.LUpperArm : Rig.RUpperArm;
-            Transform elbow = grabbedLeft ? Rig.LLowerArm : Rig.RLowerArm;
-            Transform hand = grabbedLeft ? Rig.LHand : Rig.RHand;
-            if (upper == null || elbow == null || hand == null)
-                return;
-
-            float armLen = Vector3.Distance(upper.position, elbow.position)
-                + Vector3.Distance(elbow.position, hand.position);
-            Vector3 anchor = haul.PullAnchor;
-            Vector3 toAnchor = anchor - upper.position;
-            float maxReach = armLen * 0.90f;
-            Vector3 goal = toAnchor.magnitude > maxReach && toAnchor.sqrMagnitude > 1e-6f
-                ? upper.position + toAnchor.normalized * maxReach
-                : anchor;
-
-            Vector3 outward = grabbedLeft ? left : -left;
-            Vector3 pole = elbow.position + outward * 0.20f - up * (0.18f * (1f - lift)) - fwd * (0.18f * lift);
-            SolveHand(upper, elbow, hand, goal, pole, pull);
-        }
-
-        void SolveHand(Transform upper, Transform elbow, Transform hand,
-            Vector3 goal, Vector3 pole, float weight)
-        {
-            if (upper == null || elbow == null || hand == null)
-                return;
-
-            Quaternion upperPose = upper.rotation;
-            Quaternion elbowPose = elbow.rotation;
-            ProceduralRig.SolveTwoBone(upper, elbow, hand, goal, pole, transform.right);
-            upper.rotation = Quaternion.Slerp(upperPose, upper.rotation, weight);
-            elbow.rotation = Quaternion.Slerp(elbowPose, elbow.rotation, weight);
         }
 
         static PoseValues LerpPose(PoseValues a, PoseValues b, float t)

@@ -63,9 +63,10 @@ namespace Ryona.Game
             }
             else
             {
+                // 戻りは振りかぶり（cock）を経由せず、打ち込み（punch）から直接構えへ帰る。
                 float u = Mathf.Clamp01((_stateTime - strikeEnd) / recover);
-                c = 1f - Mathf.SmoothStep(0.55f, 1f, u);
-                p = 1f - Mathf.SmoothStep(0.40f, 1f, u);
+                c = 0f;
+                p = 1f - Mathf.SmoothStep(0.15f, 1f, u);
             }
 
             // 上体は腕より 12ms 先行させる。体が先に回ってから腕が出ると、
@@ -83,7 +84,7 @@ namespace Ryona.Game
             else
             {
                 float u = Mathf.Clamp01((_stateTime - strikeEnd) / recover);
-                pBody = 1f - Mathf.SmoothStep(0.40f, 1f, u);
+                pBody = 1f - Mathf.SmoothStep(0.15f, 1f, u);
             }
 
             // 伸び切ったあと、拳と胸がわずかに行き過ぎてから戻る（follow-through）。
@@ -120,61 +121,51 @@ namespace Ryona.Game
             switch (kind)
             {
                 case AttackKind.Heavy:
-                    // 体重を乗せたフック。腕を横に広げると T ポーズに見えるので、
-                    // 肘を横へ上げて拳を胸の前へ引き、振り抜きは腰の回転で見せる。
-                    // 前腕を背中側へ振ると肘が畳まれて「腕が折れる」ので、前腕は前向きのまま。
-                    cockUpper = new Vector3(0.70f, -0.58f, -0.18f);
-                    cockFore = new Vector3(0.30f, 0.34f, 0.89f);
-                    punchUpper = new Vector3(0.22f, 0.10f, 0.95f);
-                    punchFore = new Vector3(0.10f, -0.05f, 1.00f);
-                    yawCock = 34f;
+                    // 体重を乗せたフック。肩を回して横から体の前を横切るように振り抜く。
+                    cockUpper = new Vector3(0.68f, -0.52f, -0.24f);
+                    cockFore = new Vector3(0.28f, 0.20f, 0.94f);
+                    punchUpper = new Vector3(-0.28f, 0.06f, 0.95f);
+                    punchFore = new Vector3(-0.52f, 0.04f, 0.85f);
+                    yawCock = 36f;
                     yawPunch = -30f;
-                    pitchCock = -3f;
-                    pitchPunch = 10f;
-                    lungeDistance = 0.075f;
-                    rollPunch = -22f;      // フックは拳を立て気味に残す
+                    pitchCock = -4f;
+                    pitchPunch = 12f;
+                    lungeDistance = 0.13f;
+                    rollPunch = -24f;
                     shoulderYaw = 7f;
-                    shoulderPitch = 2f;
+                    shoulderPitch = 4f;
                     break;
 
                 case AttackKind.Break:
-                    // 片手の掌底。肘は下げて脇を締めたまま、胸の前から突き出す。
-                    // 溜めは「拳を胸へ引きつける」形。前腕を立てたままなので肘が畳まれない。
-                    // 両手で押すと拳が 2 つ横に並び、真横からは「両腕が前に出た」画になる
-                    // （実測で左右とも z=0.51 に揃っていた）ので、押すのは前の手だけにする。
-                    cockUpper = new Vector3(0.22f, -0.86f, -0.28f);
-                    cockFore = new Vector3(0.06f, 0.42f, 0.90f);
-                    punchUpper = new Vector3(0.18f, 0.05f, 0.98f);
-                    punchFore = new Vector3(0.10f, 0.00f, 1.00f);
-                    yawCock = 16f;
-                    yawPunch = -14f;
-                    pitchCock = -4f;
-                    pitchPunch = 13f;
-                    lungeDistance = 0.060f;
-                    // 掌底なので掌は前向きのまま残し、肩を胸ごと押し込む。
+                    // 低い重心から体ごと前へ押し込む重い掌底。
+                    cockUpper = new Vector3(0.24f, -0.84f, -0.34f);
+                    cockFore = new Vector3(0.06f, 0.30f, 0.95f);
+                    punchUpper = new Vector3(0.12f, 0.14f, 0.98f);
+                    punchFore = new Vector3(0.06f, 0.12f, 0.99f);
+                    yawCock = 20f;
+                    yawPunch = -18f;
+                    pitchCock = -5f;
+                    pitchPunch = 16f;
+                    lungeDistance = 0.11f;
                     rollPunch = -12f;
-                    shoulderYaw = 0f;
-                    shoulderPitch = 6f;
+                    shoulderYaw = 4f;
+                    shoulderPitch = 7f;
                     break;
 
                 default:
-                    // ストレート。拳を肋の横まで引いてから前へ突き出す。
-                    // 溜めを顔の高さにすると「手を振っている」に見えるので、必ず胸より下に置く。
-                    // 前腕まで後ろへ振ると拳が背中に回って「両手を広げた」画になるので、
-                    // 肘だけ後ろへ引き、前腕は前向きのままにして拳を肋の横へ落とす。
-                    cockUpper = new Vector3(0.30f, -0.90f, -0.30f);
-                    cockFore = new Vector3(0.05f, -0.20f, 0.98f);
-                    punchUpper = new Vector3(0.15f, 0.08f, 0.98f);
-                    punchFore = new Vector3(0.03f, 0.02f, 1.00f);
-                    yawCock = 26f;
-                    yawPunch = -24f;
-                    pitchCock = 0f;
-                    pitchPunch = 6f;
-                    lungeDistance = 0.045f;
-                    // ストレートは掌を下へ返しきる（＝拳頭が前へ出る）。
+                    // キレのあるストレート。脇を締めて引き、真っ直ぐ打ち抜く。
+                    cockUpper = new Vector3(0.26f, -0.88f, -0.28f);
+                    cockFore = new Vector3(0.04f, -0.12f, 0.99f);
+                    punchUpper = new Vector3(0.14f, 0.06f, 0.99f);
+                    punchFore = new Vector3(0.02f, 0.02f, 1.00f);
+                    yawCock = 30f;
+                    yawPunch = -26f;
+                    pitchCock = -2f;
+                    pitchPunch = 7f;
+                    lungeDistance = 0.085f;
                     rollPunch = -3f;
-                    shoulderYaw = 6f;
-                    shoulderPitch = 3f;
+                    shoulderYaw = 9f;
+                    shoulderPitch = 4f;
                     break;
             }
 
@@ -218,8 +209,8 @@ namespace Ryona.Game
             // 上げると 1.12m が上限（顎は 1.31m）。高さでは離せない。
             // なので前ではなく「外・わずかに後ろ」へ逃がす。手は肩の外側に付き、
             // 真横カメラからは体の陰に入る。肘は肋に付いたまま。
-            var tuckUpperL = new Vector3(0.40f, -0.90f, -0.04f);
-            var tuckForeL = new Vector3(0.08f, 0.97f, -0.10f);
+            var tuckUpperL = new Vector3(0.32f, -0.86f, -0.06f);
+            var tuckForeL = new Vector3(0.12f, 0.42f, 0.88f);
             float tuck = Mathf.Max(c * 0.70f, p * 1.00f);
             pose.ArmLUpper = Vector3.Lerp(pose.ArmLUpper, tuckUpperL, tuck);
             pose.ArmLFore = Vector3.Lerp(pose.ArmLFore, tuckForeL, tuck);
@@ -300,9 +291,9 @@ namespace Ryona.Game
             // 前足が体重を受ける分だけ腰を沈める（前膝が伸びきって見えないように）。
             // 打ち終わりに少しだけ深く沈んでから戻る＝前足で踏ん張った感触。
             pose.HipsOffset.y = StanceHipsY
-                - 0.030f * pBody
-                - 0.010f * pBody * power
-                - followThrough * 0.004f;
+                - 0.050f * pBody
+                - 0.022f * pBody * power
+                - followThrough * 0.006f;
             return pose;
         }
 

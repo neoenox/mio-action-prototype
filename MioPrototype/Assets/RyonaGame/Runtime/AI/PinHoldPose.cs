@@ -285,11 +285,10 @@ namespace Ryona.Game
                         if (Vector3.Dot(side, camFlat) < 0f)
                             side = -side;
 
-                        Vector3 lookAtFace = Vector3.Lerp(herFace, mid, 0.45f);
+                        Vector3 lookAtFace = Vector3.Lerp(herFace, mid, 0.42f);
                         // 真横だと彼女の背中側になり、正面すぎると彼が彼女の顔を覆う。
-                        // 二人の関係軸から約 28° だけ正面へ寄せ、彼を画面の外側に置く。
-                        // axis は「彼女 → 彼」の向き。+axis 側が彼女の正面。
-                        Vector3 shot = mid + side * 1.80f + axis * 0.95f + Vector3.up * 0.45f;
+                        // 二人の関係軸から斜め正面へ寄せ、彼を画面の外側に置いて顔と腹を同時に捉える。
+                        Vector3 shot = mid + side * 1.55f + axis * 0.88f + Vector3.up * 0.38f;
                         _camera.RequestCinematicShot(
                             Vector3.Lerp(_normalShotPos, shot, k),
                             Vector3.Lerp(_normalShotTarget, lookAtFace, k));
@@ -297,7 +296,7 @@ namespace Ryona.Game
                     else
                     {
                         _kneeShotHeld = false;
-                        _camera.HoldFocus(0.72f, -0.10f, x, 0.5f);
+                        _camera.HoldFocus(0.46f, 0.08f, x, 0.5f, 2f, -22f * sign);
                     }
                 }
 

@@ -127,6 +127,8 @@ namespace Ryona.Game
         /// <summary>直前に解放された拘束の種類（解放メッセージの文言に使う）。</summary>
         GrappleKind _releasedKind;
 
+        internal float GrappleHudY => _grappleRoot != null ? _grappleRoot.anchoredPosition.y : -1f;
+
         void UpdateGrapple()
         {
             if (_grappleRoot == null)
@@ -154,11 +156,10 @@ namespace Ryona.Game
             bool hauled = mount != null && mount.Haul != null && mount.Haul.BlocksGetUp;
             bool show = grappled || mounted || _releasedRemaining > 0f;
 
-            // 腹パンのコンボ中は腹が画面の中心に来る。中央下のままだと
-            // 腹パン表示が当たっている場所に重なるので、コンボ中だけ下へ退ける。
-            bool combo = _bellyPunch != null && (_bellyPunch.IsPerforming || _bellyPunch.IsThrowIncoming);
+            // 腹パン・顔パンの連撃〜トドメ中は中央下へ退けないと腹や拳に文字帯が重なる。
+            bool combo = _bellyPunch != null && (_bellyPunch.IsCameraActive || _bellyPunch.IsThrowIncoming);
             Vector2 blockPos = _grappleRoot.anchoredPosition;
-            blockPos.y = combo || mounted ? 96f : 232f;
+            blockPos.y = combo ? 26f : mounted ? 96f : 232f;
             if ((_grappleRoot.anchoredPosition - blockPos).sqrMagnitude > 0.01f)
                 _grappleRoot.anchoredPosition = blockPos;
 
@@ -279,6 +280,11 @@ namespace Ryona.Game
             else if (_bellyPunch == null)
             {
                 tail = "連打で逃げる";
+            }
+            else if (_bellyPunch.IsFinisherActive)
+            {
+                tail = _bellyPunch.IsFaceSequence ? "顔面トドメ！" : "腹へのトドメ！";
+                danger = true;
             }
             else if (_bellyPunch.IsPerforming)
             {

@@ -14,14 +14,19 @@ namespace Ryona.Game
     public sealed class FootstepSfx : MonoBehaviour
     {
         [Header("Body Drop")]
-        /// <summary>倒れ始めてから、体が床に着くまでのおおよその秒数。</summary>
-        public float BodyDropDelay = 1.1f;
+        /// <summary>
+        /// 着地の通知（<see cref="CharacterAnimator.BodyLanded"/>）が来なかったときの代わりの秒数。
+        /// 通常は体が床に着いた瞬間に鳴らす（以前は倒れ始めの 1.1 秒後に固定で鳴らしていたので、
+        /// 吹き飛ばされて 0.4 秒で着いた後、0.7 秒遅れて音が来ていた）。
+        /// </summary>
+        public float BodyDropDelay = 1.6f;
 
         PlayerStats _player;
         CharacterAnimator _anim;
         bool _subscribed;
 
         float _pendingBody;
+        bool _landedThisDown;
         bool _sawDown;
         float _retry;
 
@@ -67,6 +72,7 @@ namespace Ryona.Game
             if (state.IsDown && !_sawDown)
             {
                 _sawDown = true;
+                _landedThisDown = false;
                 _pendingBody = BodyDropDelay;
             }
             else if (!state.IsDown)
@@ -77,9 +83,20 @@ namespace Ryona.Game
             if (_pendingBody > 0f)
             {
                 _pendingBody -= Time.deltaTime;
-                if (_pendingBody <= 0f)
+                if (_pendingBody <= 0f && !_landedThisDown)
                     Play(SfxId.BodyDrop, 1f, 1f);
             }
+        }
+
+        /// <summary>体が床に着いた瞬間。音と画面の揺れを同時に出す。</summary>
+        void OnBodyLanded(float strength)
+        {
+            if (_landedThisDown)
+                return;
+            _landedThisDown = true;
+            _pendingBody = 0f;
+            Play(SfxId.BodyDrop, Mathf.Lerp(0.7f, 1f, strength), 1f);
+            FindFirstObjectByType<CameraShake>()?.Shake(0.05f * strength, 0.14f);
         }
 
         /// <summary>
@@ -100,6 +117,7 @@ namespace Ryona.Game
             if (_anim != null && !_subscribed)
             {
                 _anim.Footstep += OnFootstep;
+                _anim.BodyLanded += OnBodyLanded;
                 _subscribed = true;
 
                 GameLog.Log($"[Sfx] 足音の購読 {_anim.name}");
@@ -109,7 +127,10 @@ namespace Ryona.Game
         void OnDestroy()
         {
             if (_anim != null && _subscribed)
+            {
                 _anim.Footstep -= OnFootstep;
+                _anim.BodyLanded -= OnBodyLanded;
+            }
         }
 
         void OnFootstep(int side)

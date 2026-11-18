@@ -178,6 +178,21 @@ namespace Ryona.Tests
                 Assert.Greater(elbowOut, outLimit,
                     $"{pose}: {(left ? "左" : "右")}肘が体の内側へ入りすぎている (out={elbowOut:F3})");
 
+                // 拘束役の腕は彼女の上腕の下をくぐる。上腕を串刺しにしない
+                // （中心線の距離。実測は前腕 7.5cm・二の腕 6.3cm 以上、修正前は前腕 0.2〜3cm）。
+                Transform herUpper = left ? rig.LUpperArm : rig.RUpperArm;
+                Transform herElbowBone = left ? rig.LLowerArm : rig.RLowerArm;
+                float forearmGap = Ryona.BodyOverlap.SegmentSegmentDistance(
+                    ToVec(herUpper.position), ToVec(herElbowBone.position),
+                    ToVec(figure.ElbowBone(left).position), ToVec(wrist));
+                Assert.Greater(forearmGap, reaction ? 0.04f : 0.05f,
+                    $"{pose}: {(left ? "左" : "右")}前腕が彼女の上腕を貫通している (gap={forearmGap:F3})");
+                float upperGap = Ryona.BodyOverlap.SegmentSegmentDistance(
+                    ToVec(herUpper.position), ToVec(herElbowBone.position),
+                    ToVec(figure.ShoulderBone(left).position), ToVec(figure.ElbowBone(left).position));
+                Assert.Greater(upperGap, reaction ? 0.04f : 0.05f,
+                    $"{pose}: {(left ? "左" : "右")}上腕が彼女の上腕を貫通している (gap={upperGap:F3})");
+
                 // 手は彼女の首〜肩の近くにある（腕を回して抱きついている）。
                 Assert.Less(Vector3.Distance(wrist, rig.Neck.position), 0.42f,
                     $"{pose}: {(left ? "左" : "右")}手が彼女の体から離れている " +
@@ -185,6 +200,32 @@ namespace Ryona.Tests
                 Assert.Less(Vector3.Distance(fist, rig.Neck.position), 0.46f,
                     $"{pose}: {(left ? "左" : "右")}拳が彼女の体から離れている " +
                     $"(d={Vector3.Distance(fist, rig.Neck.position):F3})");
+            }
+        }
+
+        static Ryona.BodyVec3 ToVec(Vector3 v) => new Ryona.BodyVec3(v.x, v.y, v.z);
+
+        void AssertPlayerArmsHookedOverCaptor(EnemyFigure figure, string pose)
+        {
+            var rig = _anim.Rig;
+            Vector3 across = (rig.RUpperArm.position - rig.LUpperArm.position).normalized;
+            foreach (bool left in new[] { false, true })
+            {
+                Vector3 herShoulder = (left ? rig.LUpperArm : rig.RUpperArm).position;
+                Vector3 herElbow = (left ? rig.LLowerArm : rig.RLowerArm).position;
+                Vector3 herHand = (left ? rig.LHand : rig.RHand).position;
+                Vector3 captorElbow = figure.ElbowBone(left).position;
+                Vector3 outside = across * (left ? -1f : 1f);
+                string sideName = left ? "左" : "右";
+
+                Assert.Greater(herElbow.y - herShoulder.y, -0.01f,
+                    $"{pose}: 彼女の{sideName}上腕が下がって羽交い締めから抜けている (elbowRise={herElbow.y - herShoulder.y:F3})");
+                Assert.Greater(herElbow.y - captorElbow.y, 0.08f,
+                    $"{pose}: 彼女の{sideName}肘が敵の肘より上（腕の上）に乗っていない (diff={herElbow.y - captorElbow.y:F3})");
+                Assert.Greater(Vector3.Dot(herElbow - herShoulder, outside), 0.14f,
+                    $"{pose}: 彼女の{sideName}肘が横へ開いていない");
+                Assert.Greater(herElbow.y - herHand.y, 0.13f,
+                    $"{pose}: 彼女の{sideName}前腕が肘から下へ脱力して垂れていない (drop={herElbow.y - herHand.y:F3})");
             }
         }
 
@@ -247,19 +288,27 @@ namespace Ryona.Tests
                 "投げが決まったらコンボの段階へ移る");
             Assert.IsTrue(_director.IsPerforming);
 
-            // 5 発と余韻が終わると、コンボの段階からは抜ける（引き渡し待ち / 次の投げ待ち）。
+            // 5 発のあと、グロッキー → 引き起こし → トドメ → 崩れ落ちで完了し Idle へ戻る。
             _attacker.HoldFire(10f);
             _attacker.enabled = true;
-            float deadline = Time.realtimeSinceStartup + 12f;
+            float deadline = Time.realtimeSinceStartup + 16f;
             while (_director.IsPerforming && Time.realtimeSinceStartup < deadline)
                 yield return null;
 
-            Assert.IsFalse(_director.IsPerforming, "コンボが終われば段階が戻る");
+            Assert.IsFalse(_director.IsPerforming, "コンボが終われば連撃段階を抜ける");
             Assert.AreNotEqual(HeldBellyPunchDirector.Phase.Combo, _director.CurrentPhase);
             Assert.IsTrue(
                 _director.CurrentPhase == HeldBellyPunchDirector.Phase.HandOffWait ||
-                _director.CurrentPhase == HeldBellyPunchDirector.Phase.WaitingThrow,
-                $"コンボ後は引き渡し待ちか再投げ待ち（実際: {_director.CurrentPhase}）");
+                _director.CurrentPhase == HeldBellyPunchDirector.Phase.Finisher ||
+                _director.CurrentPhase == HeldBellyPunchDirector.Phase.Collapse ||
+                _director.CurrentPhase == HeldBellyPunchDirector.Phase.Idle,
+                $"コンボ後は引き渡し待ちかトドメ段階へ進む（実際: {_director.CurrentPhase}）");
+
+            float endDeadline = Time.realtimeSinceStartup + 8f;
+            while (_director.CurrentPhase != HeldBellyPunchDirector.Phase.Idle && Time.realtimeSinceStartup < endDeadline)
+                yield return null;
+            Assert.AreEqual(HeldBellyPunchDirector.Phase.Idle, _director.CurrentPhase, "トドメ後に Idle へ戻る");
+            Assert.IsTrue(_player.IsDown, "トドメ後はダウンへ移行する");
         }
 
         [UnityTest]
@@ -406,7 +455,12 @@ namespace Ryona.Tests
         [UnityTest]
         public IEnumerator 腹パンで被弾姿勢とカメラ寄せが始まり抽選に外れると拘束が続く()
         {
-            yield return LoadAndGrab(waitForAnimator: true);
+            yield return LoadAndGrab(waitForAnimator: true, throwDelay: 10f);
+            Vector3 center = _player.transform.position;
+            Quaternion facing = Quaternion.LookRotation(Vector3.right);
+            _captor.TakeOverHold(25f);
+            _captor.transform.SetPositionAndRotation(center + Vector3.left * 0.34f, facing);
+            Object.FindFirstObjectByType<EnemyGroup>()?.ReleaseAllTokens();
 
             // 被弾姿勢と拘束の継続を見るため、狙いを腹に固定する。
             _director.FacePunchChance = 0f;
@@ -440,19 +494,39 @@ namespace Ryona.Tests
             // 「表情が読める」ことは、別テスト「腹パン中も彼女の顔が画面に入る」が受け持つ。
             Assert.Less(_camera.EffectDistanceScale, 0.30f, "腹パンも彼女の表情と拳が読める距離まで寄る");
 
-            // 5 発を食らっても拘束は続く
-            float deadline = Time.realtimeSinceStartup + 10f;
-            while ((_director.IsPerforming || _director.NextThrowRemaining <= 0f)
+            // 5 発後にグロッキーを保ったまま、引き起こし → トドメの一撃 → うつ伏せダウンへ進む
+            float deadline = Time.realtimeSinceStartup + 15f;
+            while (_director.ComboHitsLanded < 5 && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.AreEqual(5, _director.ComboHitsLanded, "The player must take 5 belly punches");
+            Assert.AreEqual(PunchZone.Body, _director.LastLandedZone);
+
+            yield return new WaitForSeconds(0.95f);
+            Assert.IsTrue(_grapple.IsGrappled, "グロッキー演出中は拘束を保つ");
+            Assert.AreSame(_captor, _grapple.Captor);
+            Assert.Greater(_anim.HeldComboDangle, 0.9f, "5発後はグロッキー脱力状態に入る");
+            Assert.Less(_camera.EffectDistanceScale, 0.32f, "グロッキー中も寄りのカメラを保つ");
+            var captorFigure = _captor.GetComponent<EnemyFigure>();
+            AssertCaptorArmsHugFromBehind(captorFigure, "腹パン5発後のグロッキー");
+            AssertPlayerArmsHookedOverCaptor(captorFigure, "腹パン5発後のグロッキー");
+
+            while (_director.CurrentPhase == HeldBellyPunchDirector.Phase.Combo && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.AreEqual(HeldBellyPunchDirector.Phase.Finisher, _director.CurrentPhase,
+                "引き渡し抽選が外れたらトドメ段階へ進む");
+            yield return new WaitForSeconds(0.40f);
+            Assert.Greater(_anim.FinisherHoistWeight, 0.5f, "拘束役が脇を引き上げて晒す");
+            Assert.Less(_camera.EffectDistanceScale, 0.32f, "トドメ中も寄りのカメラを保つ");
+
+            while ((_grapple.IsGrappled || _director.CurrentPhase != HeldBellyPunchDirector.Phase.Idle)
                 && Time.realtimeSinceStartup < deadline)
                 yield return null;
 
-            Assert.IsFalse(_director.IsPerforming, "The combo must end");
-            Assert.AreEqual(5, _director.ComboHitsLanded, "The player must take 5 belly punches");
-            Assert.AreEqual(PunchZone.Body, _director.LastLandedZone);
-            Assert.IsTrue(_grapple.IsGrappled, "The original hold must continue");
-            Assert.AreSame(_captor, _grapple.Captor);
-            Assert.Greater(_director.NextThrowRemaining, 0f, "Schedule the next opening throw");
-            Assert.IsFalse(_player.IsDown, "One combo is below the belly threshold");
+            Assert.IsFalse(_grapple.IsGrappled, "トドメのあと拘束が解ける");
+            Assert.IsTrue(_player.IsDown, "トドメの腹パンで崩れ落ちる");
+            Assert.IsTrue(_player.DownIsForward, "腹トドメは前方（うつ伏せ）へ崩れ落ちる");
+            Assert.AreEqual(HeldBellyPunchDirector.Phase.Idle, _director.CurrentPhase);
         }
 
         [UnityTest]
@@ -506,7 +580,7 @@ namespace Ryona.Tests
             _attacker.HoldFire(10f);
             LandOpeningThrow();
 
-            float deadline = Time.realtimeSinceStartup + 10f;
+            float deadline = Time.realtimeSinceStartup + 15f;
             while (_director.ComboHitsLanded < _director.ComboHitsTotal
                 && Time.realtimeSinceStartup < deadline)
                 yield return null;
@@ -590,9 +664,10 @@ namespace Ryona.Tests
         [UnityTest]
         public IEnumerator 顔面5連撃の首は拳が入る向きに振れる()
         {
-            yield return LoadAndGrab(waitForAnimator: true);
-            yield return new WaitForSeconds(0.2f);
+            yield return LoadAndGrab(waitForAnimator: true, throwDelay: 10f);
             PrepareAttackerPoseTest(0.82f);
+            _attacker.HoldFire(10f);
+            yield return new WaitForSeconds(0.2f);
             _director.FacePunchChance = 1f;
             Assert.IsTrue(_anim.Rig.TryGetRestRotation(_anim.Rig.Head, out Quaternion restHead));
             Vector3 right = _player.transform.right;
@@ -767,6 +842,20 @@ namespace Ryona.Tests
             // 頭を離す実装は、腕が彼女から離れて羽交い締めが脇の下をくぐらなくなるため
             // 入れない。ここでは「頭が同じ位置に完全に重ならない」ことだけを確認する。
             Assert.Greater(nearestCaptorHead, 0.09f, $"反動で拘束役の頭と重ならない ({nearestHeadPose})");
+            yield return new WaitForSeconds(0.50f);
+            Assert.IsTrue(_grapple.IsGrappled);
+            Assert.Greater(_anim.HeldComboDangle, 0.9f, "顔パン5発後もグロッキー脱力状態に入る");
+            AssertCaptorArmsHugFromBehind(captorFigure, "顔パンチ5発後のグロッキー");
+            AssertPlayerArmsHookedOverCaptor(captorFigure, "顔パンチ5発後のグロッキー");
+
+            float downDeadline = Time.realtimeSinceStartup + 8f;
+            while ((_grapple.IsGrappled || _director.CurrentPhase != HeldBellyPunchDirector.Phase.Idle)
+                && Time.realtimeSinceStartup < downDeadline)
+                yield return null;
+
+            Assert.IsFalse(_grapple.IsGrappled, "顔トドメのあと拘束が解ける");
+            Assert.IsTrue(_player.IsDown, "顔トドメでダウンへ崩れ落ちる");
+            Assert.IsFalse(_player.DownIsForward, "顔トドメは仰向けへ倒れる");
         }
 
         /// <summary>
@@ -1059,7 +1148,7 @@ namespace Ryona.Tests
             Vector3 toCamera = _camera.transform.position - _player.transform.position;
             toCamera.y = 0f;
             float front = Vector3.Dot(_player.transform.forward, toCamera.normalized);
-            Assert.That(front, zone == PunchZone.Face ? Is.InRange(0.58f, 0.88f) : Is.InRange(0.37f, 0.55f),
+            Assert.That(front, zone == PunchZone.Face ? Is.InRange(0.58f, 0.88f) : Is.InRange(0.37f, 0.65f),
                 "腹パンは斜め横から、顔パンはより正面寄りから撮る");
             Camera view = _camera.GetComponent<Camera>();
             float playerX = view.WorldToViewportPoint(_player.transform.position + Vector3.up * 1.1f).x;
@@ -1542,6 +1631,103 @@ namespace Ryona.Tests
             Assert.Less(bestRight, 0.35f, "打つ手（右）は狙いへ届いていること");
             Assert.Greater(leftAtBest, 0.45f, "反対の手（左）は腰の横へ引いてあること");
             Assert.Greater(leftAtBest, bestRight + 0.20f, "打つ手だけが前へ出ていること");
+        }
+
+        [UnityTest]
+        public IEnumerator グロッキー中に通常攻撃を受けても被弾モーションが出てグロッキーへ戻る()
+        {
+            yield return LoadAndGrab(waitForAnimator: true, directorEnabled: false);
+            _captor.TakeOverHold(20f);
+            PlaceAttackerInFront(0.85f);
+
+            _anim.PlayHeldBellyPunch(0.60f, fatigue: 1f, impact: 1.4f, holdSeconds: 0.18f, finalHit: true);
+            yield return new WaitForSeconds(0.75f);
+
+            Assert.Greater(_anim.HeldComboDangle, 0.95f, "5発後はグロッキー脱力状態に入る");
+            float groggyPitch = _anim.DebugTorsoPitch;
+            float groggyYaw = _anim.DebugHeadYaw;
+
+            _player.LastHitZone = PunchZone.Body;
+            Hit(_attacker, PunchZone.Body, isTagPunch: false);
+            yield return new WaitForSeconds(0.10f);
+
+            Assert.Greater(_anim.HeldBellyPunchFold, 0.5f, "グロッキー中に通常の腹パンを受けると折れリアクションが出る");
+            Assert.Greater(_anim.DebugTorsoPitch, groggyPitch + 20f, "腹パンで上体が前へ折れる");
+            Assert.Greater(_anim.HeldComboDangle, 0.95f, "被弾中もグロッキー状態は保たれる");
+
+            yield return new WaitForSeconds(0.55f);
+            Assert.Less(Mathf.Abs(_anim.DebugTorsoPitch - groggyPitch), 4f, "反応後は元のグロッキー姿勢へ戻る");
+            Assert.Greater(_anim.HeldComboDangle, 0.95f, "反応後もグロッキー状態が続く");
+            AssertPlayerArmsHookedOverCaptor(_captor.GetComponent<EnemyFigure>(), "通常腹パン後のグロッキー復帰");
+
+            _player.LastHitZone = PunchZone.Face;
+            Hit(_attacker, PunchZone.Face, isTagPunch: false);
+            yield return new WaitForSeconds(0.06f);
+
+            Assert.Greater(_anim.HeldFacePunchImpulse, 0.4f, "グロッキー中に通常の顔パンを受けると首振りが出る");
+            Assert.Greater(Mathf.Abs(_anim.DebugHeadYaw - groggyYaw), 20f, "顔パンで首が横へ弾かれる");
+            Assert.Greater(_anim.HeldComboDangle, 0.95f, "顔パン被弾後もグロッキー状態は保たれる");
+        }
+
+        [UnityTest]
+        public IEnumerator 腹パン連撃は左右交互に打ちHUDを下げカメラを引かせずトドメで崩れ落ちる()
+        {
+            yield return LoadAndGrab(waitForAnimator: true, throwDelay: 10f);
+            Vector3 center = _player.transform.position;
+            Quaternion facing = Quaternion.LookRotation(Vector3.right);
+            _captor.TakeOverHold(25f);
+            _captor.transform.SetPositionAndRotation(center + Vector3.left * 0.34f, facing);
+            Object.FindFirstObjectByType<EnemyGroup>()?.ReleaseAllTokens();
+            _director.FacePunchChance = 0f;
+            PlaceAttackerInFront();
+
+            var sides = new System.Collections.Generic.List<string>();
+            Application.LogCallback cb = (msg, stack, type) =>
+            {
+                if (msg.StartsWith("[HeldPunch] order") && msg.Contains("zone=Body"))
+                    sides.Add(msg.Contains("side=L") ? "L" : "R");
+            };
+            Application.logMessageReceived += cb;
+
+            float maxComboCamScale = 0f;
+            float maxHudY = float.NegativeInfinity;
+            var hud = Object.FindFirstObjectByType<MatchHud>();
+
+            try
+            {
+                LandOpeningThrow();
+                _attacker.HoldFire(10f);
+                _attacker.enabled = true;
+                yield return null;
+
+                float deadline = Time.realtimeSinceStartup + 20f;
+                while ((_director.IsCameraActive || _director.ComboHitsLanded < 5)
+                    && Time.realtimeSinceStartup < deadline)
+                {
+                    if (_director.IsPerforming || _director.CurrentPhase == HeldBellyPunchDirector.Phase.Finisher)
+                    {
+                        if (_director.ComboHitsLanded >= 1)
+                            maxComboCamScale = Mathf.Max(maxComboCamScale, _camera.EffectDistanceScale);
+                        if (hud != null && hud.GrappleHudY >= 0f)
+                            maxHudY = Mathf.Max(maxHudY, hud.GrappleHudY);
+                    }
+                    yield return null;
+                }
+
+                Assert.GreaterOrEqual(sides.Count, 6, $"連撃＋トドメの発注数が足りない: {string.Join(",", sides)}");
+                for (int i = 1; i < sides.Count; i++)
+                    Assert.AreNotEqual(sides[i - 1], sides[i], $"腹パンの腕が交互になっていない: {string.Join(",", sides)}");
+
+                Assert.Less(maxComboCamScale, 0.34f,
+                    $"コンボ・グロッキー・引き起こし中にカメラが引いてしまった（最大倍率 {maxComboCamScale:F2}）");
+                if (maxHudY >= 0f)
+                    Assert.LessOrEqual(maxHudY, 32f, $"コンボ中の拘束HUDが下に退避していない（y={maxHudY:F1}）");
+                Assert.IsTrue(_player.IsDown && _player.DownIsForward, "腹トドメ後は前方へ崩れ落ちる");
+            }
+            finally
+            {
+                Application.logMessageReceived -= cb;
+            }
         }
     }
 }

@@ -142,5 +142,35 @@ namespace Ryona.Tests
             Assert.IsFalse(_grapple.IsGrappled, "振りほどいたら拘束にはつながない");
             Assert.AreEqual(EnemyPhase.Stagger, _enemy.Phase, "振りほどかれた敵はよろける");
         }
+
+        [UnityTest]
+        public IEnumerator HaulKeepsFaceVisibleInSupineAndProne([Values(false, true)] bool prone)
+        {
+            yield return Load(prone: prone);
+            var haul = _stats.GroundMount.Haul;
+            yield return WaitStage(haul, GroundHaulUp.Beat.Haul, 8f);
+
+            var figures = Object.FindObjectsByType<EnemyFigure>(FindObjectsSortMode.None);
+            Transform head = _anim.Rig.Head;
+            int frames = 0;
+            int inFrame = 0;
+            float sumVisible = 0f;
+
+            while (haul.Stage == GroundHaulUp.Beat.Haul)
+            {
+                yield return null;
+                var res = FaceVisibility.Measure(Camera.main, head, figures);
+                frames++;
+                sumVisible += res.Visible;
+                if (res.Visible >= FaceVisibility.GoodVisible)
+                    inFrame++;
+            }
+
+            float avg = frames > 0 ? sumVisible / frames : 0f;
+            float ratio = frames > 0 ? (float)inFrame / frames : 0f;
+            Debug.Log($"[HaulFaceVisible] prone={prone} frames={frames} avgVisible={avg:F2} goodRatio={ratio:F2}");
+            Assert.Greater(frames, 10);
+            Assert.GreaterOrEqual(avg, 0.50f, $"引き起こし中の顔可視率が低い (prone={prone}, avg={avg:F2})");
+        }
     }
 }

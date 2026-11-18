@@ -148,6 +148,48 @@ namespace Ryona.Game
             GameLog.Log($"[Enemy] revive {name} hp={State.Hp:F0} rise={S.RiseSeconds:F2}s");
         }
 
+        internal void ResetForMotionPreview()
+        {
+            if (Phase == EnemyPhase.Dead)
+                Revive();
+            else
+                State.RestoreAll();
+
+            enabled = true;
+            var body = GetComponent<Collider>();
+            if (body != null)
+                body.enabled = true;
+
+            _riseTimer = 0f;
+            _timer = 0f;
+            _punchVisualTimer = 0f;
+            _handOffLockUntil = 0f;
+            _plantedUntil = 0f;
+            _attackReadyAt = Time.time;
+            _forceGrab = false;
+            _pinOrder = false;
+            _bearHugOrder = false;
+            HoldsBellyPunchGuard = false;
+            WindupProgress = 0f;
+            StaggerProgress = 0f;
+            StaggerWeight = 1f;
+            StopFlanking();
+            AbsorbLungeOffset();
+            HideTelegraph();
+            ReleaseWallAssist();
+            IsHolding = false;
+            ClearGrappleState(clearAttackState: true, resetKneeTimer: true);
+            _wallReturn = 0f;
+            ReleaseToken();
+            Phase = EnemyPhase.Chase;
+        }
+
+        internal void ClearPreviewHold()
+        {
+            _attackReadyAt = Time.time;
+            ClearPlanted();
+        }
+
         // --- グループ連携 --------------------------------------------------------
 
     }
