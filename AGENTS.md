@@ -96,6 +96,18 @@ python tools/motion_audit.py Verify/preview/<dir> --strip 110 117 -o seq.png
 
 - EditMode は `Ryona.Tests`（`Ryona.Core` のみ参照）、PlayMode は `Ryona.PlayTests`（`Ryona.Game` を参照）。
 - まとめて回すときは `MioPrototype/tools/run_tests.py`（コンパイル確認込み）。
-- 開発中の確認は `--filter` で対象クラスだけ回す（例: `python tools/run_tests.py --filter "BearHugTests|OverheadRuntimeTests" --skip-compile`、数十秒）。全バッチは変更を確定する前の最終確認に使う。
+- 速回しの例: `python tools/run_tests.py --filter "BearHugTests|OverheadRuntimeTests" --skip-compile`（数十秒）。
+- 検証は2層。開発中は `--filter` で対象クラスのみ（数十秒）。確定前は下の表の影響バッチだけを回す（`edit` は常に含める）。
+
+| 変更した場所 | 回すバッチ |
+|---|---|
+| `RyonaCore/**` | `edit` |
+| `EnemyBrain*` / `PlayerGrapple*` / `GrappleSession` / `HeldBellyPunch*` / `Feel/**` | `grapple` |
+| `CharacterAnimator*` / `Rig/**` / `AI/**`（姿勢・関節） | `motion` ＋ `grapple` |
+| `Config/**` / `OcclusionFade` / `ThirdPersonCamera` / `PlayerStats` | `misc` |
+
+- 複数領域に触れたら和集合。全バッチは1日1回の作業終了時と、3バッチ以上にまたがる変更を確定する前に回す。
+- 全バッチで落ちたテストが再実行で通っても即「フレーク」と決めず、`--filter` で同一テストを3回連続回す。3回とも通れば既知フレークとしてここに1行追加し、1回でも落ちれば実バグとして原因を直す。
+- 全緑の記録は `MioPrototype/Verify/test-baseline.txt`（日付・HEAD・各バッチ結果）に1行追記する。
 - 既存テストには**設計意図が書かれている**ことがある（例：顔パンの首振りは 40° 以上必要）。
   値を変えて落ちたときは、まずテストの意図を読む。
