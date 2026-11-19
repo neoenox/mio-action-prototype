@@ -17,7 +17,7 @@ namespace Ryona.Game
     /// </para>
     /// </summary>
     [AddComponentMenu("Ryona/Belt Screen Lock")]
-    public sealed class BeltScreenLock : MonoBehaviour
+    public sealed class BeltScreenLock : ConfigurableMonoBehaviour
     {
         [Header("References")]
         public ThirdPersonCamera Camera;
@@ -67,9 +67,16 @@ namespace Ryona.Game
             EngageScreenMargin = s.EngageScreenMargin;
         }
 
-        void Awake()
+        protected override void Awake()
         {
             ApplySettings(RyonaConfig.Instance.BeltLock);
+        }
+
+        public override void OnConfigChanged(RyonaConfig config)
+        {
+            ApplySettings(config.BeltLock);
+            // 設定変更時は即座に再評価（次フレームの LateUpdate で反映される）
+            GameLog.Log("[BeltScreenLock] Config hot-reloaded");
         }
 
         void LateUpdate()

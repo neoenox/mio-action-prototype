@@ -14,7 +14,7 @@ namespace Ryona.Game
     /// </para>
     /// </summary>
     [AddComponentMenu("Ryona/Enemy Group")]
-    public sealed class EnemyGroup : MonoBehaviour
+    public sealed class EnemyGroup : ConfigurableMonoBehaviour
     {
         [Header("Tuning")]
         [Tooltip("同時に予備動作〜攻撃に入れる敵の数。SPEC §5 の上限は 2")]
@@ -76,9 +76,15 @@ namespace Ryona.Game
         }
 
         /// <summary>調整値は <see cref="RyonaConfig.Group"/> が真実源。シーンの保存値は使わない。</summary>
-        void Awake()
+        protected override void Awake()
         {
             MaxAttackers = RyonaConfig.Instance.Group.MaxAttackers;
+        }
+
+        public override void OnConfigChanged(RyonaConfig config)
+        {
+            MaxAttackers = config.Group.MaxAttackers;
+            GameLog.Log("[EnemyGroup] Config hot-reloaded");
         }
 
         /// <summary>敵を登録する。<see cref="EnemyBrain"/> の Start から呼ばれる。</summary>

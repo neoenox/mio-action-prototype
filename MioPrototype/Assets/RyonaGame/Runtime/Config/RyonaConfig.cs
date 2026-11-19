@@ -430,10 +430,40 @@ namespace Ryona.Game
         /// <summary>
         /// 唯一の設定アセット。無ければ既定値のインスタンスを返す（テスト・空シーン用）。
         /// 参照は各コンポーネントの <c>Awake</c> で 1 度取るだけでよい。
+        /// エディタでアセットを編集すると <see cref="OnConfigChanged"/> が発火する。
         /// </summary>
-        public static RyonaConfig Instance =>
-            _instance != null
-                ? _instance
-                : _instance = Resources.Load<RyonaConfig>(ResourcePath) ?? CreateInstance<RyonaConfig>();
+        public static RyonaConfig Instance
+        {
+            get
+            {
+                if (_instance != null)
+                    return _instance;
+
+                _instance = Resources.Load<RyonaConfig>(ResourcePath) ?? CreateInstance<RyonaConfig>();
+                return _instance;
+            }
+            internal set => _instance = value;
+        }
+
+        /// <summary>
+        /// 設定変更時のコールバック。<see cref="ConfigurableMonoBehaviour"/> が購読する。
+        /// </summary>
+        public static event Action<RyonaConfig> OnConfigChanged;
+
+        /// <summary>
+        /// 設定の再適用を通知する。通常はエディタの <c>OnValidate</c> から呼ばれる。
+        /// </summary>
+        internal static void NotifyChanged(RyonaConfig config)
+        {
+            OnConfigChanged?.Invoke(config != null ? config : Instance);
+        }
+
+#if UNITY_EDITOR
+        void OnValidate()
+        {
+            // インスペクタで値を変えた瞬間、再生中のコンポーネントへ再適用する。
+            NotifyChanged(this);
+        }
+#endif
     }
 }

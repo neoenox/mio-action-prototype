@@ -7,7 +7,7 @@ namespace Ryona.Game
     /// </summary>
     [RequireComponent(typeof(CharacterController))]
     [AddComponentMenu("Ryona/Player Motor")]
-    public sealed class PlayerMotor : MonoBehaviour
+    public sealed class PlayerMotor : ConfigurableMonoBehaviour
     {
         [Header("References")]
         public PlayerStats Stats;
@@ -136,7 +136,7 @@ namespace Ryona.Game
             BeltFacing = s.BeltFacing;
         }
 
-        void Awake()
+        protected override void Awake()
         {
             ApplySettings(RyonaConfig.Instance.Motor);
 
@@ -144,6 +144,12 @@ namespace Ryona.Game
             _controller = GetComponent<CharacterController>();
             if (Stats == null)
                 Stats = GetComponent<PlayerStats>();
+        }
+
+        public override void OnConfigChanged(RyonaConfig config)
+        {
+            ApplySettings(config.Motor);
+            GameLog.Log("[PlayerMotor] Config hot-reloaded");
         }
 
         /// <summary>

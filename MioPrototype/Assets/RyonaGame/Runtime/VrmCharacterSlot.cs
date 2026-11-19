@@ -17,7 +17,7 @@ namespace Ryona.Game
     /// ファイルが無ければカプセルのまま動くので、ゲームが壊れることはない。
     /// </summary>
     [AddComponentMenu("Ryona/VRM Character Slot")]
-    public sealed class VrmCharacterSlot : MonoBehaviour
+    public sealed class VrmCharacterSlot : ConfigurableMonoBehaviour
     {
         [Header("Source (Assets/StreamingAssets/ からの相対名)")]
         public string FileName = "mio_v1.vrm";
@@ -61,9 +61,21 @@ namespace Ryona.Game
             Scale = s.Scale;
         }
 
-        void Awake()
+        protected override void Awake()
         {
             ApplySettings(RyonaConfig.Instance.VrmSlot);
+        }
+
+        public override void OnConfigChanged(RyonaConfig config)
+        {
+            ApplySettings(config.VrmSlot);
+            // VRM が既に読み込み済みなら即座に反映
+            if (Instance != null)
+            {
+                Instance.transform.localRotation = Quaternion.Euler(0f, config.VrmSlot.YawOffset, 0f);
+                Instance.transform.localScale = Vector3.one * config.VrmSlot.Scale;
+            }
+            GameLog.Log("[VrmCharacterSlot] Config hot-reloaded");
         }
 
         async void Start()

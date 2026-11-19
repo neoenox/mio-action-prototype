@@ -10,7 +10,7 @@ namespace Ryona.Game
     /// 数値を変えたいときはここだけ触ればよい。
     /// </summary>
     [AddComponentMenu("Ryona/Combat Feel")]
-    public sealed class CombatFeel : MonoBehaviour
+    public sealed class CombatFeel : ConfigurableMonoBehaviour
     {
         [Header("References")]
         public PlayerCombat Combat;
@@ -59,9 +59,15 @@ namespace Ryona.Game
             HurtVoiceInterval = s.HurtVoiceInterval;
         }
 
-        void Awake()
+        protected override void Awake()
         {
             ApplySettings(RyonaConfig.Instance.Feel);
+        }
+
+        public override void OnConfigChanged(RyonaConfig config)
+        {
+            ApplySettings(config.Feel);
+            GameLog.Log("[CombatFeel] Config hot-reloaded");
         }
 
         void Start()

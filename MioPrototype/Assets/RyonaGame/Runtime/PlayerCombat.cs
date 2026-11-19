@@ -8,7 +8,7 @@ namespace Ryona.Game
     /// ダメージ計算は DamageResolver に丸投げし、ここは「いつ・誰に」だけを扱う。
     /// </summary>
     [AddComponentMenu("Ryona/Player Combat")]
-    public sealed class PlayerCombat : MonoBehaviour
+    public sealed class PlayerCombat : ConfigurableMonoBehaviour
     {
         [Header("References")]
         public PlayerStats Stats;
@@ -93,7 +93,7 @@ namespace Ryona.Game
             ComboWindowSeconds = s.ComboWindowSeconds;
         }
 
-        void Awake()
+        protected override void Awake()
         {
             ApplySettings(RyonaConfig.Instance.Combat);
 
@@ -112,6 +112,12 @@ namespace Ryona.Game
                 if (originRenderer != null)
                     originRenderer.enabled = false;
             }
+        }
+
+        public override void OnConfigChanged(RyonaConfig config)
+        {
+            ApplySettings(config.Combat);
+            GameLog.Log("[PlayerCombat] Config hot-reloaded");
         }
 
         void Update()

@@ -15,7 +15,7 @@ namespace Ryona.Game
     /// </para>
     /// </summary>
     [AddComponentMenu("Ryona/Encounter Director")]
-    public sealed class EncounterDirector : MonoBehaviour
+    public sealed class EncounterDirector : ConfigurableMonoBehaviour
     {
         [Header("Stage (belt)")]
         [Tooltip("ステージの基準。ここを中心に画面と敵の出現位置を決める")]
@@ -113,9 +113,15 @@ namespace Ryona.Game
             BodyDropVolume = s.BodyDropVolume;
         }
 
-        void Awake()
+        protected override void Awake()
         {
             ApplySettings(RyonaConfig.Instance.Encounter);
+        }
+
+        public override void OnConfigChanged(RyonaConfig config)
+        {
+            ApplySettings(config.Encounter);
+            GameLog.Log("[EncounterDirector] Config hot-reloaded");
         }
 
         void Start()

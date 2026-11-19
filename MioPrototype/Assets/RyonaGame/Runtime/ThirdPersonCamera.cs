@@ -7,7 +7,7 @@ namespace Ryona.Game
     /// 目標距離を外部から差し替えられるようにしてある。
     /// </summary>
     [AddComponentMenu("Ryona/Third Person Camera")]
-    public sealed class ThirdPersonCamera : MonoBehaviour
+    public sealed class ThirdPersonCamera : ConfigurableMonoBehaviour
     {
         [Header("References")]
         public Transform Target;
@@ -171,7 +171,7 @@ namespace Ryona.Game
         bool _holdingFocusThisFrame;
         bool _holdingFocusBelt;
 
-        void Awake()
+        protected override void Awake()
         {
             // 調整値は設定アセットから写す。シーンに保存された値は読まない
             // （NonSerialized なので、そもそもシーンの値は入ってこない）。
@@ -190,6 +190,13 @@ namespace Ryona.Game
             _initialDistance = Distance;
             _targetDistance = Distance;
             _smoothPivot = Pivot();
+        }
+
+        /// <summary>設定が変わったら、カメラの調整値を焼き直す。</summary>
+        public override void OnConfigChanged(RyonaConfig config)
+        {
+            ApplySettings(config.Camera);
+            GameLog.Log("[Cam] Config hot-reloaded");
         }
 
         /// <summary>

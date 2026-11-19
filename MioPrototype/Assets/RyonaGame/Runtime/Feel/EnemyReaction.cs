@@ -9,7 +9,7 @@ namespace Ryona.Game
     /// VRM が入っても同じ 3 点はそのまま効くので、ここは差し替えずに重ねられる。
     /// </summary>
     [AddComponentMenu("Ryona/Enemy Reaction")]
-    public sealed class EnemyReaction : MonoBehaviour
+    public sealed class EnemyReaction : ConfigurableMonoBehaviour
     {
         [Header("References")]
         public EnemyBrain Brain;
@@ -48,7 +48,7 @@ namespace Ryona.Game
             FlashColor = s.FlashColor;
         }
 
-        void Awake()
+        protected override void Awake()
         {
             ApplySettings(RyonaConfig.Instance.EnemyReaction);
             ResolveReferences();
@@ -56,6 +56,12 @@ namespace Ryona.Game
 
             if (Body != null && Body.sharedMaterial != null && Body.sharedMaterial.HasProperty(EmissionId))
                 _baseEmission = Body.sharedMaterial.GetColor(EmissionId);
+        }
+
+        public override void OnConfigChanged(RyonaConfig config)
+        {
+            ApplySettings(config.EnemyReaction);
+            GameLog.Log("[EnemyReaction] Config hot-reloaded");
         }
 
         void OnEnable()
