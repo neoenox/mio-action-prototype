@@ -938,21 +938,34 @@ namespace Ryona.Game
             GameLog.Log($"[HeldPunch] finisher landed ({zone}) → collapse hold hitT={Time.time:F2}");
         }
 
+        /// <summary>顔トドメで仰向けに倒れる前に、背後の拘束役が空ける距離（m）。</summary>
+        const float CaptorBackstepDistance = 0.95f;
+
+        /// <summary>その後退にかける秒数。</summary>
+        const float CaptorBackstepSeconds = 0.28f;
+
         void UpdateCollapse()
         {
             _collapseReleaseTimer -= Time.deltaTime;
             if (_collapseReleaseTimer > 0f)
                 return;
 
-            ReleaseWithFinisherDown();
+            _collapseReleaseTimer = 0f;   // コルーチン開始後の再入を防ぐ
+            StartCoroutine(ReleaseWithFinisherDown());
         }
 
-        void ReleaseWithFinisherDown()
+        System.Collections.IEnumerator ReleaseWithFinisherDown()
         {
             var captor = _grapple != null ? _grapple.Captor : null;
             Transform attackerTf = _comboPuncher != null
                 ? _comboPuncher.transform
                 : (_stats != null ? _stats.LastAttacker : null);
+
+            // 仰向けで倒れる場所を空けるため、トドメが入ったあとに拘束役を後ろへ下げる。
+            // コンボ中に引くと脇の下の腕が離れるので、ここでだけ動かす。
+            bool backstep = captor != null && _comboZone == PunchZone.Face;
+            Vector3 captorFrom = backstep ? captor.transform.position : default;
+            Vector3 captorTo = backstep ? captorFrom - captor.transform.forward * CaptorBackstepDistance : default;
 
             SetPunchGuard(null);
             _comboPuncher?.ClearPlanted();
@@ -964,14 +977,27 @@ namespace Ryona.Game
             _anim?.SetFinisherHoist(false);
             _finisherHoistTimer = 0f;
             _finisherOrdered = false;
-            _collapseReleaseTimer = 0f;
             _punchInFlight = false;
+
+            captor?.LockForHandOff(0.55f);
+            _grapple?.Release();
+
+            if (backstep)
+            {
+                float elapsed = 0f;
+                while (elapsed < CaptorBackstepSeconds)
+                {
+                    elapsed += Time.deltaTime;
+                    captor.transform.position = Vector3.Lerp(captorFrom, captorTo,
+                        Mathf.Clamp01(elapsed / CaptorBackstepSeconds));
+                    yield return null;
+                }
+                GameLog.Log($"[HeldPunch] captor backstep {CaptorBackstepDistance:F2}m");
+            }
 
             ApplyCollapseCamera();
             _phase = Phase.Idle;
 
-            captor?.LockForHandOff(0.55f);
-            _grapple?.Release();
             if (_stats != null && !_stats.IsDead)
             {
                 _stats.ClearHeldBellyDamage();

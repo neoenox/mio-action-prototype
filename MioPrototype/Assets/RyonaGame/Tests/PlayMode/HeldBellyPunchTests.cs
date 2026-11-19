@@ -921,15 +921,19 @@ namespace Ryona.Tests
             Assert.Greater(_anim.HeldComboDangle, 0.9f, "顔パン5発後もグロッキー脱力状態に入る");
             AssertCaptorArmsHugFromBehind(captorFigure, "顔パンチ5発後のグロッキー");
             AssertPlayerArmsHookedOverCaptor(captorFigure, "顔パンチ5発後のグロッキー");
+            Vector3 captorBeforeDown = _captor.transform.position;
 
             float downDeadline = Time.realtimeSinceStartup + 8f;
-            while ((_grapple.IsGrappled || _director.CurrentPhase != HeldBellyPunchDirector.Phase.Idle)
+            while ((!_player.IsDown || _grapple.IsGrappled ||
+                    _director.CurrentPhase != HeldBellyPunchDirector.Phase.Idle)
                 && Time.realtimeSinceStartup < downDeadline)
                 yield return null;
 
             Assert.IsFalse(_grapple.IsGrappled, "顔トドメのあと拘束が解ける");
             Assert.IsTrue(_player.IsDown, "顔トドメでダウンへ崩れ落ちる");
             Assert.IsFalse(_player.DownIsForward, "顔トドメは仰向けへ倒れる");
+            Assert.Greater(Vector3.Distance(_captor.transform.position, captorBeforeDown), 0.6f,
+                "仰向けで拘束役の体をすり抜けないよう、解放前に後ろへ空ける");
         }
 
         /// <summary>
