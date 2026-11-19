@@ -595,6 +595,10 @@ namespace Ryona.Game
                  (Brain.IsTagPunch && (phase == EnemyPhase.Windup || phase == EnemyPhase.Attack))))
             {
                 float guard = Brain.IsTagPunch && Brain.Zone == PunchZone.Face ? 1f - Brain.PunchPoseWeight : 1f;
+                // 休符では体を起こして引き直す（構えの沈みを半分ほど戻す）。
+                // ここを落としたままにすると、間を空けても「しゃがんだまま待っている」画になる。
+                float rest = Brain.TagPunchRest;
+                guard *= 1f - 0.55f * rest;
                 float lowHips = Mathf.Min(pose.HipsY, restY - 0.20f * guard);
                 if (pose.LegsExact)
                 {

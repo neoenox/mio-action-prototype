@@ -47,8 +47,9 @@ namespace Ryona.Game
             else
             {
                 _rearHoldGroggy = Mathf.Max(_rearHoldGroggy, Mathf.Max(HeldBellyDangle, HeldFaceDangle));
+                // 抱え上げは 0.45 秒かけて上がりきる（0.24 秒だと、持ち上がる前にトドメが入っていた）。
                 FinisherHoistWeight = Mathf.MoveTowards(FinisherHoistWeight, _finisherHoistTarget ? 1f : 0f,
-                    dt / (_finisherHoistTarget ? 0.24f : 0.10f));
+                    dt / (_finisherHoistTarget ? 0.45f : 0.10f));
             }
 
             // 投げの崩れ。引き込まれる動きなので、パンチの折れ（0.07 秒）よりゆっくり入れる。

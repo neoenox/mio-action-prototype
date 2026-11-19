@@ -324,6 +324,17 @@ namespace Ryona.Game
         }
 
         internal bool HoldsBellyPunchGuard { get; set; }
+
+        /// <summary>
+        /// 休符の残り秒。5 発のあいだ、長い間隔の前だけ演出側が入れる。
+        /// 「弱い一発の前に一度体を起こして引き直す」ための間で、殴る側の演技に緩急を作る。
+        /// </summary>
+        float _tagRestSeconds;
+
+        internal void SetTagRest(float seconds) => _tagRestSeconds = Mathf.Max(0f, seconds);
+
+        /// <summary>休符の進行（0 = 通常の構え、1 = 起こして引いた状態）。</summary>
+        internal float TagPunchRest { get; private set; }
         internal bool KeepsBellyPunchArm => HoldsBellyPunchGuard && !IsTagFacePunch
             && (IsBellyPunch || Phase == EnemyPhase.Recover || Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe);
 
@@ -925,6 +936,11 @@ namespace Ryona.Game
             _punchPoseHoldSeconds = Mathf.Max(0f, _punchPoseHoldSeconds - dt);
             if (_punchPoseHoldSeconds <= 0f)
                 _punchPoseHoldTotal = 0f;
+
+            // 休符（殴る側が上体を起こして引き直す間）。短い立ち上がりと戻りを持たせて、
+            // パチッと切り替わらないようにする。
+            _tagRestSeconds = Mathf.Max(0f, _tagRestSeconds - dt);
+            TagPunchRest = Mathf.MoveTowards(TagPunchRest, _tagRestSeconds > 0f ? 1f : 0f, dt / 0.12f);
 
             State.Tick(dt);
 

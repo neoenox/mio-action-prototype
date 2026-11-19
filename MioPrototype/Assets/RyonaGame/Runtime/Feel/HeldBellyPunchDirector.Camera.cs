@@ -54,6 +54,16 @@ namespace Ryona.Game
         float EffectiveDistanceScale =>
             ZoneDistanceScale * (1f - 0.04f * BodyFatigue - 0.05f * _impactPulse);
 
+        /// <summary>
+        /// 決め（グロッキー〜崩れ）の全身ショット。抱え上げで彼女が浮くので、
+        /// 引いて注視点を下げないと足元が画から落ちる。
+        /// </summary>
+        float ShotDistanceScale => Mathf.Lerp(EffectiveDistanceScale, FinisherCameraDistanceScale, _finisherShotBlend);
+
+        float ShotPivot => ComboCameraPivot + FinisherCameraPivotDelta * _finisherShotBlend;
+
+        float ShotPitch => ZonePitch + FinisherCameraPitchDelta * _finisherShotBlend;
+
         void ApplyCameraOverrides()
         {
             if (LaunchOptions.TryFloat("-heldpunchcamdist", out float dist))
@@ -82,17 +92,17 @@ namespace Ryona.Game
                 return;
 
             float hold = Mathf.Max(0.2f, seconds);
-            _camera.PushDistance(EffectiveDistanceScale, hold);
-            float pivot = ComboCameraPivot;
+            _camera.PushDistance(ShotDistanceScale, hold);
+            float pivot = ShotPivot;
             _camera.PushPivot(pivot, hold);
 
             float yaw = FocusYaw();
-            _camera.PushFocus(FocusX, hold, ZonePitch, yaw);
+            _camera.PushFocus(FocusX, hold, ShotPitch, yaw);
 
             // ヒット時に押した値だけ出す（毎フレームの保持はログに出さない）
             if (hold >= 1.5f)
-                GameLog.Log($"[HeldPunchCam] scale={EffectiveDistanceScale:F2} pivot={pivot:F2} " +
-                          $"pitch={ZonePitch:F0} yaw={yaw:F0} " +
+                GameLog.Log($"[HeldPunchCam] scale={ShotDistanceScale:F2} pivot={pivot:F2} " +
+                          $"pitch={ShotPitch:F0} yaw={yaw:F0} " +
                           $"liveScale={_camera.EffectDistanceScale:F2} livePivot={_camera.EffectPivotOffset:F2}");
         }
 
@@ -106,8 +116,8 @@ namespace Ryona.Game
             if (!ResolveCamera())
                 return;
 
-            _camera.HoldFocus(EffectiveDistanceScale, ComboCameraPivot,
-                FocusX, 0.5f, ZonePitch, FocusYaw());
+            _camera.HoldFocus(ShotDistanceScale, ShotPivot,
+                FocusX, 0.5f, ShotPitch, FocusYaw());
         }
 
         /// <summary>左右どちらでも澪の正面側から撮る。</summary>
@@ -122,7 +132,7 @@ namespace Ryona.Game
                 return;
 
             // 拘束を解いて崩れ落ちる瞬間に、現在の寄りからゆっくり引いて全身の崩落を見届ける。
-            _camera.HoldFocus(EffectiveDistanceScale, ComboCameraPivot, FocusX, 2.4f, ZonePitch, FocusYaw());
+            _camera.HoldFocus(ShotDistanceScale, ShotPivot, FocusX, 2.4f, ShotPitch, FocusYaw());
         }
 
         bool ResolveCamera()

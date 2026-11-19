@@ -364,8 +364,14 @@ namespace Ryona.Game
                     pose.HeadYaw = Mathf.Lerp(pose.HeadYaw,
                         Mathf.Clamp(toCamera * 0.32f, -18f, 18f), hoist);
                     pose.HeadRoll = Mathf.Lerp(pose.HeadRoll, limpSide * 12f, hoist);
-                    pose.HipsOffset.y = Mathf.Lerp(pose.HipsOffset.y, StanceHipsY - 0.035f, hoist);
+                    pose.HipsOffset.y = Mathf.Lerp(pose.HipsOffset.y, StanceHipsY + HoistHipRise, hoist);
                     pose.HipsOffset.z = Mathf.Lerp(pose.HipsOffset.z, StanceHipsZ + 0.045f, hoist);
+                    // 足先の IK 目標も一緒に持ち上げる（腰だけだと脚が伸びるだけで床に残る）。
+                    // 腰より少し多めに上げて膝を曲げ、つま先を下にして「ぶら下がって」見せる。
+                    float liftFeet = HoistFootRise * hoist;
+                    float hoistSway = Mathf.Sin(Time.time * 2.2f) * 0.012f * hoist;
+                    pose.FootL = new Vector3(pose.FootL.x, pose.FootL.y + liftFeet, pose.FootL.z + hoistSway);
+                    pose.FootR = new Vector3(pose.FootR.x, pose.FootR.y + liftFeet, pose.FootR.z - hoistSway);
                     pose.ArmLUpper = Vector3.Lerp(pose.ArmLUpper, new Vector3(0.95f, 0.28f, 0.14f), hoist);
                     pose.ArmRUpper = Vector3.Lerp(pose.ArmRUpper, new Vector3(0.95f, 0.28f, 0.14f), hoist);
                     pose.ArmLFore = Vector3.Lerp(pose.ArmLFore, new Vector3(0.08f, -0.86f, 0.44f), hoist);

@@ -126,6 +126,16 @@ namespace Ryona.Game
 
         /// <summary>最後に殴ってきた相手。被弾したときにその方向へ向き直るために使う。</summary>
         public Transform LastAttacker { get; private set; }
+
+        /// <summary>
+        /// 最後に殴ってきた相手の <see cref="EnemyBrain"/>。被弾した瞬間に控える。
+        /// <para>
+        /// 演出側が <see cref="LastAttacker"/> から毎回 <c>GetComponent</c> すると、
+        /// 倒れた／消えた敵の Transform に触って <c>MissingReferenceException</c> になる余地が残る。
+        /// 本体を控えておけば、破棄後は Unity の擬似 null として安全に判定できる。
+        /// </para>
+        /// </summary>
+        public EnemyBrain LastAttackerBrain { get; private set; }
         public bool LastHitWasTagPunch { get; private set; }
         public bool LastHitWasHeldBelly { get; private set; }
 
@@ -348,7 +358,11 @@ namespace Ryona.Game
                 State.EnsureHpAtLeast(1f);
 
             if (attackerTransform != null)
+            {
                 LastAttacker = attackerTransform;
+                // 破棄後でも安全に参照できるよう、Transform ではなく本体を控える。
+                LastAttackerBrain = attackerTransform.GetComponent<EnemyBrain>();
+            }
             LastHitWasTagPunch = isTagPunch;
             LastHitWasHeldBelly = heldBellyDamage > 0f;
 

@@ -87,9 +87,11 @@ namespace Ryona.Game
             if (Group != null && !Group.TryAcquireAttackToken(this))
                 return false;
 
-            ForceZone = zone;
-            BeginAttackWindup(AttackId.Jab, fromThrow);
-            if (windupScale > 1.001f)
+            // 狙いはこの一振りだけ固定する。ForceZone を書き換えると -punchzone の指定を
+            // 食ってしまうので、引数で渡す。
+            BeginAttackWindup(AttackId.Jab, fromThrow, zone);
+            // 溜めの長さ。1 未満も効かせる（軽い一発は短く振りかぶって素早く入る）。
+            if (Mathf.Abs(windupScale - 1f) > 0.001f)
             {
                 _run.Windup *= windupScale;
                 _timer = _run.Windup;
@@ -107,7 +109,6 @@ namespace Ryona.Game
                 (forceLeft ?? (camera != null &&
                     Vector3.Dot(camera.transform.position - transform.position, transform.right) > 0f));
             _tagFacePower = Mathf.Clamp(forcePower, 0.6f, 1.95f);
-            ForceZone = null;
 
             GameLog.Log($"[HeldPunch] order {name} zone={zone} dist={distance:F2} " +
                       $"pos=({transform.position.x:F2},{transform.position.z:F2}) " +

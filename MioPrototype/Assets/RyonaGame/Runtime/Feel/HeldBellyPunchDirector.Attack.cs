@@ -156,6 +156,8 @@ namespace Ryona.Game
 
         bool BeginOrderedAttack(EnemyBrain enemy, PunchZone zone, bool openingThrow, bool isFinisher = false)
         {
+            // 次の一発が始まるので、休符（起こして引き直す間）は解除する。
+            enemy.SetTagRest(0f);
             // 次の発注までの間、AI が間合いを詰め直して動かないよう固定する。
             enemy.StayPlanted(2.6f);
             if (openingThrow)
@@ -168,41 +170,72 @@ namespace Ryona.Game
             float power = isFinisher
                 ? (zone == PunchZone.Face ? 1.45f : 1.88f)
                 : (zone == PunchZone.Face ? FacePunchPower(_hits) : BellyPunchPower(_hits));
+            // 拳を腹に押し込んでいる長さも強さに連動させる。弱い一発は短く引く
+            // （同じ長さで押すと、強さの段が「倍率だけ」になって画に出ない）。
             float holdSeconds = isFinisher
                 ? (zone == PunchZone.Body ? 0.48f : FistHoldSeconds)
-                : (zone == PunchZone.Body ? FistHoldSeconds + 0.03f * Mathf.Clamp(_hits, 0, 4) : FistHoldSeconds);
-            float windupScale = isFinisher ? (zone == PunchZone.Face ? 1.38f : 1.48f) : 1f;
+                : (zone == PunchZone.Body
+                    ? FistHoldSeconds * Mathf.Lerp(0.80f, 1.18f, Mathf.InverseLerp(0.74f, 1.50f, power))
+                    : FistHoldSeconds);
+            float windupScale = isFinisher
+                ? (zone == PunchZone.Face ? 1.38f : 1.48f)
+                : BeatAt(zone == PunchZone.Body ? BellyWindupBeats : FaceWindupBeats, _hits);
+            _orderPower = power;
+            _orderHold = holdSeconds;
             return enemy.TryStartTagPunch(zone, allowRecover: true, holdPoseSeconds: holdSeconds,
                 forceLeft: punchLeft, forcePower: power, windupScale: windupScale);
         }
 
         /// <summary>
-        /// 腹パン 5 連撃の強さ。打数が進むほど溜めと踏み込み・腰の回転が大きくなり、5 発目で最大になる。
+        /// 腹パン 5 連撃の強さ。打数が進むほど溜めと踏み込み・腰の回転が大きくなり、
+        /// 4 発目だけ一度戻して（弱）、5 発目で最大になる。
+        /// 単調増加だと「強くなっていく作業」に見えるので、山を 2 つ作る。
         /// </summary>
-        float BellyPunchPower(int hitIndex)
-        {
-            return hitIndex switch
-            {
-                0 => 0.82f,
-                1 => 0.96f,
-                2 => 1.12f,
-                3 => 1.28f,
-                _ => 1.48f
-            };
-        }
+        static readonly float[] BellyPowerBeats = { 0.82f, 0.96f, 1.12f, 0.78f, 1.48f };
 
         /// <summary>
-        /// 5 連撃の強さ。1〜2 発目は軽く、3 発目から強く、5 発目（決め）で一番大きく踏み込む。
-        /// 同じ強さの連打だと「作業」に見えるので、段を作る。
+        /// 顔面パンチ 5 連撃の強さ。形は腹と同じ（軽・軽・強・弱・最強）で、値だけ顔用。
+        /// 振り抜きが大きい技なので、腹より差を小さくする。
         /// </summary>
-        float FacePunchPower(int hitIndex)
-        {
-            if (hitIndex >= ComboHitsTotal - 1)
-                return 1.25f;
-            if (hitIndex >= 2)
-                return 1.05f;
-            return 0.92f;
-        }
+        static readonly float[] FacePowerBeats = { 0.92f, 0.92f, 1.05f, 0.85f, 1.25f };
+
+        float BellyPunchPower(int hitIndex) => BeatAt(BellyPowerBeats, hitIndex);
+
+        float FacePunchPower(int hitIndex) => BeatAt(FacePowerBeats, hitIndex);
+
+        /// <summary>
+        /// 5 発のあいだの間隔（当たってから次を発注するまで）。4 発目の前だけ長く取り、
+        /// 殴る側が上体を起こして引き直す「休符」にする。
+        /// 強さの段とずらすことで、等間隔の連打＝作業に見えないようにする。
+        /// </summary>
+        static readonly float[] BellyGapBeats = { 0.30f, 0.30f, 0.72f, 0.45f };
+
+        static readonly float[] FaceGapBeats = { 0.40f, 0.40f, 0.85f, 0.50f };
+
+        /// <summary>
+        /// 振りかぶりの長さ（1 = 標準）。軽い一発は短く振りかぶって素早く入り、
+        /// 決めは長く溜める。ここが一定だと、間隔を空けても当たるリズムが変わらない
+        /// （実測: 待ちを 0.38 → 0.58 に伸ばしても着弾間隔は 0.74 → 0.94 しか変わらなかった）。
+        /// </summary>
+        static readonly float[] BellyWindupBeats = { 0.75f, 0.78f, 0.85f, 0.72f, 1.30f };
+
+        // 顔面パンチは振りかぶりを縮めない。弧が短くなると当たる直前に減速し
+        // （実測 2.8m/s）、「振り抜いた」画にならないため。緩急は間隔だけで作る。
+        static readonly float[] FaceWindupBeats = { 1f, 1f, 1.08f, 1f, 1.30f };
+
+        /// <summary>段の表を作ったときの基準インターバル（表の値はこの秒数を前提に決めてある）。</summary>
+        const float BeatBaseIntervalSeconds = 0.68f;
+
+        /// <summary>
+        /// 当たってから次を発注するまでの間隔。<see cref="ComboIntervalSeconds"/> を
+        /// 全体の速さのつまみとして掛ける（既定 0.68 で表の値そのまま）。
+        /// </summary>
+        float GapAfter(int landedHits, PunchZone zone) =>
+            BeatAt(zone == PunchZone.Body ? BellyGapBeats : FaceGapBeats, landedHits - 1) *
+            Mathf.Max(0.6f, ComboIntervalSeconds / BeatBaseIntervalSeconds);
+
+        static float BeatAt(float[] beats, int hitIndex) =>
+            beats[Mathf.Clamp(hitIndex, 0, beats.Length - 1)];
 
         /// <summary>
         /// 投げた敵がそのまま一発目を打つとき、パンチに応じた距離へ立ち位置を整える。

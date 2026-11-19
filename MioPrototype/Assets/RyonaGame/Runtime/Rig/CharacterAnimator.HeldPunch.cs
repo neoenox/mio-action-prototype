@@ -142,6 +142,20 @@ namespace Ryona.Game
         public float FinisherHoistWeight { get; private set; }
 
         /// <summary>
+        /// 決めの抱え上げで、腰を構えより何 m 持ち上げるか。
+        /// 足先の IK 目標も一緒に上げないと、脚が伸びるだけで床から離れない。
+        /// </summary>
+        [Tooltip("決めの抱え上げで腰を持ち上げる量（m）")]
+        public float HoistHipRise = 0.095f;
+
+        /// <summary>
+        /// 決めの抱え上げで、足先の IK 目標を持ち上げる量（m）。
+        /// 腰より少し大きくすると膝が曲がって「ぶら下がっている」形になる。
+        /// </summary>
+        [Tooltip("決めの抱え上げで足先を持ち上げる量（m）。腰より大きくすると膝が曲がる")]
+        public float HoistFootRise = 0.125f;
+
+        /// <summary>
         /// 腹パンの反動の強さ（0..1）。素早く押し戻され、時間をかけて立て直す。
         /// テストと Editor 診断が姿勢を数値で確認するために公開している。
         /// </summary>
