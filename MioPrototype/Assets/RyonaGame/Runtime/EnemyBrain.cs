@@ -114,9 +114,8 @@ namespace Ryona.Game
         /// <summary>HP / 部位ダメージ / ひるみを持つ戦闘状態。攻撃側としても渡す。</summary>
         public CombatState State { get; } = new CombatState();
 
-        /// <summary>この個体の最大 HP。3 体 × 100 では倒しきれないため、雑魚は低めに。</summary>
-        [System.NonSerialized]
-        public float MaxHp = 48f;
+        /// <summary>MaxHp の設定ミス警告を一度だけ出す。</summary>
+        static bool _warnedInvalidMaxHp;
 
         /// <summary>現在の行動フェーズ。</summary>
         public EnemyPhase Phase { get; private set; } = EnemyPhase.Chase;
@@ -830,9 +829,15 @@ namespace Ryona.Game
         {
             BuildAttacks();
 
-            // 個体ごとの最大 HP。3 体 × 100 では彼女の火力（軽 8）で倒しきれず、
-            // 殴られ続けて終わってしまうため、雑魚は低めにする。
-            State.SetMaxHp(MaxHp);
+            // 最大 HP は設定アセットが真実源（RyonaConfig.Enemy.MaxHp）。
+            // 3 体 × 100 では彼女の火力（軽 8）で倒しきれず、殴られ続けて終わってしまうため低め。
+            if (S.MaxHp < 1f && !_warnedInvalidMaxHp)
+            {
+                _warnedInvalidMaxHp = true;
+                Debug.LogWarning($"[Enemy] RyonaConfig.Enemy.MaxHp={S.MaxHp} は 1 未満。1 にクランプする");
+            }
+
+            State.SetMaxHp(S.MaxHp);
 
             // 検証用: -punchzone=face / body で、パンチの狙いを固定する
             string zone = LaunchOptions.Value("-punchzone");

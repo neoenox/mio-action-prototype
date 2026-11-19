@@ -149,6 +149,9 @@ namespace Ryona.Game
         public sealed class EnemySettings
         {
             [Header("Tuning")]
+            [Tooltip("敵 1 体の最大 HP。3 体 × 100 では彼女の火力（軽 8）で倒しきれないため低め。個体差は付けない。再生中の変更は次回の再生から効く")]
+            public float MaxHp = 48f;
+
             [Tooltip("歩き（追跡）の速度 m/s")]
             public float MoveSpeed = 2.6f;
 
