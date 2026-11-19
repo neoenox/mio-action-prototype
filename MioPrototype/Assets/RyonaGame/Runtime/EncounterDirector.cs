@@ -204,15 +204,55 @@ namespace Ryona.Game
             // 押さえつけ（Pin）は本来「巨躯」の役割だが、巨躯の見た目はまだ無い。
             // 設計（docs/plans/2026-11-03-pin-grapple-design.md）の判断どおり、
             // 既存の敵 1 体に任せて数値と姿勢を先に固める。
-            if (_enemies.Count > 0 && _enemies[_enemies.Count - 1] != null)
+            // 以前は FindObjectsByType の最後の要素で決めていたため、どの個体が担当になるかが
+            // シーン構築順に依存していた。シーンで CanPin が立っていればそれを優先し、
+            // 無ければ一番背の高い個体に任せる（同じシーンなら常に同じ個体になる）。
+            var pinner = PickPinOwner();
+            if (pinner != null)
             {
-                var pinner = _enemies[_enemies.Count - 1];
                 pinner.CanPin = true;
-                GameLog.Log($"[Encounter] 押さえつけ担当: {pinner.name}");
+                GameLog.Log($"[Encounter] 押さえつけ担当: {pinner.name}（背丈 {HeightOf(pinner):F2}）");
             }
 
             GameLog.Log($"[Encounter] 敵 {_enemies.Count} 体を登録 1画面={ScreenSpan:F1}m " +
                 $"（-screenspan=N で上書き可）");
+        }
+
+        /// <summary>
+        /// 押さえつけ（Pin）を任せる個体。決定則は <see cref="PinOwnerRules.Pick"/> が持つ。
+        /// シーンで <see cref="EnemyBrain.CanPin"/> が立っていればそれを優先し、
+        /// 無ければ一番背の高い個体に任せる（同じシーンなら常に同じ個体になる）。
+        /// </summary>
+        EnemyBrain PickPinOwner()
+        {
+            var valid = new List<EnemyBrain>(_enemies.Count);
+            foreach (var brain in _enemies)
+            {
+                if (brain != null)
+                    valid.Add(brain);
+            }
+
+            var candidates = new List<PinCandidate>(valid.Count);
+            int authored = 0;
+            foreach (var brain in valid)
+            {
+                candidates.Add(new PinCandidate(brain.name, HeightOf(brain), brain.CanPin));
+                if (brain.CanPin)
+                    authored++;
+            }
+
+            if (authored > 1)
+                Debug.LogWarning($"[Encounter] CanPin が {authored} 体に立っている。背丈と名前で 1 体に決める");
+
+            int index = PinOwnerRules.Pick(candidates);
+            return index >= 0 ? valid[index] : null;
+        }
+
+        /// <summary>敵の背丈（m）。<see cref="EnemyFigure"/> が無ければ 0。</summary>
+        static float HeightOf(EnemyBrain brain)
+        {
+            var figure = brain != null ? brain.GetComponent<EnemyFigure>() : null;
+            return figure != null ? figure.Height : 0f;
         }
 
         void OnDestroy()
