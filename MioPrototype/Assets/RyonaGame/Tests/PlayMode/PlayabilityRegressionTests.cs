@@ -290,9 +290,8 @@ namespace Ryona.Tests
             Assert.Greater(Vector3.Dot(Vector3.right, player.transform.forward), 0.98f,
                 "An outside hit must not turn the player's body away from the hold.");
         }
-
         [UnityTest]
-        public IEnumerator BackHoldRaisesArmsAndPlacesHandsBesideNeck()
+        public IEnumerator BackHoldRaisesArmsAndPlacesHandsAtArmpitEdge()
         {
             yield return TestScene.LoadPrototype();
             var player = Object.FindFirstObjectByType<PlayerStats>();
@@ -323,13 +322,27 @@ namespace Ryona.Tests
             yield return new WaitForSeconds(1.2f);
             yield return null;
             var figure = holder.GetComponent<EnemyFigure>();
-            // 羽交い締め: 両手は首の後ろ（うなじ）で組まれる
-            float rightGap = Vector3.Distance(figure.Fist(false).position, rig.Neck.position);
-            float leftGap = Vector3.Distance(figure.Fist(true).position, rig.Neck.position);
+            // 羽交い締め: 手は首ではなく、彼女の脇の前の縁（上腕のすぐ下・外側）へ回す。
+            // 2026-11-19 実測: 上腕までの距離 0.147/0.150m、下がり 0.102/0.104m、外側 0.053/0.055m。
+            Vector3 torsoRight = (rig.RUpperArm.position - rig.LUpperArm.position).normalized;
+            for (int side = 0; side < 2; side++)
+            {
+                bool left = side == 1;
+                Vector3 fist = figure.Fist(left).position;
+                Vector3 upper = (left ? rig.LUpperArm : rig.RUpperArm).position;
+                string label = left ? "L" : "R";
+
+                float handDistance = Vector3.Distance(fist, upper);
+                float drop = upper.y - fist.y;
+                float outward = Vector3.Dot(fist - upper, torsoRight) * (left ? -1f : 1f);
+                Assert.That(handDistance, Is.InRange(0.09f, 0.22f),
+                    $"{label} hand is not at the armpit edge: {handDistance:F3}");
+                Assert.Greater(drop, 0.055f, $"{label} hand rides on the shoulder: {drop:F3}");
+                Assert.Greater(outward, 0.025f, $"{label} hand is not outside the arm: {outward:F3}");
+            }
+
             float rightElbow = rig.RLowerArm.position.y - rig.RUpperArm.position.y;
             float leftElbow = rig.LLowerArm.position.y - rig.LUpperArm.position.y;
-            Assert.Less(rightGap, 0.24f, $"right hand too far from neck: {rightGap:F2}");
-            Assert.Less(leftGap, 0.24f, $"left hand too far from neck: {leftGap:F2}");
             Assert.GreaterOrEqual(figure.AnkleBone(false).position.y - holder.transform.position.y, -0.02f,
                 "Holder's right foot must not sink into the floor");
             Assert.GreaterOrEqual(figure.AnkleBone(true).position.y - holder.transform.position.y, -0.02f,
