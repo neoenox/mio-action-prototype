@@ -49,7 +49,7 @@ namespace Ryona.Game
     }
 
     [AddComponentMenu("Ryona/Enemy Brain")]
-    public sealed partial class EnemyBrain : MonoBehaviour, IDamageable
+    public sealed partial class EnemyBrain : MonoBehaviour
     {
         /// <summary>敵が選ぶ攻撃の種類。この 4 つを距離と乱数で抽選する。</summary>
         public enum AttackId

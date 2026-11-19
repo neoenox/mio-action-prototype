@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Ryona.Game
 {
-    public sealed partial class EnemyBrain : MonoBehaviour, IDamageable
+    public sealed partial class EnemyBrain : MonoBehaviour
     {
         /// <summary>
         /// 距離と乱数で攻撃を選ぶ。直前と同じ攻撃は避け、同じ攻撃の 3 連続は禁止する。

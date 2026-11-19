@@ -187,7 +187,7 @@ namespace Ryona.Game
 
         // --- 購読ハンドラ -----------------------------------------------
 
-        void OnHitLanded(HitResult result, IDamageable target)
+        void OnHitLanded(HitResult result)
         {
             if (Rig == null)
                 return;

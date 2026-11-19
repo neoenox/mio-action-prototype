@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Ryona.Game
 {
-    public sealed partial class EnemyBrain : MonoBehaviour, IDamageable
+    public sealed partial class EnemyBrain : MonoBehaviour
     {
         /// <summary>
         /// 次の掴みの種類を固定する（撮影・テスト用）。null なら抽選。

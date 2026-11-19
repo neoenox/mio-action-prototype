@@ -106,7 +106,7 @@ namespace Ryona.Game
             PlaySfx(SfxId.Swing);
         }
 
-        void OnHitLanded(HitResult result, IDamageable target)
+        void OnHitLanded(HitResult result)
         {
             // 重い一撃は少しだけ強くする
             bool heavy = _lastKind == AttackKind.Heavy;
