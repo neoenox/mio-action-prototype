@@ -14,16 +14,33 @@ namespace Ryona.Tests
     /// </summary>
     public sealed class EnemyAiRuntimeTests
     {
+        Random.State _savedRandom;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _savedRandom = Random.state;
+            Random.InitState(20261119);
+            EnemyBrain.ForcedGrabKind = null;
+        }
+
         [TearDown]
         public void TearDown()
         {
             Time.timeScale = 1f;
             EnemyBrain.ForcedGrabKind = null;
+            Random.state = _savedRandom;
         }
 
         static IEnumerator LoadPrototype()
         {
             yield return TestScene.LoadPrototype();
+
+            // 押さえつけ担当は Collect() で決まる。ここで消さないと、Pin の抽選が
+            // このテスト群の役割（待つ側／攻める側）を乱す。
+            EnemyBrain.ForcedGrabKind = null;
+            foreach (var brain in Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+                brain.CanPin = false;
         }
 
         [UnityTest]
