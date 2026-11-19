@@ -96,5 +96,6 @@ python tools/motion_audit.py Verify/preview/<dir> --strip 110 117 -o seq.png
 
 - EditMode は `Ryona.Tests`（`Ryona.Core` のみ参照）、PlayMode は `Ryona.PlayTests`（`Ryona.Game` を参照）。
 - まとめて回すときは `MioPrototype/tools/run_tests.py`（コンパイル確認込み）。
+- 開発中の確認は `--filter` で対象クラスだけ回す（例: `python tools/run_tests.py --filter "BearHugTests|OverheadRuntimeTests" --skip-compile`、数十秒）。全バッチは変更を確定する前の最終確認に使う。
 - 既存テストには**設計意図が書かれている**ことがある（例：顔パンの首振りは 40° 以上必要）。
   値を変えて落ちたときは、まずテストの意図を読む。
