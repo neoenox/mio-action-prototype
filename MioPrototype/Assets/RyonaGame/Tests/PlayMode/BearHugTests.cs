@@ -40,6 +40,7 @@ namespace Ryona.Tests
             Assert.GreaterOrEqual(enemies.Length, 1);
 
             _captor = enemies[0];
+            _captor.CanPin = false;   // 押さえつけ担当は EncounterDirector が別の個体へ割り当てる。正面からのベアハッグを試すので外す。
             for (int i = 1; i < enemies.Length; i++)
                 enemies[i].enabled = false;
 
