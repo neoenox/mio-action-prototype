@@ -144,7 +144,13 @@ namespace Ryona.Game
             return null;
         }
 
-        /// <summary>空いている枠を取って、この人の 1 発を始める。満杯なら 0 枠目を使い回す。</summary>
+        /// <summary>
+        /// 空いている枠を取って、この人の 1 発を始める。**空きが無ければ null**。
+        /// <para>
+        /// 以前は満杯のとき 0 枠目を使い回していたが、進行中の打撃の持ち主と経過秒を
+        /// 壊してしまい、姿勢側が別の敵の 1 発を読んで腕が飛ぶ。呼び出し側で待たせること。
+        /// </para>
+        /// </summary>
         public SplitStrike ClaimStrike(EnemyBrain who)
         {
             for (int i = 0; i < _strikes.Length; i++)
@@ -157,10 +163,7 @@ namespace Ryona.Game
                 return _strikes[i];
             }
 
-            _strikes[0].Reset();
-            _strikes[0].Puncher = who;
-            _strikes[0].Age = 0f;
-            return _strikes[0];
+            return null;
         }
 
         /// <summary>すべての枠を空にする。</summary>

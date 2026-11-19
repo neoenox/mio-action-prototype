@@ -606,9 +606,25 @@ namespace Ryona.Game
                 WallStrikeKind.Face => CombatConstants.WallGangFaceScale,
                 _ => CombatConstants.WallGangBellyScale
             };
-            // 同時に打てるよう、空いている枠を取る（2 枠）。
+            // 同時に打てるのは 2 人まで。空きが無ければ少しだけ待つ（他の打撃の枠は奪わない）。
+            SplitStrike strike = null;
+            float slotWait = 0f;
+            while (strike == null && WallSequenceAlive && slotWait < StrikeSlotWaitSeconds)
+            {
+                strike = _session.ClaimStrike(puncher);
+                if (strike == null)
+                {
+                    slotWait += Time.deltaTime;
+                    yield return null;
+                }
+            }
+            if (strike == null)
+            {
+                GameLog.Log($"[WallGang] no free strike slot - skip {puncher.name}");
+                yield break;
+            }
+
             // 膝と蹴りは Finisher、蹴りは Kick、顔パンは Face を立てる（姿勢側がこの枠を見る）。
-            SplitStrike strike = _session.ClaimStrike(puncher);
             strike.Left = puncher == Captor;
             strike.Finisher = legStrike;
             strike.Kick = kind == WallStrikeKind.Kick;
@@ -750,10 +766,18 @@ namespace Ryona.Game
             // 飛んでいる間に z をレーンへ戻す。壁の真上を飛ぶと壁の見た目を
             // すり抜けるので、離脱は速め（着地より先にレーンへ出る）。
             _wallThrowExitSeconds = ThrowExitSeconds;
-            Fail();
+
+            // 腹ダメージの消化はここでは行わない。直後の ForceDown が投げ捨てのダウンを作るので、
+            // 両方走らせると 1 フレームに 2 回ダウンして `[Down] held-belly` と `[Down] wall-toss` が並び、
+            // DownIsForward も 2 回上書きされる。
+            Fail(resolveBellyDown: false);
 
             // うつ伏せ着地でも投げ飛ばす（壁の投げ捨ては「崩れ落ち」ではない）。
             bool forward = ForcedWallTossForward ?? (UnityEngine.Random.value < 0.5f);
+
+            // 拘束が終わるので、溜まった腹ダメージはここで消化する（ダウン自体は投げ捨てが起こす）。
+            // HeldBellyPunchDirector のトドメも同じ順序（Clear → ForceDown）で処理している。
+            Stats?.ClearHeldBellyDamage();
             Stats?.ForceDown(CombatConstants.DownDuration, "wall-toss", attacker,
                 1.7f, 0.95f, forward, throwDirection, launchWhenForward: true);
             StartCoroutine(PlayBodyDropAfter(ThrowFlightSeconds));
@@ -761,6 +785,9 @@ namespace Ryona.Game
 
         /// <summary>投げ捨ての滞空時間（秒）。着地音の待ちに使う。</summary>
         const float ThrowFlightSeconds = 0.62f;
+
+        /// <summary>3 人がかりで打撃枠（2 枠）が空くのを待つ最大秒。</summary>
+        const float StrikeSlotWaitSeconds = 0.35f;
 
         /// <summary>投げ捨てで壁からレーンへ抜けるまでの秒数（滞空より短くする）。</summary>
         const float ThrowExitSeconds = 0.34f;
