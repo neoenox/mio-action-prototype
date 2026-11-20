@@ -29,7 +29,7 @@ namespace Ryona.Game
         /// </summary>
         void KeepSpacing()
         {
-            if (Phase == EnemyPhase.Dead || IsHolding || IsHandOffLocked)
+            if (Phase == EnemyPhase.Dead || IsHolding || IsHandOffLocked || IsPlanted)
                 return;
 
             // タッグ腹パンは演出側（HeldBellyPunchDirector）が当たる位置を決めている。
@@ -105,7 +105,7 @@ namespace Ryona.Game
         void Face(Vector3 forward, float dt)
         {
             Quaternion look = Quaternion.LookRotation(forward, Vector3.up);
-            float t = Mathf.Clamp01(Mathf.Max(0f, TurnSpeed) * dt);
+            float t = Mathf.Clamp01(Mathf.Max(0f, S.TurnSpeed) * dt);
             transform.rotation = Quaternion.Slerp(transform.rotation, look, t);
         }
 

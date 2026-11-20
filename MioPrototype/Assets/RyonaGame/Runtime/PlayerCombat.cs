@@ -30,25 +30,25 @@ namespace Ryona.Game
 
         [Header("Auto Aim")]
         /// <summary>この距離までの敵には、攻撃の出始めに向きを合わせる。</summary>
-        public float AutoAimRange = 2.2f;
+        [System.NonSerialized] public float AutoAimRange = 2.2f;
         /// <summary>振り向く最大角度。真後ろの敵までは回らない。</summary>
-        public float AutoAimMaxDegrees = 70f;
+        [System.NonSerialized] public float AutoAimMaxDegrees = 70f;
 
         [Header("Recovery")]
         /// <summary>
         /// 硬直が終わっても、踏み込みで出た足が体の下へ戻るまでは次の攻撃を受け付けない。
         /// 戻り切る前に次を出すと、足の戻しと新しい踏み込みが重なって足が床を滑る。
         /// </summary>
-        public float SettleEpsilon = 0.001f;
+        [System.NonSerialized] public float SettleEpsilon = 0.001f;
 
         /// <summary>
         /// 硬直中に押された攻撃を覚えておく時間（先行入力）。
         /// 押した瞬間に撃てなくても、空いた最初のフレームで撃つ。0 にすると完全に無視。
         /// </summary>
-        public float InputBufferSeconds = 0.15f;
+        [System.NonSerialized] public float InputBufferSeconds = 0.15f;
 
         [Tooltip("3段コンボの受付時間。この秒数内に弱を押すと次の段へ進む")]
-        public float ComboWindowSeconds = 0.45f;
+        [System.NonSerialized] public float ComboWindowSeconds = 0.45f;
 
         /// <summary>拳の軌跡を 1 フレームごとにログる（`-hitlog`）。</summary>
         [System.NonSerialized] public bool TraceFist;
@@ -83,8 +83,20 @@ namespace Ryona.Game
         /// <summary>ヒット時に発火。ヒットストップとカメラワークはここに繋ぐ。</summary>
         public event Action<HitResult, IDamageable> HitLanded;
 
+        /// <summary>調整値は <see cref="RyonaConfig.Combat"/> が真実源。シーンの保存値は使わない。</summary>
+        void ApplySettings(RyonaConfig.CombatSettings s)
+        {
+            AutoAimRange = s.AutoAimRange;
+            AutoAimMaxDegrees = s.AutoAimMaxDegrees;
+            SettleEpsilon = s.SettleEpsilon;
+            InputBufferSeconds = s.InputBufferSeconds;
+            ComboWindowSeconds = s.ComboWindowSeconds;
+        }
+
         void Awake()
         {
+            ApplySettings(RyonaConfig.Instance.Combat);
+
             if (Stats == null)
                 Stats = GetComponent<PlayerStats>();
 
@@ -143,14 +155,14 @@ namespace Ryona.Game
             if (_attack != null)
                 return;
 
-            // 攻撃は終わったが踏み込みの足が戻り切っていない間も、次は撃たせない。
-            if (FeetNotSettled)
+            // コンボ受付時間外だけ踏み込みの足が戻るのを待つ（連打コンボ中は待たずに次段へ繋ぐ）。
+            if (FeetNotSettled && Time.time > _comboUntil)
             {
 
                 if (!_settleLogged)
                 {
                     _settleLogged = true;
-                    Debug.Log($"[Combat] settle travel={_motor.LungeTravel:F3}");
+                    GameLog.Log($"[Combat] settle travel={_motor.LungeTravel:F3}");
                 }
 
                 BufferAttackInput();
@@ -402,11 +414,26 @@ namespace Ryona.Game
             }
         }
 
+        /// <summary>
+        /// 1 振りのヒット処理。**当てるのは 1 体だけ。**
+        /// <para>
+        /// 拳の範囲内に複数入っていても、拳に一番近い 1 体を選んで終わる。
+        /// 範囲内の全員に当てていたころは、<see cref="HitLanded"/> が人数分発火して
+        /// ヒットストップ・カメラ揺れ・打撃音が重なり、1 発が「連打」に聞こえた。
+        /// </para>
+        /// <para>
+        /// 複数ヒットを意図する技（なぎ払い・多段など）を追加するときだけ、
+        /// ここで対象を 1 体に絞らず全員へ適用し、その理由をこのコメントに残すこと。
+        /// 現状そんな技は無いので、常に 1 体に限定している。
+        /// </para>
+        /// </summary>
         void ResolveHit(AttackData attack)
         {
             Vector3 fist = FistPoint();
 
             EnemyBrain hitEnemy = null;
+            IDamageable hitTarget = null;
+            float nearestGap = float.PositiveInfinity;
 
             foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
             {
@@ -420,13 +447,27 @@ namespace Ryona.Game
                 if (target == null || ReferenceEquals(target, this))
                     continue;
 
-                var result = target.TakeHit(Stats.State, attack);
+                // 範囲内に複数いるときは、拳の軸に一番近い体を 1 体だけ選ぶ。
+                // 同距離なら列挙順で先に見つかったほうを残す（決定的）。
+                Vector3 d = fist - enemy.transform.position;
+                d.y = 0f;
+                float gap = d.magnitude;
+                if (gap >= nearestGap)
+                    continue;
+
+                nearestGap = gap;
+                hitEnemy = enemy;
+                hitTarget = target;
+            }
+
+            if (hitTarget != null)
+            {
+                var result = hitTarget.TakeHit(Stats.State, attack);
 
                 Log($"[Combat] hit {attack.id} dmg={result.Damage:F0} " +
                     $"stagger={result.Stagger}");
 
-                hitEnemy = enemy;
-                HitLanded?.Invoke(result, target);
+                HitLanded?.Invoke(result, hitTarget);
             }
 
             if (TraceFist)
@@ -497,7 +538,7 @@ namespace Ryona.Game
                 }
             }
 
-            Debug.Log($"[Fist] {_attack.id} t={_elapsed:F3} animT={animT:F3} " +
+            GameLog.Log($"[Fist] {_attack.id} t={_elapsed:F3} animT={animT:F3} " +
                 $"z={f.z:F2} y={f.y:F2} aim={AimDistance:F2} " +
                 $"state={(_anim != null ? _anim.Current.ToString() : "-")} {arm}{other}");
         }
@@ -539,7 +580,7 @@ namespace Ryona.Game
                 gap = gapToAxis - BodyRadius - FistRadius;
             }
 
-            Debug.Log($"[HitGeom] {attack.id} step={_comboStep} {outcome} " +
+            GameLog.Log($"[HitGeom] {attack.id} step={_comboStep} {outcome} " +
                 $"fistZ={fistL.z:F2} fistY={fistL.y:F2} " +
                 $"enemyDist={(enemy != null ? dist : 0f):F2} fistToAxis={gapToAxis:F2} gapBody={gap:F2}");
 
@@ -548,7 +589,7 @@ namespace Ryona.Game
             {
                 Vector3 to = enemy.transform.position - transform.position;
                 to.y = 0f;
-                Debug.Log($"[Combat] miss {attack.id} dist={dist:F2} " +
+                GameLog.Log($"[Combat] miss {attack.id} dist={dist:F2} " +
                     $"angle={Vector3.Angle(transform.forward, to):F0} " +
                     $"phase={enemy.Phase} reach={FistRadius + BodyRadius:F2}");
             }
@@ -559,15 +600,13 @@ namespace Ryona.Game
         /// リリースビルドでは <c>-hitlog</c>（<see cref="TraceFist"/>）のときだけ出す。
         /// Editor / Development Build では従来どおり常に出す。
         /// </summary>
-        void Log(string message)
-        {
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-            Debug.Log(message);
-#else
-            if (TraceFist)
-                Debug.Log(message);
-#endif
-        }
+        /// <summary>
+        /// 戦闘ログ。出すかどうかの判定は <see cref="GameLog"/> に任せる
+        /// （Editor / Development Build、またはリリースビルドで <c>-log</c> / <c>-hitlog</c>
+        /// を付けたときだけ出る）。毎攻撃・毎ヒットで文字列を作るので、
+        /// 呼び出し側は従来どおり <c>TraceFist</c> などで必要なときだけ呼ぶこと。
+        /// </summary>
+        void Log(string message) => GameLog.Log(message);
 
         EnemyBrain FindNearestEnemy(out Vector3 center, out float distance)
         {

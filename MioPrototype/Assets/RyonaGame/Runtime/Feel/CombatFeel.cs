@@ -18,25 +18,25 @@ namespace Ryona.Game
         public ThirdPersonCamera CameraRig;
 
         [Header("Hit Stop (seconds)")]
-        public float HitHitStop = 0.065f;
-        public float ReceivedHitStop = 0.07f;
+        [System.NonSerialized] public float HitHitStop = 0.065f;
+        [System.NonSerialized] public float ReceivedHitStop = 0.07f;
 
         [Header("Camera Shake (meter, seconds)")]
-        public float HitShake = 0.06f;
-        public float HitShakeSeconds = 0.16f;
-        public float ReceivedShake = 0.12f;
-        public float ReceivedShakeSeconds = 0.26f;
+        [System.NonSerialized] public float HitShake = 0.06f;
+        [System.NonSerialized] public float HitShakeSeconds = 0.16f;
+        [System.NonSerialized] public float ReceivedShake = 0.12f;
+        [System.NonSerialized] public float ReceivedShakeSeconds = 0.26f;
 
         [Header("Heavy Attack")]
         [Tooltip("Heavy のときの揺れ倍率")]
-        public float HeavyShakeScale = 1.4f;
+        [System.NonSerialized] public float HeavyShakeScale = 1.4f;
 
         [Tooltip("Heavy のときのヒットストップ倍率")]
-        public float HeavyHitStopScale = 1.3f;
+        [System.NonSerialized] public float HeavyHitStopScale = 1.3f;
 
         [Header("Voice")]
         [Tooltip("被弾の声を続けて出さない間隔（秒）。連続で殴られても「あっあっあっ」にしない")]
-        public float HurtVoiceInterval = 0.55f;
+        [System.NonSerialized] public float HurtVoiceInterval = 0.55f;
 
         CameraShake _shake;
         ProceduralSfx _sfx;
@@ -44,6 +44,25 @@ namespace Ryona.Game
 
         // HitLanded には攻撃データが乗ってこないので、直近の攻撃種別を覚えておく
         AttackKind _lastKind = AttackKind.Light;
+
+        /// <summary>調整値は <see cref="RyonaConfig.Feel"/> が真実源。シーンの保存値は使わない。</summary>
+        void ApplySettings(RyonaConfig.FeelSettings s)
+        {
+            HitHitStop = s.HitHitStop;
+            ReceivedHitStop = s.ReceivedHitStop;
+            HitShake = s.HitShake;
+            HitShakeSeconds = s.HitShakeSeconds;
+            ReceivedShake = s.ReceivedShake;
+            ReceivedShakeSeconds = s.ReceivedShakeSeconds;
+            HeavyShakeScale = s.HeavyShakeScale;
+            HeavyHitStopScale = s.HeavyHitStopScale;
+            HurtVoiceInterval = s.HurtVoiceInterval;
+        }
+
+        void Awake()
+        {
+            ApplySettings(RyonaConfig.Instance.Feel);
+        }
 
         void Start()
         {
@@ -179,6 +198,26 @@ namespace Ryona.Game
         // --- 再生の補助 -------------------------------------------------
 
         internal void OnWallSlam() => Shake(0.22f, 0.30f);
+
+        /// <summary>
+        /// 3 人がかりの 1 発ごとの手応え。<paramref name="weight"/> が大きいほど、揺れ・止まり・フラッシュが強い。
+        /// 受けた被弾の汎用の反応（HitReceived）に上乗せする。
+        /// </summary>
+        internal void OnWallGangHit(float weight)
+        {
+            Shake(0.08f + 0.16f * weight, 0.20f);
+            HitStop.Play(0.04f + 0.05f * weight);
+            if (weight >= 0.7f)
+                FindFirstObjectByType<HitFlash>()?.FlashNow(0.25f + 0.25f * weight);
+        }
+
+        /// <summary>壁の二人がかりの締めの一撃。大きく揺れ、一瞬止まり、画面の縁が赤く光る。</summary>
+        internal void OnWallSplitFinisher()
+        {
+            Shake(0.30f, 0.45f);
+            HitStop.Play(0.16f);
+            FindFirstObjectByType<HitFlash>()?.FlashNow(0.7f);
+        }
 
         void Shake(float amplitude, float duration)
         {

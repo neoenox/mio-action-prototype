@@ -24,6 +24,7 @@ namespace Ryona.Tests
         public void TearDown()
         {
             Time.timeScale = 1f;
+            EnemyBrain.ForcedGrabKind = null;
             if (_grapple != null && _grapple.IsGrappled)
                 _grapple.Release();
         }
@@ -32,6 +33,9 @@ namespace Ryona.Tests
         IEnumerator Load()
         {
             yield return TestScene.LoadPrototype();
+
+            // 背後からの掴みは羽交い締めと髪掴みの抽選。ここでは羽交い締めに固定する。
+            EnemyBrain.ForcedGrabKind = GrappleKind.Back;
 
             // 通常の正面拘束を検証する。壁版は WallPinRuntimeTests で検証する。
             foreach (var wall in Object.FindObjectsByType<WallPinSite>(FindObjectsSortMode.None))
@@ -295,6 +299,61 @@ namespace Ryona.Tests
             // 時間切れより前に蹴り終わっている
             yield return new WaitForSeconds(0.1f);
             Assert.AreEqual(CombatConstants.PinKneeCount, hits, "制限時間内に 5 発で収まる");
+        }
+
+        [UnityTest]
+        public IEnumerator 膝蹴り中も彼女の顔が画面に入る()
+        {
+            yield return Load();
+
+            // VRM の読み込み後にリグと頭の骨が付く。**拘束を始める前に**組み上がりを待つ
+            // （待っている間に膝蹴りが終わってしまうため）。
+            CharacterAnimator anim = null;
+            Transform head = null;
+            float rigDeadline = Time.realtimeSinceStartup + 12f;
+            while (Time.realtimeSinceStartup < rigDeadline)
+            {
+                anim = _player.GetComponentInChildren<CharacterAnimator>();
+                if (anim != null && anim.Rig != null && anim.Rig.Ready && anim.Rig.Head != null)
+                {
+                    head = anim.Rig.Head;
+                    break;
+                }
+                yield return null;
+            }
+            Assert.IsNotNull(head, "頭の骨が取れない（リグの組み上がり待ちで時間切れ）");
+
+            _captor.enabled = true;
+            _captor.QueuePin();
+
+            float deadline = Time.realtimeSinceStartup + 4f;
+            while (!_grapple.IsGrappled && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.IsTrue(_grapple.IsGrappled, "押さえつけが始まらない");
+
+            var cam = Camera.main;
+            Assert.IsNotNull(cam, "カメラが無い");
+
+            // 最初の膝が入るまで待つ（膝の瞬間からカメラが切り替わる）。
+            float kneeDeadline = Time.realtimeSinceStartup + CombatConstants.FrontGrappleEscapeSeconds + 1.5f;
+            while (_grapple.KneePulse <= 0.05f && Time.realtimeSinceStartup < kneeDeadline)
+                yield return null;
+            Assert.Greater(_grapple.KneePulse, 0.05f, "膝蹴りが始まらない");
+
+            // 5 発ぶん、頭が画面内（余白込み）にあること。カメラはプレイヤーの顔が映る前提（AGENTS.md）。
+            float outside = 0f;
+            float until = Time.realtimeSinceStartup +
+                (CombatConstants.PinKneeCount - 1) * CombatConstants.PinKneeInterval + 0.6f;
+            while (Time.realtimeSinceStartup < until)
+            {
+                Vector3 vp = cam.WorldToViewportPoint(head.position);
+                if (vp.z > 0f)
+                    outside = Mathf.Max(outside, Mathf.Max(-vp.x, vp.x - 1f, -vp.y, vp.y - 1f));
+                yield return null;
+            }
+
+            Assert.Less(outside, 0.02f,
+                $"膝蹴り中に彼女の頭が画面外へ出ている（はみ出し {outside:F2}）");
         }
 
         [UnityTest]

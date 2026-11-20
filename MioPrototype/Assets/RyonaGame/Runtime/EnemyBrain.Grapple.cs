@@ -6,13 +6,17 @@ namespace Ryona.Game
     public sealed partial class EnemyBrain : MonoBehaviour, IDamageable
     {
         /// <summary>
+        /// 次の掴みの種類を固定する（撮影・テスト用）。null なら抽選。
+        /// </summary>
+        internal static GrappleKind? ForcedGrabKind { get; set; }
+        /// <summary>
         /// 掴みが当たったとき。プレイヤーを掴んだまま硬直を伸ばし、
         /// 振りほどかれる（=こちらがよろける）か時間切れで解放されるまで待つ。
         /// 掴めるのは背後に回れているときだけ（正面掴みは廃止した）。
         /// </summary>
         internal bool TryGrab()
         {
-            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            var grapple = Player != null ? Hold : null;
             if (grapple == null || grapple.IsGrappled)
                 return false;
 
@@ -21,7 +25,15 @@ namespace Ryona.Game
             if (!IsBehindPlayer())
                 return false;
 
-            grapple.BeginContact(this, GrappleKind.Back);
+            // 走って逃げる彼女の背後からは、足首を狙って転ばせる（足取り）。
+            GrappleKind kind = GrappleKind.Back;
+            if (ForcedGrabKind.HasValue)
+                kind = ForcedGrabKind.Value;
+            else if (Player != null && Player.IsMoving &&
+                     UnityEngine.Random.value < RyonaConfig.Instance.Grapple.AnkleChance)
+                kind = GrappleKind.AnkleGrab;
+
+            grapple.BeginContact(this, kind);
             return true;
         }
 
@@ -31,16 +43,18 @@ namespace Ryona.Game
         /// 演出側（<see cref="HeldBellyPunchDirector"/>）が位置と向きを合わせてから呼ぶ。
         /// </summary>
         public bool TryStartTagPunch(PunchZone zone, bool allowRecover = false, float holdPoseSeconds = 0f,
-            bool? forceLeft = null, float forcePower = 1f)
-            => TryStartTagPunch(zone, allowRecover, holdPoseSeconds, fromThrow: false, forceLeft, forcePower);
+            bool? forceLeft = null, float forcePower = 1f, float windupScale = 1f)
+            => TryStartTagPunch(zone, allowRecover, holdPoseSeconds, fromThrow: false,
+                forceLeft, forcePower, windupScale);
 
-        internal bool TryStartOpeningPunch(PunchZone zone, float holdPoseSeconds, float forcePower = 1f)
+        internal bool TryStartOpeningPunch(PunchZone zone, float holdPoseSeconds, float forcePower = 1f,
+            bool? forceLeft = null)
             => isActiveAndEnabled &&
                 TryStartTagPunch(zone, true, holdPoseSeconds, fromThrow: zone == PunchZone.Body,
-                    forceLeft: null, forcePower: forcePower);
+                    forceLeft: forceLeft, forcePower: forcePower);
 
         bool TryStartTagPunch(PunchZone zone, bool allowRecover, float holdPoseSeconds, bool fromThrow,
-            bool? forceLeft = null, float forcePower = 1f)
+            bool? forceLeft = null, float forcePower = 1f, float windupScale = 1f)
         {
             if (Phase == EnemyPhase.Dead || Phase == EnemyPhase.Windup ||
                 Phase == EnemyPhase.Attack || Phase == EnemyPhase.Stagger || IsRising)
@@ -53,7 +67,7 @@ namespace Ryona.Game
             if (Player == null || Player.IsDead)
                 return false;
 
-            var grapple = Player.GetComponent<PlayerGrapple>();
+            var grapple = Hold;
             if (grapple == null || !grapple.IsGrappled || grapple.IsHandingOff || grapple.Captor == this)
                 return false;
 
@@ -75,6 +89,11 @@ namespace Ryona.Game
 
             ForceZone = zone;
             BeginAttackWindup(AttackId.Jab, fromThrow);
+            if (windupScale > 1.001f)
+            {
+                _run.Windup *= windupScale;
+                _timer = _run.Windup;
+            }
 
             // 彼女が折れる間、拳を腹に押し込んだままにする。数え始めは「当たった瞬間」
             // （Strike）。ここで数えると予備動作の 0.35 秒を食って、折れている間に足りなくなる。
@@ -82,14 +101,15 @@ namespace Ryona.Game
             _bellyPunchPendingHold = zone == PunchZone.Body ? Mathf.Max(0f, holdPoseSeconds) : 0f;
             _tagPunchPending = true;
             _tagPunchSwing = true;
+            _tagBellyLeftOverride = zone == PunchZone.Body ? forceLeft : null;
             Camera camera = Camera.main;
             _tagFaceLeft = zone == PunchZone.Face &&
                 (forceLeft ?? (camera != null &&
                     Vector3.Dot(camera.transform.position - transform.position, transform.right) > 0f));
-            _tagFacePower = zone == PunchZone.Face ? Mathf.Clamp(forcePower, 0.6f, 1.4f) : 1f;
+            _tagFacePower = Mathf.Clamp(forcePower, 0.6f, 1.95f);
             ForceZone = null;
 
-            Debug.Log($"[HeldPunch] order {name} zone={zone} dist={distance:F2} " +
+            GameLog.Log($"[HeldPunch] order {name} zone={zone} dist={distance:F2} " +
                       $"pos=({transform.position.x:F2},{transform.position.z:F2}) " +
                       $"side={(UsesLeftPunch ? "L" : "R")} power={_tagFacePower:F2}");
             return true;
@@ -110,7 +130,7 @@ namespace Ryona.Game
             ReleaseToken();
 
             // 正面拘束（Pin）を引き継いだときは、そのまま膝蹴りまで続ける。
-            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            var grapple = Player != null ? Hold : null;
             bool pin = grapple != null && grapple.Kind == GrappleKind.Pin;
             IsPinning = pin;
             _pinKneesLeft = pin ? Mathf.Max(1, CombatConstants.PinKneeCount) : 0;
@@ -127,7 +147,7 @@ namespace Ryona.Game
                     transform.rotation = Quaternion.LookRotation(look.normalized, Vector3.up);
             }
 
-            Debug.Log($"[HandOff] {name} が拘束を受け持つ {seconds:F1}s pin={pin}");
+            GameLog.Log($"[HandOff] {name} が拘束を受け持つ {seconds:F1}s pin={pin}");
         }
 
         /// <summary>外部から怯ませる（振りほどかれた時など）。</summary>
@@ -148,7 +168,7 @@ namespace Ryona.Game
             StaggerWeight = 1.6f;
             Phase = EnemyPhase.Stagger;
 
-            Debug.Log($"[Enemy] force stagger {name} {seconds:F2}s");
+            GameLog.Log($"[Enemy] force stagger {name} {seconds:F2}s");
         }
 
         /// <summary>
@@ -186,7 +206,7 @@ namespace Ryona.Game
                 return false;
 
             if (_grapple == null)
-                _grapple = Player.GetComponent<PlayerGrapple>();
+                _grapple = Hold;
 
             if (IsPreparingHeldThrow)
                 return !CanTargetHeldThrow() || _grapple.Captor != _heldThrowCaptor;
@@ -242,10 +262,22 @@ namespace Ryona.Game
             _heldThrowPullUntil = 0f;
             _tagPunchPending = false;
             _tagPunchSwing = false;
+            _tagBellyLeftOverride = null;
             _bellyPunchPendingHold = 0f;
             _punchPoseHoldSeconds = 0f;
+            _punchPoseHoldTotal = 0f;
             _pinPending = false;
             _bearHugPending = false;
+        }
+
+        internal void CancelBystanderWindup(float holdSeconds)
+        {
+            if (Phase == EnemyPhase.Windup && !IsHolding && !_tagPunchPending &&
+                !IsPreparingHeldThrow && !IsPinning && !IsBearHugging)
+            {
+                CancelWindup();
+            }
+            HoldFire(holdSeconds);
         }
 
         // --- 攻撃の抽選 ----------------------------------------------------------
@@ -256,7 +288,7 @@ namespace Ryona.Game
                 return false;
 
             if (_grapple == null)
-                _grapple = Player.GetComponent<PlayerGrapple>();
+                _grapple = Hold;
 
             // 回り込み直後は反対を向いていることがある。予備動作中は旋回を
             // 固定するため、向き直る前に攻撃を始めると必ず空振りになる。
@@ -326,7 +358,7 @@ namespace Ryona.Game
             if (_pinLog && !pin && CanPin && Time.time >= _pinLogNextAt)
             {
                 _pinLogNextAt = Time.time + 1f;
-                Debug.Log($"[PinCheck] {name} id={id} dist={distance:F2} " +
+                GameLog.Log($"[PinCheck] {name} id={id} dist={distance:F2} " +
                           $"behind={IsBehindPlayer()} grappled={(_grapple != null && _grapple.IsGrappled)} " +
                           $"tok={HasAttackToken} sincePin={Time.time - _lastPinAt:F1} " +
                           $"range={CombatConstants.PinMinDistance:F2}-{CombatConstants.PinMaxDistance:F2}");
@@ -373,7 +405,7 @@ namespace Ryona.Game
                 return false;
 
             if (_grapple == null)
-                _grapple = Player.GetComponent<PlayerGrapple>();
+                _grapple = Hold;
 
             if (_grapple == null || _grapple.IsGrappled)
                 return false;
@@ -405,7 +437,7 @@ namespace Ryona.Game
         {
             distance = 0f;
 
-            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            var grapple = Player != null ? Hold : null;
             if (grapple == null || grapple.IsGrappled)
                 return false;
 
@@ -428,7 +460,10 @@ namespace Ryona.Game
         bool TryPin()
         {
             // 壁の近くで正面から掴めたときは、レーンから壁へ押し出す（壁押さえつけ）。
-            WallPinSite site = Player != null ? WallPinSites.Find(Player.transform.position) : null;
+            // <c>-nowallpin</c> は検証用: 壁を無視して、レーンの正面拘束（その場での膝蹴り）を出す。
+            WallPinSite site = Player != null && !LaunchOptions.Has("-nowallpin")
+                ? WallPinSites.Find(Player.transform.position)
+                : null;
             if (site != null)
                 return TryWallPin(site);
 
@@ -440,7 +475,7 @@ namespace Ryona.Game
             // 振りほどけなければ、押さえつけている間に膝を 5 発入れる。
             _pinKneesLeft = Mathf.Max(1, CombatConstants.PinKneeCount);
             _pinNextKneeAt = Time.time + CombatConstants.FrontGrappleEscapeSeconds;
-            Debug.Log($"[Pin] begin {name} dist={distance:F2} knees={_pinKneesLeft}");
+            GameLog.Log($"[Pin] begin {name} dist={distance:F2} knees={_pinKneesLeft}");
             return true;
         }
 
@@ -450,7 +485,7 @@ namespace Ryona.Game
         /// </summary>
         bool TryWallPin(WallPinSite site)
         {
-            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            var grapple = Player != null ? Hold : null;
             if (grapple == null || grapple.IsGrappled)
                 return false;
 
@@ -494,7 +529,7 @@ namespace Ryona.Game
             _pinKneesLeft = Mathf.Max(1, CombatConstants.PinKneeCount);
             _pinNextKneeAt = Time.time + CombatConstants.FrontGrappleEscapeSeconds;
 
-            Debug.Log($"[WallPin] begin {name} x={Player.transform.position.x:F2} " +
+            GameLog.Log($"[WallPin] begin {name} x={Player.transform.position.x:F2} " +
                       $"playerZ={playerZ:F2} captorZ={captorZ:F2} wall={site.name}");
             return true;
         }
@@ -512,14 +547,14 @@ namespace Ryona.Game
             IsBearHugging = true;
             IsHolding = true;
             _squeezeNextAt = Time.time + CombatConstants.FrontGrappleEscapeSeconds;
-            Debug.Log($"[BearHug] begin {name} dist={distance:F2}");
+            GameLog.Log($"[BearHug] begin {name} dist={distance:F2}");
             return true;
         }
 
         /// <summary>ベアハッグの締め付け。掴んだまま HP を少し削る（ダウンは狙わない）。</summary>
         void DoBearHugSqueeze()
         {
-            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            var grapple = Player != null ? Hold : null;
             if (grapple == null || !grapple.IsGrappled || grapple.Captor != this
                 || grapple.Kind != GrappleKind.BearHug)
                 return;
@@ -551,7 +586,7 @@ namespace Ryona.Game
         /// </summary>
         void DoPinKnee()
         {
-            var grapple = Player != null ? Player.GetComponent<PlayerGrapple>() : null;
+            var grapple = Player != null ? Hold : null;
             if (grapple == null || !grapple.IsGrappled || grapple.Captor != this)
                 return;
 
@@ -574,10 +609,16 @@ namespace Ryona.Game
             grapple.KickKnee();
             PlaySfx(SfxId.Impact, 0.85f);
 
-            Debug.Log($"[Pin] knee {name} left={_pinKneesLeft} hp={Player.State.Hp:F0}");
+            GameLog.Log($"[Pin] knee {name} left={_pinKneesLeft} hp={Player.State.Hp:F0}");
 
             if (_pinKneesLeft == 0 && grapple.Captor == this)
-                FindFirstObjectByType<GrappleHandOff>()?.TryPinChain(grapple);
+            {
+                // 壁拘束は、膝のあとを段階進行（猶予 → 二人がかり …）が引き継ぐ。
+                if (grapple.IsWallPin)
+                    grapple.OnWallKneesFinished();
+                else
+                    FindFirstObjectByType<GrappleHandOff>()?.TryPinChain(grapple);
+            }
         }
 
         // --- 壁・二体がかり（Y 字）のアシスト役 -------------------------
@@ -601,7 +642,7 @@ namespace Ryona.Game
             if (Phase == EnemyPhase.Windup || Phase == EnemyPhase.Attack)
                 CancelWindup();
 
-            Debug.Log($"[WallSplit] assist {name} side={_wallAssistSide:F0}");
+            GameLog.Log($"[WallSplit] assist {name} side={_wallAssistSide:F0}");
         }
 
         /// <summary>二体がかりを降りる（6 発が終わった／脱出された）。</summary>
@@ -613,7 +654,7 @@ namespace Ryona.Game
             _wallAssistHold = null;
             _wallAssistReady = false;
             HoldFire(0.8f);
-            Debug.Log($"[WallSplit] assist {name} release");
+            GameLog.Log($"[WallSplit] assist {name} release");
         }
 
         /// <summary>アシストが来なかったとき、拘束役の膝蹴りを再開する。</summary>
@@ -626,6 +667,45 @@ namespace Ryona.Game
             _pinNextKneeAt = Time.time + 0.25f;
         }
 
+        /// <summary>
+        /// 二人・3 人がかりで打つ側が立つ位置と、彼女へ体を開く向き。
+        /// アシストと拘束役で同じ計算を使う（片方だけ直すと立ち位置がズレる）。
+        /// <paramref name="side"/> は +1 が彼女の左側（拘束役）、-1 が右側（アシスト）。
+        /// </summary>
+        void ResolveWallPunchSlot(PlayerGrapple hold, float side, out Vector3 spot, out Quaternion facing)
+        {
+            Vector3 her = hold.transform.position;
+            Vector3 forward = Vector3.ProjectOnPlane(hold.transform.forward, Vector3.up).normalized;
+
+            // 二人とも彼女の正面側へ立つ。横に並ぶと腹パンが横から棒で叩く形になる（実測）。
+            // 膝・蹴りの踏み込みに合わせて、横と前の持ち場を詰める。
+            float kneeStep = hold.WallSplitKick ? 0f
+                : Mathf.Max(hold.WallSplitKneeWeight(this), hold.WallSplitFaceStep(this));
+            float gap = Mathf.Lerp(CombatConstants.WallSplitStandGap, CombatConstants.WallSplitKneeGap, kneeStep);
+            float front = Mathf.Lerp(CombatConstants.WallSplitStandFront, CombatConstants.WallSplitKneeFront, kneeStep);
+            float lateral = side * gap;
+            float depth = front;
+
+            // 3 人がかりでは、打つ側は前の持ち場、待つ側は横の持ち場へ入る（3 人目と交代）。
+            if (hold.TryGetWallGangSlot(this, out float slotLateral, out float slotDepth))
+            {
+                lateral = Mathf.Lerp(slotLateral, CombatConstants.WallSplitKneeGap, kneeStep);
+                depth = Mathf.Lerp(slotDepth, CombatConstants.WallSplitKneeFront, kneeStep);
+            }
+
+            spot = her + Vector3.right * lateral + forward * depth;
+            spot.y = transform.position.y;
+
+            // 真横を向いたままだと、空き手が腹を横切って「太鼓を叩いている」画になる。
+            // カメラ（プレイヤー）側へ体を開いて、前から腹へ入る形にする。
+            Vector3 look = her - spot;
+            look.y = 0f;
+            facing = look.sqrMagnitude > 0.0004f
+                ? Quaternion.AngleAxis(-side * 15f, Vector3.up)
+                    * Quaternion.LookRotation(look.normalized, Vector3.up)
+                : transform.rotation;
+        }
+
         /// <summary>横の持ち場へ寄り、彼女の方を向く。着いたら ready を立てる。</summary>
         void UpdateWallAssist(float dt)
         {
@@ -636,34 +716,18 @@ namespace Ryona.Game
                 return;
             }
 
-            Vector3 her = hold.transform.position;
-            Vector3 forward = Vector3.ProjectOnPlane(hold.transform.forward, Vector3.up).normalized;
-            // 二人とも彼女の正面側へ立つ。横に並ぶと腹パンが横から棒で叩く形になる（実測）。
-            Vector3 spot = her
-                + Vector3.right * (_wallAssistSide * CombatConstants.WallSplitStandGap)
-                + forward * CombatConstants.WallSplitStandFront;
-            spot.y = transform.position.y;
+            ResolveWallPunchSlot(hold, _wallAssistSide, out Vector3 spot, out Quaternion facing);
 
             // 持ち場へは小走りで寄る（通常の移動速度だと間に合わない）。
             float speed = Mathf.Max(2.4f, MoveSpeed * State.MoveSpeedMultiplier);
             transform.position = Vector3.MoveTowards(transform.position, spot, speed * dt);
-
-            Vector3 look = her - transform.position;
-            look.y = 0f;
-            if (look.sqrMagnitude > 0.0004f)
-            {
-                // 真横を向いたままだと、空き手が腹を横切って「太鼓を叩いている」画になる。
-                // カメラ（プレイヤー）側へ体を開いて、前から腹へ入る形にする。
-                Quaternion facing = Quaternion.LookRotation(look.normalized, Vector3.up);
-                facing = Quaternion.AngleAxis(-_wallAssistSide * 15f, Vector3.up) * facing;
-                transform.rotation = Quaternion.Slerp(transform.rotation, facing,
-                    1f - Mathf.Exp(-10f * dt));
-            }
+            transform.rotation = Quaternion.Slerp(transform.rotation, facing,
+                1f - Mathf.Exp(-10f * dt));
 
             if (!_wallAssistReady && (transform.position - spot).sqrMagnitude < 0.02f)
             {
                 _wallAssistReady = true;
-                Debug.Log($"[WallSplit] assist {name} ready");
+                GameLog.Log($"[WallSplit] assist {name} ready");
             }
         }
 
@@ -673,31 +737,18 @@ namespace Ryona.Game
         /// </summary>
         void UpdateWallSplitCaptor(float dt, PlayerGrapple hold)
         {
-            Vector3 her = hold.transform.position;
-            Vector3 forward = Vector3.ProjectOnPlane(hold.transform.forward, Vector3.up).normalized;
-            Vector3 spot = her
-                + Vector3.right * CombatConstants.WallSplitStandGap
-                + forward * CombatConstants.WallSplitStandFront;
-            spot.y = transform.position.y;
+            ResolveWallPunchSlot(hold, 1f, out Vector3 spot, out Quaternion facing);
 
             // 押さえつけ中は移動速度倍率が 0 のことがあるので、位置合わせは定速で行う。
-            float speed = Mathf.Max(1.2f, MoveSpeed);
+            float speed = Mathf.Max(hold.IsWallGangActive ? 2.4f : 1.2f, MoveSpeed);
             transform.position = Vector3.MoveTowards(transform.position, spot, speed * dt);
-
-            Vector3 look = her - transform.position;
-            look.y = 0f;
-            if (look.sqrMagnitude > 0.0004f)
-            {
-                // アシストと同じく、カメラ（プレイヤー）側へ体を開く。
-                Quaternion facing = Quaternion.LookRotation(look.normalized, Vector3.up);
-                facing = Quaternion.AngleAxis(-15f, Vector3.up) * facing;
-                transform.rotation = Quaternion.Slerp(transform.rotation, facing,
-                    1f - Mathf.Exp(-10f * dt));
-            }
+            transform.rotation = Quaternion.Slerp(transform.rotation, facing,
+                1f - Mathf.Exp(-10f * dt));
         }
 
         /// <summary>二人がかりの腹パン 1 発。見た目は空き手のポーズ側が作る。</summary>
-        internal void DoWallSplitPunch()        {
+        internal void DoWallSplitPunch(float scale = 1f, PunchZone zone = PunchZone.Body)
+        {
             if (Player == null || Player.IsDead)
                 return;
 
@@ -705,19 +756,84 @@ namespace Ryona.Game
             {
                 id = "wall_split_punch",
                 kind = AttackKind.Light,
-                damage = Mathf.Max(0f, CombatConstants.WallSplitPunchDamage),
+                damage = Mathf.Max(0f, CombatConstants.WallSplitPunchDamage * scale),
                 partDamage = 0f,
-                targetPart = BodyPart.Torso,
-                flinch = 4f,
+                targetPart = BodyPart.Torso,   // 部位は胴だけ。顔かどうかは PunchZone で区別する
+                flinch = 4f * scale,
                 startupSeconds = 0f,
                 activeSeconds = 0f,
                 recoverySeconds = 0f
             };
 
-            Player.LastHitZone = PunchZone.Body;
-            Player.ReceiveHit(State, punch, transform, CombatConstants.WallSplitPunchBelly);
-            PlaySfx(SfxId.Impact, 0.8f);
-            Debug.Log($"[WallSplit] punch {name} hp={Player.State.Hp:F0} belly={Player.HeldBellyDamage:F0}");
+            Player.LastHitZone = zone;
+            Player.ReceiveHit(State, punch, transform,
+                zone == PunchZone.Body ? CombatConstants.WallSplitPunchBelly * scale : 0f);
+            PlaySfx(SfxId.Impact, Mathf.Clamp01(0.7f + 0.1f * scale));
+            GameLog.Log($"[WallSplit] punch {name} hp={Player.State.Hp:F0} belly={Player.HeldBellyDamage:F0}");
+        }
+
+        internal bool ForceStartBackGrab(GrappleKind kind)
+        {
+            var grapple = Player != null ? Hold : null;
+            if (grapple == null || grapple.IsGrappled)
+                return false;
+
+            ClearGrappleState(clearAttackState: true);
+            grapple.BeginContact(this, kind);
+            _currentAttack = AttackId.Grab;
+            Phase = EnemyPhase.Recover;
+            _timer = CombatConstants.GrappleLimitSeconds + 0.2f;
+            IsHolding = true;
+            ReleaseToken();
+            return true;
+        }
+
+        internal bool ForceStartPin(bool wall)
+        {
+            var grapple = Player != null ? Hold : null;
+            if (grapple == null || grapple.IsGrappled)
+                return false;
+
+            bool started;
+            if (wall)
+            {
+                var site = WallPinSites.Nearest(Player.transform.position);
+                started = site != null && TryWallPin(site);
+            }
+            else
+            {
+                started = TryBeginFrontGrapple(GrappleKind.Pin, out _);
+                if (started)
+                {
+                    ClearGrappleState();
+                    IsPinning = true;
+                    _pinKneesLeft = Mathf.Max(1, CombatConstants.PinKneeCount);
+                    _pinNextKneeAt = Time.time + CombatConstants.FrontGrappleEscapeSeconds;
+                }
+            }
+
+            if (!started)
+                return false;
+
+            _currentAttack = AttackId.Grab;
+            Phase = EnemyPhase.Recover;
+            _timer = CombatConstants.GrappleLimitSeconds + 0.2f;
+            IsHolding = true;
+            ReleaseToken();
+            return true;
+        }
+
+        internal bool ForceStartBearHug()
+        {
+            if (!TryBearHug())
+                return false;
+
+            _currentAttack = AttackId.Grab;
+            Phase = EnemyPhase.Recover;
+            _timer = CombatConstants.BearHugLimitSeconds + 0.2f;
+            IsHolding = true;
+            ReleaseToken();
+            return true;
         }
 
     }

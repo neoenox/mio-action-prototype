@@ -42,7 +42,7 @@ namespace Ryona.Game
                 enabledCount++;
             }
 
-            Debug.Log($"[Render] shadows={QualitySettings.shadows} dist={QualitySettings.shadowDistance} " +
+            GameLog.Log($"[Render] shadows={QualitySettings.shadows} dist={QualitySettings.shadowDistance} " +
                       $"lights={enabledCount}");
         }
     }

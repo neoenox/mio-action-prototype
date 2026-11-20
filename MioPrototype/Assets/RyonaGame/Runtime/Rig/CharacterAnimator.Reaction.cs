@@ -60,7 +60,7 @@ namespace Ryona.Game
             {
                 _faceFlickLogged = true;
                 if (PlayerStats.StatLogging)
-                    Debug.Log($"[FaceFlick] toCam={toCamera:F0} yaw={yaw:F0} " +
+                    GameLog.Log($"[FaceFlick] toCam={toCamera:F0} yaw={yaw:F0} " +
                         $"pitch={pitch:F0} roll={roll:F0} t={t:F2}");
             }
         }
@@ -172,7 +172,7 @@ namespace Ryona.Game
             _faceYaw = Quaternion.LookRotation(d.normalized, Vector3.up);
             _hasFaceYaw = true;
 
-            Debug.Log($"[Turn] hit angle={Vector3.Angle(transform.forward, d):F0} " +
+            GameLog.Log($"[Turn] hit angle={Vector3.Angle(transform.forward, d):F0} " +
                       $"src={src.name}");
         }
 

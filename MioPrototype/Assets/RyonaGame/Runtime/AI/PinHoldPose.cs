@@ -17,6 +17,20 @@ namespace Ryona.Game
         EnemyBrain _brain;
         ProceduralRig _targetRig;
         ThirdPersonCamera _camera;
+        float _splitPush;
+
+        /// <summary>
+        /// 壁押さえつけ（膝・猶予）のカメラ位置（彼女と拘束役の間の注視点からのずれ、m）。
+        /// 以前の高さ 0.47m だと、拘束役の肩と腕越しに見下ろす形になり、彼女の顔が隠れた
+        /// （顔の可視率テストで、顔が読めるコマ 41〜72%。隠しているのは全て拘束役）。
+        /// 27 通りの候補を測り、見上げすぎずに顔が読める位置（85%）を選んだ
+        /// （WallPinRuntimeTests の「調査_壁拘束の膝のカメラ候補ごとの顔の可視率」）。
+        /// 再調査（2026-11-15）: y=0.15 だと見上げすぎで顔が隠れる。y=-0.10 に下げると 86% 達成。
+        /// </summary>
+        static readonly Vector3 WallHeldShot = new Vector3(-2.25f, -0.10f, -1.75f);
+
+        /// <summary>膝が入る瞬間に寄るカメラ位置。高さは WallHeldShot と同じだけ下げる。</summary>
+        static readonly Vector3 WallKneeShot = new Vector3(-1.35f, -0.10f, -1.65f);
 
         /// <summary>もがかれて肩が浮いた分（m）。手の狙いを上げる。</summary>
         float _lift;
@@ -62,14 +76,14 @@ namespace Ryona.Game
                     float close = hold.WallPhase == WallStage.Restrain
                         ? Mathf.SmoothStep(0f, 1f, hold.WallPhaseProgress) : 0f;
                     Vector3 offset = Vector3.Lerp(new Vector3(-2.75f, 0.48f, -1.35f),
-                        new Vector3(-2.25f, 0.47f, -1.75f), close);
+                        WallHeldShot, close);
                     if (hold.IsWallToss)
                     {
                         float wide = hold.WallPhase == WallStage.TossWindup
                             ? hold.WallTossLower : 1f;
                         target = Vector3.Lerp(player, transform.position, 0.40f);
                         target.y = transform.position.y + Mathf.Lerp(1.02f, 0.86f, wide);
-                        offset = Vector3.Lerp(new Vector3(-2.25f, 0.47f, -1.75f),
+                        offset = Vector3.Lerp(WallHeldShot,
                             new Vector3(-2.70f, 0.52f, -2.20f), wide);
                     }
                     _camera.RequestCinematicShot(target + offset, target);
@@ -122,7 +136,7 @@ namespace Ryona.Game
                     float depth = Vector3.Dot(knee - axisPoint, front);
                     float preDepth = Vector3.Dot(preKnee - axisPoint, front);
                     float penetration = surface + kneeRadius - depth;
-                    Debug.Log($"[Knee] pulse={hold.KneePulse:F2} depth={depth:F3} pre={preDepth:F3} pen={penetration:F3} " +
+                    GameLog.Log($"[Knee] pulse={hold.KneePulse:F2} depth={depth:F3} pre={preDepth:F3} pen={penetration:F3} " +
                               $"reach={_figure.LastPinKneeReach:F3} shift={_figure.LastPinKneeShift:F3} " +
                               $"hipsY={_figure.HipsBone.position.y - transform.position.y:F2} " +
                               $"kneeY={knee.y:F2} spineY={spine.y:F2} chestY={chest.y:F2} bellyY={belly.y:F2} " +
@@ -167,18 +181,39 @@ namespace Ryona.Game
                             : pinned.position + (pinned.position - transform.position);
                         WallSplitCamera.Build(pinned.position, pinned.forward,
                             transform.position, assist,
-                            out Vector3 shot, out Vector3 target);
+                            out Vector3 shot, out Vector3 target,
+                            CombatConstants.WallGangCameraBack * hold.WallGangWeight,
+                            CombatConstants.WallGangCameraShift * hold.WallGangWeight);
+
+                        // 段階が進むほど彼女へ寄る（序盤は引き、締めで大きく寄る）。
+                        _splitPush = Mathf.MoveTowards(_splitPush, hold.WallSplitCameraPushTarget,
+                            Time.unscaledDeltaTime * 0.7f);
+                        // 締めの膝入れは、少し上から腹と顔の両方が入る構図にする。
+                        // 彼女の顔が画面から切れないことを優先する（狙いを下げすぎると頭が切れる）。
+                        float lowering = Mathf.InverseLerp(0.10f, 0.15f, _splitPush);
+                        // 締めの一撃で彼女の体が持ち上がるので、狙いは下げずに少し上げて頭の余裕を作る。
+                        target.y += 0.03f * lowering;
+                        shot.y += 0.06f * lowering;
+                        shot = target + (shot - target) * (1f - 0.40f * _splitPush);
                         _camera.RequestCinematicShot(shot, target);
                         return;
                     }
 
+                    _splitPush = 0f;
                     Vector3 her = pinned.position + Vector3.up * 1.02f;
                     Vector3 him = transform.position + Vector3.up * 1.02f;
                     Vector3 mid = Vector3.Lerp(her, him, 0.45f);
                     float knee = Mathf.SmoothStep(0f, 1f, hold.KneePulse);
-                    Vector3 offset = Vector3.Lerp(
-                        new Vector3(-2.25f, 0.47f, -1.75f),
-                        new Vector3(-1.35f, 0.32f, -1.65f), knee);
+                    Vector3 offset = Vector3.Lerp(WallHeldShot, WallKneeShot, knee);
+
+                    // 背の低い拘束役は、彼の頭と肩が彼女の顔の高さに来て顔を隠す。
+                    // カメラを彼女の側へ寄せて、彼の体の横から顔を覗く。
+                    // 1.79m 以上は従来のまま（Enemy 2 / 3）、1.72m で最大。
+                    float shortT = _figure != null
+                        ? Mathf.InverseLerp(1.79f, 1.72f, _figure.Height)
+                        : 0f;
+                    offset += new Vector3(0.65f, -0.15f, 0.55f) * shortT;
+
                     _camera.RequestCinematicShot(mid + offset, mid);
                     return;
                 }
@@ -201,17 +236,68 @@ namespace Ryona.Game
                     float frame = Mathf.SmoothStep(0f, 1f, _rearFraming);
                     _camera.HoldFocus(Mathf.Lerp(KneeCamDistance, 0.50f, frame), KneeCamPivot,
                         Mathf.Lerp(x, player.position.x, frame), 0.5f,
-                        KneeCamPitch, Mathf.Lerp(KneeCamYaw, -18f, frame) * sign);
-                }
-                else if (Time.time < _kneeCamUntil)
-                {
-                    // 秒数は腹パンと同じ 0.5。短くすると減衰で寄りが薄まる
-                    // （実測: 0.12 秒だと 0.28 指定でも実効 0.46 までしか寄らない）。
-                    _camera.HoldFocus(KneeCamDistance, KneeCamPivot, x, 0.5f, KneeCamPitch, KneeCamYaw * sign);
+                        KneeCamPitch, Mathf.Lerp(_kneeCamYaw, -18f, frame) * sign);
                 }
                 else
                 {
-                    _camera.HoldFocus(0.72f, -0.10f, x, 0.5f);
+                    // 膝が 0.65 秒間隔で続く間は、寄った横の画を保つ。
+                    // パルスごとに戻すとカメラが通常の画と往復して落ち着かない（実測）。
+                    if (hold.KneePulse > 0.05f)
+                    {
+                        _kneeShot = Mathf.MoveTowards(_kneeShot, 1f, Time.unscaledDeltaTime / 0.22f);
+                        _kneeShotIdle = 0f;
+                    }
+                    else
+                    {
+                        _kneeShotIdle += Time.unscaledDeltaTime;
+                        if (_kneeShotIdle > 1.2f)
+                            _kneeShot = Mathf.MoveTowards(_kneeShot, 0f, Time.unscaledDeltaTime / 0.45f);
+                    }
+
+                    // 膝の間は「二人の中点」を横から見る。彼女を中心に回すと、彼が正面 0.7m に
+                    // 立っているため、どちらへ回しても彼か彼女が膝を隠す（-45/-70/-90/+20/+50/+80 で実測）。
+                    float k = Mathf.SmoothStep(0f, 1f, _kneeShot);
+                    if (k > 0.02f)
+                    {
+                        if (!_kneeShotHeld)
+                        {
+                            _kneeShotHeld = true;
+                            _normalShotPos = _camera.transform.position;
+                            _normalShotTarget = player.position + Vector3.up * 1.00f + player.forward * 0.30f;
+                        }
+
+                        Vector3 her = player.position + Vector3.up * 0.95f;
+                        Vector3 him = transform.position + Vector3.up * 0.95f;
+                        Vector3 mid = Vector3.Lerp(her, him, 0.45f);
+                        // 顔も同じ画に入れる（カメラは彼女の顔が映ることを前提にする）。
+                        // 腹と膝だけに寄ると顔が上で切れる。
+                        Vector3 herFace = player.position + Vector3.up * 1.42f;
+                        Vector3 axis = Vector3.ProjectOnPlane(him - her, Vector3.up);
+                        if (axis.sqrMagnitude < 1e-4f)
+                            axis = Vector3.ProjectOnPlane(player.forward, Vector3.up);
+                        axis.Normalize();
+                        Vector3 side = Vector3.Cross(Vector3.up, axis);
+                        if (side.sqrMagnitude < 1e-4f)
+                            side = player.right;
+                        side.Normalize();
+                        // いまカメラがいる側を保つ（跨ぐと画が跳ねる）
+                        Vector3 camFlat = Vector3.ProjectOnPlane(_camera.transform.position - mid, Vector3.up);
+                        if (Vector3.Dot(side, camFlat) < 0f)
+                            side = -side;
+
+                        Vector3 lookAtFace = Vector3.Lerp(herFace, mid, 0.42f);
+                        // 真横だと彼女の背中側になり、正面すぎると彼が彼女の顔を覆う。
+                        // 二人の関係軸から斜め正面へ寄せ、彼を画面の外側に置いて顔と腹を同時に捉える。
+                        Vector3 shot = mid + side * 1.55f + axis * 0.88f + Vector3.up * 0.38f;
+                        _camera.RequestCinematicShot(
+                            Vector3.Lerp(_normalShotPos, shot, k),
+                            Vector3.Lerp(_normalShotTarget, lookAtFace, k));
+                    }
+                    else
+                    {
+                        _kneeShotHeld = false;
+                        _camera.HoldFocus(0.46f, 0.08f, x, 0.5f, 2f, -22f * sign);
+                    }
                 }
 
                 if (_pinLog && Time.time >= _pinCamLogAt)
@@ -221,7 +307,7 @@ namespace Ryona.Game
                     if (cam != null)
                     {
                         Vector3 v = cam.WorldToViewportPoint(player.position + Vector3.up * 1.0f);
-                        Debug.Log($"[PinCenter] near={Time.time < _kneeCamUntil} " +
+                        GameLog.Log($"[PinCenter] near={Time.time < _kneeCamUntil} " +
                                   $"vp=({v.x:F2},{v.y:F2}) focusX={x:F2} beltX={_camera.CurrentX:F2}");
                     }
                 }
@@ -234,7 +320,20 @@ namespace Ryona.Game
         const float KneeCamDistance = 0.28f;
         const float KneeCamPivot = 0.05f;
         const float KneeCamPitch = 2f;
-        const float KneeCamYaw = -32f;
+
+        /// <summary>
+        /// 膝の瞬間のヨー。彼の胴が膝の通り道を隠すので、横へ回り込む量を調整する。
+        /// 符号で回る側が変わる（負で大きくすると彼の背中側へ回って逆効果・実測）。
+        /// </summary>
+        float _kneeCamYaw = KneeCamYawDefault;
+        const float KneeCamYawDefault = -32f;
+
+        /// <summary>膝が続く間、横の画へ寄せ切った度合い（0..1）。</summary>
+        float _kneeShot;
+        float _kneeShotIdle;
+        bool _kneeShotHeld;
+        Vector3 _normalShotPos;
+        Vector3 _normalShotTarget;
 
         /// <summary>膝蹴りの寄りを保つ終了時刻。</summary>
         float _kneeCamUntil;
@@ -248,6 +347,9 @@ namespace Ryona.Game
         void Awake()
         {
             _pinLog = LaunchOptions.Has("-pinlog");
+            // 検証用: 膝の瞬間のカメラのヨーを差し替えて撮り比べる。
+            if (LaunchOptions.TryFloat("-kneecamyaw", out float yaw))
+                _kneeCamYaw = yaw;
         }
 
         void Solve(bool left, Transform shoulder, Transform lowerArm, Transform hand, float contact)

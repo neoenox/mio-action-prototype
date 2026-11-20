@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f2123f1714e946945ae661fa6b090e7c, type: 3}
+  m_Name: RyonaConfig
+  m_EditorClassIdentifier: Ryona.Game::Ryona.Game.RyonaConfig
+  Camera:
+    PivotOffset: {x: 0, y: 1.45, z: 0}
+    Distance: 5.2
+    MinDistance: 1.2
+    MaxDistance: 6
+    MouseSensitivity: 2.2
+    MinPitch: -15
+    MaxPitch: 60
+    FollowSharpness: 16
+    BeltMode: 1
+    BeltMinZoomDistance: 3.8
+    BeltCloseUpMinDistance: 0.82
+    BeltPitch: 14
+    BeltYaw: 0
+    BeltPivotHeight: 0.86
+    BeltLookAhead: 1.8
+    BeltFollowSharpness: 8
+    DownFollowSharpness: 16
+    BeltMinX: -16
+    BeltMaxX: 34
+    BeltDeadZone: 1
+    EffectDecay: 4
+    DownPivotHeight: 0.45
+    DownDistanceScale: 0.85
+    DownBlendSeconds: 0.45
+    DownYawBias: 0
+    DownPitchBias: 20

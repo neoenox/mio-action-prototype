@@ -73,10 +73,10 @@ namespace Ryona.Game
 
         [Header("Down Pose (倒れたときの腕)")]
         [Tooltip("仰向けに倒れたときの左腕の向き。立ち姿勢のローカル方向（-Y が下）")]
-        public Vector3 DownArmLUpper = new Vector3(0.85f, -0.50f, -0.25f);
-        public Vector3 DownArmLFore = new Vector3(0.60f, -0.30f, -0.55f);
-        public Vector3 DownArmRUpper = new Vector3(-0.85f, -0.50f, 0.25f);
-        public Vector3 DownArmRFore = new Vector3(-0.60f, -0.30f, 0.55f);
+        public Vector3 DownArmLUpper = new Vector3(0.42f, -0.82f, 0.18f);
+        public Vector3 DownArmLFore = new Vector3(0.28f, -0.45f, 0.78f);
+        public Vector3 DownArmRUpper = new Vector3(-0.32f, -0.86f, 0.28f);
+        public Vector3 DownArmRFore = new Vector3(0.55f, -0.20f, 0.76f);
 
         [Header("Stagger")]
         public float LightBend = 22f;
@@ -87,6 +87,14 @@ namespace Ryona.Game
         [Tooltip("倒れてから立ち上がり終わるまでの秒数")]
         public float GetUpSeconds = 0.80f;
 
+        float _pendingQuickGetUp;
+
+        /// <summary>
+        /// ダウンの最短時間を待たずに立ち上がりへ移る（次のフレームの更新で）。
+        /// 引きずり起こしを振りほどいたときに使う。
+        /// </summary>
+        internal void BeginQuickGetUp(float seconds) => _pendingQuickGetUp = Mathf.Max(0.2f, seconds);
+
         public State Current => _state;
         public float StateTime => _stateTime;
         public float StateDuration => _stateDuration;
@@ -94,6 +102,7 @@ namespace Ryona.Game
         // 腹パン演出（後ろ拘束中に別の敵の腹パンチを受けたとき）の残り時間。
         float _heldBellyPunchRemaining;
         float _heldBellyFatigue;
+        float _heldBellyImpact = 1f;
         float _heldBellyCarry;
         float _heldBellyPunchTotal;
 
@@ -181,7 +190,8 @@ namespace Ryona.Game
 
                 float t = _heldFacePunchTotal - _heldFacePunchRemaining;
                 float up = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.16f) / 0.10f));
-                float down = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.36f) / 0.19f));
+                float downStart = Mathf.Max(0.36f, _heldFacePunchTotal - 0.25f);
+                float down = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - downStart) / 0.25f));
                 return Mathf.Clamp01(up * down);
             }
         }

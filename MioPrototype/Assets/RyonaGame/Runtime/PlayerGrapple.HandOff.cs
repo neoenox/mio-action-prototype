@@ -103,7 +103,7 @@ namespace Ryona.Game
                         _grabContactRemaining = 0f;
                         receiver.TakeOverHold(CombatConstants.GrappleLimitSeconds + 4f);
                         sender.LockForHandOff(0.24f);
-                        Debug.Log($"[HandOff] pin → back {sender.name} → {receiver.name}");
+                        GameLog.Log($"[HandOff] pin → back {sender.name} → {receiver.name}");
                         Started?.Invoke(Kind);
                         yield break;
                     }
@@ -132,10 +132,12 @@ namespace Ryona.Game
             _session.SuppressRemaining = 0f;
         }
 
-        static float HoldDuration(GrappleKind kind) => kind switch
+        /// <summary>拘束の制限時間。足取りは <see cref="RyonaConfig.Grapple"/> の値を使う。</summary>
+        float HoldDuration(GrappleKind kind) => kind switch
         {
             GrappleKind.Back => float.PositiveInfinity,
             GrappleKind.BearHug => CombatConstants.BearHugLimitSeconds,
+            GrappleKind.AnkleGrab => _grappleSettings.AnkleLimitSeconds,
             _ => CombatConstants.GrappleLimitSeconds
         };
 
@@ -217,7 +219,7 @@ namespace Ryona.Game
             }
 
             next.BeginCatch(catchSeconds);
-            Debug.Log($"[HandOff] catch {next.name} kind={kind}");
+            GameLog.Log($"[HandOff] catch {next.name} kind={kind}");
             t = 0f;
             Quaternion catchRot = transform.rotation;
             Vector3 receiverStart = next.transform.position;

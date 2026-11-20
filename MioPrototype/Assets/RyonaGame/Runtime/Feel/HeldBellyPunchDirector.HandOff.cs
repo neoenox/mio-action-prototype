@@ -27,7 +27,7 @@ namespace Ryona.Game
             var chain = FindFirstObjectByType<GrappleHandOff>();
             if (chain != null && chain.TryChain())
             {
-                Debug.Log($"[HeldPunch] combo end {hits}/{ComboHitsTotal} → hand off");
+                GameLog.Log($"[HeldPunch] combo end {hits}/{ComboHitsTotal} → hand off");
                 HoldOthers(ReleaseGraceSeconds);
                 return;
             }
@@ -41,7 +41,7 @@ namespace Ryona.Game
             if (_grapple != null && _grapple.IsGrappled)
             {
                 _grapple.ClearStruggleSuppression();
-                Debug.Log($"[HeldPunch] combo end {_hits}/{ComboHitsTotal} → hold continues");
+                GameLog.Log($"[HeldPunch] combo end {_hits}/{ComboHitsTotal} → hold continues");
             }
 
             HoldOthers(ReleaseGraceSeconds);
@@ -80,6 +80,24 @@ namespace Ryona.Game
                     continue;
 
                 enemy.HoldFire(seconds);
+            }
+        }
+
+        /// <summary>連撃〜トドメの間、第三の敵が横槍を入れないよう待機させる。</summary>
+        void SuppressBystanders(float seconds)
+        {
+            var captor = _grapple != null ? _grapple.Captor : null;
+            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            {
+                if (enemy == null || !enemy.IsAlive || enemy == captor ||
+                    enemy == _comboPuncher || enemy == _thrower ||
+                    enemy.IsTagPunch || enemy.IsPreparingHeldThrow)
+                    continue;
+
+                if (Vector3.Distance(enemy.transform.position, _stats.transform.position) > 8f)
+                    continue;
+
+                enemy.CancelBystanderWindup(seconds);
             }
         }
     }

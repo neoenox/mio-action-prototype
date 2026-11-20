@@ -26,24 +26,24 @@ namespace Ryona.Game
 
         [Header("Tuning")]
         [Tooltip("画面の半幅（m）。カメラから測れないときだけ使う予備値")]
-        public float HalfWidth = 3.2f;
+        [System.NonSerialized] public float HalfWidth = 3.2f;
 
         [Tooltip("画面の端からこれだけ内側まで歩ける（m）。端で体が切れない余地")]
-        public float EdgeMargin = 0.9f;
+        [System.NonSerialized] public float EdgeMargin = 0.9f;
 
         [Tooltip("ロック中にカメラが動ける範囲（m）。ロックした位置を中心に ±この値。" +
                  "構図づくりの余裕で、彼女が歩ける幅とは別物")]
-        public float GateRange = 3.0f;
+        [System.NonSerialized] public float GateRange = 3.0f;
 
         [Tooltip("敵の生存を確認する間隔（秒）")]
-        public float ScanSeconds = 0.1f;
+        [System.NonSerialized] public float ScanSeconds = 0.1f;
 
         [Header("Engage (ロックを始める条件)")]
         [Tooltip("この距離以内に生きている敵がいれば、画面に映っていなくてもロックする（m）")]
-        public float EngageRange = 4.5f;
+        [System.NonSerialized] public float EngageRange = 4.5f;
 
         [Tooltip("画面の端からこの割合だけ外にいる敵もロックの対象にする（0 = 画面に入ってからロック）")]
-        public float EngageScreenMargin = 0f;
+        [System.NonSerialized] public float EngageScreenMargin = 0f;
 
         float _lockX = float.NaN;
         float _nextScan;
@@ -55,6 +55,22 @@ namespace Ryona.Game
 
         /// <summary>ロック中の画面の中心 X。</summary>
         public float LockX => _lockX;
+
+        /// <summary>調整値は <see cref="RyonaConfig.BeltLock"/> が真実源。シーンの保存値は使わない。</summary>
+        void ApplySettings(RyonaConfig.BeltLockSettings s)
+        {
+            HalfWidth = s.HalfWidth;
+            EdgeMargin = s.EdgeMargin;
+            GateRange = s.GateRange;
+            ScanSeconds = s.ScanSeconds;
+            EngageRange = s.EngageRange;
+            EngageScreenMargin = s.EngageScreenMargin;
+        }
+
+        void Awake()
+        {
+            ApplySettings(RyonaConfig.Instance.BeltLock);
+        }
 
         void LateUpdate()
         {
@@ -76,7 +92,7 @@ namespace Ryona.Game
                 if (Camera != null)
                     Camera.SnapTo(_lockX);
 
-                Debug.Log($"[Screen] lock x={_lockX:F2}");
+                GameLog.Log($"[Screen] lock x={_lockX:F2}");
             }
 
             // プレイヤーを縛るのは「戦いの中心（ロックした位置）」。

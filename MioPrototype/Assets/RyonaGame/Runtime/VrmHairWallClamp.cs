@@ -87,7 +87,7 @@ namespace Ryona.Game
                 if (Time.time - _logAt > 1f)
                 {
                     _logAt = Time.time;
-                    Debug.Log($"[HairWall] 押し戻し後 over={over}/{_joints.Length} deepest={deepest:F3}");
+                    GameLog.Log($"[HairWall] 押し戻し後 over={over}/{_joints.Length} deepest={deepest:F3}");
                 }
             }
         }
@@ -111,7 +111,7 @@ namespace Ryona.Game
             for (int i = 0; i < _joints.Length; i++)
                 if (_joints[i] != null && _parents[i] != null) n++;
 
-            Debug.Log($"[HairWall] 髪のジョイント {n}/{_joints.Length} を壁で押し戻す");
+            GameLog.Log($"[HairWall] 髪のジョイント {n}/{_joints.Length} を壁で押し戻す");
         }
     }
 }

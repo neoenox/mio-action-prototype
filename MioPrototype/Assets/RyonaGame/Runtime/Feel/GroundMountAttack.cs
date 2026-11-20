@@ -47,7 +47,28 @@ namespace Ryona.Game
         internal float Progress => Stage == Beat.Approach
             ? Mathf.InverseLerp(0f, _approachDistance, _approachTravel)
             : _duration > 0f ? Mathf.Clamp01(_elapsed / _duration) : 0f;
-        internal bool BlocksGetUp => Attacker != null && Stage >= Beat.Mount;
+        internal bool BlocksGetUp => MountBlocksGetUp || (Haul != null && Haul.BlocksGetUp);
+
+        /// <summary>寝技（跨り）そのものが起き上がりを止めているか（引き起こしは含まない）。</summary>
+        internal bool MountBlocksGetUp => Attacker != null && Stage >= Beat.Mount;
+
+        /// <summary>ダウンを引きずり起こす制御（寝技と同じ「一人を選ぶ」枠で動く）。</summary>
+        internal GroundHaulUp Haul { get; private set; }
+
+        /// <summary>この敵を、寝技か引き起こしが占有しているか（通常の敵 AI は譲る）。</summary>
+        internal bool Owns(EnemyBrain enemy)
+        {
+            // 引き起こし中は全員の AI を止める。他の敵が横を歩き回ると、
+            // 抱え上げている二人の横をすり抜けて「ちょこちょこ歩く」画になる。
+            if (enemy != null && Haul != null && Haul.Active)
+                return true;
+            return enemy != null && Attacker == enemy;
+        }
+
+        internal void DelayNextSearch(float seconds) =>
+            _nextSearch = Mathf.Max(_nextSearch, Time.time + seconds);
+
+        internal void ClearSearchDelay() => _nextSearch = 0f;
         internal float Fear => Stage switch
         {
             Beat.Mount when !_player.DownIsForward => Mathf.SmoothStep(0f, 1f, Progress),
@@ -62,6 +83,7 @@ namespace Ryona.Game
         internal bool RollLeftShoulder { get; private set; }
         internal bool LeftPunch => (_punches & 1) != 0;
         internal float Side => _side;
+        internal bool Escaped => _escaped;
         internal float StrugglePulse { get; private set; }
         internal Vector3 StrikeTarget { get; private set; }
         internal Vector3 StrikeSide => Attacker.transform.right * (LeftPunch ? -1f : 1f);
@@ -70,10 +92,14 @@ namespace Ryona.Game
         internal Vector3 ShotOffset => _shotOffset;
         internal Vector3 AttackerHead => _figure.HeadBone.position;
         internal bool HasTakenPunch { get; private set; }
-        internal float HeadRecoil => ImpactWasLeftPunch
+        internal int PunchesLanded => _punches;
+        internal float MountFatigue => Mathf.Clamp01(_punches / (float)MaxPunches);
+        internal bool IsMountKnockedOut => _punches >= MaxPunches && _reactionAge > 0.22f;
+        float RecoilScale => Mathf.Lerp(1f, 1.25f, MountFatigue);
+        internal float HeadRecoil => (ImpactWasLeftPunch
             ? Recoil(-0.012f, 0.058f, 0.24f)
-            : Recoil(-0.018f, 0.036f, 0.22f);
-        internal float TorsoRecoil => Recoil(0.010f, 0.073f, 0.28f);
+            : Recoil(-0.018f, 0.036f, 0.22f)) * RecoilScale;
+        internal float TorsoRecoil => Recoil(0.010f, 0.073f, 0.28f) * RecoilScale;
         internal float ArmRecoil => Recoil(-0.052f, 0.10f, 0.30f);
         internal float LegRecoil => Recoil(0.044f, 0.118f, 0.33f);
         internal bool IsApplyingPunch => Attacker != null && Stage == Beat.Strike && _reactionAge == 0f;
@@ -116,13 +142,23 @@ namespace Ryona.Game
         {
             _player = GetComponent<PlayerStats>();
             _motor = GetComponent<PlayerMotor>();
+            Haul = gameObject.AddComponent<GroundHaulUp>();
         }
 
+        /// <summary>
+        /// ダウンが明けた（または新しいダウンが始まった）ときの後始末。
+        /// <para>
+        /// **<see cref="End"/> が決めた再マウント待ち（<see cref="RemountDelay"/>）は消さない。**
+        /// ここは <see cref="Update"/> からダウン中でない間ずっと毎フレーム呼ばれるので、
+        /// 以前のように <c>_nextSearch = 0</c> を書くと待ち時間が毎フレーム潰れ、
+        /// 解除直後のダウンで 0.75 秒後にまた跨られてしまう（実測）。
+        /// 初期値は 0 なので、開始直後のダウンはこれまでどおりすぐ探索できる。
+        /// </para>
+        /// </summary>
         internal void ResetKnockdown()
         {
             End();
             _downTime = 0f;
-            _nextSearch = 0f;
         }
 
         void OnDisable() => End();
@@ -150,6 +186,7 @@ namespace Ryona.Game
                     End();
 
                 if (_downTime >= 0.75f && Time.time >= _nextSearch && !_player.GetUpRequested &&
+                    !Haul.Active &&
                     (_motor == null || !_motor.IsAirborne) &&
                     _animator != null && _animator.Current == CharacterAnimator.State.Down &&
                     TargetRig != null && TargetRig.Ready)
@@ -192,7 +229,10 @@ namespace Ryona.Game
             else if (Stage == Beat.Mount)
                 MoveTowardsPose(MountSpot(), TargetRig.Head.position, Mathf.InverseLerp(0.04f, 0.94f, Progress));
             else if (Stage == Beat.Dismount)
-                MoveTowardsPose(FeetSpot(), TargetRig.Head.position, Progress);
+            {
+                Vector3 retreat = _escaped ? FeetSpot() - BodyAxis() * 0.45f : FeetSpot();
+                MoveTowardsPose(retreat, TargetRig.Head.position, Progress);
+            }
 
             if (Progress >= 1f && Stage != Beat.Strike && Stage != Beat.Roll)
                 Advance();
@@ -203,9 +243,12 @@ namespace Ryona.Game
             if (Stage < Beat.Mount || Stage >= Beat.Dismount || _player.DownIsForward)
                 return;
             StrugglePulse = 1f;
+            ProceduralSfx.Instance?.Play(SfxId.Tell, 0.45f);
             if (++_struggles >= EscapeInputs)
             {
                 _escaped = true;
+                ProceduralSfx.Instance?.Play(SfxId.Swing, 0.85f);
+                FindFirstObjectByType<CameraShake>()?.Shake(0.08f, 0.18f);
                 Begin(Beat.Dismount, 0.40f);
             }
         }
@@ -229,7 +272,17 @@ namespace Ryona.Game
             if (Attacker == null)
                 return;
 
-            _side = Vector3.Dot(Attacker.transform.position - TargetRig.Hips.position, transform.right) < 0f
+            // 寝技の代わりに、手首と裾を掴んで引きずり起こす（羽交い締めへつなぐ）。
+            if (Haul.ShouldHaul(Attacker))
+            {
+                var hauler = Attacker;
+                Attacker = null;
+                _figure = null;
+                Haul.Begin(hauler);
+                return;
+            }
+
+            _side =Vector3.Dot(Attacker.transform.position - TargetRig.Hips.position, transform.right) < 0f
                 ? -1f : 1f;
             SetApproachSpot();
             Begin(Beat.Approach, 0f);
@@ -365,9 +418,14 @@ namespace Ryona.Game
                     break;
                 case Beat.Dismount:
                     bool escaped = _escaped;
+                    var enemy = Attacker;
                     End();
                     if (escaped)
+                    {
+                        if (enemy != null && enemy.IsAlive)
+                            enemy.ForceStagger(CombatConstants.GrappleEscapeStun);
                         _player.RequestGetUp();
+                    }
                     break;
             }
         }
@@ -455,6 +513,8 @@ namespace Ryona.Game
 
         void End()
         {
+            // 実際に跨っていた（いた）ときだけ、次の探索まで間を空ける。
+            // ここで待ちを立てても、ResetKnockdown 側で消さないこと。
             if (Stage != Beat.Idle)
                 _nextSearch = Time.time + RemountDelay;
             if (Stage == Beat.Roll && RollProgress >= 0.5f && _player.IsDown && !_player.IsDead)

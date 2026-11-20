@@ -21,12 +21,12 @@ namespace Ryona.Game
         public float Range = 2.5f;
 
         /// <summary>
-        /// 腹ダメージが上限未満でコンボを食らい終えたときに、次の敵へ引き渡す確率。
-        /// 時間で渡していたころは、腹パンも膝蹴りも出ないうちに渡って「たらい回し」になった。
+        /// 3体での戦いにおいて、5 発連撃のあと「トドメ」の代わりに別の敵へ引き渡す確率。
         /// </summary>
-        [Range(0f, 1f)] public float Chance = 0.7f;
+        [Range(0f, 1f)] public float Chance = 0.35f;
 
         PlayerGrapple _grapple;
+        bool? _preRolled;
 
         /// <summary>引き渡しの動きを撮る（<c>-handoffburst=&lt;prefix&gt;</c>）。1 回だけ。</summary>
         string _burstPrefix;
@@ -60,6 +60,10 @@ namespace Ryona.Game
             var go = new GameObject("Grapple Hand Off");
             var comp = go.AddComponent<GrappleHandOff>();
             comp._burstPrefix = burst;
+            if (!string.IsNullOrEmpty(LaunchOptions.Value("-heldpunchburst")) && string.IsNullOrEmpty(burst))
+                comp.Chance = 0f;
+            if (LaunchOptions.TryFloat("-handoffchance", out float handOffChance))
+                comp.Chance = Mathf.Clamp01(handOffChance);
         }
 
         System.Collections.IEnumerator BurstShots()
@@ -78,7 +82,51 @@ namespace Ryona.Game
                 ScreenCapture.CaptureScreenshot(System.IO.Path.Combine(dir, $"{name}_{i:00}.png"));
                 next += interval;
             }
-            Debug.Log($"[HandOff] burst {count} 枚 {_burstPrefix}_XX.png");
+            GameLog.Log($"[HandOff] burst {count} 枚 {_burstPrefix}_XX.png");
+        }
+
+        /// <summary>
+        /// コンボ後（グロッキー後）に 3 体目の敵へ引き渡すか事前判定する。
+        /// 引き渡し先（<see cref="Chance"/> &lt; 0.99 のときは打撃役以外の 3 体目）がいなければ false。
+        /// </summary>
+        public bool DecideAfterCombo(EnemyBrain comboPuncher)
+        {
+            _preRolled = null;
+            if (_grapple == null)
+                _grapple = FindFirstObjectByType<PlayerGrapple>();
+            if (_grapple == null || !_grapple.IsGrappled || _grapple.IsHandingOff)
+                return false;
+
+            float chance = Mathf.Clamp01(Chance);
+            if (chance <= 0f)
+                return false;
+
+            EnemyBrain exclude = chance >= 0.99f ? null : comboPuncher;
+            if (!HasReceiverCandidate(_grapple, exclude))
+                return false;
+
+            bool pass = chance >= 0.99f || Random.value < chance;
+            _preRolled = pass;
+            return pass;
+        }
+
+        bool HasReceiverCandidate(PlayerGrapple hold, EnemyBrain exclude)
+        {
+            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            {
+                if (enemy == null || !enemy.isActiveAndEnabled || enemy == hold.Captor ||
+                    enemy == exclude || !enemy.IsAlive || enemy.IsRising || enemy.IsHolding)
+                    continue;
+                if (enemy.Phase == EnemyPhase.Stagger)
+                    continue;
+
+                Vector3 offset = enemy.transform.position - hold.transform.position;
+                if (Vector3.Dot(hold.transform.forward, offset) <= 0.05f)
+                    continue;
+                if (offset.magnitude < Range)
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>
@@ -90,11 +138,15 @@ namespace Ryona.Game
             if (_grapple == null)
                 _grapple = FindFirstObjectByType<PlayerGrapple>();
             if (_grapple == null || !_grapple.IsGrappled || _grapple.IsHandingOff)
+            {
+                _preRolled = null;
                 return false;
+            }
 
-            bool roll = Random.value < Mathf.Clamp01(Chance);
+            bool roll = _preRolled ?? (Random.value < Mathf.Clamp01(Chance));
+            _preRolled = null;
             bool handed = roll && TryHandOff();
-            Debug.Log($"[HandOff] roll chance={Chance:F2} → " +
+            GameLog.Log($"[HandOff] roll chance={Chance:F2} → " +
                       (handed ? "渡した" : roll ? "渡し先なし（拘束継続）" : "渡さない（拘束継続）"));
             return handed;
         }
@@ -120,7 +172,7 @@ namespace Ryona.Game
 
             StartBurst();
             _grapple.HandOff(best, kind, shove: true);
-            Debug.Log($"[HandOff] {captor.name} → {best.name} kind={kind} " +
+            GameLog.Log($"[HandOff] {captor.name} → {best.name} kind={kind} " +
                       $"dist={Vector3.Distance(best.transform.position, _grapple.transform.position):F2}");
             return true;
         }

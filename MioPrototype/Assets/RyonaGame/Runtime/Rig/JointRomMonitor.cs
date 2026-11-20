@@ -195,7 +195,7 @@ namespace Ryona.Game
             }
 
             LastSummary = text.ToString();
-            Debug.Log(LastSummary);
+            GameLog.Log(LastSummary);
             LogWorstNow();
         }
 
@@ -215,7 +215,7 @@ namespace Ryona.Game
                     ? $"{reading.Excess:0}° 超過"
                     : $"{reading.Excess:0}° 反対方向";
                 int count = _tally.CountOf(reading.Joint, reading.Side);
-                Debug.Log($"[JointROMWorst] {Subject} {reading.Describe()}{excess}{context} ×{count}");
+                GameLog.Log($"[JointROMWorst] {Subject} {reading.Describe()}{excess}{context} ×{count}");
             }
         }
 

@@ -7,29 +7,52 @@ namespace Ryona.Game
     /// </summary>
     public sealed partial class HeldBellyPunchDirector
     {
+        float BodyFold => _comboZone == PunchZone.Body && _anim != null ? _anim.HeldBellyPunchFold : 0f;
+        float BodyFatigue => _comboZone == PunchZone.Body && _anim != null ? _anim.HeldBellyPunchFatigue : 0f;
+        float BodyLift => _comboZone == PunchZone.Body && _anim != null ? _anim.HeldBellyCaptorLift : 0f;
+        float BodyDangle => _comboZone == PunchZone.Body && _anim != null ? _anim.HeldBellyDangle : 0f;
+        float FinisherHoist => _anim != null ? _anim.FinisherHoistWeight : 0f;
+
+        float BaseBodyPivot =>
+            LaunchOptions.TryFloat("-heldpunchcampivot", out _) ? CameraPivotOffset : 0.34f;
+
         float ComboCameraPivot =>
-            (_comboZone == PunchZone.Face ? FaceCameraPivotOffset : CameraPivotOffset)
-            - (_comboZone == PunchZone.Body ? 0.18f : 0f);
+            (_comboZone == PunchZone.Face ? FaceCameraPivotOffset : BaseBodyPivot)
+            + 0.03f * FinisherHoist
+            - (_comboZone == PunchZone.Body
+                ? 0.05f * BodyFold + 0.02f * BodyFatigue + 0.04f * BodyDangle - 0.015f * BodyLift
+                : 0f);
 
         /// <summary>顔面パンチは「顔と拳」が同じ画に入るよう、腹パンと別のカメラにする。</summary>
-        float ZoneDistanceScale =>
-            _comboZone == PunchZone.Face ? FaceCameraDistanceScale : CameraDistanceScale;
+        float ZoneDistanceScale => _comboZone == PunchZone.Face
+            ? FaceCameraDistanceScale
+            : (LaunchOptions.TryFloat("-heldpunchcamdist", out _)
+                ? CameraDistanceScale
+                : 0.27f);
 
-        float ZonePitch => _comboZone == PunchZone.Face ? FaceCameraPitchOffset : CameraPitchOffset;
+        float ZonePitch => _comboZone == PunchZone.Face
+            ? FaceCameraPitchOffset
+            : (LaunchOptions.TryFloat("-heldpunchcampitch", out _)
+                ? CameraPitchOffset
+                : -4f);
 
-        float ZoneYaw => _comboZone == PunchZone.Face ? FaceCameraYawOffset : CameraYawOffset;
+        float ZoneYaw => _comboZone == PunchZone.Face
+            ? FaceCameraYawOffset
+            : (LaunchOptions.TryFloat("-heldpunchcamyaw", out _)
+                ? CameraYawOffset
+                : -32f);
         float FacingSign => _stats.transform.forward.x < -0.1f ? -1f : 1f;
 
         // 画面中心を合わせる横オフセット。寄るほど同じオフセットでも画面内のずれが
         // 大きくなるので、距離倍率に比例させる（基準は旧倍率 0.32 / 0.31 のときの値）。
         float FocusX => _stats.transform.position.x
             + FacingSign * (_comboZone == PunchZone.Face
-                ? 0.38f * (FaceCameraDistanceScale / 0.31f)
-                : 0.14f * (CameraDistanceScale / 0.32f));
+                ? 0.30f * (FaceCameraDistanceScale / 0.31f)
+                : 0.15f * (ZoneDistanceScale / 0.32f));
 
-        /// <summary>当たった瞬間だけ少し寄る（顔面パンチの衝撃を画で押す）。</summary>
+        /// <summary>当たった瞬間に少し寄り、腹パンでも後半の打数ほどじわっと寄る。</summary>
         float EffectiveDistanceScale =>
-            ZoneDistanceScale * (1f - 0.07f * _impactPulse * (_comboZone == PunchZone.Face ? 1f : 0f));
+            ZoneDistanceScale * (1f - 0.04f * BodyFatigue - 0.05f * _impactPulse);
 
         void ApplyCameraOverrides()
         {
@@ -68,7 +91,7 @@ namespace Ryona.Game
 
             // ヒット時に押した値だけ出す（毎フレームの保持はログに出さない）
             if (hold >= 1.5f)
-                Debug.Log($"[HeldPunchCam] scale={EffectiveDistanceScale:F2} pivot={pivot:F2} " +
+                GameLog.Log($"[HeldPunchCam] scale={EffectiveDistanceScale:F2} pivot={pivot:F2} " +
                           $"pitch={ZonePitch:F0} yaw={yaw:F0} " +
                           $"liveScale={_camera.EffectDistanceScale:F2} livePivot={_camera.EffectPivotOffset:F2}");
         }
@@ -91,6 +114,15 @@ namespace Ryona.Game
         float FocusYaw()
         {
             return ZoneYaw * FacingSign;
+        }
+
+        void ApplyCollapseCamera()
+        {
+            if (!ResolveCamera())
+                return;
+
+            // 拘束を解いて崩れ落ちる瞬間に、現在の寄りからゆっくり引いて全身の崩落を見届ける。
+            _camera.HoldFocus(EffectiveDistanceScale, ComboCameraPivot, FocusX, 2.4f, ZonePitch, FocusYaw());
         }
 
         bool ResolveCamera()

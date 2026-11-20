@@ -221,7 +221,7 @@ namespace Ryona.Game
                 site.SetRise(0f);
             }
 
-            Debug.Log($"[WallPin] 壁を {SiteX.Length} か所作成（faceZ={FaceZ:F2}）");
+            GameLog.Log($"[WallPin] 壁を {SiteX.Length} か所作成（faceZ={FaceZ:F2}）");
         }
 
         static void BuildBox(Transform parent, string name, Material material,

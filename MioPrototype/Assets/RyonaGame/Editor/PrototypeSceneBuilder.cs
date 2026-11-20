@@ -210,22 +210,18 @@ namespace Ryona.EditorTools
 
             // 固定カメラ（ベルト）。マウスでは回さず、ステージ軸（X）に沿ってだけ追う。
             cam.fieldOfView = 40f;
-            camRig.BeltMode = true;
-            camRig.BeltPitch = 14f;
-            camRig.BeltYaw = 0f;
-            camRig.BeltPivotHeight = 0.86f;
-            camRig.BeltLookAhead = 1.8f;
-            camRig.BeltFollowSharpness = 8f;
-            camRig.BeltMinX = -16f;
-            camRig.BeltMaxX = 34f;
-            camRig.Distance = 4.4f;
+
+            // カメラの調整値はここ（シーン）には書かない。真実源は
+            // RyonaConfig アセット（Assets/RyonaGame/Resources/RyonaConfig.asset）で、
+            // ThirdPersonCamera が Awake で読む。ここで代入しても保存されず、
+            // 「シーン値とコード値のどちらが勝つか分からない」状態に戻るだけ。
 
             camGo.transform.position = player.transform.position + new Vector3(0f, 3.6f, -7.8f);
 
             // --- 敵（複数） -------------------------------------------
             var groupGo = new GameObject("Enemy Group");
             var group = groupGo.AddComponent<EnemyGroup>();
-            group.MaxAttackers = 2;   // SPEC §5「同時攻撃は最大 2 体まで」
+            // 調整値（同時攻撃数など）は RyonaConfig 側。ここでは設定しない。
 
             // 敵はステージの先（+X）から来る。
             var spawnSpots = new[]
@@ -301,9 +297,7 @@ namespace Ryona.EditorTools
             gate.Camera = camRig;
             gate.Motor = motor;
             gate.Group = group;
-            gate.HalfWidth = 5.0f;
-            gate.EdgeMargin = 1.6f;
-            gate.GateRange = 3.0f;
+            // 画面幅・余白・関所の幅は RyonaConfig.BeltLock 側。ここでは設定しない。
             // --- 保存 -------------------------------------------------
             EnsureFolder("Assets/Scenes");
             EnsureFolder("Assets/StreamingAssets");

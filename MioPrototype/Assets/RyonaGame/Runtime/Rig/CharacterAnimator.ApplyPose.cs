@@ -189,45 +189,69 @@ namespace Ryona.Game
                 Vector3 left = Vector3.Cross(Vector3.up, fwd);   // 彼女の左
                 Vector3 up = Vector3.up;
 
-                Vector3 upperL, foreL, upperR, foreR;
-                float toStanceArms = 0f;
-
-                if (_state == State.Down)
+                if (_state == State.Down && HauledNow)
                 {
-                    // うつ伏せ: 左腕は頭の先へ伸ばし、右腕は肘を張って手を顔の横へ
-                    upperL = (fwd * 0.92f + left * 0.22f - up * 0.10f).normalized;
-                    foreL = (fwd * 0.96f + left * 0.10f - up * 0.04f).normalized;
-                    upperR = (fwd * 0.52f - left * 0.62f - up * 0.20f).normalized;
-                    foreR = (fwd * 0.58f + left * 0.52f - up * 0.26f).normalized;
-                    float reach = Mathf.SmoothStep(0f, 1f,
-                        Mathf.InverseLerp(0.22f, 0.86f, _stateTime / _downFallSeconds));
-                    upperL = Vector3.Slerp((Rig.LLowerArm.position - Rig.LUpperArm.position).normalized, upperL, reach);
-                    foreL = Vector3.Slerp((Rig.LHand.position - Rig.LLowerArm.position).normalized, foreL, reach);
-                    upperR = Vector3.Slerp((Rig.RLowerArm.position - Rig.RUpperArm.position).normalized, upperR, reach);
-                    foreR = Vector3.Slerp((Rig.RHand.position - Rig.RLowerArm.position).normalized, foreR, reach);
+                    ApplyProneHauledArms(Stats.GroundMount.Haul, fwd, left, up,
+                        pose.HandRollL, pose.HandRollR);
                 }
                 else
                 {
-                    // 起き上がり: 両手を頭の横について床を押す → 立ち上がりで構えへ
-                    float gu = Mathf.Clamp01(_stateTime / Mathf.Max(0.01f, _stateDuration));
-                    toStanceArms = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.55f, 0.92f, gu));
+                    Vector3 upperL, foreL, upperR, foreR;
+                    float toStanceArms = 0f;
 
-                    upperL = (fwd * 0.42f + left * 0.50f - up * 0.72f).normalized;
-                    foreL = (fwd * 0.46f - up * 0.88f).normalized;
-                    upperR = (fwd * 0.42f - left * 0.50f - up * 0.72f).normalized;
-                    foreR = (fwd * 0.46f - up * 0.88f).normalized;
+                    if (_state == State.Down)
+                    {
+                        // うつ伏せ: 左腕は頭の先へ伸ばし、右腕は肘を張って手を顔の横へ
+                        upperL = (fwd * 0.92f + left * 0.22f - up * 0.10f).normalized;
+                        foreL = (fwd * 0.96f + left * 0.10f - up * 0.04f).normalized;
+                        upperR = (fwd * 0.52f - left * 0.62f - up * 0.20f).normalized;
+                        foreR = (fwd * 0.58f + left * 0.52f - up * 0.26f).normalized;
+                        float reach = Mathf.SmoothStep(0f, 1f,
+                            Mathf.InverseLerp(0.22f, 0.86f, _stateTime / _downFallSeconds));
+                        upperL = Vector3.Slerp((Rig.LLowerArm.position - Rig.LUpperArm.position).normalized, upperL, reach);
+                        foreL = Vector3.Slerp((Rig.LHand.position - Rig.LLowerArm.position).normalized, foreL, reach);
+                        upperR = Vector3.Slerp((Rig.RLowerArm.position - Rig.RUpperArm.position).normalized, upperR, reach);
+                        foreR = Vector3.Slerp((Rig.RHand.position - Rig.RLowerArm.position).normalized, foreR, reach);
+
+                        // 着地で手をつく。倒れる途中は腕が浮き（受け身を取ろうと前へ出る）、床に着いた瞬間に
+                        // 叩きつけられ、わずかに跳ねてから落ち着く。補間だけだと腕が最後の位置へ滑り込むだけで、
+                        // 床に着いた手の衝撃が無い。
+                        float fallRise = Mathf.Clamp01(_stateTime / Mathf.Max(0.05f, _downFallSeconds));
+                        float sinceLand = DownSinceLanding();
+                        float handLift = 0.45f * Mathf.Sin(Mathf.Clamp01((fallRise - 0.30f) / 0.50f) * Mathf.PI);
+                        if (sinceLand >= 0f)
+                            handLift += 0.22f * Mathf.Max(0f, Mathf.Sin(sinceLand * 17f)) * Mathf.Exp(-sinceLand * 9f);
+                        if (handLift > 0.001f)
+                        {
+                            upperL = (upperL + up * handLift).normalized;
+                            upperR = (upperR + up * handLift).normalized;
+                            foreL = (foreL + up * (handLift * 0.7f)).normalized;
+                            foreR = (foreR + up * (handLift * 0.7f)).normalized;
+                        }
+                    }
+                    else
+                    {
+                        // 起き上がり: 両手を頭の横について床を押す → 立ち上がりで構えへ
+                        float gu = Mathf.Clamp01(_stateTime / Mathf.Max(0.01f, _stateDuration));
+                        toStanceArms = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.55f, 0.92f, gu));
+
+                        upperL = (fwd * 0.42f + left * 0.50f - up * 0.72f).normalized;
+                        foreL = (fwd * 0.46f - up * 0.88f).normalized;
+                        upperR = (fwd * 0.42f - left * 0.50f - up * 0.72f).normalized;
+                        foreR = (fwd * 0.46f - up * 0.88f).normalized;
+                    }
+
+                    if (toStanceArms > 0f)
+                    {
+                        upperL = Vector3.Slerp(upperL, ArmDirection(true, StanceArmLUpper).normalized, toStanceArms);
+                        foreL = Vector3.Slerp(foreL, ArmDirection(true, StanceArmLFore).normalized, toStanceArms);
+                        upperR = Vector3.Slerp(upperR, ArmDirection(false, StanceArmRUpper).normalized, toStanceArms);
+                        foreR = Vector3.Slerp(foreR, ArmDirection(false, StanceArmRFore).normalized, toStanceArms);
+                    }
+
+                    Rig.SetArm(true, upperL, foreL, pose.HandRollL);
+                    Rig.SetArm(false, upperR, foreR, pose.HandRollR);
                 }
-
-                if (toStanceArms > 0f)
-                {
-                    upperL = Vector3.Slerp(upperL, ArmDirection(true, StanceArmLUpper).normalized, toStanceArms);
-                    foreL = Vector3.Slerp(foreL, ArmDirection(true, StanceArmLFore).normalized, toStanceArms);
-                    upperR = Vector3.Slerp(upperR, ArmDirection(false, StanceArmRUpper).normalized, toStanceArms);
-                    foreR = Vector3.Slerp(foreR, ArmDirection(false, StanceArmRFore).normalized, toStanceArms);
-                }
-
-                Rig.SetArm(true, upperL, foreL, pose.HandRollL);
-                Rig.SetArm(false, upperR, foreR, pose.HandRollR);
             }
 
             // The supine pose normally points toward the opposite end of the lane.
@@ -242,7 +266,7 @@ namespace Ryona.Game
                     facing * Rig.Hips.rotation);
             }
 
-            if (_state == State.Down && Stats != null && Stats.GroundMount.BlocksGetUp)
+            if (_state == State.Down && Stats != null && Stats.GroundMount.MountBlocksGetUp)
                 ApplyGroundMountReaction(Stats.GroundMount);
 
             // 状態が切り替わった直後は、切り替え前の姿勢から寄せる（カクつき防止）

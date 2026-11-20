@@ -77,9 +77,11 @@ namespace Ryona.Game
         /// 二体がかりのショットを組む。彼女の顔・両腕と、左右の二人の上半身が同じ画に入る
         /// 距離まで引く（左右の敵は画面端で切れやすい）。
         /// </summary>
+        /// <param name="extraDistance">距離の上乗せ（m）。3 人がかりで 3 人を画面に収める。</param>
+        /// <param name="lateralShift">狙いを拘束役の側（画面右）へ寄せる量（m）。3 人目の側へ画を寄せる。</param>
         public static void Build(Vector3 herPos, Vector3 herForward,
             Vector3 captorPos, Vector3 assistPos,
-            out Vector3 position, out Vector3 target)
+            out Vector3 position, out Vector3 target, float extraDistance = 0f, float lateralShift = 0f)
         {
             Load();
 
@@ -107,7 +109,7 @@ namespace Ryona.Game
 
             // 二人の広がりに合わせて引く（近いと画面端で切れる）。
             float spread = Mathf.Abs(Vector3.Dot(captorChest - assistChest, right));
-            float dist = _distance + 0.35f * Mathf.Max(0f, spread - 1.6f);
+            float dist = _distance + 0.35f * Mathf.Max(0f, spread - 1.6f) + extraDistance;
 
             float angle = _mode == Shot.Front ? 0f : _angleDeg;
             float radians = angle * Mathf.Deg2Rad;
@@ -120,6 +122,7 @@ namespace Ryona.Game
 
             // 彼女を手前の敵から離れた側へ寄せる（顔と近い側の敵が重ならない）。
             target += right * (-camSide * _lateral);
+            target -= right * lateralShift * camSide * -1f;
 
             position = target + direction * dist + Vector3.up * _height;
         }

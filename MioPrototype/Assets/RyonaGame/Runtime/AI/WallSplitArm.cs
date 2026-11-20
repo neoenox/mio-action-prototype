@@ -14,9 +14,16 @@ namespace Ryona.Game
     /// </summary>
     static class WallSplitArm
     {
-        /// <summary>腹パン（ボディーブロー）。0.22 秒で当たる。</summary>
+        /// <summary>
+        /// 腹パン（ボディーブロー）。<paramref name="windup"/> 秒後に腹へ届く。
+        ///
+        /// 届く時刻は、呼び出し側がダメージと被弾姿勢を入れる時刻と同じにする。
+        /// 以前は 0.12 → 0.22 秒の固定だったため、振りかぶりを段階化すると
+        /// 「拳が届く前に彼女が折れる／当たってから遅れて折れる」ズレになっていた。
+        /// </summary>
         public static void Punch(EnemyFigure figure, bool left, Vector3 her, Vector3 front,
-            float side, float age, float weight, Transform body)
+            float side, float age, float windupSeconds, float weight, Transform body, bool face = false,
+            Vector3? faceTarget = null)
         {
             var upper = figure.ShoulderBone(left);
             var elbow = figure.ElbowBone(left);
@@ -29,10 +36,23 @@ namespace Ryona.Game
             // 振りかぶりは自分の胸の前（体の面より手前）。体の後ろへ引くと腕が折れて肘が上がる。
             Vector3 windup = her + Vector3.up * 1.00f + front * 0.56f + Vector3.right * (side * 0.30f);
             Vector3 belly = her + Vector3.up * 0.88f + front * 0.12f;
+            // 顔パンは顔を狙う。彼女は腰を落として頭が下がる（グロッキー）ので、足元から決めた固定の高さでは
+            // 外れる（実測）。頭の骨の実際の位置を狙う。
+            if (face)
+            {
+                belly = faceTarget ?? (her + Vector3.up * 1.45f + front * 0.12f);
+                windup = belly - Vector3.up * 0.12f + front * 0.44f + Vector3.right * (side * 0.30f);
+            }
 
-            float drive = age < 0.12f ? 0f : Mathf.Clamp01((age - 0.12f) / 0.10f);
-            if (age > 0.22f)
-                drive = 1f - Mathf.Clamp01((age - 0.22f) / 0.18f);   // 打ったあとは胸元へ戻す
+            // 拳が届く時刻 = ダメージが入る時刻。突き出し 0.10 秒、戻り 0.18 秒。
+            float reach = Mathf.Max(0.02f, windupSeconds);
+            float start = reach - 0.10f;
+            float back = reach + 0.18f;
+            float drive;
+            if (age <= reach)
+                drive = Mathf.Clamp01((age - start) / 0.10f);
+            else
+                drive = 1f - Mathf.Clamp01((age - reach) / Mathf.Max(0.01f, back - reach));
             float punch = Mathf.SmoothStep(0f, 1f, drive) * weight;
             Vector3 goal = Vector3.Lerp(windup, belly, Mathf.SmoothStep(0f, 1f, drive));
             // 肘は拳の後ろ（体側）。横に張らない。
@@ -47,6 +67,67 @@ namespace Ryona.Game
             EnemyFigure.SettleElbowHinge(upper, elbow, wrist);
             Quaternion aimedElbow = elbow.rotation;
             upper.rotation = Quaternion.Slerp(previousUpper, upper.rotation, weight);
+            elbow.rotation = Quaternion.Slerp(previousElbow, aimedElbow, weight);
+        }
+
+        /// <summary>
+        /// 締めの膝入れの空き手。彼女の腰（自分側）を掴んで膝へ引き寄せる。
+        /// 構え（<see cref="Guard"/>）のままだと、沈んだ体へ向けて肘を大きく折ることになり、
+        /// 前腕が自分の腹の前へ曲がる（実測）。<paramref name="weight"/> は Guard の上に重ねる割合。
+        /// </summary>
+        public static void Pull(EnemyFigure figure, bool left, Vector3 her, Vector3 front,
+            float side, float weight, Transform body)
+        {
+            if (weight <= 0.001f)
+                return;
+
+            var upper = figure.ShoulderBone(left);
+            var elbow = figure.ElbowBone(left);
+            var wrist = figure.WristBone(left);
+            if (upper == null || elbow == null || wrist == null)
+                return;
+
+            Vector3 goal = her + Vector3.up * 0.95f + front * 0.08f + Vector3.right * (side * 0.17f);
+            // 肘は体の外側・下へ。内側（自分の腹の方）へ折らない。
+            Vector3 outward = body.right * (left ? -1f : 1f);
+            Vector3 pole = upper.position + outward * 0.30f - Vector3.up * 0.30f;
+
+            Quaternion previousUpper = upper.rotation;
+            Quaternion previousElbow = elbow.rotation;
+            ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, body.right);
+            EnemyFigure.SettleElbowHinge(upper, elbow, wrist);
+            Quaternion aimedUpper = upper.rotation;
+            Quaternion aimedElbow = elbow.rotation;
+            upper.rotation = Quaternion.Slerp(previousUpper, aimedUpper, weight);
+            elbow.rotation = Quaternion.Slerp(previousElbow, aimedElbow, weight);
+        }
+
+        /// <summary>
+        /// 力を抜いた腕。自分の脇へ下ろす。3 人がかりで、手を離した拘束役の腕と、打たない 3 人目の腕に使う
+        /// （構え <see cref="Guard"/> のままだと、沈んだ体で肘が内側へ折れる）。
+        /// </summary>
+        public static void Relax(EnemyFigure figure, bool left, float weight, Transform body)
+        {
+            if (weight <= 0.001f)
+                return;
+
+            var upper = figure.ShoulderBone(left);
+            var elbow = figure.ElbowBone(left);
+            var wrist = figure.WristBone(left);
+            if (upper == null || elbow == null || wrist == null)
+                return;
+
+            Vector3 outward = body.right * (left ? -1f : 1f);
+            Vector3 goal = upper.position - Vector3.up * 0.62f + outward * 0.10f + body.forward * 0.10f;
+            Vector3 pole = upper.position - Vector3.up * 0.30f + outward * 0.30f - body.forward * 0.25f;
+
+            Quaternion previousUpper = upper.rotation;
+            Quaternion previousElbow = elbow.rotation;
+            ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, body.right);
+            EnemyFigure.SettleElbowHinge(upper, elbow, wrist);
+            Quaternion aimedUpper = upper.rotation;
+            Quaternion aimedElbow = elbow.rotation;
+            upper.rotation = Quaternion.Slerp(previousUpper, aimedUpper, weight);
             elbow.rotation = Quaternion.Slerp(previousElbow, aimedElbow, weight);
         }
 

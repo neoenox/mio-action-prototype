@@ -82,124 +82,34 @@ namespace Ryona.Game
         [Tooltip("同時攻撃を調停するグループ。未設定なら Start でシーンから探す")]
         public EnemyGroup Group;
 
-        [Header("Tuning")]
-        [Tooltip("歩き（追跡）の速度 m/s")]
-        public float MoveSpeed = 2.6f;
+        // --- 調整値（真実源は RyonaConfig.Enemy） -----------------------------
+        RyonaConfig.EnemySettings _settings;
 
-        [Tooltip("攻撃間合いの基準値。実間合いは AttackRange * 0.85 になる")]
-        public float AttackRange = 1.45f;
+        /// <summary>
+        /// この個体の調整値。アセットのコピーなので、実行中に書き換えても他個体へ漏れない。
+        /// テストと検証ドライバはここを個体単位で差し替える。
+        /// </summary>
+        internal RyonaConfig.EnemySettings S => _settings ??= RyonaConfig.Instance.Enemy.Clone();
 
-        [Tooltip("攻撃別の予備動作が 0 以下のときのフォールバック秒数")]
-        public float WindupSeconds = 0.45f;
+        /// <summary>歩き（追跡）の速度 m/s。テストが個体ごとに差し替える。</summary>
+        public float MoveSpeed { get => S.MoveSpeed; set => S.MoveSpeed = value; }
 
-        [Tooltip("攻撃後の硬直秒数")]
-        public float RecoverSeconds = 0.70f;
+        /// <summary>硬直・怯みが明けてから次の予備動作に入るまでの間隔。テストが攻撃を止めるのに使う。</summary>
+        public float AttackCooldown { get => S.AttackCooldown; set => S.AttackCooldown = value; }
 
-        [Tooltip("予備動作まで見せてから振らずに引く確率（0 で無効）。1 回の接近につき 1 度だけ")]
-        [System.NonSerialized] public float FeintChance = 0.22f;
-
-        [Tooltip("フェイント後に再び踏み込むまでの秒数。短いほど「二度撃ち」に見える")]
-        [System.NonSerialized] public float FeintDelaySeconds = 0.45f;
-
-        [Tooltip("旋回の速さ（Slerp 係数）")]
-        public float TurnSpeed = 8f;
-
-        [Header("Attack: Jab")]
-        [Tooltip("Jab の予備動作秒数")]
-        public float JabSeconds = 0.35f;
-
-        [Tooltip("Jab が届く距離 m")]
-        public float JabRange = 1.45f;
-
-        [Tooltip("Jab のダメージ")]
-        [System.NonSerialized] public float JabDamage = 3f;
-
-        [Header("Attack: Heavy")]
-        [Tooltip("Heavy の予備動作秒数")]
-        public float HeavySeconds = 0.75f;
-
-        [Tooltip("Heavy が届く距離 m")]
-        public float HeavyRange = 1.70f;
-
-        [Tooltip("Heavy のダメージ。ひるみは AttackLibrary.Heavy の値を使う")]
-        [System.NonSerialized] public float HeavyDamage = 7f;
-
-        [Header("Attack: Break")]
-        [Tooltip("Break の予備動作秒数")]
-        public float BreakSeconds = 0.55f;
-
-        [Tooltip("Break が届く距離 m")]
-        public float BreakRange = 1.55f;
-
-        [Tooltip("Break のダメージ")]
-        [System.NonSerialized] public float BreakDamage = 5f;
-
-        [Header("Attack: Grab")]
-        [Tooltip("掴みの予備動作秒数。長めにして「来る」と分かるようにする")]
-        public float GrabSeconds = 0.55f;
-
-        [Tooltip("掴みが届く距離 m。至近距離でだけ出る")]
-        public float GrabRange = 1.15f;
-
-        [Tooltip("掴み自体のダメージ。本命は掴んだ後のレバガチャ")]
-        public float GrabDamage = 3f;
-
-
-        [Tooltip("着弾判定の余裕 m。見た目と当たり判定のズレを吸収する")]
-        public float StrikeTolerance = 0.35f;
+        /// <summary>Jab の予備動作秒数。テストがテンポを詰めるのに使う。</summary>
+        public float JabSeconds { get => S.JabSeconds; set => S.JabSeconds = value; }
 
         /// <summary>
         /// 彼女の体との最小距離。これより近づいたら敵の側が下がる。0 以下なら押し出さない。
         /// 彼女は敵をすり抜けられるので、既定では 0（押し出さない）。
         /// </summary>
-        [System.NonSerialized] public float MinPlayerGap = 0f;
+        public float MinPlayerGap { get => S.MinPlayerGap; set => S.MinPlayerGap = value; }
 
-        [Header("Strafe")]
-        [Tooltip("横回りを続ける秒数の基準値。実際は 0.75〜1.25 倍でばらつく")]
-        public float StrafeSeconds = 1.10f;
+        /// <summary>予備動作まで見せてから振らずに引く確率（0 で無効）。<c>-nofeint</c> で 0 になる。</summary>
+        public float FeintChance { get => _noFeint ? 0f : S.FeintChance; set => S.FeintChance = value; }
 
-        [Tooltip("横回り中の移動速度倍率")]
-        public float StrafeSpeedScale = 0.75f;
-
-        [Tooltip("横回りに入るたび、間合いを詰め直す確率")]
-        [Range(0f, 1f)]
-        public float StrafeCloseInChance = 0.35f;
-
-        [Tooltip("間合いを詰め直すときの距離倍率（1 未満で近づく）")]
-        public float StrafeCloseInScale = 0.85f;
-
-        [Tooltip("順番待ちの敵が立つ距離（間合いの何倍か）。全員が同じ距離まで詰めると画面が敵で埋まる")]
-        public float WaitingRingScale = 2.0f;
-
-        [Header("Timing")]
-        [Tooltip("硬直・怯みが明けてから次の予備動作に入るまでの間隔")]
-        [System.NonSerialized]
-        public float AttackCooldown = 1.4f;
-
-        [Tooltip("怯み 小 の秒数（0 以下なら CombatConstants.StunSmall）")]
-        public float StaggerSecondsSmall = 0.20f;
-
-        [Tooltip("怯み 中 の秒数（0 以下なら CombatConstants.StunMedium）")]
-        public float StaggerSecondsMedium = 0.40f;
-
-        [Tooltip("怯み 大 の秒数（0 以下なら CombatConstants.StunLarge）")]
-        public float StaggerSecondsLarge = 0.80f;
-
-        [Header("Telegraph")]
-        [Tooltip("予備動作開始時の球の倍率（元の localScale に対する倍率）")]
-        public float TelegraphStartScale = 0.35f;
-
-        [Tooltip("予備動作完了時の球の倍率（元の localScale に対する倍率）")]
-        public float TelegraphMaxScale = 3.5f;
-
-        [Tooltip("予備動作の最後、この秒数のあいだ球を最大サイズで固定する")]
-        public float TelegraphMaxHoldSeconds = 0.10f;
-
-        [Tooltip("予備動作開始時の球の色")]
-        public Color TelegraphStartColor = new Color(0.45f, 0.45f, 0.45f, 1f);
-
-        [Tooltip("予備動作完了時の球の色。ここまで変化すれば「来る」と分かる")]
-        public Color TelegraphColor = new Color(1f, 0.28f, 0.18f, 1f);
+        bool _noFeint;
 
         /// <summary>HP / 部位ダメージ / ひるみを持つ戦闘状態。攻撃側としても渡す。</summary>
         public CombatState State { get; } = new CombatState();
@@ -244,7 +154,7 @@ namespace Ryona.Game
         float _staggerTotal;
 
         /// <summary>攻撃を始めてよい距離（<see cref="AttackRange"/> の 85%）。</summary>
-        public float EngageDistance => Mathf.Clamp(AttackRange * 0.85f, 0.1f, 1.03f);
+        public float EngageDistance => Mathf.Clamp(S.AttackRange * 0.85f, 0.1f, 1.03f);
 
         /// <summary>
         /// 拳が実際に届く上限（m）。実測で Jab 1.25 / Heavy 1.45 / Break 1.25 まで。
@@ -308,18 +218,8 @@ namespace Ryona.Game
         /// </summary>
         public PunchZone Zone { get; private set; } = PunchZone.Face;
 
-        [Header("Punch Zone")]
-        [Tooltip("素早い一撃（Jab）が顔を狙う確率。残りは腹")]
-        [Range(0f, 1f)] public float JabFaceChance = 0.65f;
-
-        [Tooltip("重い一撃（Heavy）が顔を狙う確率。残りは腹")]
-        [Range(0f, 1f)] public float HeavyFaceChance = 0.35f;
-
         /// <summary>検証用。設定すると、狙いを抽選せずこの場所に固定する。</summary>
         [System.NonSerialized] public PunchZone? ForceZone;
-
-        [Tooltip("拳が狙いの座標にこの距離まで届いたら当たり（m）")]
-        public float PunchHitRadius = 0.30f;
 
         /// <summary>プレイヤーの顔・腹の中心（ワールド座標）。拳の狙いと当たり判定が共有する。</summary>
         public static Vector3 PunchTarget(PlayerStats player, PunchZone zone, float bodyBias = 0.40f)
@@ -345,6 +245,7 @@ namespace Ryona.Game
 
         /// <summary>腹パンが当たった瞬間から、拳を腹に押し込んでおく残り秒。</summary>
         float _punchPoseHoldSeconds;
+        float _punchPoseHoldTotal;
 
         /// <summary>
         /// タッグ腹パンの発注時に受け取った保持秒。
@@ -388,8 +289,8 @@ namespace Ryona.Game
         /// <summary>通常の Body 狙い（腰と胸のあいだ）。</summary>
         const float DefaultBodyBias = 0.40f;
 
-        /// <summary>腹パンだけは低め（へそ寄り）を狙う。</summary>
-        const float BellyPunchBodyBias = 0.34f;
+        /// <summary>腹パンだけは低め（みぞおち・へそ寄り）を狙う。</summary>
+        const float BellyPunchBodyBias = 0.28f;
 
         /// <summary>
         /// Body 狙いのとき、腰から胸のどこを狙うか（0=腰, 1=胸）。
@@ -406,6 +307,23 @@ namespace Ryona.Game
         internal float BellyPunchDrive => Phase == EnemyPhase.Windup
             ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.40f, 0.86f, WindupProgress))
             : 1f;
+
+        /// <summary>腹パン命中後、拳を腹の奥・斜め上へ二段目で押し込む量（0..1）。</summary>
+        internal float BellySinkDrive
+        {
+            get
+            {
+                if (_punchPoseHoldSeconds <= 0f || _punchPoseHoldTotal <= 0f)
+                    return 0f;
+                if (Phase != EnemyPhase.Attack && Phase != EnemyPhase.Recover)
+                    return 0f;
+                float held = _punchPoseHoldTotal - _punchPoseHoldSeconds;
+                float pushIn = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.015f, 0.11f, held));
+                float pullOut = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_punchPoseHoldSeconds / 0.10f));
+                return pushIn * pullOut;
+            }
+        }
+
         internal bool HoldsBellyPunchGuard { get; set; }
         internal bool KeepsBellyPunchArm => HoldsBellyPunchGuard && !IsTagFacePunch
             && (IsBellyPunch || Phase == EnemyPhase.Recover || Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe);
@@ -419,8 +337,11 @@ namespace Ryona.Game
         /// <summary>テスト用: タッグパンチの構えを直接立てる（反射を使わないため）。</summary>
         internal void SetTagPunchSwingForTest(bool value) => _tagPunchSwing = value;
         internal bool IsTagFacePunch => _tagPunchSwing && Zone == PunchZone.Face;
-        public bool UsesLeftPunch => IsTagFacePunch ? _tagFaceLeft
-            : (IsTagPunch || KeepsBellyPunchArm) && Player != null && Player.transform.forward.x < -0.1f;
+        bool? _tagBellyLeftOverride;
+        public bool UsesLeftPunch => IsTagFacePunch
+            ? _tagFaceLeft
+            : (IsTagPunch || KeepsBellyPunchArm)
+                && (_tagBellyLeftOverride ?? (Player != null && Player.transform.forward.x < -0.1f));
         internal Vector3 TagFaceOutside => transform.right * (UsesLeftPunch ? -1f : 1f);
         bool _tagFaceLeft;
 
@@ -525,9 +446,6 @@ namespace Ryona.Game
         /// <summary>今回の接近でフェイントを使ったか（連続フェイントを防ぐ）。</summary>
         bool _feinted;
 
-        /// <summary>立ち上がりにかける秒数。シーンに保存された値で上書きされないよう NonSerialized。</summary>
-        [System.NonSerialized] public float RiseSeconds = 1.6f;
-
         float _riseTimer;
 
         /// <summary>
@@ -535,7 +453,7 @@ namespace Ryona.Game
         /// 立ち上がっていないときは 0。見た目側が起き上がりの姿勢を作るのに使う。
         /// </summary>
         public float RiseProgress =>
-            RiseSeconds <= 0f || _riseTimer <= 0f ? 0f : 1f - Mathf.Clamp01(_riseTimer / RiseSeconds);
+            S.RiseSeconds <= 0f || _riseTimer <= 0f ? 0f : 1f - Mathf.Clamp01(_riseTimer / S.RiseSeconds);
 
         /// <summary>立ち上がりの最中か（この間は動かない・殴らない）。</summary>
         public bool IsRising => _riseTimer > 0f;
@@ -544,6 +462,20 @@ namespace Ryona.Game
         float _attackReadyAt;
         float _grabReadyAt;
         float _ringJitter = 1f;
+
+        /// <summary>演出側が立ち位置を決めている間、AI の移動を止める期限。</summary>
+        float _plantedUntil;
+
+        /// <summary>
+        /// 演出（腹パンの連撃など）が立ち位置を決めている間、AI の間合い補正を止める。
+        /// 攻撃の進行（予備動作・判定・硬直）は止めない。
+        /// </summary>
+        internal void StayPlanted(float seconds) =>
+            _plantedUntil = Mathf.Max(_plantedUntil, Time.time + Mathf.Max(0f, seconds));
+
+        internal bool IsPlanted => Time.time < _plantedUntil;
+
+        internal void ClearPlanted() => _plantedUntil = 0f;
 
         /// <summary>デバッグ用: 次の攻撃を掴みに固定する（-grappletest）。</summary>
         bool _forceGrab;
@@ -571,6 +503,19 @@ namespace Ryona.Game
 
         /// <summary>いまベアハッグで締め付けているか。見た目と締め付けに使う。</summary>
         public bool IsBearHugging { get; private set; }
+
+        /// <summary>次の膝蹴り発火までの予備動作タメ（0..1）。直前 0.22 秒で立ち上がる。</summary>
+        internal float PinKneePrep
+        {
+            get
+            {
+                if (!IsPinning || _pinKneesLeft <= 0 || Hold == null || !Hold.IsGrappled
+                    || Hold.IsHandingOff || Hold.IsWallTransition || Hold.Captor != this
+                    || Hold.FrontEscapeRemaining > 0f)
+                    return 0f;
+                return Mathf.Clamp01(1f - (_pinNextKneeAt - Time.time) / 0.22f);
+            }
+        }
 
         /// <summary>次の締め付けまでの時刻。</summary>
         float _squeezeNextAt;
@@ -686,6 +631,20 @@ namespace Ryona.Game
         float _wallReturn;
         float _wallReturnX;
         float _wallReturnZ;
+
+        /// <summary>
+        /// プレイヤーの拘束コンポーネント。最初に必要になったとき 1 度だけ探す。
+        /// 見つからない間は null を返す（Player 未設定の検証シーン）。
+        /// </summary>
+        internal PlayerGrapple Hold
+        {
+            get
+            {
+                if (_grapple == null && Player != null)
+                    _grapple = Player.GetComponent<PlayerGrapple>();
+                return _grapple;
+            }
+        }
 
         /// <summary>掴まれ状態を見るためだけに持つプレイヤー側の参照。</summary>
         PlayerGrapple _grapple;
@@ -866,6 +825,7 @@ namespace Ryona.Game
         Vector3 _baseTelegraphScale = Vector3.one;
         bool _registered;
 
+        /// <summary>調整値は <see cref="RyonaConfig.Enemy"/> が真実源。シーンの保存値は使わない。</summary>
         void Awake()
         {
             BuildAttacks();
@@ -888,11 +848,11 @@ namespace Ryona.Game
             {
                 // 掴みもフェイント対象なので、22% で「掴みの予備動作だけ見せて引く」。
                 // 数秒の検証では掴めたのかフェイントしたのか区別できないため、切れるようにする。
-                FeintChance = 0f;
+                _noFeint = true;
                 if (!_feintDisabledLogged)
                 {
                     _feintDisabledLogged = true;
-                    Debug.Log("[Enemy] フェイント無効（-nofeint）");
+                    GameLog.Log("[Enemy] フェイント無効（-nofeint）");
                 }
             }
 
@@ -906,7 +866,7 @@ namespace Ryona.Game
                 // 予備動作は「パイプが光る」で示す（EnemyFigure.ApplyWeaponCharge）。
                 Destroy(Telegraph.gameObject);
                 Telegraph = null;
-                Debug.Log("[Ryona] 頭上に浮く予告球を廃止しました（予備動作はパイプの発光で示します）");
+                GameLog.Log("[Ryona] 頭上に浮く予告球を廃止しました（予備動作はパイプの発光で示します）");
             }
         }
 
@@ -958,6 +918,8 @@ namespace Ryona.Game
 
             float dt = Time.deltaTime;
             _punchPoseHoldSeconds = Mathf.Max(0f, _punchPoseHoldSeconds - dt);
+            if (_punchPoseHoldSeconds <= 0f)
+                _punchPoseHoldTotal = 0f;
 
             State.Tick(dt);
 
@@ -988,7 +950,7 @@ namespace Ryona.Game
             if (Target == null || Player == null)
                 return;
 
-            if (Player.GroundMount.Attacker == this)
+            if (Player.GroundMount.Owns(this))
                 return;
 
             if (_grapple == null)
@@ -1044,6 +1006,12 @@ namespace Ryona.Game
             if (distance > 0.001f && CanTurn())
                 Face(toTarget / distance, dt);
 
+            // 演出側（HeldBellyPunchDirector）が位置を決めている間は、AI の移動を止める。
+            // 殴ったあと Recover が明けて Chase/Strafe に入ると、間合いを 1.23m へ戻す
+            // 補正で一歩下がり、次の発注でまた前に出る（実測: 0.37m の往復）。
+            if (IsPlanted && (Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe))
+                return;
+
             // 倒れた相手には攻撃を出さない（フェアネス規定）。
             bool playerDown = Player.IsDead || Player.IsDown;
 
@@ -1090,7 +1058,7 @@ namespace Ryona.Game
         void TickHeldRecover(float dt)
         {
             _punchVisualTimer = Mathf.Max(0f, _punchVisualTimer - dt);
-            var frontHold = IsPinning || IsBearHugging ? Player.GetComponent<PlayerGrapple>() : null;
+            var frontHold = IsPinning || IsBearHugging ? Hold : null;
             bool canHitHeld = frontHold != null && frontHold.IsGrappled &&
                 !frontHold.IsHandingOff && !frontHold.IsWallTransition && frontHold.Captor == this && frontHold.FrontEscapeRemaining <= 0f;
 
@@ -1098,17 +1066,10 @@ namespace Ryona.Game
             // 二人がかり（Y 字）へ切り替える。
             if (canHitHeld && IsPinning && _pinKneesLeft > 0 && Time.time >= _pinNextKneeAt)
             {
-                if (IsWallPinning && _pinKneesLeft == CombatConstants.PinKneeCount &&
-                    frontHold != null && frontHold.TryBeginWallSplit(this))
-                {
-                    _pinKneesLeft = 0;
-                }
-                else
-                {
-                    _pinKneesLeft--;
-                    _pinNextKneeAt = Time.time + Mathf.Max(0.1f, CombatConstants.PinKneeInterval);
-                    DoPinKnee();
-                }
+                // 膝は 1 人で全部入れる。二人がかりは、そのあとの猶予を経て始まる（段階進行）。
+                _pinKneesLeft--;
+                _pinNextKneeAt = Time.time + Mathf.Max(0.1f, CombatConstants.PinKneeInterval);
+                DoPinKnee();
             }
 
             // ベアハッグの締め付け。体を引き寄せ、密着した瞬間に HP を削る。
@@ -1130,7 +1091,7 @@ namespace Ryona.Game
             // まだ掴めているなら硬直を続ける（拘束側が時間を管理する）。
             if (IsHolding && Player != null)
             {
-                var hold = Player.GetComponent<PlayerGrapple>();
+                var hold = Hold;
                 if (hold != null && hold.IsGrappled && hold.Captor == this)
                     return;
                 IsHolding = false;
@@ -1204,7 +1165,7 @@ namespace Ryona.Game
             // 押し出されているので、通常の「彼女の z に合わせる」処理は使わない。
             if (IsWallPinning)
             {
-                var wallHold = Player.GetComponent<PlayerGrapple>();
+                var wallHold = Hold;
                 // 二体がかり（Y 字）中は、Update 側が彼女の横へ回り込む位置を決める。
                 // ここで正面の定位置へ戻すと、彼が正面に残ってカメラが背中になる。
                 if (wallHold != null && wallHold.IsWallSplitActive)
@@ -1259,7 +1220,7 @@ namespace Ryona.Game
             if (IsWallAssisting)
                 return;
 
-            if (Target == null || (Player != null && Player.GroundMount.Attacker == this))
+            if (Target == null || (Player != null && Player.GroundMount.Owns(this)))
                 return;
             var position = transform.position;
             position.z = Target.position.z;

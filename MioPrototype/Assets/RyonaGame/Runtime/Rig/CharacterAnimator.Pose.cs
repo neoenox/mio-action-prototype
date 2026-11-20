@@ -81,11 +81,17 @@ namespace Ryona.Game
                 State.Walk => PoseWalk(),
                 State.Stagger => PoseStagger(),
                 State.Grabbed => PoseGrabbed(),
-                State.Down => PoseDown(),
+                State.Down => HauledNow ? PoseHauled(Stats.GroundMount.Haul) : PoseDown(),
                 State.GetUp => PoseGetUp(),
                 State.Attack => PoseAttack(),
                 _ => PoseDefaults(),
             };
+
+            if (_state == State.Grabbed && (Time.time < _haulDazeUntil || (Grapple != null && Grapple.HaulHandoff)))
+
+                ApplyHaulDaze(ref pose);
+
+            
 
             // 壁から戻るあいだは掴みが解けて Idle などへ移っている。
             // 壁の反りは重みで抜く（PoseGrabbed の中では膝蹴りの前後関係を保つため

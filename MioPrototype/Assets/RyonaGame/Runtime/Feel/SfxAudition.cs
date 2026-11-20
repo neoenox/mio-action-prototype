@@ -85,7 +85,7 @@ namespace Ryona.Game
             // （AudioSource は timeScale の影響を受けないので音は鳴る）
             Time.timeScale = 0f;
 
-            Debug.Log($"[Sfx] audition 開始 音源数={Entries.Length} 間隔={Interval:F1}s " +
+            GameLog.Log($"[Sfx] audition 開始 音源数={Entries.Length} 間隔={Interval:F1}s " +
                       "（timeScale=0。番号を指定して報告してください）");
         }
 
@@ -143,7 +143,7 @@ namespace Ryona.Game
             if (KeyPressed(UnityEngine.InputSystem.Key.Space))
             {
                 _auto = !_auto;
-                Debug.Log($"[Sfx] 自動送り {(_auto ? "再開" : "停止")}");
+                GameLog.Log($"[Sfx] 自動送り {(_auto ? "再開" : "停止")}");
             }
 
             if (!_auto)
@@ -164,7 +164,7 @@ namespace Ryona.Game
             Play(entry.Id, 1f);
             _lastAction = "自動送り";
 
-            Debug.Log($"[Sfx] audition {_index + 1}/{Entries.Length} {entry.Name}");
+            GameLog.Log($"[Sfx] audition {_index + 1}/{Entries.Length} {entry.Name}");
         }
 
         void PlayEntry(int index)
@@ -174,7 +174,7 @@ namespace Ryona.Game
             var entry = Entries[index];
             Play(entry.Id, 1f);
             _lastAction = "単発";
-            Debug.Log($"[Sfx] audition 手動 {index + 1}/{Entries.Length} {entry.Name} ({entry.Level} dBFS)");
+            GameLog.Log($"[Sfx] audition 手動 {index + 1}/{Entries.Length} {entry.Name} ({entry.Level} dBFS)");
         }
 
         void PlayNextCombo()
@@ -187,7 +187,7 @@ namespace Ryona.Game
             Play(c.B, c.VolB);
             _lastAction = $"重ね {c.Name}";
 
-            Debug.Log($"[Sfx] audition 重ね {c.Name} " +
+            GameLog.Log($"[Sfx] audition 重ね {c.Name} " +
                       $"（{c.A} x{c.VolA:F2} + {c.B} x{c.VolB:F2}）");
         }
 
@@ -220,7 +220,7 @@ namespace Ryona.Game
                 if (sfx != null)
                     sfx.PlayAt(spots[i], entry.Id, 1f);
 
-                Debug.Log($"[Sfx] 定位 {names[i]} {entry.Name}");
+                GameLog.Log($"[Sfx] 定位 {names[i]} {entry.Name}");
                 yield return new WaitForSecondsRealtime(0.55f);
             }
         }

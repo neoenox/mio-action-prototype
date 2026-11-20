@@ -132,6 +132,12 @@ namespace Ryona.Game
                 gameObject.AddComponent<OverheadHoldPose>();
             if (GetComponent<WallAssistPose>() == null)
                 gameObject.AddComponent<WallAssistPose>();
+            if (GetComponent<AnkleHoldPose>() == null)
+                gameObject.AddComponent<AnkleHoldPose>();
+            if (GetComponent<HaulUpPose>() == null)
+                gameObject.AddComponent<HaulUpPose>();
+            if (GetComponent<WallKneeStrikePose>() == null)
+                gameObject.AddComponent<WallKneeStrikePose>();
             // 最初のフレームから正しい立ち姿勢にしておく
             // （補間値が 0 のままだと 1 フレームだけ体が潰れて見える）
             Step(0f, true);

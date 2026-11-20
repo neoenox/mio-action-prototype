@@ -38,19 +38,40 @@ namespace Ryona.Game
             if (split <= 0.001f)
                 return;
 
-            // 内側の手（彼の左手）で彼女の右前腕を掴む。
-            Vector3 grip = Vector3.Lerp(_targetRig.RHand.position, _targetRig.RLowerArm.position, 0.25f);
-            SolveArm(true, grip + Vector3.up * 0.02f, split);
-
-            // 外側の手（彼の右手）は腹パン。打たない間は脇へ下ろす（上げたままだと不自然）。
+            // 内側の手（彼の左手）で彼女の右前腕を掴む。3 人目は掴まない（腕は力を抜く）。
+            // 3 人がかり（最後の段階）では、アシストも手を離す（誰も彼女を持たない）。
+            float gang = hold.WallGangWeight;
             Vector3 her = _brain.Player.transform.position;
             Vector3 front = Vector3.ProjectOnPlane(_brain.Player.transform.forward, Vector3.up).normalized;
             float side = transform.position.x >= her.x ? 1f : -1f;
-            if (hold.WallSplitPuncher == _brain && hold.WallSplitPunchAge >= 0f)
+            if (hold.WallThird != _brain)
+            {
+                Vector3 grip = Vector3.Lerp(_targetRig.RHand.position, _targetRig.RLowerArm.position, 0.25f);
+                SolveArm(true, grip + Vector3.up * 0.02f, split * (1f - gang));
+                if (gang > 0.001f)
+                    WallSplitArm.Guard(_figure, true, her, front, side, gang, transform);
+            }
+            else
+                WallSplitArm.Relax(_figure, true, split, transform);
+
+            // 外側の手（彼の右手）は腹パン。打たない間は脇へ下ろす（上げたままだと不自然）。
+            // 同時打ちがあるので、判定は「この人」の枠で行う。
+            float punchAge = hold.WallSplitPunchAgeOf(_brain);
+            bool facePunch = hold.WallSplitFaceOf(_brain);
+            if (punchAge >= 0f && !hold.WallSplitKneeStrikeOf(_brain))
                 WallSplitArm.Punch(_figure, false, her, front, side,
-                    hold.WallSplitPunchAge, split, transform);
+                    punchAge, hold.WallSplitWindupOf(_brain), split, transform, facePunch,
+                    facePunch && _targetRig.Head != null
+                        ? _targetRig.Head.position + front * 0.10f
+                        : (Vector3?)null);
             else
                 WallSplitArm.Guard(_figure, false, her, front, side, split, transform);
+
+            // 締めの膝入れは、空き手で彼女の腰を掴んで引き寄せる。
+            if (hold.WallSplitKneeStrikeOf(_brain))
+                WallSplitArm.Pull(_figure, false, her, front, side,
+                    split * Mathf.Max(hold.WallSplitKneeWeight(_brain), hold.WallSplitKneeThrust(_brain)),
+                    transform);
         }
 
         void SolveArm(bool left, Vector3 goal, float weight)

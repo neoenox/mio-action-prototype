@@ -13,11 +13,23 @@ namespace Ryona.Game
         /// 渡すと、殴られた側と逆へ頭が振れて「どちらから来たか」が分かる。
         /// </param>
         /// <param name="strength">衝撃の強さ（0.5〜1.2 程度）。</param>
-        public void PlayHeldFacePunch(float seconds, Vector3 punchDirection = default, float strength = 1f)
+        public void PlayHeldFacePunch(float seconds, Vector3 punchDirection = default, float strength = 1f,
+            float fatigue = 0f, bool finalHit = false, bool keepGroggy = false)
         {
             if (seconds <= 0f)
                 return;
 
+            if (!keepGroggy)
+            {
+                ClearHeldGroggy();
+            }
+            else
+            {
+                _heldBellyFinalHit = false;
+                _heldFaceFinalHit = false;
+            }
+            _heldFaceFinalHit = finalHit;
+            _heldFaceFatigue = Mathf.Clamp01(fatigue);
             _heldFacePunchTotal = seconds;
             _heldFacePunchRemaining = seconds;
             _heldFacePunchStartFrame = Time.frameCount;
@@ -41,6 +53,7 @@ namespace Ryona.Game
         /// </summary>
         public void PlayHeldThrowLead()
         {
+            ClearHeldGroggy();
             _heldThrowLeadOn = true;
         }
 
@@ -54,16 +67,79 @@ namespace Ryona.Game
         /// 腹パンの被弾姿勢を再生する。拘束（Grabbed）の上に重ねるので、
         /// 呼んでも状態は Grabbed のまま。
         /// </summary>
-        public void PlayHeldBellyPunch(float seconds, float fatigue = 0f)
+        public void PlayHeldBellyPunch(float seconds, float fatigue = 0f, float impact = 1f,
+            float holdSeconds = 0f, bool finalHit = false, bool keepGroggy = false)
         {
             if (seconds <= 0f)
                 return;
 
-            _heldBellyCarry = HeldBellyPunchFold;
+            float carry = HeldBellyPunchFold;
+            // 腹パンの反動の途中から次を受けたときは、一度真っ直ぐへ戻さず折れた位置を継ぐ。
+            if (!keepGroggy)
+            {
+                ClearHeldGroggy();
+            }
+            else
+            {
+                _heldBellyFinalHit = false;
+                _heldFaceFinalHit = false;
+            }
+            _heldBellyCarry = carry;
             _heldBellyFatigue = Mathf.Clamp01(fatigue);
+            _heldBellyImpact = Mathf.Clamp(impact, 0.5f, 2f);
+            _heldBellyHoldSeconds = Mathf.Max(0f, holdSeconds);
+            _heldBellyFinalHit = finalHit;
             _heldBellyPunchTotal = seconds;
             _heldBellyPunchRemaining = seconds;
         }
+
+        public void ClearHeldGroggy()
+        {
+            _heldBellyFinalHit = false;
+            _heldFaceFinalHit = false;
+            _rearHoldGroggy = 0f;
+        }
+
+        internal void SetFinisherHoist(bool active) => _finisherHoistTarget = active;
+
+        internal void PlayHeldRegularHit(HitResult result)
+        {
+            PunchZone zone = CurrentHitZone ?? PunchZone.Body;
+            (float duration, float impact) = result.Stagger switch
+            {
+                StaggerTier.Large => (0.62f, 1.25f),
+                StaggerTier.Medium => (0.54f, 1.08f),
+                _ => (0.46f, 0.92f),
+            };
+
+            bool groggy = _rearHoldGroggy > 0.2f;
+            if (zone == PunchZone.Face)
+            {
+                Transform src = Stats != null ? Stats.LastAttacker : null;
+                Vector3 push;
+                if (src != null && src.TryGetComponent<EnemyBrain>(out var attackerBrain))
+                    push = src.forward * 0.60f + src.right * (attackerBrain.UsesLeftPunch ? 0.65f : -0.65f);
+                else if (src != null)
+                    push = transform.position - src.position;
+                else
+                    push = -transform.forward;
+                push.y = 0f;
+                PlayHeldFacePunch(duration, push, impact, groggy ? 1f : 0.4f, finalHit: false, keepGroggy: groggy);
+            }
+            else
+            {
+                PlayHeldBellyPunch(duration, groggy ? 0.85f : 0.35f, impact, holdSeconds: 0.14f,
+                    finalHit: false, keepGroggy: groggy);
+            }
+        }
+
+        float _heldBellyHoldSeconds;
+        bool _heldBellyFinalHit;
+        float _heldFaceFatigue;
+        bool _heldFaceFinalHit;
+        float _rearHoldGroggy;
+        bool _finisherHoistTarget;
+        public float FinisherHoistWeight { get; private set; }
 
         /// <summary>
         /// 腹パンの反動の強さ（0..1）。素早く押し戻され、時間をかけて立て直す。
@@ -77,8 +153,14 @@ namespace Ryona.Game
                     return 0f;
 
                 float t = _heldBellyPunchTotal - _heldBellyPunchRemaining;
-                float inT = Mathf.SmoothStep(_heldBellyCarry, 1f, t / 0.055f);
-                float recoverAt = _heldBellyPunchTotal * Mathf.Lerp(0.26f, 0.72f, _heldBellyFatigue);
+                // 締めの膝入れ（重さ 1.2 以上）は、膝がまだ腹にある間に素早く折れると膝へ食い込むので、
+                // 膝が引くまでの間に膝を包むようにゆっくり折れる。
+                float inSeconds = Mathf.Lerp(0.055f, 0.14f, Mathf.InverseLerp(1.2f, 1.7f, _heldBellyImpact));
+                float startFold = Mathf.Max(0.52f, _heldBellyCarry);
+                float inT = Mathf.SmoothStep(startFold, 1f, t / inSeconds);
+                float recoverAt = _heldBellyHoldSeconds > 0f
+                    ? _heldBellyHoldSeconds
+                    : _heldBellyPunchTotal * Mathf.Lerp(0.26f, 0.72f, _heldBellyFatigue);
                 float outT = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(recoverAt, _heldBellyPunchTotal, t));
                 return Mathf.Clamp01(inT * outT);
             }
@@ -88,20 +170,62 @@ namespace Ryona.Game
         {
             get
             {
-                if (_heldBellyPunchRemaining <= 0f || _heldBellyFatigue < 0.6f)
+                if (_heldBellyPunchRemaining <= 0f || _heldBellyFinalHit || _rearHoldGroggy > 0.01f
+                    || _heldBellyPunchTotal <= 0f || _punchDirector == null || !_punchDirector.IsBodySequence)
                     return 0f;
                 float progress = 1f - _heldBellyPunchRemaining / _heldBellyPunchTotal;
-                float pull = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.49f, 0.72f, progress));
-                float release = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.81f, 1f, progress));
+                // 前半は「く」の字に折れ、後半で拘束役が体勢を引き起こして腹を前へ突き出させる。
+                float pull = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.38f, 0.68f, progress));
+                float release = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.92f, 1f, progress)) * 0.12f;
                 return pull * (1f - release);
             }
         }
+
+        internal float HeldBellyDangle
+        {
+            get
+            {
+                if (!_heldBellyFinalHit || _heldBellyPunchTotal <= 0f)
+                    return 0f;
+                if (Grapple == null || !Grapple.IsGrappled || Grapple.IsHandingOff || Grapple.Kind != GrappleKind.Back)
+                    return 0f;
+                float progress = 1f - _heldBellyPunchRemaining / _heldBellyPunchTotal;
+                // 最終打の深い折れのあと、羽交い締めの腕の中で意識朦朧と脱力して項垂れる余韻を維持する。
+                return Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.30f, 0.58f, progress));
+            }
+        }
+
+        public float HeldFacePunchFatigue => _heldFaceFatigue;
+
+        internal float HeldFaceDangle
+        {
+            get
+            {
+                if (!_heldFaceFinalHit || _heldFacePunchTotal <= 0f)
+                    return 0f;
+                if (Grapple == null || !Grapple.IsGrappled || Grapple.IsHandingOff || Grapple.Kind != GrappleKind.Back)
+                    return 0f;
+                float progress = 1f - _heldFacePunchRemaining / _heldFacePunchTotal;
+                // 5発目の反動と腕検査（0.55s）が終わった後半（0.42..0.76）で意識が飛んで項垂れる。
+                return Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.42f, 0.76f, progress));
+            }
+        }
+
+        internal float HeldComboDangle =>
+            Grapple != null && Grapple.IsGrappled && !Grapple.IsHandingOff && Grapple.Kind == GrappleKind.Back
+                ? Mathf.Max(_rearHoldGroggy, Mathf.Max(HeldBellyDangle, HeldFaceDangle))
+                : 0f;
 
         /// <summary>
         /// 腹パンの疲労度 0..1（呼び出し側が渡した値）。壁の二体がかりでは、
         /// 後半の一発ほど深く折って戻りを遅くするのに使う。
         /// </summary>
         public float HeldBellyPunchFatigue => _heldBellyFatigue;
+
+        /// <summary>
+        /// 腹パンの重さ（1 = 標準）。壁の二体がかりで、序盤は浅く（&lt;1）、締めは深く（&gt;1）折るのに使う。
+        /// </summary>
+        public float HeldBellyPunchImpact => _heldBellyImpact;
 
         /// <summary>
         /// いまの腹パンが当たってからの秒。当たった瞬間の揺れの位相に使う。
@@ -111,6 +235,12 @@ namespace Ryona.Game
             _heldBellyPunchTotal > 0f && _heldBellyPunchRemaining > 0f
                 ? _heldBellyPunchTotal - _heldBellyPunchRemaining
                 : 0f;
+
+        /// <summary>
+        /// 顔面パンのコンボ中に顔を上げておく度合い（0..1）。うつむいたままだと
+        /// 前髪が落ちて表情が読めないため、コンボの間だけ顎を上げる。
+        /// </summary>
+        float _faceComboLift;
 
         /// <summary>倒れている（立ち上がり中を含む）。移動できない区間。</summary>
         public bool IsDowned => _state == State.Down || _state == State.GetUp;

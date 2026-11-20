@@ -96,6 +96,16 @@ SCENARIOS: dict[str, dict] = {
         "timeout": 90,
         "quits": True,
     },
+    # 足取り（背後の足首掴み）。掴まれてから 1.6 秒でもがけなければ前へ転ぶので、
+    # 80 枚（0.05 秒 × 80 = 4 秒）で転倒とマウントの入りまで入る。
+    "ankle": {
+        "args": ["-grappletest", "-anklegrabtest"],
+        "burst": "-pinburst=",
+        "frames": 80,
+        "timeout": 120,
+        "quits": False,  # -pinburst は撮り終えても終了しない。ログの完了行で止める
+        "done_marker": "pin burst",
+    },
     "pin": {
         "args": ["-grappletest", "-pintest"],
         "burst": "-pinburst=",

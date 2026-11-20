@@ -101,6 +101,26 @@ MioPrototype.exe -jointrom -jointlog             関節が人体の可動域を�
 
 ---
 
+## 調整値の置き場所
+
+ゲームの調整値は **`MioPrototype/Assets/RyonaGame/Resources/RyonaConfig.asset`** に集約しています。
+シーンのインスペクタ値やスクリプトの初期化子は使いません（各コンポーネントが `Awake` でこのアセットを読み、
+自分自身のフィールドは `[System.NonSerialized]` の実行時値になります）。
+
+| セクション | 対象 |
+|---|---|
+| `Camera` | `ThirdPersonCamera`（構図・ベルトカメラ・ダウン時の寄り） |
+| `Motor` / `Combat` / `VrmSlot` | `PlayerMotor` / `PlayerCombat` / `VrmCharacterSlot` |
+| `Enemy` / `EnemyReaction` / `Group` | `EnemyBrain`（間合い・速度・硬直・ストレイフ・予告）/ `EnemyReaction` / `EnemyGroup` |
+| `Grapple` | `PlayerGrapple` / `EnemyBrain`（足取りのもがき回数・制限時間・間合い・発生率） |
+| `Encounter` / `BeltLock` | `EncounterDirector`（出現間隔・人数）/ `BeltScreenLock`（画面幅・関所） |
+| `Feel` / `CameraDirection` | `CombatFeel`（ヒットストップ・揺れ・声）/ `CameraDirector`（寄り・引き） |
+
+- アセットが無いときは、Unity メニュー `Ryona > Setup > Create RyonaConfig (if missing)` で作成
+- 実行時の上書きは起動引数だけ（例: `-camdist=5.2`）。「アセット → 起動引数」の順で効きます
+- **個体ごとに違う値はシーンに残します**（敵の背丈 `EnemyFigure.Height` は 1.72 / 1.79 / 1.85、`MaxHp`、`CanPin`、マテリアル参照など）。
+  全体で 1 つの値にできないものを無理に設定へ移すと、敵の体格差が消えます
+
 ## 構成
 
 ```

@@ -167,7 +167,7 @@ namespace Ryona.Game
             if (hingeR.sqrMagnitude > 1e-6f)
                 _elbowHingeLocalR = Quaternion.Inverse(RUpperArm.rotation) * hingeR.normalized;
 
-            Debug.Log($"[Rig] elbow hinge L=({_elbowHingeLocalL.x:F2},{_elbowHingeLocalL.y:F2},{_elbowHingeLocalL.z:F2})" +
+            GameLog.Log($"[Rig] elbow hinge L=({_elbowHingeLocalL.x:F2},{_elbowHingeLocalL.y:F2},{_elbowHingeLocalL.z:F2})" +
                 $" R=({_elbowHingeLocalR.x:F2},{_elbowHingeLocalR.y:F2},{_elbowHingeLocalR.z:F2})");
         }
 
@@ -840,10 +840,10 @@ namespace Ryona.Game
                 Vector3 axisWorld = PickFlexionSign(prox, dist, midProx.position, palmNormal);
                 _fingerAdductAxis[prox] = BoneLocalAxis(prox, axisWorld);
 
-                Debug.Log($"[Rig] adduct {(left ? "L" : "R")} f{start} {degrees:F0}deg");
+                GameLog.Log($"[Rig] adduct {(left ? "L" : "R")} f{start} {degrees:F0}deg");
             }
 
-            Debug.Log($"[Rig] finger axis {(left ? "L" : "R")} world=({fingerAxisWorld.x:F2},{fingerAxisWorld.y:F2},{fingerAxisWorld.z:F2}) thumb=({thumbAxisWorld.x:F2},{thumbAxisWorld.y:F2},{thumbAxisWorld.z:F2}) restTip={FingertipDistanceToWrist(left):F3}");
+            GameLog.Log($"[Rig] finger axis {(left ? "L" : "R")} world=({fingerAxisWorld.x:F2},{fingerAxisWorld.y:F2},{fingerAxisWorld.z:F2}) thumb=({thumbAxisWorld.x:F2},{thumbAxisWorld.y:F2},{thumbAxisWorld.z:F2}) restTip={FingertipDistanceToWrist(left):F3}");
         }
 
         /// <summary>

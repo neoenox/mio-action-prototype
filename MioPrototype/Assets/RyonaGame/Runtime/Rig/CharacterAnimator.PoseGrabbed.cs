@@ -5,8 +5,30 @@ namespace Ryona.Game
     public sealed partial class CharacterAnimator
     {
         /// <summary>拘束（後ろ / 正面 / ベアハッグ / 押さえつけ）。</summary>
+        PoseValues PoseGrabbedDazed()
+        {
+            var pose = PoseDefaults();
+            pose.FootL += StanceFootL;
+            pose.FootR += StanceFootR;
+            // 腕は体の後ろへ。下ろすだけだと相手の腕を掴み返す形と区別しづらい。
+            pose.ArmLUpper = new Vector3(0.30f, -0.55f, -0.55f);
+            pose.ArmLFore = new Vector3(0.15f, -0.35f, -0.85f);
+            pose.ArmRUpper = new Vector3(-0.30f, -0.55f, -0.55f);
+            pose.ArmRFore = new Vector3(-0.15f, -0.35f, -0.85f);
+            pose.TorsoPitch = 8f;
+            pose.HeadPitch = 2f;
+            pose.HeadRoll = 7f;
+            pose.Grip = 0.3f;
+            return pose;
+        }
+
         PoseValues PoseGrabbed()
         {
+            // 引き起こしから直接入った拘束は、腕を下ろしたまま固定する。
+            // 通常の拘束ポーズは「相手の腕を掴み返す」ので、髪から離した手がまた頭へ行く。
+            if (Grapple != null && Grapple.HaulHandoff)
+                return PoseGrabbedDazed();
+
             var pose = PoseDefaults();
             if (Grapple != null && Grapple.IsHandingOff)
             {
@@ -174,8 +196,55 @@ namespace Ryona.Game
 
             // 掴まれた向きで姿勢を作り替える。背後は羽交い締め（Back）、
             // 正面の押さえつけ（Pin）、正面から胴を抱えるベアハッグ。
+            if (Grapple != null && Grapple.Kind == GrappleKind.AnkleGrab)
+            {
+                // 足取り。後ろから左の足首を掴まれて引かれ、前へつんのめる。
+                // 掴まれた足（左）は後ろへ持ち上がり、軸足（右）で踏ん張る。
+                // 上体は前へ倒れ、両腕は前へ出てバランスを取る。もがくと腕が大きく振れる。
+                pose.HipsOffset.y = StanceHipsY - 0.05f * pull - 0.03f * strain;
+                pose.HipsOffset.z = StanceHipsZ + 0.05f * pull;
+
+                float camSide = CameraYawToMe() >= 0f ? 1f : -1f;
+                pose.TorsoPitch = 18f * pull + 10f * strain;
+                pose.TorsoYaw = camSide * 16f * pull + Mathf.Sin(Time.time * 3.1f) * 3f;
+                pose.TorsoRoll = 0f;
+
+                // 後ろから足首を引かれ、カメラ側の肩越しに怯えて振り返る（うつむくと表情が隠れる）。
+                pose.HeadPitch = -14f * pull;
+                pose.HeadYaw = camSide * 34f * pull + Mathf.Sin(Time.time * 4.6f) * 4f;
+                pose.HeadRoll = camSide * 8f * pull;
+
+                var reachUpper = new Vector3(0.50f, -0.20f, 0.55f);
+                var reachFore = new Vector3(-0.15f, 0.25f, 0.80f);
+                float flail = 0.16f * pulse + 0.10f * strain;
+                pose.ArmLUpper = reachUpper + new Vector3(0.20f * flail, flail, 0f);
+                pose.ArmRUpper = reachUpper + new Vector3(0.20f * flail, flail * 0.8f, 0f);
+                pose.ArmLFore = reachFore + new Vector3(0f, flail * 1.2f, 0f);
+                pose.ArmRFore = reachFore + new Vector3(0f, flail, 0f);
+
+                pose.HandRollL = StanceHandRollL;
+                pose.HandRollR = StanceHandRollR;
+                pose.Grip = 0.3f;
+
+                pose.FootL += StanceFootL;
+                pose.FootR += StanceFootR;
+                pose.FootL += new Vector3(0f, 0.22f * pull, -0.36f * pull);
+                pose.FootPitchL = -24f * pull;
+                pose.FootPitchR = 12f * pull;
+                if (HeldBellyPunchFold > 0f || HeldFacePunchImpulse > 0f)
+                {
+                    pose.TorsoPitch += 16f * HeldBellyPunchFold;
+                    pose.HeadPitch -= 12f * HeldBellyPunchFold;
+                    pose.HeadYaw += camSide * 32f * HeldFacePunchImpulse;
+                }
+                return pose;
+            }
+
             if (Grapple != null && Grapple.Kind == GrappleKind.Back)
             {
+                float toCamera = CameraYawToMe();
+                float comboDangle = HeldComboDangle;
+
                 // 羽交い締め。相手の腕が首に回り、上体を後ろへ反らされる。
                 // 腰は相手側（後ろ）へ引かれ、膝を折って踏ん張る。
                 // 腰を沈めないと脚が突っ張って「吊られている」画になる。
@@ -196,7 +265,7 @@ namespace Ryona.Game
 
                 // 上腕は肩の高さで真横へ、前腕は体の前へ向けて下へ垂らす。
                 // もがくと肘が上がり、前腕が相手の腕を掴みに跳ね上がる。
-                var nelsonUpper = new Vector3(0.98f, 0.18f, 0.02f);
+                var nelsonUpper = new Vector3(0.95f, 0.26f, 0.12f);
                 var nelsonFore = new Vector3(-0.35f, -0.45f, 0.82f);
                 float claw = 0.14f * pulse;
 
@@ -206,11 +275,12 @@ namespace Ryona.Game
                 pose.ArmRFore = nelsonFore + new Vector3(0f, claw * 1.2f, claw * 0.8f);
 
                 // 逃げようと前へ体を投げ出す（腕は押さえられたまま、体だけが相手から離れようとする）。
-                pose.TorsoPitch += 9f * strain;
-                pose.HeadPitch += 5f * strain;
-                pose.HipsOffset.z += 0.05f * strain;
-                pose.ArmLUpper += new Vector3(0f, 0.12f * strain, 0f);
-                pose.ArmRUpper += new Vector3(0f, 0.12f * strain, 0f);
+                float backStrain = strain * (1f - 0.85f * comboDangle);
+                pose.TorsoPitch += 9f * backStrain;
+                pose.HeadPitch += 5f * backStrain;
+                pose.HipsOffset.z += 0.05f * backStrain;
+                pose.ArmLUpper += new Vector3(0f, 0.12f * backStrain, 0f);
+                pose.ArmRUpper += new Vector3(0f, 0.12f * backStrain, 0f);
 
                 pose.HandRollL = StanceHandRollL;
                 pose.HandRollR = StanceHandRollR;
@@ -237,7 +307,7 @@ namespace Ryona.Game
 
                 // 殴りに来る敵を見る。うつむいたままだと「何が来るか分かっている」怯えが出ない。
                 // 最初に気づいたときの角度で顔を上げ、拳が出る直前だけ視線を外す。
-                float dread = _dreadLook;
+                float dread = _dreadLook * (1f - comboDangle);
                 if (dread > 0.001f)
                 {
                     // 首の角度は上体に対して付くので、前傾ぶんを差し引いて相手の顔へ合わせる。
@@ -256,37 +326,128 @@ namespace Ryona.Game
                     pose.HeadPitch += Mathf.Sin(Time.time * 9.7f + 1.3f) * 0.8f * dread;
                 }
 
-                // 腹パン: 腹で一度折れた後、胸を起こそうとする間に膝が折れて腰が沈む。
-                float toCamera = CameraYawToMe();
-                bool bodyCombo = _punchDirector != null && _punchDirector.IsBodyCombo;
+                // フィニッシュ後（腹パン / 顔パン共通）のグロッキー土台: 脇の下を敵の腕に掬い上げられたまま意識朦朧と脱力する。
+                // 後続の通常パンチ（下の腹/顔リアクション）をこの上に重ねて、打たれたら反応し、収まったら再び項垂れるようにする。
+                if (comboDangle > 0f)
+                {
+                    float limpSide = toCamera >= 0f ? 1f : -1f;
+                    float weakStruggle = 0.06f * pulse;
+                    pose.TorsoYaw = Mathf.Lerp(pose.TorsoYaw, 0f, comboDangle)
+                        + Mathf.Sin(Time.time * 22f) * 3f * pulse * comboDangle;
+                    pose.TorsoRoll = Mathf.Lerp(pose.TorsoRoll, limpSide * 3.5f, comboDangle);
+                    pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, 11f, comboDangle);
+                    pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, 12f, comboDangle);
+                    pose.HeadYaw = Mathf.Lerp(pose.HeadYaw,
+                        Mathf.Clamp(toCamera * 0.30f, -16f, 16f), comboDangle * 0.75f);
+                    pose.HeadRoll = Mathf.Lerp(pose.HeadRoll, limpSide * 11f, comboDangle);
+                    pose.HipsOffset.y = Mathf.Lerp(pose.HipsOffset.y, StanceHipsY - 0.115f, comboDangle);
+                    pose.HipsOffset.z = Mathf.Lerp(pose.HipsOffset.z, StanceHipsZ - 0.03f, comboDangle);
+                    var dangleUpper = new Vector3(0.95f, 0.26f + weakStruggle, 0.14f);
+                    var dangleFore = new Vector3(0.12f, -0.86f + weakStruggle * 1.4f, 0.46f + weakStruggle);
+                    pose.ArmLUpper = Vector3.Lerp(pose.ArmLUpper, dangleUpper, comboDangle);
+                    pose.ArmRUpper = Vector3.Lerp(pose.ArmRUpper, dangleUpper, comboDangle);
+                    pose.ArmLFore = Vector3.Lerp(pose.ArmLFore, dangleFore, comboDangle);
+                    pose.ArmRFore = Vector3.Lerp(pose.ArmRFore, dangleFore, comboDangle);
+                    pose.FootPitchL = Mathf.Lerp(pose.FootPitchL, 28f, comboDangle);
+                    pose.FootPitchR = Mathf.Lerp(pose.FootPitchR, 22f, comboDangle);
+                    pose.Grip = Mathf.Lerp(pose.Grip, 0.12f, comboDangle);
+                }
+
+                // グロッキー後の引き起こし晒し: 拘束役が脇の下をグッと持ち上げ、無防備な腹・顔を正面へ晒す。
+                float hoist = FinisherHoistWeight * (1f - Mathf.Clamp01(Mathf.Max(HeldBellyPunchFold, HeldFacePunchImpulse) * 1.5f));
+                if (hoist > 0.001f)
+                {
+                    float limpSide = toCamera >= 0f ? 1f : -1f;
+                    pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, -5f, hoist);
+                    pose.TorsoRoll = Mathf.Lerp(pose.TorsoRoll, limpSide * 2.5f, hoist);
+                    pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, 9f, hoist);
+                    pose.HeadYaw = Mathf.Lerp(pose.HeadYaw,
+                        Mathf.Clamp(toCamera * 0.32f, -18f, 18f), hoist);
+                    pose.HeadRoll = Mathf.Lerp(pose.HeadRoll, limpSide * 12f, hoist);
+                    pose.HipsOffset.y = Mathf.Lerp(pose.HipsOffset.y, StanceHipsY - 0.035f, hoist);
+                    pose.HipsOffset.z = Mathf.Lerp(pose.HipsOffset.z, StanceHipsZ + 0.045f, hoist);
+                    pose.ArmLUpper = Vector3.Lerp(pose.ArmLUpper, new Vector3(0.95f, 0.28f, 0.14f), hoist);
+                    pose.ArmRUpper = Vector3.Lerp(pose.ArmRUpper, new Vector3(0.95f, 0.28f, 0.14f), hoist);
+                    pose.ArmLFore = Vector3.Lerp(pose.ArmLFore, new Vector3(0.08f, -0.86f, 0.44f), hoist);
+                    pose.ArmRFore = Vector3.Lerp(pose.ArmRFore, new Vector3(0.08f, -0.86f, 0.44f), hoist);
+                    pose.FootPitchL = Mathf.Lerp(pose.FootPitchL, 34f, hoist);
+                    pose.FootPitchR = Mathf.Lerp(pose.FootPitchR, 28f, hoist);
+                }
+
+                // 腹パン: 腹で一度折れた後、拳の二段めり込みに合わせて腰を引きながら深く二段折れする。
+                bool bodyCombo = _punchDirector != null && _punchDirector.IsBodySequence;
                 float recoil = HeldBellyPunchFold;
-                if (recoil > 0f)
+                float lift = HeldBellyCaptorLift;
+                if (recoil > 0f || lift > 0f)
                 {
                     float hitTime = _heldBellyPunchTotal - _heldBellyPunchRemaining;
-                    float bendIn = Mathf.SmoothStep(0f, 1f, (hitTime - 0.015f) / 0.055f);
+                    float bendIn = Mathf.SmoothStep(0.60f, 1f, hitTime / 0.045f);
                     float fold = Mathf.Lerp(_heldBellyCarry, recoil, bendIn);
-                    float straighten = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.15f, 0.32f, hitTime));
-                    fold *= Mathf.Lerp(1f, 0.27f + 0.09f * _heldBellyFatigue, straighten);
-                    pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, bodyCombo ? 43f : 52f, fold);
-                    pose.TorsoYaw = Mathf.Lerp(pose.TorsoYaw, 0f, recoil);
-                    // 胴の前傾を首で打ち消し、腹で折れても顔は前に残す。
-                    pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, bodyCombo ? -60f : -72f, fold);
+                    // 折れたまま止まる長さ。従来は 0.15 秒で立ち直り始めていたため、
+                    // 5 発食らっている間も合間に立ち姿へ戻って見えた（プレビューで確認）。
+                    float holdAt = _heldBellyHoldSeconds > 0f ? _heldBellyHoldSeconds : 0.15f;
+                    float straighten = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(holdAt, holdAt + 0.17f, hitTime));
+                    if (!bodyCombo)
+                        fold *= Mathf.Lerp(1f, 0.27f + 0.09f * _heldBellyFatigue, straighten);
+                    float gougeSink = bodyCombo
+                        ? recoil * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.05f, 0.16f, hitTime))
+                            * (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.28f, 0.46f, hitTime)))
+                        : 0f;
+                    float impact = HeldBellyPunchImpact;
+                    float targetPitch = Mathf.Clamp((bodyCombo ? 35f : 48f) * impact, 28f, bodyCombo ? 48f : 62f)
+                        + 6.5f * gougeSink;
+                    pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, targetPitch, fold);
+                    pose.TorsoYaw = Mathf.Lerp(pose.TorsoYaw, 0f, Mathf.Max(recoil, lift));
+                    // 胴の前傾（Spine + Chest で 1.4 倍）を首で打ち消し、腹で折れても顔は前に残す（過伸展を防ぐ）。
+                    float targetHeadPitch = Mathf.Clamp(
+                        (bodyCombo ? -60f : -66f) * Mathf.Lerp(1f, impact, 0.65f) - 6.5f * gougeSink,
+                        bodyCombo ? -64f : -82f, -42f);
+                    pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, targetHeadPitch, fold);
 
-                    // 足の IK 目標は床に残し、左右どちらかへ重さが偏りながら膝を折る。
-                    float buckle = recoil * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.07f, 0.23f, hitTime));
-                    pose.HipsOffset.y = Mathf.Lerp(pose.HipsOffset.y, StanceHipsY - 0.055f, recoil)
-                        - (0.14f + 0.085f * _heldBellyFatigue) * buckle;
-                    pose.HipsOffset.x += (toCamera >= 0f ? 1f : -1f) * 0.035f * buckle;
-                    pose.HipsOffset.z = Mathf.Lerp(pose.HipsOffset.z, StanceHipsZ - 0.17f, recoil);
+                    // 足の IK 目標は床に残し、打数が進むほど膝が折れて腰が沈み、めり込み時はつま先立ちで浮く。
+                    float buckle = recoil * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.06f, 0.22f, hitTime));
+                    pose.HipsOffset.y = Mathf.Lerp(pose.HipsOffset.y, StanceHipsY - 0.030f * impact, recoil)
+                        - (0.035f + 0.035f * _heldBellyFatigue) * buckle
+                        + 0.016f * gougeSink;
+                    pose.HipsOffset.x += (toCamera >= 0f ? 1f : -1f) * (0.028f + 0.022f * _heldBellyFatigue) * buckle;
+                    pose.HipsOffset.z = Mathf.Lerp(pose.HipsOffset.z, StanceHipsZ - 0.155f * impact - 0.042f * gougeSink, recoil);
+                    pose.FootPitchL += 22f * recoil * _heldBellyFatigue + 14f * gougeSink;
+                    pose.FootPitchR += 18f * recoil * _heldBellyFatigue + 12f * gougeSink;
 
-                    // 脇を引かれて肩が先に戻り、腰は少し遅れて持ち上がる。
-                    float lift = HeldBellyCaptorLift;
-                    pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, 12f, lift);
-                    pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -17f, lift);
-                    pose.HipsOffset.y = Mathf.Lerp(pose.HipsOffset.y, StanceHipsY + 0.025f, lift * lift);
-                    pose.HipsOffset.z = Mathf.Lerp(pose.HipsOffset.z, StanceHipsZ - 0.055f, lift);
-                    pose.ArmLUpper.y += 0.36f * lift;
-                    pose.ArmRUpper.y += 0.36f * lift;
+                    if (comboDangle > 0f && fold > 0f)
+                    {
+                        float limpFold = fold * comboDangle;
+                        pose.ArmLUpper = Vector3.Lerp(pose.ArmLUpper, new Vector3(0.95f, 0.36f, -0.08f), limpFold);
+                        pose.ArmRUpper = Vector3.Lerp(pose.ArmRUpper, new Vector3(0.95f, 0.36f, -0.08f), limpFold);
+                        pose.ArmLFore = Vector3.Lerp(pose.ArmLFore, new Vector3(0.18f, -0.42f, 0.86f), limpFold);
+                        pose.ArmRFore = Vector3.Lerp(pose.ArmRFore, new Vector3(0.18f, -0.42f, 0.86f), limpFold);
+                    }
+
+                    // 拘束役が脇を引き上げ、胸を張らせて無防備な腹を前へ突き出す体勢に引き戻す（視線は天井ではなく前〜下へ）。
+                    float archPitch = Mathf.Lerp(-9f, -15f, _heldBellyFatigue);
+                    pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, archPitch, lift);
+                    pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, 20f, lift);
+                    pose.HipsOffset.y = Mathf.Lerp(pose.HipsOffset.y,
+                        StanceHipsY + Mathf.Lerp(0.030f, 0.055f, _heldBellyFatigue), lift * lift);
+                    pose.HipsOffset.z = Mathf.Lerp(pose.HipsOffset.z,
+                        StanceHipsZ + Mathf.Lerp(0.050f, 0.085f, _heldBellyFatigue), lift);
+                    // 胸が反るぶん（shoulderShare 1.4倍）で前腕が前へ跳ね上がらないよう、肘を後ろへ引き前腕は下へ垂らす。
+                    float armLift = Mathf.Lerp(0.06f, 0.12f, _heldBellyFatigue) * lift;
+                    pose.ArmLUpper += new Vector3(0.08f * lift, armLift, -0.18f * lift);
+                    pose.ArmRUpper += new Vector3(0.08f * lift, armLift, -0.18f * lift);
+                    pose.ArmLFore = Vector3.Lerp(pose.ArmLFore, new Vector3(-0.28f, -0.82f, 0.42f), lift);
+                    pose.ArmRFore = Vector3.Lerp(pose.ArmRFore, new Vector3(-0.28f, -0.82f, 0.42f), lift);
+
+                    // 腹パンの合間は苦悶しながらも、しゃがみ込む敵と低い拳を下向きに見つめる（天井を仰がない）。
+                    if (bodyCombo && _hasDreadAngles && comboDangle < 0.99f)
+                    {
+                        float gaze = Mathf.Lerp(0.35f, 0.95f, lift) * (1f - comboDangle);
+                        float lowTargetPitch = Mathf.Clamp(_dreadPitch, 2f, 20f) + 8f * lift;
+                        float wantPitch = lowTargetPitch - pose.TorsoPitch * 1.4f;
+                        pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, wantPitch, gaze);
+                        pose.HeadYaw = Mathf.Lerp(pose.HeadYaw, _dreadYaw + Mathf.Sin(Time.time * 11f) * 1.2f, gaze);
+                        pose.HeadRoll = Mathf.Lerp(pose.HeadRoll, 6f, gaze);
+                    }
                 }
 
                 // 顔面パンチ: 頭が先行して振れ、胸・肩が少し遅れて付いてくる。
@@ -319,33 +480,34 @@ namespace Ryona.Game
                     pose.HeadYaw += shake * 6f * faceImpulse;
                     pose.HeadRoll += shake * 5f * faceImpulse;
 
-                    pose.TorsoYaw += lateral * 14f * torsoDelay;
-                    pose.TorsoRoll += -lateral * 8f * torsoDelay;
-                    pose.TorsoPitch -= 13f * torsoDelay;
+                    pose.TorsoYaw += lateral * 12f * torsoDelay;
+                    pose.TorsoRoll += -lateral * 5f * torsoDelay;
+                    pose.TorsoPitch -= 11f * torsoDelay;
 
                     // 打たれた方向へ腰が逃げ、膝が抜ける。足は一歩ぶん残る。
-                    pose.HipsOffset.x += lateral * 0.050f * torsoDelay;
+                    pose.HipsOffset.x += lateral * 0.045f * torsoDelay;
                     pose.HipsOffset.y -= 0.05f * faceImpulse;
                     pose.FootL += new Vector3(lateral * 0.030f, 0f, -0.018f) * faceImpulse;
                     pose.FootR += new Vector3(lateral * 0.038f, 0f, -0.012f) * faceImpulse;
                     pose.FootPitchR += 16f * faceImpulse;
                     pose.FootPitchL += 8f * faceImpulse;
 
-                    // 押さえられた腕は突かれて跳ねる（拘束は解けない）。
-                    pose.ArmLUpper.y += 0.10f * faceImpulse;
-                    pose.ArmRUpper.y += 0.10f * faceImpulse;
-                    pose.ArmLFore += new Vector3(0f, 0.12f, 0.05f) * faceImpulse;
-                    pose.ArmRFore += new Vector3(0f, 0.12f, 0.05f) * faceImpulse;
-                    pose.Grip = 1f;
+                    // 腕は羽交い締めで抑えられたまま、肩だけがわずかにすくむ（外へ跳ね上げない）。
+                    pose.ArmLUpper.y += 0.025f * faceImpulse;
+                    pose.ArmRUpper.y += 0.025f * faceImpulse;
+                    pose.Grip = Mathf.Lerp(1f, 0.20f, comboDangle);
 
-                    // 踏ん張り: 顔を上げて相手を睨み返す（顎を引くと髪で顔が隠れる）。
-                    pose.TorsoPitch += 5f * faceBrace;
-                    pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -8f, faceBrace * 0.8f);
+                    // 踏ん張り: 序盤は相手を見つめて怯え、打数が進むほど首が据わらなくなり傾く。
+                    // グロッキー中の通常顔パンでは、弾かれたあと警戒姿勢に戻らずすぐグロッキーへ落とす。
+                    float activeBrace = faceBrace * (1f - 0.85f * comboDangle);
+                    pose.TorsoPitch += (5f + 4f * _heldFaceFatigue) * activeBrace;
+                    pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, Mathf.Lerp(-10f, -4f, _heldFaceFatigue), activeBrace * 0.85f);
                     pose.HeadYaw = Mathf.Lerp(pose.HeadYaw,
-                        Mathf.Clamp(toCamera, -45f, 45f), faceBrace * 0.55f);
-                    pose.TorsoYaw -= lateral * 4f * faceBrace;
-                    pose.TorsoRoll += lateral * 3f * faceBrace;
-                    pose.HipsOffset.y -= 0.012f * faceBrace;
+                        Mathf.Clamp(toCamera, -45f, 45f), activeBrace * 0.55f);
+                    pose.HeadRoll = Mathf.Lerp(pose.HeadRoll, -lateral * (6f + 10f * _heldFaceFatigue), activeBrace * 0.75f);
+                    pose.TorsoYaw -= lateral * 4f * activeBrace;
+                    pose.TorsoRoll += lateral * (3f + 4f * _heldFaceFatigue) * activeBrace;
+                    pose.HipsOffset.y -= (0.012f + 0.025f * _heldFaceFatigue) * activeBrace;
                 }
 
                 // 腹パン中は胸と顔を打ち手へ向けたまま、前後の反動で見せる。
@@ -356,8 +518,16 @@ namespace Ryona.Game
                         ? transform.InverseTransformPoint(puncher.transform.position)
                         : Vector3.forward;
                     pose.TorsoYaw = 0f;
-                    pose.HeadYaw = Mathf.Atan2(toPuncher.x, toPuncher.z) * Mathf.Rad2Deg;
+                    float aimYaw = Mathf.Atan2(toPuncher.x, toPuncher.z) * Mathf.Rad2Deg;
+                    pose.HeadYaw = Mathf.Lerp(aimYaw, pose.HeadYaw, comboDangle);
                 }
+
+                // 顔パン中は顔を上げたままにする。うつむくと前髪が落ちて表情が読めなくなる
+                // （プレビューで確認）。被弾の一瞬だけでなく、コンボの間ずっと保つ。
+                float faceComboTarget = _punchDirector != null && _punchDirector.IsFaceCombo && comboDangle < 0.2f ? 1f : 0f;
+                _faceComboLift = Mathf.MoveTowards(_faceComboLift, faceComboTarget, Time.deltaTime / 0.20f);
+                if (_faceComboLift > 0f)
+                    pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, Mathf.Min(pose.HeadPitch, -8f), _faceComboLift * (1f - comboDangle));
 
                 return pose;
             }
@@ -393,34 +563,42 @@ namespace Ryona.Game
                 pose.ArmLUpper = pose.ArmRUpper = new Vector3(0.46f, -0.82f, 0.34f);
                 pose.ArmLFore = pose.ArmRFore = new Vector3(-0.10f, 0.30f, 0.95f);
 
-                // 締め付けに合わせて胸を起こし、両腕で押し返す。
+                // 締め付けに合わせて胸を起こし、両腕で押し返す。苦痛で頭が反り小さく揺れる。
                 pose.TorsoPitch -= 5f * strain + 8f * crush;
-                pose.HeadPitch -= 3f * strain;
+                pose.HeadPitch -= 4f * strain + 12f * crush;
+                pose.HeadYaw -= Mathf.Sin(Time.time * 24f) * 7f * pulse;
+                pose.HeadRoll += Mathf.Sin(Time.time * 6.5f) * 8f * crush;
                 pose.HipsOffset.z -= 0.03f * strain;
 
                 pose.HandRollL = StanceHandRollL;
                 pose.HandRollR = StanceHandRollR;
                 pose.Grip = 0.12f;
 
-                // 抱え上げられている間は両足が浮く。つま先は下へ垂れる。
+                // 抱え上げられている間は両足が浮く。つま先は下へ垂れる（左右を少しずらして吊られ感を出す）。
                 // 引き寄せでは足が床に残ろうとして、体より後ろへ遅れる。
                 Vector3 drag = new Vector3(0f, 0.01f, -0.06f) * yank;
                 pose.FootL += StanceFootL + drag
-                    + new Vector3(0f, 0.10f * hugLift, -0.02f * hugLift);
+                    + new Vector3(0f, 0.12f * hugLift, -0.04f * hugLift);
                 pose.FootR += StanceFootR + drag
-                    + new Vector3(0f, 0.10f * hugLift, -0.02f * hugLift);
-                pose.FootPitchL = 22f * pull + 28f * hugLift + 12f * yank;
-                pose.FootPitchR = 22f * pull + 28f * hugLift + 12f * yank;
+                    + new Vector3(0f, 0.09f * hugLift, -0.02f * hugLift);
+                pose.FootPitchL = 22f * pull + 34f * hugLift + 12f * yank;
+                pose.FootPitchR = 22f * pull + 32f * hugLift + 12f * yank;
                 ApplyFrontEscapePose(ref pose, frontWait, pulse);
+                if (HeldFacePunchImpulse > 0f || HeldBellyPunchFold > 0f)
+                {
+                    pose.HeadYaw += (CameraYawToMe() >= 0f ? 1f : -1f) * 34f * HeldFacePunchImpulse;
+                    pose.HeadPitch -= 14f * Mathf.Max(HeldFacePunchImpulse, HeldBellyPunchFold);
+                }
                 return pose;
             }
 
             // 押さえつけ（Pin）。正面から両肩を押され、膝が折れかけて耐える。
             // 上体は前へ折り、顔は上げて相手を見る（下を向くと前髪で顔が隠れる）。
-            pose.HipsOffset.y = StanceHipsY - 0.18f * pull;
+            float pinBreath = Mathf.Sin(Time.time * 4.2f);
+            pose.HipsOffset.y = StanceHipsY - 0.18f * pull + 0.008f * pinBreath;
             pose.HipsOffset.z = StanceHipsZ - 0.02f * pull;
 
-            pose.TorsoPitch = 18f * pull + 6f * strain;
+            pose.TorsoPitch = 18f * pull + 6f * strain + 1.8f * pinBreath;
             pose.TorsoYaw = Mathf.Sin(Time.time * 2.2f) * 3f;
             pose.TorsoRoll = 0f;
 
@@ -459,16 +637,58 @@ namespace Ryona.Game
             if (knee > 0f)
             {
                 float fold = Mathf.SmoothStep(0f, 1f, knee);
-                pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, 49f, fold);
-                pose.HipsOffset.y += 0.14f * knee;
-                pose.HipsOffset.z -= 0.10f * knee;
-                pose.FootL += new Vector3(0f, 0.085f, -0.075f) * knee;
+                pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, 53f, fold);
+                // 膝が入った瞬間に腰ごと持ち上がり、つま先が浮く。以前は 0.14/0.085 で
+                // 変化が小さく、彼の体で膝が隠れる回では「入った」ことが読めなかった。
+                pose.HipsOffset.y += 0.19f * knee;
+                pose.HipsOffset.z -= 0.13f * knee;
+                pose.FootL += new Vector3(0f, 0.125f, -0.105f) * knee;
                 pose.FootR += new Vector3(0f, 0.085f, -0.075f) * knee;
                 // 胸にも前傾が配られるので、その分も首で打ち消して顔を前に残す。
                 pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -67f, fold);
             }
 
+            if (Grapple != null && !Grapple.IsWallPin)
+            {
+                float kneeReset = Grapple.KneeResetLift;
+                if (kneeReset > 0f)
+                {
+                    pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, 6f, kneeReset);
+                    pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -18f, kneeReset);
+                    pose.HipsOffset.z += 0.035f * kneeReset;
+                    pose.HipsOffset.y += 0.025f * kneeReset;
+                }
+
+                float exhaust = Grapple.KneeExhaustion;
+                if (exhaust > 0f)
+                {
+                    pose.HipsOffset.y -= 0.065f * exhaust;
+                    pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, 28f, exhaust);
+                    pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -22f, exhaust);
+                    pose.HeadRoll += 8f * exhaust;
+                }
+            }
+
             pose.Grip = 1f;
+
+            // 3 人がかり: 彼女はグロッキーで、壁にもたれてずり落ちる。腰が落ち、足が前へ投げ出され、
+            // 上体は壁に背中を預けて（前へ倒さず、わずかに反らせる）、頭は力なく後ろへ傾いて横へ垂れる。
+            // 腹で折れる動きや顔パンの反応は、この上に重なる（殴られると前へ折れて、また壁へ戻る）。
+            // （順番が逆だと、グロッキーの角度が折れの動きを上書きして、殴られても体が動かない。実測）
+            // （上体を前へ倒して頭を前へ垂らすと、壁にもたれたのではなく前かがみに見える。実測）
+            float groggy = Grapple != null ? Grapple.WallGangWeight : 0f;
+            if (groggy > 0.001f)
+            {
+                pose.HipsOffset.y -= 0.26f * groggy;
+                pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, -4f, groggy);
+                pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -8f, groggy);
+                pose.HeadRoll += (16f + Mathf.Sin(Time.time * 1.3f) * 3f) * groggy;
+                pose.TorsoRoll += Mathf.Sin(Time.time * 1.7f) * 2.0f * groggy;
+
+                // 壁をずり落ちて、足が前へ投げ出される（壁から離れる向きが前）。
+                pose.FootL += new Vector3(0f, 0f, 0.20f * groggy);
+                pose.FootR += new Vector3(0f, 0f, 0.26f * groggy);
+            }
 
             // 二体がかり（Y 字）の腹パン: 両腕は壁に固定されたまま、腹で折れて膝が抜ける。
             // 腕のポーズ値は触らない。手首は SolveOverheadArms が world 固定しているので、
@@ -483,21 +703,57 @@ namespace Ryona.Game
 
                 // 壁の反り（-3°）から前へ折る。正面の押さえつけ（52°）ほど深くは折らない
                 // （深いと、腕を伸ばしたまま吊られた画になる）。
-                pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, 32f + 6f * fatigue, fold);
+                // 重さ（序盤 0.7 → 締め 1.7）で折れの深さ・沈み・横揺れが変わる。
+                float impact = HeldBellyPunchImpact;
+                pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, (32f + 6f * fatigue) * impact, fold);
                 // 胴の前傾を首で打ち消し、腹で折れても顔は前に残す（前髪で顔が隠れない）。
-                pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -52f - 4f * fatigue, fold);
-                pose.HeadYaw += side * 10f * fold;
-                pose.TorsoRoll += side * 6f * fold;
-                pose.HipsOffset.y -= (0.10f + 0.03f * fatigue) * fold;
+                pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, (-52f - 4f * fatigue) * Mathf.Lerp(1f, impact, 0.6f), fold);
+                pose.HeadYaw += side * 10f * impact * fold;
+                pose.TorsoRoll += side * 6f * impact * fold;
+                pose.HipsOffset.y -= (0.10f + 0.03f * fatigue) * impact * fold;
                 // ローカルの -Z が壁側。殴られて上体が前へ折れるぶん、腰は壁から少し離れる。
-                pose.HipsOffset.z += 0.03f * fold;
-                pose.HipsOffset.x += side * 0.03f * fold;
+                // 締めの膝入れ（重さ 1.5 以上）は、腰が膝の側へ出ると腹が膝へ食い込むので出さない。
+                pose.HipsOffset.z += (impact > 1.5f ? 0f : 0.03f * impact) * fold;
+                pose.HipsOffset.x += side * 0.03f * impact * fold;
 
-                // 当たった瞬間だけ頭と肩が短く揺れる（0.15 秒で消える）。
+                // 締めの膝は腹を突き上げるので、当たった瞬間に体が持ち上がる（足が床から浮く）。
+                float lift = Mathf.Clamp01((impact - 1.2f) / 0.5f) * fold;
+                pose.HipsOffset.y += 0.07f * lift;
+                pose.FootL.y += 0.05f * lift;
+                pose.FootR.y += 0.05f * lift;
+
+                // 当たった瞬間だけ頭と肩が短く揺れる（0.15 秒で消える）。重いほど大きい。
                 float age = HeldBellyPunchAge;
-                float shake = Mathf.Exp(-age * 14f) * Mathf.Sin(age * 55f) * fold;
+                float shake = Mathf.Exp(-age * 14f) * Mathf.Sin(age * 55f) * fold * impact;
                 pose.HeadPitch += shake * 3f;
                 pose.TorsoRoll += shake * 2f;
+            }
+            else if (wallHit > 0f)
+            {
+                float impact = HeldBellyPunchImpact;
+                pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, Mathf.Clamp(42f * impact, 30f, 52f), wallHit);
+                pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -54f, wallHit);
+                pose.HipsOffset.y -= 0.065f * impact * wallHit;
+                pose.HipsOffset.z -= 0.075f * impact * wallHit;
+            }
+
+            // 3 人がかり・レーン拘束の顔パン: 殴られた側と反対へ頭が弾かれる（腹の折れとは別に、頭だけが動く）。
+            float faceHit = HeldFacePunchImpulse;
+            if (faceHit > 0f)
+            {
+                float faceSide = (Grapple != null && Grapple.WallSplitFace)
+                    ? (_facePunchLocalX >= 0f ? -1f : 1f)
+                    : (_hasFacePunchDirection && Mathf.Abs(_facePunchLocalX) >= 0.15f
+                        ? Mathf.Sign(_facePunchLocalX)
+                        : (CameraYawToMe() >= 0f ? 1f : -1f));
+                pose.HeadYaw += faceSide * 62f * faceHit;
+                pose.HeadRoll += faceSide * 18f * faceHit;
+                pose.HeadPitch += 14f * faceHit;
+                pose.TorsoYaw += faceSide * 12f * faceHit;
+                pose.TorsoRoll += faceSide * 6f * faceHit;
+                // 顔を殴られて足がもつれる（膝が少し沈み、腰が殴られた側と反対へ流れる）。
+                pose.HipsOffset.y -= 0.05f * faceHit;
+                pose.HipsOffset.x += faceSide * 0.05f * faceHit;
             }
 
             // 構えの足の位置から始める。Rest（T ポーズ）のままだと脚が伸びきって

@@ -44,6 +44,7 @@
 
 | フラグ | 動き |
 |---|---|
+| `-log` | リリースビルドでログを出す。既定では `Debug.Log` 相当のゲームログは**すべて黙る**（`GameLog` 経由）。Editor / Development Build は引数なしで常に出る。`-hitlog` / `-statlog` / `-pinlog` / `-jointlog` でも有効になる |
 | `-holdlight` | 弱だけ押し続ける（3段コンボの確認） |
 | `-leftpunch` | 弱を必ず左で打つ（2段目の姿勢確認） |
 | `-holdattack [-attackinterval=秒]` | 強も混ぜて自動で殴る |
@@ -67,12 +68,16 @@
 | `-pinchain` | `-grappletest -pintest` と併用。最後の膝蹴りで背後に受け手を配置し、羽交い締めへの引き渡しを再現する（`-handoffburst=<png>` で撮影） |
 | `-wallpinnow` | 起動 1.5 秒後に、いちばん近い壁の前へ移動してから押さえつけを 1 回指示する（壁押さえつけの自動確認用） |
 | `-wallpintest` | `-grappletest` と併用。壁の前（x=4 / 14 / 24）へ移動してから押さえつけを繰り返す。`-pinshot=` / `-pinburst=` もそのまま使える |
+| `-anklegrabtest` | `-grappletest` と併用。背後からの掴みを足取り（`GrappleKind.AnkleGrab`）に固定する。`-pinburst=<png>` で掴まれてから 0.05 秒 × 80 枚を撮れる（振りほどけなければ転倒・マウントまで写る） |
+| `-pinburstframes=<n>` / `-pinburstinterval=<秒>` | `-pinburst` の枚数（既定: 壁 200 / 通常 80）と間隔（既定 0.05 秒）を変える。壁拘束の全体は `-pinburstframes=300 -pinburstinterval=0.1`（30 秒）で撮れる |
 | `-nowallprops` | 実行時に作る壁パネル（3 か所）を止める。ジオメトリ側に `WallPinSite` を置いたとき用 |
 | `-overheadtest` | `-grappletest` と併用。壁押さえつけでの頭上拘束を再現。 `-overheadburst=<png>` で撮影 |
 | `-walllog` | 壁押さえつけ中、体の骨・髪のジョイント・**描画メッシュ**が壁の表面からどれだけ手前かを 0.25 秒ごとログ（`[WallClear]` / `[WallMesh]` / `[HairWall]`）。貫通の判定は `[WallMesh]` を見る（骨だけでは見落とす） |
 | `-pinshot=<png>` | 押さえつけ開始から 0.30 秒後を撮影（`-pintest` と併用）。`-pinshotdelay=` で秒数を差し替え |
 | `-pinburst=<prefix>` | 押さえつけ開始から 0.05 秒ごとに 40 枚（2.0 秒ぶん）。膝蹴り（1.5 秒）の前後を追う |
 | `-downburst=<prefix> [-downhits=light\|heavy\|break\|belly]` | 起動 1.5 秒後から 0.30 秒おきに彼女へ攻撃を当て、**ダウンした瞬間**から 0.05 秒ごとに 40 枚（2.0 秒ぶん）撮る。撮影中は AI の攻撃を止める（当てるのはドライバだけ）。`belly` は腹ヒット扱い（前へ崩れるダウンの確認用） |
+| `-downhits=face\|body\|faceheavy\|bodyheavy\|prone` | `-downburst` と併用。**一発だけ**当てて、その瞬間から 40 枚撮る（ダウンしない食らいの確認用）。顔 / 腹ヒット扱い。`prone` は食らいではなく、うつ伏せ（前へ崩れる）ダウンを直接起こす（通常のベルトカメラで倒れ込みを撮れる） |
+| `-haullog` | 引き起こし中、0.25 秒ごとに `[HaulFace]`（顔の可視率・向き・隠している敵）を出力。`-haultest -mountburst=<prefix>` と併用（うつ伏せは `-mountprone`） |
 | `-mountburst=<prefix>` | 地面マウント（跨ってのパンチ）の姿勢確認用。起動 2 秒後に最寄りの敵の前で彼女をダウンさせ、マウント開始から 0.05 秒ごとに 60 枚（3 秒ぶん）撮って終了する。撮影中の腕の角度・手の高さ・1 フレームの移動量を `[MountArm]` で出力 |
 | `-mountentry` | `-mountburst` の撮影をダウン直後から始め、敵が今いる側から近づいて跨るまでを 0.05 秒ごとに 110 枚撮る |
 | `-mountprone` | `-mountburst` と併用。**うつ伏せ**（前へ崩れる）ダウンで試す。仰向けに返すロール（HUD は「仰向けに返される」）も撮れる |
@@ -131,7 +136,7 @@ python tools/grapple_verify.py compare before after    # 並べる
 
 | 引数 | 意味 |
 |---|---|
-| `--scenarios` | 既定 `belly,face,mount`。全部は `belly,face,face_far,mount,mount_prone,pin` |
+| `--scenarios` | 既定 `belly,face,mount`。全部は `belly,face,face_far,mount,mount_prone,pin,ankle`（`ankle` は足取りで、転倒まで撮る） |
 | `--baseline REF` | `REF`（`HEAD`・`HEAD~3`・ハッシュ）を専用ワークツリー `.claude/worktrees/verify-baseline` へ出して自動でビルド・撮影し、最後に比べる。**作業ツリーの未コミットの変更には触れない**。基準は `Verify/base-<ハッシュ>/` に保存して使い回す（`--refresh-baseline` で撮り直し）。初回は Library のコピーとビルドで数分。不要になったら `git worktree remove --force .claude/worktrees/verify-baseline` |
 | `--no-build` / `--build` | ビルド確認を飛ばす / 必ずビルドする（既定はソースが新しければ自動でビルド） |
 | `--count` `--cols` `--tile` | montage のコマ数・列数・1コマの幅 |

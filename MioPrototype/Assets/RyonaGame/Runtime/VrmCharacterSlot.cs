@@ -31,10 +31,10 @@ namespace Ryona.Game
 
         [Header("Orientation")]
         [Tooltip("VRM の向き補正。正面が逆なら 180 にする")]
-        public float YawOffset = 0f;
+        [System.NonSerialized] public float YawOffset = 0f;
 
         [Tooltip("VRM の身長をプレイヤーの身長に合わせる（VRoid 出力はメートルなので通常 1）")]
-        public float Scale = 1f;
+        [System.NonSerialized] public float Scale = 1f;
 
         public GameObject Instance { get; private set; }
         public Vrm10Instance Vrm { get; private set; }
@@ -53,6 +53,18 @@ namespace Ryona.Game
             string.IsNullOrEmpty(FileName)
                 ? null
                 : Path.Combine(Application.streamingAssetsPath, FileName);
+
+        /// <summary>調整値は <see cref="RyonaConfig.VrmSlot"/> が真実源。シーンの保存値は使わない。</summary>
+        void ApplySettings(RyonaConfig.VrmSlotSettings s)
+        {
+            YawOffset = s.YawOffset;
+            Scale = s.Scale;
+        }
+
+        void Awake()
+        {
+            ApplySettings(RyonaConfig.Instance.VrmSlot);
+        }
 
         async void Start()
         {
@@ -184,6 +196,10 @@ namespace Ryona.Game
             if (Instance.GetComponent<VrmHairWallClamp>() == null)
                 Instance.AddComponent<VrmHairWallClamp>();
 
+            // 毛束の板が体・服へめり込まないよう、胴と腕のコライダーを少し広げる
+            if (Instance.GetComponent<VrmHairBodyMargin>() == null)
+                Instance.AddComponent<VrmHairBodyMargin>();
+
             // 殴られたら顔を歪ませる（眉・口・目を重ねて苦悶を作る）
             var face = Instance.AddComponent<PlayerFace>();
             face.Vrm = vrm;
@@ -202,7 +218,7 @@ namespace Ryona.Game
             if (Placeholder != null)
                 Placeholder.gameObject.SetActive(false);
 
-            Debug.Log($"[Ryona] VRM を差し込みました: {FileName}");
+            GameLog.Log($"[Ryona] VRM を差し込みました: {FileName}");
             LoadFinished?.Invoke(true);
             return true;
         }

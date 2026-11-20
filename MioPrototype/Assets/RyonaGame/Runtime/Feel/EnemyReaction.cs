@@ -17,16 +17,16 @@ namespace Ryona.Game
 
         [Header("Tuning")]
         [Tooltip("発光が白に飛んでから戻るまでの秒数")]
-        public float FlashSeconds = 0.08f;
+        [System.NonSerialized] public float FlashSeconds = 0.08f;
 
         [Tooltip("つぶれが戻るまでの秒数")]
-        public float SquashSeconds = 0.12f;
+        [System.NonSerialized] public float SquashSeconds = 0.12f;
 
         [Tooltip("怯み段階 1.0 のときの押し出し距離（m）")]
-        public float KnockbackDistance = 0.06f;
+        [System.NonSerialized] public float KnockbackDistance = 0.06f;
 
         [Tooltip("フラッシュの発光色")]
-        public Color FlashColor = Color.white;
+        [System.NonSerialized] public Color FlashColor = Color.white;
 
         static readonly int EmissionId = Shader.PropertyToID("_EmissionColor");
 
@@ -39,8 +39,18 @@ namespace Ryona.Game
         Coroutine _flashRoutine;
         Coroutine _squashRoutine;
 
+        /// <summary>調整値は <see cref="RyonaConfig.EnemyReaction"/> が真実源。シーンの保存値は使わない。</summary>
+        void ApplySettings(RyonaConfig.EnemyReactionSettings s)
+        {
+            FlashSeconds = s.FlashSeconds;
+            SquashSeconds = s.SquashSeconds;
+            KnockbackDistance = s.KnockbackDistance;
+            FlashColor = s.FlashColor;
+        }
+
         void Awake()
         {
+            ApplySettings(RyonaConfig.Instance.EnemyReaction);
             ResolveReferences();
             _baseScale = transform.localScale;
 

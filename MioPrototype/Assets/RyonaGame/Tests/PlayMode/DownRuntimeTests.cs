@@ -553,6 +553,31 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
+        public IEnumerator ダウン中も呼吸で体がわずかに動く()
+        {
+            yield return LoadPlayer();
+
+            // ダウン姿勢を時刻を変えて作り、腰の高さの振れ幅を見る。
+            // 以前は呼吸が 3mm で、合成シートの時間方向の差分が平均の約 2% しかなく
+            // 「止め絵」に見えていた（docs/motion-audit.md）。その退行を止める。
+            var rig = _anim.Rig;
+            float min = float.MaxValue;
+            float max = float.MinValue;
+
+            for (float t = 1.0f; t <= 1.99f; t += 0.05f)
+            {
+                _anim.ForceState(CharacterAnimator.State.Down, t, 2f, StaggerTier.None, log: false);
+                yield return null;
+                float y = rig.Hips.position.y;
+                if (y < min) min = y;
+                if (y > max) max = y;
+            }
+
+            Assert.Greater(max - min, 0.008f,
+                $"ダウン中に体がほとんど動かない（振れ幅 {max - min:F3}m）。呼吸が効いていない");
+        }
+
+        [UnityTest]
         public IEnumerator ダウンは操作するまで続き起き上がり中も移動できない()
         {
             yield return LoadPlayer();
@@ -574,6 +599,35 @@ namespace Ryona.Tests
             Assert.IsFalse(_stats.State.IsDown, "ダウンが明けていない");
             Assert.AreEqual(CharacterAnimator.State.Idle, _anim.Current,
                 $"起き上がって構えに戻っていない（{_anim.Current}）");
+        }
+
+        [UnityTest]
+        public IEnumerator MountedEscapeShovesEnemyIntoStagger()
+        {
+            yield return LoadPlayer(holdEnemies: false);
+            var attacker = PrepareMount(forward: false);
+            var mount = _stats.GetComponent<GroundMountAttack>();
+
+            float deadline = Time.realtimeSinceStartup + 6f;
+            while (mount.Stage != GroundMountAttack.Beat.Windup && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.AreEqual(GroundMountAttack.Beat.Windup, mount.Stage, "マウントに入らない");
+
+            for (int i = 0; i < 6; i++)
+                mount.Struggle();
+            Assert.IsTrue(mount.Escaped, "連打で脱出状態に入らない");
+            Assert.AreEqual(GroundMountAttack.Beat.Dismount, mount.Stage);
+
+            deadline = Time.realtimeSinceStartup + 2f;
+            while (mount.Stage != GroundMountAttack.Beat.Idle && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.AreEqual(GroundMountAttack.Beat.Idle, mount.Stage, "Dismount が完了しない");
+            Assert.AreEqual(EnemyPhase.Stagger, attacker.Phase, "跳ね除けられた敵がよろけていない");
+            yield return null;
+            Assert.IsTrue(_stats.GetUpRequested || _stats.IsGettingUp, "脱出後に起き上がり要求/開始に入っていない");
+
+            yield return new WaitForSeconds(_anim.GetUpSeconds + 0.3f);
+            Assert.IsFalse(_stats.IsDown, "脱出後に立ち上がれていない");
         }
     }
 }

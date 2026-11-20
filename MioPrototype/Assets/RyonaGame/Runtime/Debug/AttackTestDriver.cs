@@ -96,7 +96,7 @@ namespace Ryona.Game
                 _target.transform.rotation = Quaternion.LookRotation(
                     player.transform.position - _anchor, Vector3.up);
 
-                Debug.Log($"[AttackTest] {_target.name} を {Distance:F2}m 前に固定");
+                GameLog.Log($"[AttackTest] {_target.name} を {Distance:F2}m 前に固定");
             }
 
             // 毎フレーム固定する。AI は動かしたまま（姿勢は自然）だが、位置は動かさない。

@@ -1,7 +1,39 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Ryona.Game
 {
+    /// <summary>
+    /// 二人がかり・3 人がかりの「いまの 1 発」。
+    /// <para>
+    /// 以前は 1 枠しか持てず、3 人がかりは必ず 1 人ずつ順番に打つ形になっていた
+    /// （＝順番待ちに見える）。2 枠にして、2 人が同時に打てるようにする。
+    /// </para>
+    /// </summary>
+    internal sealed class SplitStrike
+    {
+        public EnemyBrain Puncher;
+        public float Age = -1f;
+        public float Windup = 0.16f;
+        public bool Left;
+        public bool Face;
+        public bool Kick;
+        public bool Finisher;
+
+        /// <summary>この人がいま打っている最中か。</summary>
+        public bool IsStriking(EnemyBrain who) => who != null && Puncher == who && Age >= 0f;
+
+        public void Reset()
+        {
+            Puncher = null;
+            Age = -1f;
+            Windup = 0.16f;
+            Left = false;
+            Face = false;
+            Kick = false;
+            Finisher = false;
+        }
+    }
     /// <summary>壁拘束の段階。掴み → せり上がり → 叩きつけ → … → 手首固定 → 投げ捨て。</summary>
     public enum WallStage
     {
@@ -50,6 +82,15 @@ namespace Ryona.Game
         /// <summary>壁押さえつけ中か。壁の外へ押し出されている間だけ true。</summary>
         public bool IsWall { get; set; }
 
+        /// <summary>
+        /// 壁拘束の段階進行（膝 → 猶予 → 二人がかり → 猶予 → 解放）が動いているか。
+        /// 動いている間は、制限時間が尽きても時間切れで投げ捨てにしない（進行が自分で進める）。
+        /// </summary>
+        public bool WallSequenceActive { get; set; }
+
+        /// <summary>段階の間の猶予中か。このとき <see cref="LimitRemaining"/> が猶予の残り秒になる。</summary>
+        public bool WallPauseActive { get; set; }
+
         /// <summary>壁拘束の段階。<see cref="WallStage.None"/> なら壁ではない。</summary>
         public WallStage Stage { get; private set; }
 
@@ -66,17 +107,68 @@ namespace Ryona.Game
         /// <summary>壁拘束が始まった時点で横に残した二体目（まだ加わっていない）。</summary>
         public EnemyBrain AssistCandidate { get; set; }
 
-        /// <summary>いま殴る側（拘束役かアシスト）。null なら待ち。</summary>
-        public EnemyBrain SplitPuncher { get; set; }
+        /// <summary>いま殴る側（拘束役かアシスト）。null なら待ち。0 枠目を指す。</summary>
+        public EnemyBrain SplitPuncher { get => _strikes[0].Puncher; set => _strikes[0].Puncher = value; }
 
-        /// <summary>いまの 1 発の経過秒（0 = 振りかぶり開始、負 = 待ち）。</summary>
-        public float SplitPunchAge { get; set; } = -1f;
+        /// <summary>いまの 1 発の経過秒（0 = 振りかぶり開始、負 = 待ち）。0 枠目。</summary>
+        public float SplitPunchAge { get => _strikes[0].Age; set => _strikes[0].Age = value; }
+
+        /// <summary>
+        /// いまの 1 発の振りかぶり秒数。段階（序盤→締め）で変わるので、
+        /// 姿勢側が「溜めきる瞬間・当たる瞬間」を割り出すのにここを見る。0 枠目。
+        /// </summary>
+        public float SplitWindup { get => _strikes[0].Windup; set => _strikes[0].Windup = value; }
 
         /// <summary>二人がかりで入った腹パンの数（HUD 用）。</summary>
         public int SplitHits { get; set; }
 
-        /// <summary>打つ手が左か（アシスト=右、拘束役=左）。ポーズ側が空き手を選ぶ。</summary>
-        public bool SplitPunchLeft { get; set; }
+        /// <summary>打つ手が左か（アシスト=右、拘束役=左）。ポーズ側が空き手を選ぶ。0 枠目。</summary>
+        public bool SplitPunchLeft { get => _strikes[0].Left; set => _strikes[0].Left = value; }
+
+        /// <summary>いまの 1 発が締め（膝入れ）か。腕のパンチではなく膝で打つ。0 枠目。</summary>
+        public bool SplitFinisher { get => _strikes[0].Finisher; set => _strikes[0].Finisher = value; }
+
+        readonly SplitStrike[] _strikes = { new SplitStrike(), new SplitStrike() };
+
+        /// <summary>同時に打つ 2 枠。0 が従来の 1 発。</summary>
+        public IReadOnlyList<SplitStrike> Strikes => _strikes;
+
+        /// <summary>この人がいま打っている枠を返す（打っていなければ null）。</summary>
+        public SplitStrike StrikeOf(EnemyBrain who)
+        {
+            for (int i = 0; i < _strikes.Length; i++)
+            {
+                if (_strikes[i].IsStriking(who))
+                    return _strikes[i];
+            }
+            return null;
+        }
+
+        /// <summary>空いている枠を取って、この人の 1 発を始める。満杯なら 0 枠目を使い回す。</summary>
+        public SplitStrike ClaimStrike(EnemyBrain who)
+        {
+            for (int i = 0; i < _strikes.Length; i++)
+            {
+                if (_strikes[i].Puncher != null && _strikes[i].Age >= 0f)
+                    continue;
+                _strikes[i].Reset();
+                _strikes[i].Puncher = who;
+                _strikes[i].Age = 0f;
+                return _strikes[i];
+            }
+
+            _strikes[0].Reset();
+            _strikes[0].Puncher = who;
+            _strikes[0].Age = 0f;
+            return _strikes[0];
+        }
+
+        /// <summary>すべての枠を空にする。</summary>
+        public void ClearStrikes()
+        {
+            for (int i = 0; i < _strikes.Length; i++)
+                _strikes[i].Reset();
+        }
 
         /// <summary>二体目が横に着いて、二人で押さえ始めたか。</summary>
         public bool SplitStarted { get; set; }
@@ -138,6 +230,45 @@ namespace Ryona.Game
             _ => 0f
         };
 
+        // --- 3 人がかり（壁拘束の最後の段階） -------------------------
+        /// <summary>3 人目。居なければ null。</summary>
+        public EnemyBrain Third { get; set; }
+
+        /// <summary>3 人がかりの段階か。拘束役が片手を離し、拘束役と 3 人目が交代で殴る蹴る。</summary>
+        public bool GangActive { get; set; }
+
+        /// <summary>いま前へ入って打つ側（拘束役か 3 人目）。もう一人は横で待つ。</summary>
+        public EnemyBrain GangStriker { get; set; }
+
+        /// <summary>この段階で入った打撃の数と、予定の数（HUD 用）。</summary>
+        public int GangHits { get; set; }
+        public int GangTotal { get; set; }
+
+        /// <summary>いまの 1 発が顔パンか。</summary>
+        public bool SplitFace { get => _strikes[0].Face; set => _strikes[0].Face = value; }
+
+        /// <summary>いまの 1 発が蹴り（脚をまっすぐ伸ばして足を腹へ入れる）か。膝入れと同じ枠で動く。</summary>
+        public bool SplitKick { get => _strikes[0].Kick; set => _strikes[0].Kick = value; }
+
+        /// <summary>二人がかりの腹パンを打ち終えたか（Y 字はまだ解かない）。</summary>
+        public bool SplitPunchesDone { get; set; }
+
+        /// <summary>拘束役が手を離して、彼女の腕が下がる見た目 0..1。</summary>
+        public float GangWeight { get; private set; }
+
+        public void TickGangWeight(float dt) =>
+            GangWeight = Mathf.MoveTowards(GangWeight, GangActive ? 1f : 0f, dt / 0.35f);
+
+        public void ClearGang()
+        {
+            Third = null;
+            GangActive = false;
+            GangStriker = null;
+            GangHits = 0;
+            GangTotal = 0;
+            GangWeight = 0f;
+        }
+
         // --- 二体がかりの見た目 -------------------------------------
         /// <summary>Y 字拘束の見た目 0..1（手首の開き・二人の腕の持ち方に使う）。</summary>
         public float SplitWeight { get; private set; }
@@ -167,6 +298,8 @@ namespace Ryona.Game
         public void ClearWall()
         {
             IsWall = false;
+            WallSequenceActive = false;
+            WallPauseActive = false;
             Stage = WallStage.None;
             StageProgress = 0f;
             StageElapsed = 0f;
@@ -177,10 +310,10 @@ namespace Ryona.Game
         {
             Assist = null;
             AssistCandidate = null;
-            SplitPuncher = null;
-            SplitPunchAge = -1f;
+            ClearStrikes();
             SplitHits = 0;
-            SplitPunchLeft = false;
+            SplitPunchesDone = false;
+            ClearGang();
             SplitStarted = false;
             SplitReady = false;
             SplitAssistAge = 0f;

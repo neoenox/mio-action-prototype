@@ -34,9 +34,7 @@ namespace Ryona.Game
             // --- 目標姿勢を組み立てる ---------------------------------
 
             // 掴まれている最中か（姿勢の分岐と踏み込みの両方が見る）。
-            var holdState = Brain != null && Brain.Player != null
-                ? Brain.Player.GetComponent<PlayerGrapple>()
-                : null;
+            var holdState = Brain != null ? Brain.Hold : null;
 
             var pose = BuildTargetPose(dt, instant, phase, speed, holdState);
             ApplyPoseTarget(pose, dt, instant, phase, holdState);
@@ -64,7 +62,42 @@ namespace Ryona.Game
             BuildPhasePose(ref pose, phase, speed, restY, dt, instant);
             BuildHeldPose(ref pose, phase, holdState, restY, out bool grabbing);
             BuildWristPose(ref pose, phase, holdState, grabbing, restY);
+            BuildHaulPose(ref pose);
             return pose;
+        }
+
+        /// <summary>
+        /// 引きずり起こし（<see cref="GroundHaulUp"/>）の体の使い方。
+        /// 腕は <see cref="HaulUpPose"/> が手首と裾へ合わせるので、ここは腰・脚・上体だけ。
+        /// かがんで掴み、立ちながら後ろへ反って引き上げる。
+        /// </summary>
+        void BuildHaulPose(ref PoseTarget pose)
+        {
+            if (Brain == null || Brain.Player == null)
+                return;
+            var haul = Brain.Player.GroundMount.Haul;
+            if (haul == null || haul.Attacker != Brain || haul.Stage < GroundHaulUp.Beat.Grab)
+                return;
+
+            // かがみは足取り（AnkleGrab）の低い姿勢を下敷きにする: 前の足を踏み込み、
+            // 後ろの足は膝を落として沈む。上体はそれより深く前へ（床の手首まで手を届かせる）。
+            // この骨格の TorsoPitch は「負 = 前傾」「正 = 後ろへ反る」。
+            float crouch = haul.Crouch;
+            float lean = haul.Lean;
+            float restY = Height * 0.515f;
+            pose.LegsExact = false;
+            pose.HipsY = Mathf.Lerp(pose.HipsY, restY - 0.55f, crouch);
+            pose.HipsZ = Mathf.Lerp(pose.HipsZ, 0.08f, crouch) - 0.06f * lean;
+            pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, -68f, crouch) + 22f * lean;
+            pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -20f, crouch) + 6f * lean;
+            pose.KneeR = Mathf.Lerp(pose.KneeR, 120f, crouch);
+            pose.KneeL = Mathf.Lerp(pose.KneeL, 100f, crouch);
+            pose.LegRPitch = Mathf.Lerp(pose.LegRPitch, -60f, crouch);
+            pose.LegLPitch = Mathf.Lerp(pose.LegLPitch, 20f, crouch);
+            // 引くときは足を前後に割って踏ん張る（後ろへ体重を掛ける）。
+            pose.KneeR += 18f * lean;
+            pose.LegRPitch -= 14f * lean;
+            pose.LegLPitch += 10f * lean;
         }
 
         /// <summary>フェーズごとの基本姿勢（立ち・歩き・攻撃・怯み・ダウン）。</summary>
@@ -385,6 +418,7 @@ namespace Ryona.Game
             BuildPushPose(ref pose, phase, holdState, restY);
             BuildCatchPose(ref pose, phase, holdState, restY);
             BuildHugPinPose(ref pose, phase, holdState, restY);
+            BuildWallSplitKneePose(ref pose, holdState);
             BuildGetUpPose(ref pose, phase, holdState, restY, out grabbing);
         }
 
@@ -455,8 +489,7 @@ namespace Ryona.Game
                     pose.KneeL = Mathf.Lerp(22f, 10f, retract);
                     pose.LegRPitch = 0f;
                     pose.LegLPitch = 0f;
-                    var hold = Brain != null && Brain.Player != null
-                        ? Brain.Player.GetComponent<PlayerGrapple>() : null;
+                    var hold = holdState;
                     if (holding && hold != null && hold.Kind == GrappleKind.Back)
                     {
                         pose.ArmRPitch = -78f;
@@ -478,6 +511,26 @@ namespace Ryona.Game
                         pose.LegRPitch = -16f;
                         pose.LegLPitch = 14f;
                         pose.HeadPitch = -22f;
+                    }
+                    else if (holding && hold != null && hold.Kind == GrappleKind.AnkleGrab)
+                    {
+                        // 足取り: 低く沈み込み、前へ伸ばした片腕で彼女の足首を掴む（腕の先は
+                        // AnkleHoldPose が足首へ合わせる）。もう片腕は体を支える。
+                        pose.TorsoPitch = -26f;
+                        pose.HipsY = restY - 0.36f;
+                        pose.HipsZ = 0.08f;
+                        // 前の足（右）を踏み込み、後ろの足（左）は膝をついて沈む。
+                        pose.KneeR = 96f;
+                        pose.KneeL = 74f;
+                        pose.LegRPitch = -44f;
+                        pose.LegLPitch = 20f;
+                        pose.HeadPitch = -8f;
+                        pose.ArmRPitch = -40f;
+                        pose.ElbowR = 14f;
+                        pose.ArmRSpread = -16f;
+                        pose.ArmLPitch = -58f;
+                        pose.ElbowL = 10f;
+                        pose.ArmLSpread = 10f;
                     }
                 }
 
@@ -513,12 +566,16 @@ namespace Ryona.Game
                 float bw = Brain.PunchPoseWeight;
                 if (Brain.IsBellyPunch)
                 {
-                    // 先に膝を曲げて拳を脇に溜め、前足に体重を移しながら腰を返す。
+                    // 先に膝を曲げて拳を脇に溜め、前足に体重を移しながら腰を返す。後半の打数ほど大きく振る。
                     float bodyDrive = Brain.BellyPunchDrive;
-                    pose.TorsoYaw = Mathf.Lerp(24f, -31f, bodyDrive) * bw;
-                    pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, Mathf.Lerp(-14f, -33f, bodyDrive), bw);
-                    pose.HipsY = Mathf.Lerp(pose.HipsY, restY - Mathf.Lerp(0.27f, 0.23f, bodyDrive), bw);
-                    pose.HipsZ = Mathf.Lerp(pose.HipsZ, 0.11f * bodyDrive, bw);
+                    float sinkDrive = Brain.BellySinkDrive;
+                    float power = Brain.IsTagPunch ? Brain.TagFacePower : 1f;
+                    float leanPower = Mathf.Min(1.08f, power);
+                    pose.TorsoYaw = Mathf.Lerp(24f * power, -26f * leanPower, bodyDrive) * bw;
+                    pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch,
+                        Mathf.Lerp(-14f, -30f * Mathf.Lerp(1f, leanPower, 0.35f), bodyDrive) - 2.0f * sinkDrive, bw);
+                    pose.HipsY = Mathf.Lerp(pose.HipsY, restY - Mathf.Lerp(0.27f, 0.24f, bodyDrive) * Mathf.Lerp(1f, power, 0.35f), bw);
+                    pose.HipsZ = Mathf.Lerp(pose.HipsZ, (0.095f * bodyDrive + 0.032f * sinkDrive) * leanPower, bw);
                     pose.KneeR = Mathf.Lerp(pose.KneeR, Mathf.Lerp(48f, 67f, bodyDrive), bw);
                     pose.KneeL = Mathf.Lerp(pose.KneeL, Mathf.Lerp(61f, 34f, bodyDrive), bw);
                     pose.LegRPitch = Mathf.Lerp(pose.LegRPitch, Mathf.Lerp(-20f, -29f, bodyDrive), bw);
@@ -712,7 +769,7 @@ namespace Ryona.Game
             // ベアハッグ: 胴を抱え込むので上体を前へ寄せ、膝を落として締める。
             if (Brain != null && Brain.IsBearHugging)
             {
-                var hug = Brain.Player.GetComponent<PlayerGrapple>();
+                var hug = holdState;
                 float progress = hug != null ? Mathf.Clamp01(hug.Progress) : 0f;
                 float lift = hug != null ? hug.LiftPulse : 0f;
                 float squeeze = hug != null ? hug.SqueezePulse : 0f;
@@ -722,6 +779,7 @@ namespace Ryona.Game
                 // 引き寄せでは体重を後ろへ預けて、腕で彼女を引きずり込む。
                 pose.TorsoPitch += Mathf.Lerp(8f, -4f, progress)
                     - 4f * lift + 2f * squeeze - 7f * yank;
+                pose.HeadPitch += 8f * squeeze;
                 pose.HipsZ += 0.05f + 0.02f * squeeze - 0.03f * yank;
                 pose.HipsY += 0.03f * lift - 0.03f + 0.02f * yank;
                 pose.KneeR += 8f - 4f * lift + 5f * yank;
@@ -731,12 +789,15 @@ namespace Ryona.Game
             // もがかれるほど押し返されて上体が起こされる（振りほどきが効いているのが見える）。
             if (Brain != null && Brain.IsPinning)
             {
-                var pin = Brain.Player.GetComponent<PlayerGrapple>();
+                var pin = holdState;
                 float progress = pin != null ? Mathf.Clamp01(pin.Progress) : 0f;
-                pose.TorsoPitch += Mathf.Lerp(12f, -6f, progress);
-                pose.HipsY -= 0.06f;
-                pose.KneeR += 10f;
-                pose.KneeL += 10f;
+                float prep = Brain.PinKneePrep;
+                float lanePrep = Brain.IsWallPinning ? 0f : prep;
+                pose.TorsoPitch += Mathf.Lerp(12f, -6f, progress) - 8f * lanePrep;
+                pose.HipsY -= 0.06f + 0.03f * lanePrep;
+                pose.KneeR += 10f + 12f * prep;
+                pose.KneeL += 10f + 12f * prep;
+                pose.LegLPitch += 16f * prep;
 
                 // 壁押さえつけは、壁へ体重を預けて押し込む。上体を起こしたまま前へ出る。
                 if (Brain.IsWallPinning)
@@ -792,6 +853,58 @@ namespace Ryona.Game
                         pose.KneeL += 8f * knee;
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// 壁の二体がかりの締め。打つ側が腕ではなく膝を腹へ入れる。
+        /// 腰を沈めて骨盤を彼女の腹の中心線へずらし、カメラ側の膝を引き上げる
+        /// （奥の脚だと自分の体に隠れる）。
+        /// </summary>
+        void BuildWallSplitKneePose(ref PoseTarget pose, PlayerGrapple holdState)
+        {
+            if (Brain == null || Brain.Player == null)
+                return;
+
+            var hold = holdState;
+            float coil = hold != null ? hold.WallSplitKneeWeight(Brain) : 0f;
+            float thrust = hold != null ? hold.WallSplitKneeThrust(Brain) : 0f;
+            if (coil <= 0f && thrust <= 0f)
+                return;
+
+            // 足踏み・踏み込みの IK（LegsExact）が脚の角度を毎フレーム上書きすると、
+            // 膝の振り上げが反映されない（実測: 突き上げ中も脚が -20° のまま）。
+            // 締めの間は FK で脚を動かす。IK から FK へは、直前の実際の角度から滑らかにつながる。
+            pose.LegsExact = false;
+
+            // 溜めの間は膝を少し引き上げるだけ。突き上げの瞬間にだけ大きく振り上げる。
+            float prep = coil * (1f - thrust);
+
+            // 彼女に近い側（内側）の脚で入れる。外側の脚だと膝が腹の横を通って届かない。
+            Vector3 herPos = Brain.Player.transform.position;
+            bool leftKnee = (_hipL.position - herPos).sqrMagnitude < (_hipR.position - herPos).sqrMagnitude;
+
+            // 溜めの間に深くしゃがんで上体を少し反らせ、突き上げで前へ倒れ込む。
+            // 突き上げの瞬間は腰を少し起こして、膝を腹の高さまで届かせる。
+            // 蹴りは膝を曲げずに脚をまっすぐ伸ばす（腰は沈めすぎず、上体を少し反らす）。
+            bool kick = hold.WallSplitKickOf(Brain);
+            pose.HipsY -= (kick ? 0.08f : 0.22f) * coil * (1f - 0.5f * thrust);
+            pose.TorsoPitch += (kick ? -8f : 14f) * thrust - 6f * prep;
+            float raise = (kick ? 8f : 90f) * thrust + (kick ? 0f : 14f) * prep;
+            float swing = (kick ? -92f : -105f) * thrust - 10f * prep;
+            if (leftKnee)
+            {
+                pose.HipsX += 0.10f * coil;
+                pose.KneeL += raise;
+                pose.LegLPitch += swing;
+                pose.KneeR += 10f * coil;
+            }
+            else
+            {
+                pose.HipsX -= 0.10f * coil;
+                pose.KneeR += raise;
+                pose.LegRPitch += swing;
+                pose.KneeL += 10f * coil;
             }
         }
 

@@ -32,6 +32,94 @@ namespace Ryona.Game
             pose.FootPitchR *= 1f - waiting;
         }
 
+        /// <summary>体が床に着いた瞬間（<see cref="BodyLanded"/>）。引数は着地の強さ（0..1）。</summary>
+        internal event System.Action<float> BodyLanded;
+
+        /// <summary>このダウンで着地を通知したか（1 回だけ鳴らす）。</summary>
+        bool _downLandRaised;
+
+        /// <summary>吹き飛ばされた体が実際に着地した時刻（ダウン開始からの秒）。負なら空中。</summary>
+        float _downLandedAt = -1f;
+
+        /// <summary>
+        /// 床に着いてからの秒数を返す。まだ着いていなければ負。
+        /// 吹き飛ばされたときは実際の着地（滞空の終わり）、その場で崩れるときは倒れきる時刻。
+        /// 倒れる姿勢は秒数で組み、着地の衝撃（跳ね返り・腕の投げ出し・頭の揺れ）はここから足す。
+        /// </summary>
+        float DownSinceLanding()
+        {
+            float landAt;
+            if (_downLaunched)
+            {
+                if (_downLandedAt < 0f && _stateTime > 0.05f && (Motor == null || !Motor.IsAirborne))
+                    _downLandedAt = _stateTime;
+                landAt = _downLandedAt;
+            }
+            else
+                landAt = _downFallSeconds * (_downForward ? 0.80f : 0.84f);
+
+            if (landAt < 0f)
+                return -1f;
+
+            float since = _stateTime - landAt;
+            if (since >= 0f && !_downLandRaised && Application.isPlaying && Time.deltaTime > 0f)
+            {
+                _downLandRaised = true;
+                BodyLanded?.Invoke(_downLaunched ? 1f : 0.7f);
+            }
+            return since;
+        }
+
+        /// <summary>
+        /// 吹き飛ばされている間の腕・頭。腕は上へ投げ出され、頭は後ろへ残る。
+        /// 倒れる姿勢を補間するだけだと、腕は構えのまま前に残り、板が回っているように見える（実測）。
+        /// 着地後は、投げ出された腕が床へ叩きつけられて（行き過ぎて）から脱力した位置へ落ち着く。
+        /// </summary>
+        void ApplyDownImpact(ref PoseValues pose, float since)
+        {
+            bool air = _downLaunched && _downLandedAt < 0f;
+            float scale = _downLaunched ? 1f : 0.55f;
+
+            if (air)
+            {
+                float aw = Mathf.SmoothStep(0f, 1f, _stateTime / 0.07f);
+                float flail = Mathf.Sin(_stateTime * 17f);
+                pose.ArmLUpper = Vector3.Lerp(pose.ArmLUpper, new Vector3(0.98f, 0.18f, -0.30f + 0.12f * flail), 0.85f * aw);
+                pose.ArmLFore = Vector3.Lerp(pose.ArmLFore, new Vector3(0.55f, -0.10f, -0.30f), 0.85f * aw);
+                pose.ArmRUpper = Vector3.Lerp(pose.ArmRUpper, new Vector3(1.00f, 0.05f, -0.22f - 0.12f * flail), 0.85f * aw);
+                pose.ArmRFore = Vector3.Lerp(pose.ArmRFore, new Vector3(0.60f, -0.20f, -0.10f), 0.85f * aw);
+                pose.HeadPitch -= 16f * aw;
+                pose.TorsoPitch -= 8f * aw;
+                return;
+            }
+
+            if (since < 0f)
+                return;
+
+            // 着地: 跳ね返って（腰が浮き、胸が持ち上がる）、頭が遅れて揺れ、腕は床を叩いてから落ち着く。
+            float decay = Mathf.Exp(-since * 7f);
+            float bounce = Mathf.Max(0f, Mathf.Sin(since * 15f)) * Mathf.Exp(-since * 7.5f);
+            float nod = Mathf.Sin(since * 19f) * Mathf.Exp(-since * 6.5f);
+
+            pose.HipsOffset.y += 0.060f * bounce * scale;
+            pose.TorsoPitch -= 9f * bounce * scale;
+            pose.HeadPitch += 16f * nod * scale;
+
+            // 投げ出された腕が残る（carry）→ 床へ叩きつけられて行き過ぎる（slap）。
+            float carry = Mathf.Exp(-since * 9f) * scale;
+            float slap = Mathf.Sin(Mathf.Clamp01(since / 0.28f) * Mathf.PI) * scale;
+            pose.ArmLUpper = Vector3.Lerp(pose.ArmLUpper, new Vector3(0.98f, 0.18f, -0.30f), 0.85f * carry);
+            pose.ArmRUpper = Vector3.Lerp(pose.ArmRUpper, new Vector3(1.00f, 0.05f, -0.22f), 0.85f * carry);
+            pose.ArmLUpper += new Vector3(0.20f, -0.30f, -0.05f) * slap;
+            pose.ArmRUpper += new Vector3(0.22f, -0.28f, -0.08f) * slap;
+            pose.ArmLFore += new Vector3(0.10f, -0.20f, -0.20f) * slap;
+            pose.ArmRFore += new Vector3(0.10f, -0.18f, -0.22f) * slap;
+
+            // 脚: 跳ねて、力なく倒れ直す。
+            pose.FootL += new Vector3(-0.02f * decay, 0.045f * bounce, 0.02f * decay) * scale;
+            pose.FootR += new Vector3(0.03f * decay, 0.060f * bounce, -0.03f * decay) * scale;
+        }
+
         /// <summary>ダウン（仰向け / うつ伏せ / 死亡）。</summary>
         PoseValues PoseDown()
         {
@@ -41,11 +129,11 @@ namespace Ryona.Game
             // 死亡だけが 0.1 秒で瞬間的に倒れ、気絶は 1.2 秒かけてゆっくり倒れる逆転があった。
             float rise = Mathf.Clamp01(_stateTime / _downFallSeconds);
 
-            // 崩れ落ちる: 最初に速く落ちて、最後にゆっくり収まる
+            // 崩れ落ちる: 最初に腰を落とし、そこから背中側へ倒れる
             float settle = 1f - Mathf.Pow(1f - Mathf.Clamp01(rise), 2.2f);
 
-            // 腰が先に落ち、少し遅れて背中が床へつく。
-            float fall = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.12f, 0.78f, rise));
+            // 序盤で腰を落とし（0〜0.25）、少し遅れて背中が床へつく（0.20〜0.84）。
+            float fall = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.20f, 0.84f, rise));
 
             // 前へ崩れる（腹を殴られた）: 膝が抜けて前へ倒れ、うつ伏せになる。
             if (_downForward)
@@ -109,9 +197,28 @@ namespace Ryona.Game
                 float bump = Mathf.Sin(landF * Mathf.PI);
                 pose.HipsOffset.y -= 0.012f * bump;
 
-                // うつ伏せのあとの浅い息
+                float proneSince = DownSinceLanding();
+                if (proneSince >= 0f)
+                {
+                    float pb = Mathf.Max(0f, Mathf.Sin(proneSince * 15f)) * Mathf.Exp(-proneSince * 8f);
+                    pose.HipsOffset.y += 0.025f * pb;
+                    pose.HeadPitch += 8f * Mathf.Sin(proneSince * 19f) * Mathf.Exp(-proneSince * 7f);
+                }
+
+                // うつ伏せのあとの浅い息。
+                // 3mm だと画に出ず、1 秒以上まったく動かないように見えた（合成シートの
+                // 時間方向の差分が平均の約 2%）。読める大きさまで上げる。
+                // 床のクランプ（下で 1 回だけ掛ける）に呼気が食われるので、
+                // 上下に振らず「0〜16mm の上昇」だけにする。
                 if (rise > 0.97f)
-                    pose.HipsOffset.y += Mathf.Sin(_stateTime * 2.4f) * 0.003f;
+                {
+                    float breath = Mathf.Sin(_stateTime * 2.4f);
+                    pose.HipsOffset.y += breath * 0.008f + 0.008f;
+                    // 呼吸に合わせて顔がわずかに揺れる。腰の上下だけだと画素の差が出ず、
+                    // 止まって見えた（合成シートの時間方向の差分で確認）。
+                    pose.HeadYaw += breath * 3f;
+                    pose.HeadPitch += breath * 2f;
+                }
 
                 pose.HipsOffset.y = Mathf.Max(pose.HipsOffset.y, 0.115f - Rig.RestHips.y);
 
@@ -164,8 +271,8 @@ namespace Ryona.Game
                 Quaternion.AngleAxis(pose.LayAngle, Vector3.right) * (Rig.RestHips - pivot);
             pose.HipsOffset = arcHips - Rig.RestHips;
 
-            // 倒れ始めに一度沈む（膝が抜ける感じ）。倒れきる前に戻す。
-            pose.HipsOffset.y -= 0.17f * settle * (1f - fall);
+            // 倒れ始めに腰を真下へ落とす（膝が抜けて崩れる感じ）。倒れきる前に戻す。
+            pose.HipsOffset.y -= 0.24f * settle * (1f - fall);
 
             // 上体は前へ潰れてから、倒れるに従って脱力する
             pose.TorsoPitch = Mathf.Lerp(20f * settle, 3f, fall);
@@ -222,17 +329,16 @@ namespace Ryona.Game
 
             // 倒れきったあと、膝を少し立てる。棒のように真っ直ぐ伸びていると
             // 「置かれた人形」に見えるので、脱力して曲がった脚を残す。
-            pose.LegTuck = 0.22f * fall;
+            pose.LegTuck = 0.34f * fall;
 
             // 寝きったあとは片膝を立て、体を少し横へ流す。
-            // 脚を伸ばしたまま真っ直ぐ寝ると「床に置いた板」に見える（実測）。
-            float restT = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.86f, 1f, fall));
-            pose.FootL += new Vector3(0.05f, 0.02f, -0.34f) * restT;   // 左膝を立てる（足は床のまま）
-            pose.FootR += new Vector3(-0.03f, 0.03f, -0.08f) * restT;
-            pose.ArmRUpper += new Vector3(-0.10f, 0.04f, 0.20f) * restT; // 右腕が腹の上へ落ちる
-            pose.ArmRFore += new Vector3(0f, 0.04f, 0.26f) * restT;
-            pose.ArmLUpper += new Vector3(0.14f, 0.02f, -0.10f) * restT; // 左腕は床へ流れる
-            pose.TorsoRoll += 6f * restT;
+            float restT = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.84f, 1f, fall));
+            pose.FootL += new Vector3(0.06f, 0.01f, -0.46f) * restT;   // 左膝を立てる（足は床のまま）
+            pose.FootR += new Vector3(-0.04f, 0.02f, -0.10f) * restT;
+            pose.ArmRUpper += new Vector3(0.10f, 0.06f, 0.24f) * restT; // 右腕が腹の上へ落ちる
+            pose.ArmRFore += new Vector3(0.15f, 0.06f, 0.24f) * restT;
+            pose.ArmLUpper += new Vector3(0.12f, 0.02f, -0.06f) * restT; // 左腕は床へ流れる
+            pose.TorsoRoll += 8f * restT;
 
             // 背中が床に着いた瞬間の「ドサッ」。ここが無いと、倒れ終わりが
             // ふわっと止まって「自分で寝た」ように見える。着地後に一度だけ沈む。
@@ -244,10 +350,18 @@ namespace Ryona.Game
             pose.TorsoRoll += Mathf.Sin(landT * 26f) * 2.6f * land;
             pose.HeadPitch -= 4f * land;
 
+            ApplyDownImpact(ref pose, DownSinceLanding());
+
             // 倒れきったあとは浅い息。完全に止めると「止め絵」に見える。
             // 痛みで胸が小刻みに動く程度に留める（大きくすると寝返りに見える）。
+            // 3.5mm では画に出なかったので、0〜16mm の上昇にして読めるようにする。
             if (rise > 0.97f)
-                pose.HipsOffset.y += Mathf.Sin(_stateTime * 2.6f) * 0.0035f;
+            {
+                float breath = Mathf.Sin(_stateTime * 2.6f);
+                pose.HipsOffset.y += breath * 0.008f + 0.008f;
+                pose.HeadYaw += breath * 3f;
+                pose.HeadPitch += breath * 2f;
+            }
 
             // 床下がりのクランプは最後に 1 回だけ。先に掛けると、着地の沈みと呼吸で
             // 背中が床を突き抜けたり、クランプ位置で腰の軌道が折れたりする。
@@ -261,13 +375,11 @@ namespace Ryona.Game
         }
 
         /// <summary>起き上がり。手をつく → 片膝 → 立ち。</summary>
-        PoseValues PoseGetUp()
+        PoseValues PoseGetUp(float uOverride = -1f)
         {
             var pose = PoseDefaults();
             // 倒れた姿勢から、横に転がって上体を起こし、立ち上がる。
-            float u = _stateDuration > 100f
-                ? 1f
-                : Mathf.Clamp01(_stateTime / Mathf.Max(0.01f, _stateDuration));
+            float u = uOverride >= 0f ? Mathf.Clamp01(uOverride) : (_stateDuration > 100f ? 1f : Mathf.Clamp01(_stateTime / Mathf.Max(0.01f, _stateDuration)));
 
             // うつ伏せからの起き上がりは別物:
             //   1) 両手を頭の横について上体を押し上げる

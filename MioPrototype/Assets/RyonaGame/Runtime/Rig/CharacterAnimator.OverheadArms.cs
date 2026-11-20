@@ -69,6 +69,17 @@ namespace Ryona.Game
                 goalR = Vector3.Lerp(goalR, splitR, split);
             }
 
+            // 3 人がかり: 誰も彼女の手首を持たない。壁に寄りかかってグロッキーになり、両腕がだらんと下がる。
+            float gang = Grapple.WallGangWeight;
+            if (gang > 0.001f)
+            {
+                // 手の位置は、腕の長さぎりぎりまで下げる（高いと肘が外へ曲がって「腰に手を当てた」形になる）。
+                Vector3 hangL = transform.position + Vector3.up * 0.46f - right * 0.18f + transform.forward * 0.02f;
+                Vector3 hangR = transform.position + Vector3.up * 0.46f + right * 0.18f + transform.forward * 0.02f;
+                goalL = Vector3.Lerp(goalL, hangL, gang);
+                goalR = Vector3.Lerp(goalR, hangR, gang);
+            }
+
             goalL = Vector3.Lerp(Rig.LHand.position, goalL, w);
             goalR = Vector3.Lerp(Rig.RHand.position, goalR, w);
 
@@ -84,6 +95,15 @@ namespace Ryona.Game
             float poleSpread = Mathf.Lerp(0.50f, 0.62f, adhere);
             Vector3 poleL = poleBase - right * poleSpread;
             Vector3 poleR = poleBase + right * poleSpread;
+            if (gang > 0.001f)
+            {
+                // 下がった腕の肘は、体の外側・少し後ろへ。
+                // 肘は体の少し外・後ろへ。外へ張ると「腰に手を当てた」形になる（実測）。
+                Vector3 hangPoleL = transform.position + Vector3.up * 0.95f - right * 0.26f - transform.forward * 0.25f;
+                Vector3 hangPoleR = transform.position + Vector3.up * 0.95f + right * 0.26f - transform.forward * 0.25f;
+                poleL = Vector3.Lerp(poleL, hangPoleL, gang);
+                poleR = Vector3.Lerp(poleR, hangPoleR, gang);
+            }
 
             ProceduralRig.SolveTwoBone(Rig.LUpperArm, Rig.LLowerArm, Rig.LHand, goalL, poleL, right);
             ProceduralRig.SolveTwoBone(Rig.RUpperArm, Rig.RLowerArm, Rig.RHand, goalR, poleR, right);

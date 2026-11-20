@@ -27,19 +27,22 @@ namespace Ryona.Game
                 : 0f;
             float rollPull = rolling ? Mathf.Sin(Mathf.PI * mount.ShoulderRoll) : 0f;
             float transfer = mounting ? Mathf.Sin(Mathf.PI * t) : 0f;
+            float pulse = mount.StrugglePulse;
+            bool knockOff = stage == GroundMountAttack.Beat.Dismount && mount.Escaped;
+            float knockArc = knockOff ? Mathf.Sin(Mathf.PI * t) : 0f;
             _hips.localPosition = Vector3.Lerp(new Vector3(_hipsX, _hipsY, _hipsZ),
                 new Vector3(mount.Side * -0.06f * transfer,
-                    Mathf.Lerp(0.48f, 0.39f, seated) + 0.075f * transfer, -0.06f), kneel);
+                    Mathf.Lerp(0.48f, 0.39f, seated) + 0.075f * transfer + 0.035f * pulse, -0.06f), kneel);
 
             bool left = mount.LeftPunch;
             float windup = mount.Cock;
             float followThrough = mount.Drive;
             float punchSide = left ? -1f : 1f;
-            float twist = punchSide * (28f * windup - 24f * followThrough);
+            float twist = punchSide * (28f * windup - 24f * followThrough) + Mathf.Sin(Time.time * 26f) * 8f * pulse;
             _chest.localRotation = Quaternion.Slerp(
-                Quaternion.Euler(-_torsoPitch, _torsoYaw * 0.55f, _torsoRoll),
+                Quaternion.Euler(-_torsoPitch - 24f * knockArc, _torsoYaw * 0.55f, _torsoRoll),
                 Quaternion.Euler(Mathf.Lerp(53f, 32f, seated) + 19f * rollGrip - 15f * rollPull - 14f * windup
-                    + 32f * followThrough, twist + 18f * rollPull * mount.Side,
+                    + 32f * followThrough - 10f * pulse - 28f * knockArc, twist + 18f * rollPull * mount.Side,
                     punchSide * (10f * windup - 12f * followThrough) - 9f * mount.Side * rollPull), kneel);
             _head.localRotation = Quaternion.Euler(12f * kneel, -0.55f * twist, 0f);
 
@@ -73,6 +76,12 @@ namespace Ryona.Game
             }
             Vector3 punchGoal = Vector3.Lerp(entry + side * 0.20f, punchHand, seated);
             Vector3 supportGoal = Vector3.Lerp(entry - side * 0.20f, otherHand, seated);
+            if (knockOff)
+            {
+                Vector3 fling = Vector3.up * (0.42f * knockArc) - transform.forward * (0.18f * knockArc);
+                punchGoal += side * (0.28f * knockArc) + fling;
+                supportGoal += -side * (0.28f * knockArc) + fling;
+            }
             if (rolling)
             {
                 var shoulder = mount.RollLeftShoulder ? rig.LUpperArm : rig.RUpperArm;

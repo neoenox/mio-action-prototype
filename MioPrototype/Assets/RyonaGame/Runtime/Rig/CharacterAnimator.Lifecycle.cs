@@ -37,6 +37,8 @@ namespace Ryona.Game
                     Grapple.Released -= OnGrappleReleased;
                 }
             }
+            if (_bound && Combat != null)
+                Combat.AttackStarted -= OnAttackStarted;
         }
 
         void Bind()
@@ -56,6 +58,8 @@ namespace Ryona.Game
             // State.Attack に入らず「攻撃の判定だけ出て拳が動かない」状態になる。
             if (Combat == null)
                 Combat = GetComponentInParent<PlayerCombat>();
+            if (Combat != null)
+                Combat.AttackStarted += OnAttackStarted;
 
             Stats.Staggered += OnStaggered;
             Stats.HitReceived += OnHitReceived;
@@ -68,6 +72,17 @@ namespace Ryona.Game
             }
 
             _bound = true;
+        }
+
+        void OnAttackStarted(AttackData _)
+        {
+            if (_state == State.Attack)
+            {
+                Rig?.SnapshotPose();
+                _blend = 0f;
+                _blendSeconds = AttackBlendSeconds;
+                SetState(State.Attack, 0f);
+            }
         }
 
         void OnRevived()
@@ -106,7 +121,32 @@ namespace Ryona.Game
         void OnHitReceived(HitResult result)
         {
             if (_state == State.Guard)
+            {
                 _guardRecoil = Mathf.Max(_guardRecoil, GuardRecoilSeconds);
+                return;
+            }
+
+            if (result.Damage <= 0f || Stats == null || Stats.IsDead)
+                return;
+
+            if (Grapple == null || !Grapple.IsGrappled || Grapple.IsHandingOff || Grapple.IsWallTransition)
+                return;
+
+            // 拘束役自身の締め付け・膝蹴り・壁2人パンチは専用ドライバが姿勢を動かす。
+            if (Grapple.Captor != null && Stats.LastAttacker == Grapple.Captor.transform)
+                return;
+
+            // 壁の2人・3人がかり演出は PlayerGrapple.Wall 側が PlayHeldBellyPunch / FacePunch を呼ぶ。
+            if (Grapple.WallSplitWeight > 0.1f || Grapple.WallGangWeight > 0.01f)
+                return;
+
+            // 羽交い締め中の5連タッグコンボは HeldBellyPunchDirector 側が専用の秒数と重さで再生する。
+            if (_punchDirector == null)
+                _punchDirector = FindFirstObjectByType<HeldBellyPunchDirector>();
+            if (_punchDirector != null && _punchDirector.IsPerforming && Stats.LastHitWasTagPunch)
+                return;
+
+            PlayHeldRegularHit(result);
         }
 
         void OnStaggered(HitResult result)
@@ -130,7 +170,7 @@ namespace Ryona.Game
             if (PlayerStats.StatLogging)
             {
                 string zone = CurrentHitZone?.ToString() ?? "none";
-                Debug.Log($"[Hurt] zone={zone} tier={result.Stagger} " +
+                GameLog.Log($"[Hurt] zone={zone} tier={result.Stagger} " +
                     $"side={_hurtSide} t={Time.time:F2}");
             }
 

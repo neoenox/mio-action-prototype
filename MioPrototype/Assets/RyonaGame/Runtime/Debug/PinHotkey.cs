@@ -39,14 +39,36 @@ namespace Ryona.Game
             bool auto = LaunchOptions.Has("-pinnow") || LaunchOptions.Has("-wallpinnow");
             bool wall = LaunchOptions.Has("-wallpinnow");
 
+            // 出荷物に検証用ホットキーを残さない。リリースビルドでは P キーの入口を
+            // 生成しない（-pinnow / -wallpinnow を明示したときだけ有効）。
+            // Editor / Development Build は従来どおり常に使える。
+            if (!auto && !DebugEntryAllowed)
+                return;
+
             var go = new GameObject("Pin Hotkey");
             var hotkey = go.AddComponent<PinHotkey>();
             hotkey._wall = wall;
             if (auto)
             {
                 hotkey._autoAt = Time.time + 1.5f;
-                Debug.Log($"[Pin] {(wall ? "-wallpinnow" : "-pinnow")}: " +
+                GameLog.Log($"[Pin] {(wall ? "-wallpinnow" : "-pinnow")}: " +
                           "1.5 秒後に押さえつけを 1 回指示します");
+            }
+        }
+
+        /// <summary>
+        /// デバッグ用の入口を作ってよいか。リリースビルドでは作らない。
+        /// <c>-pinnow</c> / <c>-wallpinnow</c> を明示したときだけ例外として有効にする。
+        /// </summary>
+        static bool DebugEntryAllowed
+        {
+            get
+            {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                return true;
+#else
+                return false;
+#endif
             }
         }
 
@@ -73,7 +95,7 @@ namespace Ryona.Game
             var grapple = _player.GetComponent<PlayerGrapple>();
             if (grapple != null && grapple.IsGrappled)
             {
-                Debug.Log("[Pin] ホットキー: すでに掴まれているので指示しない");
+                GameLog.Log("[Pin] ホットキー: すでに掴まれているので指示しない");
                 return;
             }
 
@@ -87,7 +109,7 @@ namespace Ryona.Game
                     place.z = 0f;
                     _player.transform.position = place;
                     _player.transform.rotation = Quaternion.LookRotation(Vector3.right);
-                    Debug.Log($"[Pin] 壁の前へ移動 x={place.x:F2}");
+                    GameLog.Log($"[Pin] 壁の前へ移動 x={place.x:F2}");
                 }
             }
 
@@ -121,7 +143,7 @@ namespace Ryona.Game
             best.CanPin = true;
             best.QueuePin();
 
-            Debug.Log($"[Pin] ホットキー: {best.name} に押さえつけを指示");
+            GameLog.Log($"[Pin] ホットキー: {best.name} に押さえつけを指示");
         }
     }
 }

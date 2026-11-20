@@ -11,6 +11,8 @@ namespace Ryona.Game
             if (IsGrappled || Stats == null || Stats.IsDead)
                 return;
 
+            HaulHandoff = false;
+
             // 前の壁押さえつけから戻っている途中なら、ここでレーンへ戻しきる。
             if (!IsWallPin && _wallExitRemaining > 0f)
                 ClearWallExit();
@@ -40,6 +42,7 @@ namespace Ryona.Game
             FrontEscapeEffort = 0f;
             _frontEffortHold = 0f;
             KneePulse = 0f;
+            KneeCount = 0;
             if (kind == GrappleKind.BearHug)
             {
                 _hugStage = HugStage.Rest;
@@ -55,7 +58,7 @@ namespace Ryona.Game
             PlaySfx(SfxId.Impact, 0.9f);
 
             string limit = HasTimeLimit ? $"{_session.LimitRemaining:F2}s" : "none";
-            Debug.Log($"[Grapple] begin kind={kind} need={RequiredInputs:F1} " +
+            GameLog.Log($"[Grapple] begin kind={kind} need={RequiredInputs:F1} " +
                       $"limit={limit} arm={armInjury:F0} captor={(captor != null ? captor.name : "none")}");
 
             Started?.Invoke(kind);

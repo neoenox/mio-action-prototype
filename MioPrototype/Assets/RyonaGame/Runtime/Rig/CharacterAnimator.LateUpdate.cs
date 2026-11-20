@@ -32,10 +32,24 @@ namespace Ryona.Game
 
             // 腹パンと顔パンの反動。ヒットストップ中は dt=0 なので、当たった瞬間の姿勢で止まる。
             _heldBellyPunchRemaining = Mathf.Max(0f, _heldBellyPunchRemaining - dt);
-            if (Grapple != null && (!Grapple.IsGrappled || Grapple.IsHandingOff))
-                _heldBellyPunchRemaining = 0f;
             if (Time.frameCount != _heldFacePunchStartFrame)
                 _heldFacePunchRemaining = Mathf.Max(0f, _heldFacePunchRemaining - dt);
+
+            if (Grapple == null || !Grapple.IsGrappled || Grapple.IsHandingOff || Grapple.Kind != GrappleKind.Back)
+            {
+                if (Grapple != null && (!Grapple.IsGrappled || Grapple.IsHandingOff))
+                    _heldBellyPunchRemaining = 0f;
+                ClearHeldGroggy();
+                _finisherHoistTarget = false;
+                FinisherHoistWeight = 0f;
+                _heldFaceFatigue = 0f;
+            }
+            else
+            {
+                _rearHoldGroggy = Mathf.Max(_rearHoldGroggy, Mathf.Max(HeldBellyDangle, HeldFaceDangle));
+                FinisherHoistWeight = Mathf.MoveTowards(FinisherHoistWeight, _finisherHoistTarget ? 1f : 0f,
+                    dt / (_finisherHoistTarget ? 0.24f : 0.10f));
+            }
 
             // 投げの崩れ。引き込まれる動きなので、パンチの折れ（0.07 秒）よりゆっくり入れる。
             if (Grapple == null || !Grapple.IsGrappled)
@@ -100,6 +114,21 @@ namespace Ryona.Game
                 SetState(State.Down, Mathf.Max(0.4f, Stats.DownRemaining - GetUpSeconds));
             }
 
+            // 引きずり起こしを振りほどいた: ダウンの最短時間を待たずに立ち上がりへ入る。
+            // 途中まで持ち上がった姿勢から入るので、切り替えは長めに寄せる。
+            bool quickGetUp = false;
+            if (_pendingQuickGetUp > 0f)
+            {
+                float seconds = _pendingQuickGetUp;
+                _pendingQuickGetUp = 0f;
+                if (_state == State.Down && Stats != null && Stats.IsDown && !Stats.IsDead)
+                {
+                    SetState(State.GetUp, seconds);
+                    Stats.BeginGetUp(seconds);
+                    quickGetUp = true;
+                }
+            }
+
             switch (_state)
             {
                 case State.Stagger:
@@ -115,7 +144,7 @@ namespace Ryona.Game
                         float getUp = Mathf.Max(0.2f, GetUpSeconds);
                         SetState(State.GetUp, getUp);
                         Stats?.BeginGetUp(getUp);
-                        Debug.Log($"[Anim] ダウン終了 → 立ち上がり {GetUpSeconds:F2}s");
+                        GameLog.Log($"[Anim] ダウン終了 → 立ち上がり {GetUpSeconds:F2}s");
                         if (Stats != null)
                             Stats.AddStun(getUp);
                     }
@@ -124,7 +153,7 @@ namespace Ryona.Game
                 case State.GetUp:
                     if (_stateTime >= _stateDuration)
                     {
-                        Debug.Log("[Anim] 立ち上がり完了 → 構え");
+                        GameLog.Log("[Anim] 立ち上がり完了 → 構え");
                         _state = State.Idle;
                     }
                     break;
@@ -177,9 +206,13 @@ namespace Ryona.Game
                     State.Attack => AttackBlendSeconds,
                     State.Stagger => 0.04f,
                     State.Down => DownBlendSeconds,
-                    State.GetUp => 0.05f,
+                    State.GetUp => quickGetUp ? 0.30f : 0.05f,
                     State.Guard => GuardBlendSeconds,
-                    State.Grabbed => 0.08f,
+                    // 引きずり起こしから羽交い締めへは、吊られた姿勢からゆっくり寄せる。
+                    State.Grabbed => before == State.Down ? 0.25f : 0.08f,
+                    // 怯みから戻るときは長めに寄せる。被弾姿勢は 0.2 秒で終わるので、短いと
+                    // 食らった形から立ち姿へ 1 コマで戻って見える（実測: 顔を殴られた直後）。
+                    State.Idle when before == State.Stagger => 0.30f,
                     _ => IdleBlendSeconds
                 };
             }
@@ -236,7 +269,7 @@ namespace Ryona.Game
                     // 怯みが終わったら結果を記録して終了（毎ヒット2行だとログが埋まる）
                     Vector3 f = body.forward;
                     f.y = 0f;
-                    Debug.Log($"[Turn] rest angle={Vector3.Angle(f, _faceYaw * Vector3.forward):F0}");
+                    GameLog.Log($"[Turn] rest angle={Vector3.Angle(f, _faceYaw * Vector3.forward):F0}");
                     _hasFaceYaw = false;
                 }
             }

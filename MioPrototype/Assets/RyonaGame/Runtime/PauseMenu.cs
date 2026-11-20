@@ -85,7 +85,7 @@ namespace Ryona.Game
             {
                 Pause();
                 ScreenCapture.CaptureScreenshot(_shotPath);
-                Debug.Log($"[Pause] 撮影 {_shotPath}");
+                GameLog.Log($"[Pause] 撮影 {_shotPath}");
                 _shotPath = null;
                 _resumeAt = Time.unscaledTime + 0.4f;
             }
@@ -136,7 +136,7 @@ namespace Ryona.Game
             Cursor.visible = true;
             SetVisible(true);
             RefreshStatus();
-            Debug.Log("[Pause] 一時停止");
+            GameLog.Log("[Pause] 一時停止");
         }
 
         internal void Resume()
@@ -149,13 +149,13 @@ namespace Ryona.Game
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
             SetVisible(false);
-            Debug.Log("[Pause] 再開");
+            GameLog.Log("[Pause] 再開");
         }
 
         void Restart()
         {
             Time.timeScale = 1f;
-            Debug.Log("[Pause] やり直し");
+            GameLog.Log("[Pause] やり直し");
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
         }
 

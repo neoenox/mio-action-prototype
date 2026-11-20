@@ -46,3 +46,19 @@ InitTestScene*.unity.meta
 # Python
 __pycache__/
 *.pyc
+
+# プレビュー用の生キャプチャ（連番 PNG。成果物は docs/verification へ）
+/preview-gang/
+/preview-belly*/
+/preview-face*/
+/sweep-face/
+/preview-knee*/
+/sweep-knee/
+/preview-front*/
+/preview-front5/
+/preview-belly4/
+/preview-belly5/
+
+# Agent tool state
+/.commandcode/
+

@@ -19,6 +19,7 @@ namespace Ryona.Tests
         PlayerGrapple _grapple;
         EnemyBrain _captor;
         EnemyBrain _assist;
+        EnemyBrain _third;
 
         /// <summary>テストで置いた壁の中心 X。押さえ役を毎回ここ基準で置き直す。</summary>
         float _wallCenterX;
@@ -346,7 +347,13 @@ namespace Ryona.Tests
         }
 
         /// <summary>壁の前（レーン上）に彼女と押さえ役を置く。</summary>
-        IEnumerator Load(bool withAssist = false)
+        static float HeightOf(EnemyBrain enemy)
+        {
+            var figure = enemy != null ? enemy.GetComponent<EnemyFigure>() : null;
+            return figure != null ? figure.Height : float.MaxValue;
+        }
+
+        IEnumerator Load(bool withAssist = false, bool withThird = false)
         {
             yield return TestScene.LoadPrototype();
 
@@ -359,18 +366,39 @@ namespace Ryona.Tests
             var enemies = Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None);
             Assert.GreaterOrEqual(enemies.Length, 1, "押さえ役が必要");
 
+            // 拘束役は「最も背の低い敵」に固定する。FindObjectsByType の順序は
+            // シーンの読み直しで変わるため、enemies[0] のままだと背の高い/低いが入れ替わり、
+            // 壁カメラに対する顔の可視率が実行ごとに 66% / 84% と変わってしまう（実測）。
             _captor = enemies[0];
-            _assist = null;
-            for (int i = 1; i < enemies.Length; i++)
+            float captorHeight = HeightOf(_captor);
+            foreach (var enemy in enemies)
             {
-                // 二体がかりのテストでは、2 体目だけ残して横に立たせる。
-                if (withAssist && i == 1)
+                float height = HeightOf(enemy);
+                if (height < captorHeight)
                 {
-                    _assist = enemies[i];
-                    enemies[i].enabled = true;
-                    continue;
+                    _captor = enemy;
+                    captorHeight = height;
                 }
-                enemies[i].enabled = false;
+            }
+
+            var others = new System.Collections.Generic.List<EnemyBrain>();
+            foreach (var enemy in enemies)
+            {
+                if (enemy != null && enemy != _captor)
+                    others.Add(enemy);
+            }
+
+            _assist = withAssist && others.Count > 0 ? others[0] : null;
+            _third = withThird && others.Count > 1 ? others[1] : null;
+
+            foreach (var enemy in enemies)
+            {
+                if (enemy == null)
+                    continue;
+
+                enemy.enabled = enemy == _captor || enemy == _assist || enemy == _third;
+                if (enemy != _captor)
+                    enemy.CanPin = false;
             }
 
             // 無効化した敵が攻撃トークンを持ったままだと、押さえ役が予備動作に入れない。
@@ -667,15 +695,29 @@ namespace Ryona.Tests
         // --- 壁・二体がかり（Y 字） ---------------------------------
 
         [UnityTest]
-        public IEnumerator 壁拘束で二体目がいると膝を入れず二人がかりになる()
+        public IEnumerator 壁拘束は膝蹴りのあとに猶予を挟んで二人がかりになる()
         {
             yield return Load(withAssist: true);
             _captor.QueuePin();
             yield return WaitForGrapple();
             Assert.IsTrue(_grapple.IsWallPin, "壁押さえつけが始まらない");
 
+            // 膝（拘束役 1 人で 5 発）が先に入り、そのあとに猶予（連打で抜けられる）が挟まる。
             float hp = _player.State.Hp;
             float deadline = Time.realtimeSinceStartup + 14f;
+            while (_grapple.WallPauseRemaining <= 0f && !_grapple.IsWallSplitActive &&
+                   Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.Greater(_grapple.WallPauseRemaining, 0f, "膝のあとに猶予が来ない");
+            Assert.AreEqual(CombatConstants.WallPauseInputsAfterKnees, _grapple.RequiredInputs, 0.1f,
+                "猶予の連打必要数になっていない");
+            Assert.IsFalse(_grapple.IsWallSplitActive, "猶予の前に二人がかりが始まっている");
+            Assert.Less(_player.State.Hp, hp - CombatConstants.PinKneeDamage * 3f,
+                "二人がかりの前に、膝蹴りが入っていない");
+
+            // 猶予が明けると、二人がかりが始まる。
+            deadline = Time.realtimeSinceStartup + 14f;
             while (!_grapple.IsWallSplitActive && Time.realtimeSinceStartup < deadline)
                 yield return null;
 
@@ -683,9 +725,6 @@ namespace Ryona.Tests
             Assert.AreEqual(_assist, _grapple.WallAssist, "アシストが二体目になっていない");
             Assert.AreEqual(CombatConstants.WallSplitEscapeInputs, _grapple.RequiredInputs, 0.1f,
                 "二人がかりの連打必要数になっていない");
-
-            // 膝蹴りは入っていない（膝 5 発ぶんは減らない）。
-            Assert.Greater(_player.State.Hp, hp - 12f, "二人がかりなのに膝蹴りが入っている");
 
             // 手首が左右へ開いている（Y 字）。
             var anim = _player.GetComponentInChildren<CharacterAnimator>();
@@ -723,7 +762,7 @@ namespace Ryona.Tests
                 $"二人がかりの腹パンが {attackers.Count} 発しか入っていない");
             for (int i = 0; i < attackers.Count; i++)
             {
-                Transform expected = i % 2 == 0 ? _captor.transform : _assist.transform;
+                Transform expected = i % 2 == 0 ? _assist.transform : _captor.transform;
                 Assert.AreEqual(expected, attackers[i], $"{i + 1} 発目が交互になっていない");
             }
 
@@ -756,6 +795,407 @@ namespace Ryona.Tests
             Assert.IsFalse(_grapple.IsGrappled, "連打しても二人がかりから抜けられない");
             Assert.IsFalse(_grapple.IsWallSplitActive, "二人がかりの状態が残っている");
             Assert.IsFalse(_assist.IsWallAssisting, "アシストが持ち場に残っている");
+        }
+
+        [UnityTest]
+        public IEnumerator 膝のあとの猶予は連打で脱出できる()
+        {
+            yield return Load(withAssist: true);
+            _captor.QueuePin();
+            yield return WaitForGrapple();
+
+            float deadline = Time.realtimeSinceStartup + 14f;
+            while (_grapple.WallPauseRemaining <= 0f && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.Greater(_grapple.WallPauseRemaining, 0f, "膝のあとに猶予が来ない");
+
+            int need = Mathf.CeilToInt(_grapple.RequiredInputs);
+            Assert.AreEqual(CombatConstants.WallPauseInputsAfterKnees, need);
+            for (int i = 0; i < need; i++)
+                _grapple.Struggle();
+            yield return null;
+
+            Assert.IsFalse(_grapple.IsGrappled, "猶予の間に連打すれば抜けられる");
+            Assert.IsFalse(_grapple.IsWallSplitActive, "抜けたのに二人がかりが始まっている");
+        }
+
+        [UnityTest]
+        public IEnumerator 二人がかりのあとにも猶予が挟まってから解放される()
+        {
+            yield return Load(withAssist: true);
+            _captor.QueuePin();
+            yield return WaitForGrapple();
+
+            // 二人がかりが始まって、終わるまで待つ。
+            float deadline = Time.realtimeSinceStartup + 14f;
+            while (!_grapple.IsWallSplitActive && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.IsTrue(_grapple.IsWallSplitActive, "二人がかりが始まらない");
+
+            deadline = Time.realtimeSinceStartup + 10f;
+            while (_grapple.WallSplitHits < CombatConstants.WallSplitPunchCount &&
+                   Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.AreEqual(CombatConstants.WallSplitPunchCount, _grapple.WallSplitHits,
+                "二人がかりの腹パンが打ち終わらない");
+
+            // すぐには解放されず、猶予（連打 14 回）が挟まる。Y 字（二人が腕を持つ形）は猶予のあいだも続く。
+            deadline = Time.realtimeSinceStartup + 3f;
+            while (_grapple.WallPauseRemaining <= 0f && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.Greater(_grapple.WallPauseRemaining, 0f, "二人がかりのあとに猶予が来ない");
+            Assert.AreEqual(CombatConstants.WallPauseInputsAfterSplit, _grapple.RequiredInputs, 0.1f,
+                "猶予の連打必要数になっていない");
+            Assert.IsTrue(_grapple.IsGrappled, "猶予の間は拘束が続く");
+            Assert.IsTrue(_grapple.IsWallSplitActive, "猶予の間も二人が腕を持ち続ける（Y 字のまま）");
+
+            // 猶予が明けると解放（投げ捨て）。
+            deadline = Time.realtimeSinceStartup + 6f;
+            while (_grapple.IsGrappled && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.IsFalse(_grapple.IsGrappled, "猶予が明けても解放されない");
+        }
+
+        [UnityTest]
+        public IEnumerator 三人目が参戦し三人が順番に打つ()
+        {
+            yield return Load(withAssist: true, withThird: true);
+            Assert.IsNotNull(_third, "3 体目の敵が用意できない");
+            _captor.QueuePin();
+            yield return WaitForGrapple();
+
+            var hits = new System.Collections.Generic.Dictionary<Transform, int>();
+            var spots = new System.Collections.Generic.Dictionary<Transform, Vector3>();
+            var spotLog = new System.Text.StringBuilder();
+            _player.HitReceived += result =>
+            {
+                if (result.Damage <= 0f || !_grapple.IsWallGangActive)
+                    return;
+                Transform attacker = _player.LastAttacker;
+                if (attacker == null)
+                    return;
+                hits.TryGetValue(attacker, out int n);
+                hits[attacker] = n + 1;
+
+                // 打った瞬間の位置（彼女から見た横・前・距離）。3 人目が画面の外に立っていないかを見る。
+                Vector3 offset = attacker.position - _player.transform.position;
+                Vector3 front = Vector3.ProjectOnPlane(_player.transform.forward, Vector3.up).normalized;
+                Vector3 right = Vector3.Cross(Vector3.up, front);
+                spots[attacker] = new Vector3(Vector3.Dot(offset, right), Vector3.Dot(offset, front),
+                    new Vector2(offset.x, offset.z).magnitude);
+                spotLog.Append($"{attacker.name}:({Vector3.Dot(offset, right):F2},{Vector3.Dot(offset, front):F2}) ");
+            };
+
+            // 3 人がかりが始まるまで（膝 → 猶予 → 二人がかり → 猶予）。
+            float deadline = Time.realtimeSinceStartup + 40f;
+            while (!_grapple.IsWallGangActive && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.IsTrue(_grapple.IsWallGangActive, "3 人がかりが始まらない");
+
+            // 拘束役に近い敵がアシストになる。どちらがどの役かは実際の割り当てを見る。
+            EnemyBrain holder = _grapple.WallAssist;
+            EnemyBrain third = _grapple.WallThird;
+            Assert.IsNotNull(holder, "アシストが持ち続けていない");
+            Assert.IsNotNull(third, "3 人目が参戦していない");
+            Assert.AreNotEqual(holder, third, "アシストと 3 人目が同じ敵");
+            Assert.IsTrue((holder == _assist && third == _third) || (holder == _third && third == _assist),
+                "アシストと 3 人目が、用意した 2 体になっていない");
+
+            // 3 人がかりが終わるまで待つ。3 人目の蹴りの突き上げの瞬間は、足と腹の距離を測る。
+            float bestFoot = float.MaxValue;
+            var hitAnim = _player.GetComponentInChildren<CharacterAnimator>();
+            float bestFace = float.MaxValue;
+            float torsoMin = float.MaxValue;
+            float torsoMax = float.MinValue;
+            int maxConcurrentStrikes = 0;
+            // 顔パンで「拳がいちばん近づいた距離」と「そのときの経過秒」を人ごとに持つ。
+            // 経過秒が振りかぶり（＝ダメージが入る時刻）と離れていると、
+            // 拳が届く前／後に彼女が折れて見える。
+            // 姿勢は 1 フレーム遅れて反映されるので、許容は 0.05 秒（約 3 フレーム）にする。
+            var faceMinDist = new System.Collections.Generic.Dictionary<Transform, float>();
+            var faceMinAge = new System.Collections.Generic.Dictionary<Transform, float>();
+            var faceMinWindup = new System.Collections.Generic.Dictionary<Transform, float>();
+            var faceLastAge = new System.Collections.Generic.Dictionary<Transform, float>();
+            deadline = Time.realtimeSinceStartup + 40f;
+            while (_grapple.IsWallGangActive && Time.realtimeSinceStartup < deadline)
+            {
+                // 殴られるたびに上体が動いているか（グロッキーの角度が折れの動きを上書きすると動かない）。
+                if (hitAnim != null)
+                {
+                    torsoMin = Mathf.Min(torsoMin, hitAnim.DebugTorsoPitch);
+                    torsoMax = Mathf.Max(torsoMax, hitAnim.DebugTorsoPitch);
+                }
+
+                // 顔パン・蹴りは 2 枠のどちらでも起きる（同時打ちがあるため）。両方を見る。
+                int active = 0;
+                foreach (SplitStrike s in _grapple.WallSplitStrikes)
+                    if (s != null && s.Puncher != null && s.Age >= 0f)
+                        active++;
+                maxConcurrentStrikes = Mathf.Max(maxConcurrentStrikes, active);
+
+                foreach (SplitStrike strike in _grapple.WallSplitStrikes)
+                {
+                    if (strike == null || strike.Puncher == null || strike.Age < 0f)
+                        continue;
+
+                    // 顔パンの拳が、彼女の顔（頭の実際の位置）に届いているか。
+                    // 振りかぶりは段階（序盤→締め）で変わるので、経過秒の窓では測らない。
+                    // 1 発の間ずっと最接近を拾えば、いちばん近づく「当たった瞬間」が残る。
+                    if (strike.Face && hitAnim != null && hitAnim.Rig != null && hitAnim.Rig.Head != null)
+                    {
+                        var faceFigure = strike.Puncher.GetComponent<EnemyFigure>();
+                        Transform fist = faceFigure != null ? faceFigure.Fist(strike.Left) : null;
+                        if (fist != null)
+                        {
+                            Transform key = strike.Puncher.transform;
+                            float d = Vector3.Distance(fist.position, hitAnim.Rig.Head.position);
+                            bestFace = Mathf.Min(bestFace, d);
+
+                            // 同じ人の次の 1 発が始まったら、最接近の記録をやり直す。
+                            float prevAge = faceLastAge.TryGetValue(key, out float pa) ? pa : -1f;
+                            if (strike.Age < prevAge)
+                                faceMinDist[key] = float.MaxValue;
+                            faceLastAge[key] = strike.Age;
+
+                            if (!faceMinDist.TryGetValue(key, out float m) || d < m)
+                            {
+                                faceMinDist[key] = d;
+                                faceMinAge[key] = strike.Age;
+                                faceMinWindup[key] = strike.Windup;
+                            }
+                        }
+                    }
+
+                    if (strike.Kick && _grapple.WallSplitKneeThrust(strike.Puncher) > 0.8f)
+                    {
+                        var kickFigure = strike.Puncher.GetComponent<EnemyFigure>();
+                        Vector3 herPos = _player.transform.position;
+                        Vector3 herFront = Vector3.ProjectOnPlane(_player.transform.forward, Vector3.up).normalized;
+                        Vector3 bellyPoint = herPos + Vector3.up * 0.86f + herFront * 0.14f;
+                        foreach (bool left in new[] { true, false })
+                        {
+                            Transform ankle = kickFigure.AnkleBone(left);
+                            if (ankle != null)
+                                bestFoot = Mathf.Min(bestFoot, Vector3.Distance(ankle.position, bellyPoint));
+                        }
+                    }
+                }
+                yield return null;
+            }
+            Assert.IsFalse(_grapple.IsWallGangActive, "3 人がかりが終わらない");
+            UnityEngine.Debug.Log($"[GangCheck] kickFoot={bestFoot:F2}m torsoRange={torsoMax - torsoMin:F0}deg faceFist={bestFace:F2}m");
+            Assert.Less(bestFace, 0.17f, $"顔パンの拳が彼女の顔に届いていない（最接近 {bestFace:F2}m）");
+            Assert.Greater(torsoMax - torsoMin, 25f,
+                $"殴られても上体が動かない（3 人がかりの間の上体の角度の振れ幅 {torsoMax - torsoMin:F0}°）");
+            Assert.Less(bestFoot, 0.40f, $"3 人目の蹴りの足が腹に届いていない（最接近 {bestFoot:F2}m）");
+            Assert.GreaterOrEqual(maxConcurrentStrikes, 2,
+                "同時に打つ場面が一度も無い（3 人が順番待ちのまま）");
+
+            // 拳の到達とダメージの時刻が揃っていること（ズレると打撃と被弾姿勢が噛み合わない）。
+            foreach (var pair in faceMinAge)
+            {
+                Assert.Less(Mathf.Abs(pair.Value - faceMinWindup[pair.Key]), 0.05f,
+                    $"{pair.Key.name} の顔パンで拳の到達とダメージがずれている" +
+                    $"（拳の最接近 {pair.Value:F2}s / ダメージ {faceMinWindup[pair.Key]:F2}s）");
+            }
+
+            hits.TryGetValue(_captor.transform, out int captorHits);
+            hits.TryGetValue(third.transform, out int thirdHits);
+            hits.TryGetValue(holder.transform, out int assistHits);
+            UnityEngine.Debug.Log($"[GangCheck] captor={captorHits} third={thirdHits} assist={assistHits}");
+            UnityEngine.Debug.Log($"[GangSpots] {spotLog}");
+            foreach (var pair in spots)
+                UnityEngine.Debug.Log($"[GangSpot] {pair.Key.name} lateral={pair.Value.x:F2} depth={pair.Value.y:F2} dist={pair.Value.z:F2}" +
+                                      (pair.Key == third.transform ? " (3人目)" : pair.Key == holder.transform ? " (アシスト)" : " (拘束役)"));
+
+            // 3 人が順番に同じ数ずつ打つ（誰も彼女を持たない）。
+            int each = CombatConstants.WallGangStrikes / 3;
+            Assert.AreEqual(each, captorHits, "拘束役の打撃の数");
+            Assert.AreEqual(each, thirdHits, "3 人目の打撃の数");
+            Assert.AreEqual(each, assistHits, "アシストの打撃の数");
+        }
+
+        [UnityTest]
+        public IEnumerator 三人がかりでは誰も持たず彼女の両腕が下がる()
+        {
+            yield return Load(withAssist: true, withThird: true);
+            Assert.IsNotNull(_third, "3 体目の敵が用意できない");
+            _captor.QueuePin();
+            yield return WaitForGrapple();
+
+            float deadline = Time.realtimeSinceStartup + 40f;
+            while (!_grapple.IsWallGangActive && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.IsTrue(_grapple.IsWallGangActive, "3 人がかりが始まらない");
+
+            var anim = _player.GetComponentInChildren<CharacterAnimator>();
+            Assert.IsNotNull(anim, "CharacterAnimator が無い");
+            Assert.IsTrue(anim.Rig != null && anim.Rig.Ready, "リグが完成していない");
+
+            // 腕が下がりきるまで待つ（二人が手を離す重みが 1 になるまで）。
+            deadline = Time.realtimeSinceStartup + 4f;
+            while (_grapple.WallGangWeight < 0.99f && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            yield return WaitGameSeconds(0.3f);
+
+            float rootY = _player.transform.position.y;
+            float leftHandY = anim.Rig.LHand.position.y - rootY;
+            float rightHandY = anim.Rig.RHand.position.y - rootY;
+            float headY = anim.Rig.Head.position.y - rootY;
+            UnityEngine.Debug.Log($"[GangCheck] leftHand={leftHandY:F2} rightHand={rightHandY:F2} head={headY:F2}");
+
+            Assert.Less(leftHandY, 1.05f, $"離された左腕が下がっていない（手の高さ {leftHandY:F2}m）");
+            Assert.Less(rightHandY, 1.05f, $"離された右腕も下がっていない（手の高さ {rightHandY:F2}m）");
+        }
+
+        [UnityTest]
+        public IEnumerator 壁拘束の各段階で彼女の顔が画面に映っている()
+        {
+            yield return Load(withAssist: true, withThird: true);
+            Assert.IsNotNull(_third, "3 体目の敵が用意できない");
+            _captor.QueuePin();
+            yield return WaitForGrapple();
+
+            var anim = _player.GetComponentInChildren<CharacterAnimator>();
+            Assert.IsTrue(anim != null && anim.Rig != null && anim.Rig.Ready && anim.Rig.Head != null,
+                "彼女のリグが完成していない");
+
+            var figures = new System.Collections.Generic.List<EnemyFigure>(
+                Object.FindObjectsByType<EnemyFigure>(FindObjectsSortMode.None));
+
+            // 段階ごとに、顔の可視率が基準以上のコマの割合を数える。
+            string[] names = { "拘束・膝", "猶予", "二人がかり", "3 人がかり" };
+            var total = new int[names.Length];
+            var good = new int[names.Length];
+            var worst = new float[names.Length];
+            var blockers = new string[names.Length];
+            var hidden = new int[names.Length];     // 敵の体に隠れた・画面の外
+            var turned = new int[names.Length];     // うつむき・横向きで顔が読めない
+            var maxAngle = new float[names.Length];
+            // どの役割の敵が顔を隠しているか（名前と役割の対応は実行ごとに変わるので、役割で数える）。
+            var byRole = new System.Collections.Generic.Dictionary<string, int>[names.Length];
+            for (int i = 0; i < byRole.Length; i++)
+                byRole[i] = new System.Collections.Generic.Dictionary<string, int>();
+            for (int i = 0; i < worst.Length; i++) worst[i] = 1f;
+
+            float deadline = Time.realtimeSinceStartup + 70f;
+            while (_grapple.IsWallPin && _grapple.WallPhase == WallStage.Held &&
+                   Time.realtimeSinceStartup < deadline)
+            {
+                int phase = _grapple.IsWallGangActive ? 3
+                    : _grapple.IsWallSplitActive ? (_grapple.WallPauseRemaining > 0f ? 1 : 2)
+                    : _grapple.WallPauseRemaining > 0f ? 1 : 0;
+
+                var result = FaceVisibility.Measure(Camera.main, anim.Rig.Head, figures);
+                total[phase]++;
+                if (result.Readable)
+                    good[phase]++;
+                else if (result.Visible < FaceVisibility.GoodVisible)
+                {
+                    hidden[phase]++;
+                    if (result.Blocker != null)
+                    {
+                        string role = result.Blocker == _captor.name ? "拘束役"
+                            : _grapple.WallAssist != null && result.Blocker == _grapple.WallAssist.name ? "アシスト"
+                            : _grapple.WallThird != null && result.Blocker == _grapple.WallThird.name ? "3人目"
+                            : "待機中の敵";
+                        byRole[phase].TryGetValue(role, out int n);
+                        byRole[phase][role] = n + 1;
+                    }
+                }
+                else
+                    turned[phase]++;
+                maxAngle[phase] = Mathf.Max(maxAngle[phase], result.FacingAngle);
+                if (result.Visible < worst[phase])
+                {
+                    worst[phase] = result.Visible;
+                    blockers[phase] = result.Blocker;
+                }
+                yield return null;
+            }
+
+            for (int i = 0; i < names.Length; i++)
+            {
+                float ratio = total[i] > 0 ? good[i] / (float)total[i] : 1f;
+                UnityEngine.Debug.Log($"[FaceVisible] {names[i]}: readable {ratio:P0} ({good[i]}/{total[i]}) " +
+                                      $"hidden={hidden[i]} turned={turned[i]} maxAngle={maxAngle[i]:F0} " +
+                                      $"worst={worst[i]:F2} blocker={blockers[i] ?? "-"} byRole=" +
+                                      string.Join(",", System.Linq.Enumerable.Select(byRole[i], kv => $"{kv.Key}:{kv.Value}")));
+            }
+
+            Assert.Greater(total[3], 0, "3 人がかりの段階を測れていない");
+            for (int i = 0; i < names.Length; i++)
+            {
+                if (total[i] == 0)
+                    continue;
+                float ratio = good[i] / (float)total[i];
+                Assert.GreaterOrEqual(ratio, FaceVisibility.RequiredRatio[i],
+                    $"{names[i]} で彼女の顔が映っているコマが少ない（{ratio:P0}。遮蔽={blockers[i] ?? "-"}）");
+            }
+        }
+
+        /// <summary>
+        /// 調査用（常には走らせない）: 拘束・膝の間、カメラの候補位置ごとに顔の可視率を測って比べる。
+        /// 測定専用のカメラを、PinHoldPose の壁ショットと同じ注視点（彼女と拘束役の間）へ向けて置く。
+        /// </summary>
+        [UnityTest, Explicit("カメラ位置の調査用")]
+        public IEnumerator 調査_壁拘束の膝のカメラ候補ごとの顔の可視率()
+        {
+            yield return Load(withAssist: true, withThird: true);
+            _captor.QueuePin();
+            yield return WaitForGrapple();
+
+            var anim = _player.GetComponentInChildren<CharacterAnimator>();
+            var figures = new System.Collections.Generic.List<EnemyFigure>(
+                Object.FindObjectsByType<EnemyFigure>(FindObjectsSortMode.None));
+
+            var probeGo = new GameObject("Face Probe Camera");
+            var probe = probeGo.AddComponent<Camera>();
+            probe.enabled = false;
+            probe.fieldOfView = Camera.main.fieldOfView;
+            probe.nearClipPlane = Camera.main.nearClipPlane;
+
+            float[] xs = { -2.25f, -2.6f, -1.8f };
+            float[] ys = { 0.47f, 0.15f, -0.10f };
+            float[] zs = { -1.75f, -1.35f, -2.10f };
+            int count = xs.Length * ys.Length * zs.Length;
+            var good = new int[count];
+            var turned = new int[count];
+            int frames = 0;
+
+            float deadline = Time.realtimeSinceStartup + 40f;
+            while (_grapple.IsWallPin && _grapple.WallPhase == WallStage.Held &&
+                   !_grapple.IsWallSplitStarted && Time.realtimeSinceStartup < deadline)
+            {
+                Vector3 her = _player.transform.position + Vector3.up * 1.02f;
+                Vector3 him = _captor.transform.position + Vector3.up * 1.02f;
+                Vector3 mid = Vector3.Lerp(her, him, 0.45f);
+                int k = 0;
+                foreach (float x in xs)
+                    foreach (float y in ys)
+                        foreach (float z in zs)
+                        {
+                            probe.transform.position = mid + new Vector3(x, y, z);
+                            probe.transform.LookAt(mid);
+                            var r = FaceVisibility.Measure(probe, anim.Rig.Head, figures);
+                            if (r.Readable) good[k]++;
+                            else if (r.Visible >= FaceVisibility.GoodVisible) turned[k]++;
+                            k++;
+                        }
+                frames++;
+                yield return null;
+            }
+
+            Object.Destroy(probeGo);
+            int idx = 0;
+            foreach (float x in xs)
+                foreach (float y in ys)
+                    foreach (float z in zs)
+                    {
+                        UnityEngine.Debug.Log($"[CamCandidate] x={x:F2} y={y:F2} z={z:F2} " +
+                                              $"readable={good[idx] / (float)Mathf.Max(1, frames):P0} turned={turned[idx]}");
+                        idx++;
+                    }
         }
 
         // --- 壁拘束の被弾と手首のクリアランス -----------------------
@@ -793,6 +1233,82 @@ namespace Ryona.Tests
             }
 
             Assert.Less(best, 0.16f, $"拳が腹に届いていない（最接近 {best:F2}m）");
+        }
+
+        [UnityTest]
+        public IEnumerator 二人がかりの締めの膝は腹に届き空き手は腰を掴んで肘が折れすぎない()
+        {
+            yield return Load(withAssist: true);
+            _captor.QueuePin();
+            yield return WaitForGrapple();
+
+            float deadline = Time.realtimeSinceStartup + 14f;
+            while (!_grapple.IsWallSplitActive && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.IsTrue(_grapple.IsWallSplitActive, "二人がかりが始まらない");
+
+            // 締めの突き上げの瞬間（膝がほぼ最大に上がっている間）だけ測る。
+            float bestKnee = float.MaxValue;
+            float bestHand = float.MaxValue;
+            float minElbow = 180f;
+            int samples = 0;
+            string kneeLog = string.Empty;
+
+            deadline = Time.realtimeSinceStartup + 9f;
+            while (Time.realtimeSinceStartup < deadline && _grapple.IsWallSplitActive)
+            {
+                EnemyBrain puncher = _grapple.WallSplitPuncher;
+                if (puncher != null && _grapple.WallSplitKneeStrike &&
+                    _grapple.WallSplitKneeThrust(puncher) > 0.8f)
+                {
+                    var figure = puncher.GetComponent<EnemyFigure>();
+                    Vector3 her = _player.transform.position;
+                    Vector3 front = Vector3.ProjectOnPlane(_player.transform.forward, Vector3.up).normalized;
+                    Vector3 belly = her + Vector3.up * 0.88f + front * 0.12f;
+                    float side = puncher.transform.position.x >= her.x ? 1f : -1f;
+                    Vector3 waist = her + Vector3.up * 0.95f + front * 0.08f + Vector3.right * (side * 0.17f);
+
+                    foreach (bool left in new[] { true, false })
+                    {
+                        Transform knee = figure.KneeBone(left);
+                        if (knee != null)
+                        {
+                            float d = Vector3.Distance(knee.position, belly);
+                            if (d < bestKnee)
+                            {
+                                bestKnee = d;
+                                Vector3 flat = puncher.transform.position - her;
+                                flat.y = 0f;
+                                kneeLog = $"left={left} kneeY={knee.position.y:F2} bellyY={belly.y:F2} " +
+                                          $"standoff={flat.magnitude:F2} rootY={puncher.transform.position.y:F2}";
+                            }
+                        }
+                    }
+
+                    bool freeLeft = _grapple.WallSplitPunchLeft;
+                    Transform shoulder = figure.ShoulderBone(freeLeft);
+                    Transform elbow = figure.ElbowBone(freeLeft);
+                    Transform wrist = figure.WristBone(freeLeft);
+                    if (shoulder != null && elbow != null && wrist != null)
+                    {
+                        bestHand = Mathf.Min(bestHand, Vector3.Distance(wrist.position, waist));
+                        minElbow = Mathf.Min(minElbow,
+                            Vector3.Angle(shoulder.position - elbow.position, wrist.position - elbow.position));
+                    }
+
+                    samples++;
+                }
+
+                yield return null;
+            }
+
+            Debug.Log($"[KneeCheck] samples={samples} knee={bestKnee:F2}m hand={bestHand:F2}m elbow={minElbow:F0}deg {kneeLog}");
+            Assert.Greater(samples, 0, "締めの突き上げを一度も測れていない");
+            // 膝の関節の中心から腹の点までの距離。膝の丸み（約 8cm）があるので、0.15m 以内なら
+            // 膝が腹の表面に当たっている（関節の角度だけで振り上げると 0.25m 前後で腹の横を通る）。
+            Assert.Less(bestKnee, 0.15f, $"締めの膝が腹に届いていない（最接近 {bestKnee:F2}m）");
+            Assert.Less(bestHand, 0.25f, $"空き手が彼女の腰を掴めていない（最接近 {bestHand:F2}m）");
+            Assert.Greater(minElbow, 70f, $"空き手の肘が折れすぎている（最小 {minElbow:F0}°）");
         }
 
         [UnityTest]

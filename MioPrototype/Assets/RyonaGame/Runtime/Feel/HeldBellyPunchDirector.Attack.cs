@@ -7,41 +7,53 @@ namespace Ryona.Game
     /// </summary>
     public sealed partial class HeldBellyPunchDirector
     {
-        bool TryOrderAttack(bool openingThrow)
+        bool TryOrderFinisherAttack() => TryOrderAttack(openingThrow: false, isFinisher: true);
+
+        bool TryOrderAttack(bool openingThrow, bool isFinisher = false)
         {
             var captor = _grapple.Captor;
             EnemyBrain best = null;
             float bestDistance = Mathf.Max(1f, AttackerSearchRange);
 
-            // 立たせる基準は「拳が狙う腹の座標」にする。root を基準にすると、
-            // 腹とのずれのぶんだけ向きが狂い、拳が 0.3m 外れる（実測: gap 0.33）。
-            Vector3 anchor = openingThrow ? _stats.transform.position : BodyAnchor();
+            // 立たせる基準は彼女の root。拘束中は root が動かないので、5 発のあいだ
+            // 立ち位置が安定する。腹の座標は「向き」だけに使う。
+            // 腹を基準に毎発スポットを決め直すと、殴られて上体が折れるたびに基準点が
+            // 後ろへずれ、敵が一歩ずつ下がって見える（実測）。
+            Vector3 standAnchor = _stats.transform.position;
+            Vector3 aim = openingThrow ? standAnchor : BodyAnchor();
 
-            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            static bool IsPuncherEligible(EnemyBrain enemy, EnemyBrain captorBrain) =>
+                enemy != null && enemy.isActiveAndEnabled && enemy.IsAlive && !enemy.IsRising &&
+                !enemy.IsFlanking && !enemy.IsHandOffLocked && !enemy.IsHolding && enemy != captorBrain &&
+                enemy.Phase != EnemyPhase.Windup && enemy.Phase != EnemyPhase.Attack &&
+                enemy.Phase != EnemyPhase.Stagger;
+
+            if (isFinisher && IsPuncherEligible(_comboPuncher, captor))
             {
-                if (enemy == null || !enemy.isActiveAndEnabled || !enemy.IsAlive || enemy.IsRising ||
-                    enemy.IsFlanking || enemy.IsHandOffLocked || enemy.IsHolding || enemy == captor)
-                    continue;
+                best = _comboPuncher;
+            }
+            else
+            {
+                foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+                {
+                    if (!IsPuncherEligible(enemy, captor))
+                        continue;
 
-                // 予備動作・攻撃・怯みの途中なら、位置を動かすと攻撃が壊れる。次の機会を待つ。
-                if (enemy.Phase == EnemyPhase.Windup || enemy.Phase == EnemyPhase.Attack ||
-                    enemy.Phase == EnemyPhase.Stagger)
-                    continue;
+                    float distance = Vector3.Distance(enemy.transform.position, standAnchor);
+                    if (distance >= bestDistance)
+                        continue;
 
-                float distance = Vector3.Distance(enemy.transform.position, anchor);
-                if (distance >= bestDistance)
-                    continue;
+                    // 彼女の背後側から回り込むと、前へ出す移動が体を突き抜ける。
+                    // 正面寄りにいる敵だけを腹パン役にする。
+                    Vector3 fromPlayer = enemy.transform.position - _stats.transform.position;
+                    fromPlayer.y = 0f;
+                    float front = Vector3.Dot(_stats.transform.forward, fromPlayer.normalized);
+                    if (front < (openingThrow ? 0.55f : -0.2f))
+                        continue;
 
-                // 彼女の背後側から回り込むと、前へ出す移動が体を突き抜ける。
-                // 正面寄りにいる敵だけを腹パン役にする。
-                Vector3 fromPlayer = enemy.transform.position - _stats.transform.position;
-                fromPlayer.y = 0f;
-                float front = Vector3.Dot(_stats.transform.forward, fromPlayer.normalized);
-                if (front < (openingThrow ? 0.55f : -0.2f))
-                    continue;
-
-                best = enemy;
-                bestDistance = distance;
+                    best = enemy;
+                    bestDistance = distance;
+                }
             }
 
             if (best == null)
@@ -73,15 +85,35 @@ namespace Ryona.Game
             // 下限はカプセルが重ならない距離（彼女 0.30 + 敵 0.40 = 0.70m）に置く。
             // 0.8 に固定していたときは AttackerDistance が効かず、拳が届く位置まで
             // 踏み込めなかった（実測の立ち位置は常に 0.8m）。
-            Vector3 spot = anchor + forward * standOff;
+            Vector3 spot = standAnchor + forward * standOff;
             spot.z = _stats.transform.position.z;
             spot.y = best.transform.position.y;
 
-            Vector3 toPlayer = anchor - spot;
+            Vector3 toPlayer = aim - spot;
             toPlayer.y = 0f;
             Quaternion face = toPlayer.sqrMagnitude > 1e-4f
                 ? Quaternion.LookRotation(toPlayer.normalized, Vector3.up)
                 : best.transform.rotation;
+
+            // 5 発のあいだは、最初に決めた立ち位置をそのまま使う。
+            // 彼女の上体が折れて腹の座標や向きが動くたびにスポットを決め直すと、
+            // 敵が毎発一歩ずつ歩き直して「後ろに下がる」ように見える（実測）。
+            // 殴り手が交代したときだけ、新しい立ち位置を決め直す。
+            if (!openingThrow)
+            {
+                if (_comboSpotSet && _comboPuncher == best)
+                {
+                    spot = _comboSpot;
+                    face = _comboFace;
+                }
+                else
+                {
+                    _comboSpot = spot;
+                    _comboFace = face;
+                    _comboPuncher = best;
+                    _comboSpotSet = true;
+                }
+            }
 
             // 歩き始める前に攻撃トークンを確保する。取れなければ位置も動かさず、
             // 次の機会（0.3 秒後）に選び直す。
@@ -101,7 +133,7 @@ namespace Ryona.Game
             {
                 best.transform.position = spot;
                 best.transform.rotation = face;
-                bool started = BeginOrderedAttack(best, zone, openingThrow);
+                bool started = BeginOrderedAttack(best, zone, openingThrow, isFinisher);
                 if (!started)
                 {
                     SetDreadTarget(null);
@@ -118,19 +150,45 @@ namespace Ryona.Game
             best.LockForHandOff(openingThrow ? 0.9f : 0.8f, releaseToken: false);
             if (openingThrow)
                 _thrower = best;
-            StartCoroutine(PlaceThenAttack(best, captor, spot, face, zone, moveDistance, openingThrow));
+            StartCoroutine(PlaceThenAttack(best, captor, spot, face, zone, moveDistance, openingThrow, isFinisher));
             return true;
         }
 
-        bool BeginOrderedAttack(EnemyBrain enemy, PunchZone zone, bool openingThrow)
+        bool BeginOrderedAttack(EnemyBrain enemy, PunchZone zone, bool openingThrow, bool isFinisher = false)
         {
+            // 次の発注までの間、AI が間合いを詰め直して動かないよう固定する。
+            enemy.StayPlanted(2.6f);
             if (openingThrow)
                 return enemy.TryStartHeldThrow(positioned: true);
 
-            bool? punchLeft = zone == PunchZone.Face ? ChooseFacePunchSide(enemy) : null;
-            float power = zone == PunchZone.Face ? FacePunchPower(_hits) : 1f;
-            return enemy.TryStartTagPunch(zone, allowRecover: true, holdPoseSeconds: FistHoldSeconds,
-                forceLeft: punchLeft, forcePower: power);
+            // 打撃ごとに左右を交互に切り替え、トドメ（6 発目）も 5 発目と逆の腕で振り抜く。
+            bool punchLeft = zone == PunchZone.Face
+                ? ChooseFacePunchSide(enemy)
+                : ChooseBellyPunchSide();
+            float power = isFinisher
+                ? (zone == PunchZone.Face ? 1.45f : 1.88f)
+                : (zone == PunchZone.Face ? FacePunchPower(_hits) : BellyPunchPower(_hits));
+            float holdSeconds = isFinisher
+                ? (zone == PunchZone.Body ? 0.48f : FistHoldSeconds)
+                : (zone == PunchZone.Body ? FistHoldSeconds + 0.03f * Mathf.Clamp(_hits, 0, 4) : FistHoldSeconds);
+            float windupScale = isFinisher ? (zone == PunchZone.Face ? 1.38f : 1.48f) : 1f;
+            return enemy.TryStartTagPunch(zone, allowRecover: true, holdPoseSeconds: holdSeconds,
+                forceLeft: punchLeft, forcePower: power, windupScale: windupScale);
+        }
+
+        /// <summary>
+        /// 腹パン 5 連撃の強さ。打数が進むほど溜めと踏み込み・腰の回転が大きくなり、5 発目で最大になる。
+        /// </summary>
+        float BellyPunchPower(int hitIndex)
+        {
+            return hitIndex switch
+            {
+                0 => 0.82f,
+                1 => 0.96f,
+                2 => 1.12f,
+                3 => 1.28f,
+                _ => 1.48f
+            };
         }
 
         /// <summary>
@@ -147,12 +205,11 @@ namespace Ryona.Game
         }
 
         /// <summary>
-        /// 投げた敵がそのまま一発目を打つとき、顔面パンチなら拳を振る距離まで下がらせる。
-        /// 投げの距離（0.82m）のままだと腕が畳まれ、「触っただけ」のパンチになる。
+        /// 投げた敵がそのまま一発目を打つとき、パンチに応じた距離へ立ち位置を整える。
         /// </summary>
         void PlaceForOpeningPunch(EnemyBrain puncher, PunchZone zone)
         {
-            if (puncher == null || _stats == null || zone != PunchZone.Face)
+            if (puncher == null || _stats == null)
                 return;
 
             Vector3 forward = _stats.transform.forward;
@@ -161,7 +218,11 @@ namespace Ryona.Game
                 forward = Vector3.right;
             forward.Normalize();
 
-            Vector3 spot = _stats.transform.position + forward * FaceAttackerDistance;
+            float distance = zone == PunchZone.Face
+                ? FaceAttackerDistance
+                : Mathf.Max(0.70f, AttackerDistance);
+            Vector3 spot = _stats.transform.position + forward * distance;
+            spot.z = _stats.transform.position.z;
             spot.y = puncher.transform.position.y;
             Vector3 to = _stats.transform.position - spot;
             to.y = 0f;
@@ -179,6 +240,16 @@ namespace Ryona.Game
         {
             // 彼は彼女と向かい合う。カメラが彼女の右側なら、カメラ側の腕は彼の左腕。
             // 遠い腕（彼の右腕）から打ち始める。
+            bool farSideLeft = !_cameraOnHerRight;
+            return farSideLeft ^ (_hits % 2 == 1);
+        }
+
+        /// <summary>
+        /// 腹パンを打つ腕。顔面パンチと同じく 1 発目はカメラから遠い腕で腹と顔を見せ、
+        /// 2 発目からは左右交互にボディーブローを差し込む。
+        /// </summary>
+        bool ChooseBellyPunchSide()
+        {
             bool farSideLeft = !_cameraOnHerRight;
             return farSideLeft ^ (_hits % 2 == 1);
         }
@@ -201,12 +272,12 @@ namespace Ryona.Game
             return enemy != null && enemy.isActiveAndEnabled && enemy.IsAlive &&
                 _grapple != null && _grapple.IsGrappled && !_grapple.IsHandingOff &&
                 _grapple.Kind == GrappleKind.Back && _grapple.Captor == captor &&
-                (openingThrow ? _thrower == enemy : _phase == Phase.Combo);
+                (openingThrow ? _thrower == enemy : (_phase == Phase.Combo || _phase == Phase.Finisher));
         }
 
         /// <summary>攻撃役を短く歩かせてから、投げまたはパンチを指示する。</summary>
         System.Collections.IEnumerator PlaceThenAttack(EnemyBrain enemy, EnemyBrain captor, Vector3 spot,
-            Quaternion face, PunchZone zone, float distance, bool openingThrow)
+            Quaternion face, PunchZone zone, float distance, bool openingThrow, bool isFinisher = false)
         {
             Vector3 from = enemy.transform.position;
             Quaternion fromRot = enemy.transform.rotation;
@@ -240,7 +311,7 @@ namespace Ryona.Game
                 if (!CanContinuePlacement(enemy, captor, openingThrow))
                     yield break;
 
-                started = BeginOrderedAttack(enemy, zone, openingThrow);
+                started = BeginOrderedAttack(enemy, zone, openingThrow, isFinisher);
                 if (!started)
                     yield return null;
             }
@@ -249,12 +320,12 @@ namespace Ryona.Game
             {
                 // 位置合わせに使った時間をヒット待ちの残りから差し引かない。
                 if (!openingThrow)
-                    _hitTimeout = Mathf.Max(_hitTimeout, 1.5f);
-                Debug.Log($"[HeldPunch] placed {enemy.name} dist={distance:F2}m t={seconds:F2}s");
+                    _hitTimeout = Mathf.Max(_hitTimeout, isFinisher ? 1.8f : 1.5f);
+                GameLog.Log($"[HeldPunch] placed {enemy.name} dist={distance:F2}m t={seconds:F2}s");
             }
             else
             {
-                Debug.Log($"[HeldPunch] place order failed {enemy.name} phase={enemy.Phase} " +
+                GameLog.Log($"[HeldPunch] place order failed {enemy.name} phase={enemy.Phase} " +
                           $"token={enemy.HasAttackToken} dist={distance:F2}m");
             }
         }

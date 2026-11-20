@@ -124,6 +124,11 @@ namespace Ryona.Game
         /// <summary>押さえつけが時間切れで解放された直後、そのことを 1.5 秒だけ出す残り秒。</summary>
         float _releasedRemaining;
 
+        /// <summary>直前に解放された拘束の種類（解放メッセージの文言に使う）。</summary>
+        GrappleKind _releasedKind;
+
+        internal float GrappleHudY => _grappleRoot != null ? _grappleRoot.anchoredPosition.y : -1f;
+
         void UpdateGrapple()
         {
             if (_grappleRoot == null)
@@ -148,13 +153,13 @@ namespace Ryona.Game
             bool grappled = _grapple != null && _grapple.IsGrappled && !Player.IsDead;
             var mount = Player.GroundMount;
             bool mounted = mount != null && mount.BlocksGetUp && !Player.IsDead;
+            bool hauled = mount != null && mount.Haul != null && mount.Haul.BlocksGetUp;
             bool show = grappled || mounted || _releasedRemaining > 0f;
 
-            // 腹パンのコンボ中は腹が画面の中心に来る。中央下のままだと
-            // 腹パン表示が当たっている場所に重なるので、コンボ中だけ下へ退ける。
-            bool combo = _bellyPunch != null && (_bellyPunch.IsPerforming || _bellyPunch.IsThrowIncoming);
+            // 腹パン・顔パンの連撃〜トドメ中は中央下へ退けないと腹や拳に文字帯が重なる。
+            bool combo = _bellyPunch != null && (_bellyPunch.IsCameraActive || _bellyPunch.IsThrowIncoming);
             Vector2 blockPos = _grappleRoot.anchoredPosition;
-            blockPos.y = combo || mounted ? 96f : 232f;
+            blockPos.y = combo ? 26f : mounted ? 96f : 232f;
             if ((_grappleRoot.anchoredPosition - blockPos).sqrMagnitude > 0.01f)
                 _grappleRoot.anchoredPosition = blockPos;
 
@@ -166,14 +171,14 @@ namespace Ryona.Game
 
             if (mounted)
             {
-                _grappleText.text = mount.Stage switch
+                _grappleText.text = hauled ? "引きずり起こされる ─ 連打で振りほどく" : mount.Stage switch
                 {
                     GroundMountAttack.Beat.Roll => "仰向けに返される",
                     GroundMountAttack.Beat.Dismount => "押さえ込みが解ける",
                     _ => "マウント ─ 連打で脱出"
                 };
                 _grappleText.color = new Color(1f, 0.62f, 0.48f, 0.98f);
-                _grappleFill.fillAmount = mount.EscapeProgress;
+                _grappleFill.fillAmount = hauled ? mount.Haul.EscapeProgress : mount.EscapeProgress;
                 _grappleFill.color = new Color(0.95f, 0.45f, 0.35f, 0.95f);
                 return;
             }
@@ -181,7 +186,9 @@ namespace Ryona.Game
             if (!grappled)
             {
                 // 時間切れで解放された直後
-                _grappleText.text = "押さえつけから解放された";
+                _grappleText.text = _releasedKind == GrappleKind.AnkleGrab
+                    ? "足を取られて転んだ"
+                    : "押さえつけから解放された";
                 _grappleText.color = new Color(0.72f, 1f, 0.70f, 0.98f);
                 _grappleFill.fillAmount = 0f;
                 _grappleFill.color = new Color(0.95f, 0.45f, 0.35f, 0.95f);
@@ -206,6 +213,7 @@ namespace Ryona.Game
                 GrappleKind.Back => "（後ろから）",
                 GrappleKind.Pin => _grapple.IsWallPin ? "（壁に押さえつけ）" : "（押さえつけ）",
                 GrappleKind.BearHug => "（ベアハッグ）",
+                GrappleKind.AnkleGrab => "（足を掴まれている）",
                 _ => string.Empty
             };
 
@@ -241,19 +249,42 @@ namespace Ryona.Game
                 tail = "背後から敵が来る";
                 danger = true;
             }
+            else if (_grapple.IsWallGangActive)
+            {
+                tail = $"3人がかり {_grapple.WallGangHits}/{_grapple.WallGangTotal}";
+                danger = true;
+            }
             else if (_grapple.IsWallSplitActive)
             {
                 tail = $"2人がかり {_grapple.WallSplitHits}/{CombatConstants.WallSplitPunchCount}";
                 danger = true;
             }
+            else if (_grapple.WallPauseRemaining > 0f)
+            {
+                tail = $"次の攻撃まで {_grapple.WallPauseRemaining:F1}s";
+                danger = _grapple.WallPauseRemaining <= 0.5f;
+            }
+            else if (_grapple.IsWallSequenceActive)
+            {
+                tail = "連打で逃げる";
+                danger = true;
+            }
             else if (_grapple.HasTimeLimit)
             {
-                tail = $"あと {_grapple.Remaining:F1}s で解放";
-                // 時間切れは解放なので、危険色にはしない
+                // 足取りは時間切れで「解放」ではなく前へ転ぶので、文言を分ける。
+                tail = _grapple.Kind == GrappleKind.AnkleGrab
+                    ? $"あと {_grapple.Remaining:F1}s で転ぶ"
+                    : $"あと {_grapple.Remaining:F1}s で解放";
+                // 時間切れは解放（足取りは転倒）なので、危険色にはしない
             }
             else if (_bellyPunch == null)
             {
                 tail = "連打で逃げる";
+            }
+            else if (_bellyPunch.IsFinisherActive)
+            {
+                tail = _bellyPunch.IsFaceSequence ? "顔面トドメ！" : "腹へのトドメ！";
+                danger = true;
             }
             else if (_bellyPunch.IsPerforming)
             {
@@ -302,6 +333,8 @@ namespace Ryona.Game
         void OnGrappleReleased()
         {
             _releasedRemaining = 1.5f;
+            if (_grapple != null)
+                _releasedKind = _grapple.Kind;
         }
 
         /// <summary>
@@ -460,8 +493,10 @@ namespace Ryona.Game
             _bannerText = NewText(_bannerRoot, 0f, 0f, 900f, 150f, string.Empty, 56, TextAnchor.MiddleCenter);
             _bannerRoot.gameObject.SetActive(false);
 
-            // 掴まれている間の表示（中央下）。通常は非表示
-            _grappleRoot = NewRect("GrappleBlock", root, 0f, 232f, 560f, 84f,
+            // 掴まれている間の表示（中央下）。通常は非表示。
+            // 腹パンの被弾中はこの帯が殴られている腹に重なって画を隠すので、
+            // 画面中央から下（232 → 150）へ退けてある。
+            _grappleRoot = NewRect("GrappleBlock", root, 0f, 150f, 560f, 84f,
                 new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
 
             // 文字がキャラクターに重なると読みにくいので、薄い下地を敷く
@@ -521,7 +556,7 @@ namespace Ryona.Game
                 string.Empty, 15, TextAnchor.UpperRight);
             _bellyFill = NewBar(playerBlock, 0f, 105f, BlockWidth, 7f, BellyColor);
 
-            Debug.Log($"[Hud] uGUI 構築完了 font={(JapaneseFont != null ? JapaneseFont.name : "none")} " +
+            GameLog.Log($"[Hud] uGUI 構築完了 font={(JapaneseFont != null ? JapaneseFont.name : "none")} " +
                       $"あ={JapaneseFont != null && JapaneseFont.HasCharacter('あ')} " +
                       $"encounter={(_encounterText != null)}");
         }

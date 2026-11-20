@@ -25,53 +25,85 @@ namespace Ryona.Game
 
         [Header("Push In (自分が当てた)")]
         [Tooltip("通常ヒットで寄る倍率")]
-        public float PushInScale = 0.90f;
+        [System.NonSerialized] public float PushInScale = 0.90f;
 
         [Tooltip("通常ヒットで寄せておく秒数")]
-        public float PushInSeconds = 0.20f;
+        [System.NonSerialized] public float PushInSeconds = 0.20f;
 
         [Header("Hit Pull (自分が殴られた)")]
         [Tooltip("被弾で引く倍率（ノックバック感）")]
-        public float HitPullScale = 1.10f;
+        [System.NonSerialized] public float HitPullScale = 1.10f;
 
         [Tooltip("被弾で引いておく秒数")]
-        public float HitPullSeconds = 0.30f;
+        [System.NonSerialized] public float HitPullSeconds = 0.30f;
 
         [Tooltip("被弾でピボットを下げる量（m）")]
-        public float HitPivotDrop = -0.10f;
+        [System.NonSerialized] public float HitPivotDrop = -0.10f;
 
         [Tooltip("被弾でピボットを下げておく秒数")]
-        public float HitPivotSeconds = 0.30f;
+        [System.NonSerialized] public float HitPivotSeconds = 0.30f;
 
         [Header("Stagger (Large 以上の怯み)")]
         [Tooltip("怯みで引く倍率")]
-        public float StaggerPullScale = 1.16f;
+        [System.NonSerialized] public float StaggerPullScale = 1.16f;
 
         [Tooltip("怯みで引いておく秒数")]
-        public float StaggerPullSeconds = 0.45f;
+        [System.NonSerialized] public float StaggerPullSeconds = 0.45f;
 
         [Tooltip("怯みでピボットを下げる量（m）")]
-        public float StaggerPivotDrop = -0.18f;
+        [System.NonSerialized] public float StaggerPivotDrop = -0.18f;
 
         [Tooltip("怯みでピボットを下げておく秒数")]
-        public float StaggerPivotSeconds = 0.45f;
+        [System.NonSerialized] public float StaggerPivotSeconds = 0.45f;
 
         [Header("Death (倒れたら戻さない)")]
         [Tooltip("死亡時に引く倍率（寄りではなく引きで見下ろす）")]
-        public float DeathPullScale = 1.25f;
+        [System.NonSerialized] public float DeathPullScale = 1.25f;
 
         [Tooltip("死亡時にピボットを下げる量（m）")]
-        public float DeathPivotDrop = -0.85f;
+        [System.NonSerialized] public float DeathPivotDrop = -0.85f;
 
         [Tooltip("死亡演出を効かせ切るまでの秒数")]
-        public float DeathPivotSeconds = 0.5f;
+        [System.NonSerialized] public float DeathPivotSeconds = 0.5f;
 
         [Tooltip("死亡演出を保持するために押し直す秒数（毎フレーム更新する）")]
-        public float DeathHoldSeconds = 0.5f;
+        [System.NonSerialized] public float DeathHoldSeconds = 0.5f;
 
         bool _started;
         bool _dead;
         float _deathElapsed;
+        HeldBellyPunchDirector _heldPunch;
+
+        bool IsHeldPunchCameraActive()
+        {
+            if (_heldPunch == null)
+                _heldPunch = FindFirstObjectByType<HeldBellyPunchDirector>();
+            return _heldPunch != null && _heldPunch.isActiveAndEnabled && _heldPunch.IsCameraActive;
+        }
+
+        /// <summary>調整値は <see cref="RyonaConfig.CameraDirection"/> が真実源。シーンの保存値は使わない。</summary>
+        void ApplySettings(RyonaConfig.CameraDirectionSettings s)
+        {
+            PushInScale = s.PushInScale;
+            PushInSeconds = s.PushInSeconds;
+            HitPullScale = s.HitPullScale;
+            HitPullSeconds = s.HitPullSeconds;
+            HitPivotDrop = s.HitPivotDrop;
+            HitPivotSeconds = s.HitPivotSeconds;
+            StaggerPullScale = s.StaggerPullScale;
+            StaggerPullSeconds = s.StaggerPullSeconds;
+            StaggerPivotDrop = s.StaggerPivotDrop;
+            StaggerPivotSeconds = s.StaggerPivotSeconds;
+            DeathPullScale = s.DeathPullScale;
+            DeathPivotDrop = s.DeathPivotDrop;
+            DeathPivotSeconds = s.DeathPivotSeconds;
+            DeathHoldSeconds = s.DeathHoldSeconds;
+        }
+
+        void Awake()
+        {
+            ApplySettings(RyonaConfig.Instance.CameraDirection);
+        }
 
         void Start()
         {
@@ -165,7 +197,7 @@ namespace Ryona.Game
 
         void OnHitReceived(HitResult result)
         {
-            if (Rig == null)
+            if (Rig == null || IsHeldPunchCameraActive())
                 return;
 
             // Large 以上の怯みは Staggered 側でより強く演出する。
@@ -179,7 +211,7 @@ namespace Ryona.Game
 
         void OnStaggered(HitResult result)
         {
-            if (Rig == null)
+            if (Rig == null || IsHeldPunchCameraActive())
                 return;
 
             if (result.Stagger < StaggerTier.Large)

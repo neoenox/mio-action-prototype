@@ -29,10 +29,10 @@ namespace Ryona.Game
                     _feinted = true;
                     HideTelegraph();
                     WindupProgress = 0f;
-                    _attackReadyAt = Time.time + Mathf.Max(0.1f, FeintDelaySeconds);
+                    _attackReadyAt = Time.time + Mathf.Max(0.1f, S.FeintDelaySeconds);
                     ReleaseToken();
                     Phase = EnemyPhase.Chase;
-                    Debug.Log($"[Enemy] feint {name}");
+                    GameLog.Log($"[Enemy] feint {name}");
                     return;
                 }
 
@@ -64,7 +64,7 @@ namespace Ryona.Game
             if (Player != null && !Player.IsDead && _run.Data != null)
             {
                 float strikeRange = IsPreparingHeldThrow ? HeldThrowReach + HeldThrowContactTolerance
-                    : _run.Id == AttackId.Grab ? GrabContactRange : _run.Range + StrikeTolerance;
+                    : _run.Id == AttackId.Grab ? GrabContactRange : _run.Range + S.StrikeTolerance;
                 if (distance <= strikeRange)
                 {
                     if (IsPreparingHeldThrow)
@@ -89,18 +89,21 @@ namespace Ryona.Game
                         // タッグ腹パンは、当たった瞬間から拳を腹に押し込む。
                         // 外れた／別の部位なら押し込まない（空振りで腕だけ残ると不自然）。
                         if (_bellyPunchPendingHold > 0f && Zone == PunchZone.Body)
+                        {
+                            _punchPoseHoldTotal = _bellyPunchPendingHold;
                             _punchPoseHoldSeconds = _bellyPunchPendingHold;
+                        }
                     }
                     else if (_hitLog || (_grapple != null && _grapple.IsGrappled))
                     {
-                        Debug.Log($"[StrikeMiss] {name} tag={_tagPunchPending} zone={Zone} " +
+                        GameLog.Log($"[StrikeMiss] {name} tag={_tagPunchPending} zone={Zone} " +
                                   $"dist={distance:F2} range={_run.Range:F2}");
                     }
                 }
                 else if (_hitLog || (_grapple != null && _grapple.IsGrappled))
                 {
-                    Debug.Log($"[StrikeMiss] {name} out-of-range tag={_tagPunchPending} " +
-                              $"dist={distance:F2} range={_run.Range:F2}+{StrikeTolerance:F2}");
+                    GameLog.Log($"[StrikeMiss] {name} out-of-range tag={_tagPunchPending} " +
+                              $"dist={distance:F2} range={_run.Range:F2}+{S.StrikeTolerance:F2}");
                 }
             }
 
@@ -120,7 +123,7 @@ namespace Ryona.Game
             // ここで上書きすると 0.7 秒で手を離してしまい、掴みポーズも消える。
             _timer = grabbed
                 ? (IsBearHugging ? CombatConstants.BearHugLimitSeconds : CombatConstants.GrappleLimitSeconds) + 0.2f
-                : Mathf.Max(0f, RecoverSeconds);
+                : Mathf.Max(0f, S.RecoverSeconds);
             IsHolding = grabbed;
             if (grabbed)
             {
@@ -141,7 +144,7 @@ namespace Ryona.Game
                 return false;
 
             if (_grapple == null)
-                _grapple = Player.GetComponent<PlayerGrapple>();
+                _grapple = Hold;
 
             if (!CanTargetHeldThrow())
                 return false;
@@ -225,14 +228,14 @@ namespace Ryona.Game
             {
                 Transform wrist = figure.WristBone(UsesLeftPunch);
                 float wristGap = wrist != null ? Vector3.Distance(wrist.position, target) : -1f;
-                Debug.Log($"[BellyHit] att={name} pos=({transform.position.x:F2},{transform.position.z:F2}) " +
+                GameLog.Log($"[BellyHit] att={name} pos=({transform.position.x:F2},{transform.position.z:F2}) " +
                           $"yaw={transform.eulerAngles.y:F0} " +
                           $"fist=({fist.position.x:F2},{fist.position.y:F2},{fist.position.z:F2}) " +
                           $"target=({target.x:F2},{target.y:F2},{target.z:F2}) gap={gap:F2} wristGap={wristGap:F2} " +
                           $"bias={BodyTargetBias:F2}");
             }
 
-            return gap <= Mathf.Max(0.05f, PunchHitRadius);
+            return gap <= Mathf.Max(0.05f, S.PunchHitRadius);
         }
 
     }

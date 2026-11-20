@@ -25,6 +25,7 @@ namespace Ryona.Game
             }
 
             IsGrappled = false;
+            HaulHandoff = false;
             FrontEscapeEffort = 0f;
             _frontEffortHold = 0f;
             _grabContactRemaining = 0f;
@@ -34,6 +35,7 @@ namespace Ryona.Game
             _hugStage = HugStage.Rest;
             _hugTime = 0f;
             _hugPhase = 0f;
+            KneeCount = 0;
             PullPulse = 0f;
 
             if (wasGrappled)
@@ -63,7 +65,7 @@ namespace Ryona.Game
 
             // 羽交い締め・頭上拘束は背中を向けたまま掴まれる（向きは変えない）。
             // 押さえつけ / ベアハッグは正面から掴まれるので、相手の方を向かせる。
-            if (kind != GrappleKind.Back)
+            if (kind != GrappleKind.Back && kind != GrappleKind.AnkleGrab)
             {
                 Vector3 look = captor.transform.position - spot;
                 look.y = 0f;
@@ -99,11 +101,27 @@ namespace Ryona.Game
                 // 頭上拘束も背後から密着して掴む（腕を上げる余地を残し、羽交い締めより少し離す）。
                 GrappleKind.Back => CombatConstants.BackGrabStandoff,
                 GrappleKind.BearHug => CombatConstants.BearHugStandoff,
+                GrappleKind.AnkleGrab => _grappleSettings.AnkleStandoff,
                 _ => CombatConstants.GrabStandoff
             };
             Vector3 spot = captor.transform.position + dir * distance;
             spot.y = transform.position.y;
             return spot;
+        }
+
+        internal void ResetForMotionPreview()
+        {
+            Release();
+            ClearWallExit();
+            WallPinWeight = 0f;
+            WallAdhereWeight = 0f;
+            KneePulse = 0f;
+            KneeCount = 0;
+            SqueezePulse = 0f;
+            PullPulse = 0f;
+            LiftPulse = 0f;
+            PushPulse = 0f;
+            StrugglePulse = 0f;
         }
 
     }

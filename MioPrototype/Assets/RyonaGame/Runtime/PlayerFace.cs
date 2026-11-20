@@ -349,7 +349,7 @@ namespace Ryona.Game
             }
 
             s_envelopes[clip] = env;
-            Debug.Log($"[Face] voice envelope {clip.name}: sound {env.SoundStart:F2}-{env.SoundEnd:F2}s " +
+            GameLog.Log($"[Face] voice envelope {clip.name}: sound {env.SoundStart:F2}-{env.SoundEnd:F2}s " +
                       $"second={env.SecondPeak:F2}s");
             return env;
         }
@@ -490,7 +490,7 @@ namespace Ryona.Game
             Subscribe();
             FindWorriedBrow();
 
-            Debug.Log($"[Face] start stats={(Stats != null)} vrm={(Vrm != null)} anim={(Anim != null)}");
+            GameLog.Log($"[Face] start stats={(Stats != null)} vrm={(Vrm != null)} anim={(Anim != null)}");
         }
 
         /// <summary>Stats の被弾イベントを購読する（二重購読しない）。</summary>
@@ -563,7 +563,7 @@ namespace Ryona.Game
             _peak = Mathf.Max(_peak, Mathf.Clamp01(peak));
             _holdUntil = Mathf.Max(_holdUntil, Time.unscaledTime + hold);
 
-            Debug.Log($"[Face] hit tier={result.Stagger} " +
+            GameLog.Log($"[Face] hit tier={result.Stagger} " +
                       $"zone={(belly ? "belly" : "face")} peak={peak:F2} hold={hold:F2}");
         }
 
@@ -640,7 +640,7 @@ namespace Ryona.Game
             if (_eyeCheckAt > 0f && Time.unscaledTime >= _eyeCheckAt)
             {
                 _eyeCheckAt = -1f;
-                Debug.Log($"[Face] eye close blend={EyeCloseBlend():F0} (0=open 100=shut) eyeClose={_eyeClose:F2}");
+                GameLog.Log($"[Face] eye close blend={EyeCloseBlend():F0} (0=open 100=shut) eyeClose={_eyeClose:F2}");
             }
         }
 
@@ -680,29 +680,140 @@ namespace Ryona.Game
         {
             float worry = _grapple.FrontEscapePoseWeight;
             float effort = _grapple.FrontEscapeEffort * worry;
-            // 拘束中の顔面パンチ: 当たった直後に目を閉じ、そのあとは歯を食いしばって睨む。
+            // 拘束中の顔面パンチ: 当たった直後に目を閉じ、合間は怯えて見つめつつ打数とともに朦朧とする。
             float impulse = Anim != null ? Anim.HeldFacePunchImpulse : 0f;
             float brace = Anim != null ? Anim.HeldFacePunchBrace : 0f;
-            // 澪の眉専用シェイプなら、困り眉にしても目や口の形を変えずに済む。
-            if (_worriedBrow != null)
-            {
-                if (!_heldFaceActive)
-                    _originalBrowWeight = _worriedBrow.GetBlendShapeWeight(_worriedBrowIndex);
-                _worriedBrow.SetBlendShapeWeight(_worriedBrowIndex,
-                    Mathf.Lerp(65f + 17f * worry + 6f * effort, 34f, brace));
-            }
+            float dangle = Anim != null ? Anim.HeldComboDangle : 0f;
+            bool heldBelly = Anim != null && Anim.IsHeldBellyPunch;
+            bool heldFacePunch = Anim != null && Anim.IsHeldFacePunch;
+            bool heldCombo = heldBelly || heldFacePunch || dangle > 0f;
+            float bellyFold = heldBelly ? Mathf.Clamp01(Anim.HeldBellyPunchFold) : 0f;
+            float bellyAge = heldBelly ? Anim.HeldBellyPunchAge : 0f;
+            float bellyFatigue = heldBelly ? Anim.HeldBellyPunchFatigue : 0f;
+            float bellyLift = heldBelly ? Anim.HeldBellyCaptorLift : 0f;
+            float faceFatigue = heldFacePunch ? Anim.HeldFacePunchFatigue : 0f;
+            float dread = Anim != null && _grapple.Kind == GrappleKind.Back ? Anim.DreadLook : 0f;
+
+            if (_worriedBrow != null && !_heldFaceActive)
+                _originalBrowWeight = _worriedBrow.GetBlendShapeWeight(_worriedBrowIndex);
             _heldFaceActive = true;
 
             bool reacting = _grapple.IsBearHugContact || Time.unscaledTime < _heldImpactUntil
-                || impulse > 0.02f || brace > 0.02f;
+                || impulse > 0.02f;
             _heldImpact = Mathf.MoveTowards(_heldImpact, reacting ? 1f : 0f,
                 dt / (reacting ? 0.04f : 0.12f));
-            float mouth = Mathf.Lerp(0.14f + 0.035f * worry + 0.035f * effort, 0.30f, _heldImpact);
-            float sad = _worriedBrow != null ? 0f : 0.60f + 0.18f * worry;
-            // 踏ん張っている間は眉と目に力を入れ、口を食いしばる（やられっぱなしに見せない）。
-            float angry = 0.62f * brace;
-            float grit = 0.70f * brace;
-            WriteShape(new PainShape(angry, sad, mouth + 0.10f * brace, grit, _heldImpact), 1f, _heldImpact);
+
+            float brow = Mathf.Lerp(65f + 17f * worry + 6f * effort, 34f, brace);
+            float angry;
+            float sad;
+            float mouth;
+            float grit;
+            float blink;
+            float squeeze;
+            float surprised = 0f;
+
+            if (heldFacePunch && impulse > 0.08f)
+            {
+                // 顔面パンチ被弾瞬間: 目を強く瞑り、歯を食いしばった激しい苦悶。
+                brow = 92f;
+                angry = 0.88f;
+                sad = _worriedBrow != null ? 0f : 0.90f;
+                mouth = 0.58f;
+                grit = 0.88f;
+                blink = 1f;
+                squeeze = 0.92f;
+            }
+            else if (heldBelly && bellyAge < 0.36f && bellyFold > 0.15f)
+            {
+                // 腹パン二段苦悶: 初動は息が漏れて口が大きく開き、拳のめり込みで目を固く閉じて歯を食いしばる。
+                float gritPhase = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.11f, 0.25f, bellyAge));
+                brow = 95f;
+                angry = Mathf.Lerp(0.84f, 0.92f, gritPhase);
+                sad = _worriedBrow != null ? 0f : 0.92f;
+                mouth = Mathf.Lerp(0.76f, 0.44f, gritPhase);
+                grit = Mathf.Lerp(0.42f, 0.92f, gritPhase);
+                blink = 1f;
+                squeeze = 0.96f;
+            }
+            else if (_heldImpact > 0.05f)
+            {
+                // 汎用打撃の被弾瞬間: 目をぎゅっと閉じ、息が詰まる苦悶で口を大きく開ける。
+                brow = 92f;
+                angry = 0.88f;
+                sad = _worriedBrow != null ? 0f : 0.90f;
+                mouth = 0.65f;
+                grit = 0.85f;
+                blink = 1f;
+                squeeze = 0.92f;
+            }
+            else if (dangle >= 0.2f)
+            {
+                // フィニッシュ前のグロッキー／引き起こし晒し: 半目で意識朦朧、引き起こし時は無防備に薄く目と口が開く。
+                float hoist = Anim != null ? Anim.FinisherHoistWeight : 0f;
+                brow = Mathf.Lerp(Mathf.Lerp(95f, 68f, dangle), 80f, hoist);
+                angry = 0.15f * (1f - 0.5f * dangle);
+                sad = _worriedBrow != null ? 0f : Mathf.Lerp(0.55f, 0.72f, hoist);
+                mouth = Mathf.Lerp(Mathf.Lerp(0.42f, 0.26f, dangle), 0.36f, hoist);
+                grit = 0.10f;
+                blink = Mathf.Lerp(0.78f * dangle, 0.58f, hoist);
+                squeeze = 0f;
+            }
+            else if (heldFacePunch && brace > 0.02f)
+            {
+                // 顔面パンチの合間: 序盤は怯えて相手を見つめ、打数とともに目がトロンと朦朧としていく。
+                brow = Mathf.Lerp(92f, 76f, faceFatigue);
+                angry = Mathf.Lerp(0.45f, 0.20f, faceFatigue);
+                sad = _worriedBrow != null ? 0f : Mathf.Lerp(0.85f, 0.70f, faceFatigue);
+                mouth = Mathf.Lerp(0.32f, 0.44f, faceFatigue);
+                grit = Mathf.Lerp(0.60f, 0.25f, faceFatigue);
+                blink = Mathf.Lerp(_heldImpact, 0.42f * faceFatigue, brace);
+                squeeze = _heldImpact;
+                surprised = 0.22f * (1f - faceFatigue) * (1f - blink);
+            }
+            else if (heldBelly || dread > 0.1f)
+            {
+                // 予見・引き起こし中: 目を開けて攻撃側の敵を不安・恐怖で見つめる（苦悶を残しつつ怯える）。
+                float dreadOrLift = Mathf.Clamp01(Mathf.Max(dread, bellyLift, heldBelly ? 0.75f : 0f));
+                brow = Mathf.Max(brow, Mathf.Lerp(80f, 96f, dreadOrLift));
+                angry = Mathf.Max(0.62f * brace, 0.42f * (heldBelly ? 1f : dread * 0.5f));
+                sad = _worriedBrow != null ? 0f : Mathf.Lerp(0.65f, 0.90f, dreadOrLift);
+                mouth = Mathf.Lerp(0.18f, 0.38f + 0.10f * bellyFatigue, dreadOrLift);
+                grit = Mathf.Max(0.70f * brace, heldBelly ? 0.55f : 0.25f * dread);
+                blink = _heldImpact;
+                squeeze = _heldImpact;
+                surprised = 0.26f * dreadOrLift * (1f - blink);
+            }
+            else if (_grapple.Kind == GrappleKind.AnkleGrab)
+            {
+                // 足取り: 振り返りざまの驚きと怯えの表情。
+                brow = 90f;
+                angry = 0.25f;
+                sad = _worriedBrow != null ? 0f : 0.85f;
+                mouth = 0.34f;
+                grit = 0.25f;
+                blink = _heldImpact;
+                squeeze = _heldImpact;
+                surprised = 0.24f * (1f - blink);
+            }
+            else
+            {
+                float agony = _heldImpact;
+                mouth = Mathf.Lerp(0.14f + 0.035f * worry + 0.035f * effort, 0.55f, agony) + 0.10f * brace;
+                sad = _worriedBrow != null ? 0f : 0.60f + 0.18f * worry;
+                angry = 0.62f * brace;
+                grit = 0.70f * brace;
+                blink = agony;
+                squeeze = agony;
+                if (_grapple.Kind == GrappleKind.Pin && !_grapple.IsWallPin)
+                    surprised = 0.22f * _grapple.KneeResetLift * (1f - blink);
+            }
+
+            WriteShape(new PainShape(angry, sad, mouth, grit, Mathf.Max(blink, squeeze)), 1f, blink,
+                squeezeOverride: squeeze);
+            if (_worriedBrow != null)
+                _worriedBrow.SetBlendShapeWeight(_worriedBrowIndex, brow);
+            if (Vrm != null)
+                Vrm.Runtime.Expression.SetWeight(ExpressionKey.Surprised, surprised);
         }
 
         void ApplyMountFear(float fear, float hit)
@@ -710,14 +821,62 @@ namespace Ryona.Game
             if (!_mountFearActive && _worriedBrow != null)
                 _originalBrowWeight = _worriedBrow.GetBlendShapeWeight(_worriedBrowIndex);
             _mountFearActive = true;
-            float blink = Mathf.Lerp(_eyeClose, Mathf.Clamp01(hit * 1.7f), fear);
-            float sad = _worriedBrow != null ? 0f : 0.70f * fear;
-            WriteShape(new PainShape(0f, sad, 0.10f + 0.22f * fear + 0.11f * hit, 0f, 0f),
-                1f, blink, squeezeOverride: hit * fear);
+
+            var mount = Stats != null ? Stats.GroundMount : null;
+            float fatigue = mount != null ? mount.MountFatigue : 0f;
+            bool ko = mount != null && mount.IsMountKnockedOut;
+
+            float brow;
+            float angry;
+            float sad;
+            float mouth;
+            float grit;
+            float blink;
+            float squeeze;
+            float surprised = 0f;
+
+            if (ko && hit < 0.1f)
+            {
+                // 5発目後の失神・虚脱: 半目で口元の力が抜ける。
+                brow = Mathf.Lerp(_originalBrowWeight, 68f, fear);
+                angry = 0.10f * fear;
+                sad = _worriedBrow != null ? 0f : 0.55f * fear;
+                mouth = 0.28f * fear;
+                grit = 0.08f * fear;
+                blink = Mathf.Lerp(_eyeClose, 0.78f, fear);
+                squeeze = 0f;
+            }
+            else if (hit >= 0.08f)
+            {
+                // 被弾瞬間: 目を強く瞑り、激しい苦悶で口を開ける。
+                float impact = Mathf.Clamp01(hit * 1.6f);
+                brow = Mathf.Lerp(_originalBrowWeight, 95f, fear);
+                angry = 0.88f * impact * fear;
+                sad = _worriedBrow != null ? 0f : 0.90f * fear;
+                mouth = (0.30f + 0.38f * impact) * fear;
+                grit = 0.82f * impact * fear;
+                blink = Mathf.Lerp(_eyeClose, Mathf.Clamp01(hit * 1.85f), fear);
+                squeeze = impact * fear;
+            }
+            else
+            {
+                // 跨られ・振りかぶりへの恐怖見上げ（被弾が進むと徐々に目がトロンとする）。
+                brow = Mathf.Lerp(_originalBrowWeight, Mathf.Lerp(94f, 80f, fatigue), fear);
+                angry = 0.25f * fatigue * fear;
+                sad = _worriedBrow != null ? 0f : 0.82f * fear;
+                mouth = (0.24f + 0.16f * fatigue) * fear;
+                grit = (0.20f + 0.25f * fatigue) * fear;
+                blink = Mathf.Lerp(_eyeClose, 0.35f * fatigue, fear);
+                squeeze = 0f;
+                surprised = 0.30f * (1f - 0.7f * fatigue) * fear * (1f - blink);
+            }
+
+            WriteShape(new PainShape(angry, sad, mouth, grit, Mathf.Max(blink, squeeze)),
+                1f, blink, squeezeOverride: squeeze);
             if (_worriedBrow != null)
-                _worriedBrow.SetBlendShapeWeight(_worriedBrowIndex,
-                    Mathf.Lerp(_originalBrowWeight, 82f, fear));
-            Vrm.Runtime.Expression.SetWeight(ExpressionKey.Surprised, 0.22f * fear * (1f - blink));
+                _worriedBrow.SetBlendShapeWeight(_worriedBrowIndex, brow);
+            if (Vrm != null)
+                Vrm.Runtime.Expression.SetWeight(ExpressionKey.Surprised, surprised);
         }
 
         void ClearMountFear()
@@ -737,6 +896,8 @@ namespace Ryona.Game
             if (!_heldFaceActive)
                 return;
 
+            if (Vrm != null)
+                Vrm.Runtime.Expression.SetWeight(ExpressionKey.Surprised, 0f);
             if (_worriedBrow != null)
                 _worriedBrow.SetBlendShapeWeight(_worriedBrowIndex, _originalBrowWeight);
             _heldFaceActive = false;
@@ -783,7 +944,7 @@ namespace Ryona.Game
 
             Stats = found;
             Subscribe();
-            Debug.Log($"[Face] stats linked: {found.name}");
+            GameLog.Log($"[Face] stats linked: {found.name}");
         }
 
         /// <summary>倒れている／立ち上がっている間は、怯みが切れても顔を歪ませておく。</summary>
@@ -830,7 +991,7 @@ namespace Ryona.Game
             {
                 _blinkT = 0f;
                 if (_blinkCount++ < 3)
-                    Debug.Log($"[Face] blink ({_blinkCount})");
+                    GameLog.Log($"[Face] blink ({_blinkCount})");
             }
         }
 
@@ -869,12 +1030,12 @@ namespace Ryona.Game
             {
                 _eyesShut = true;
                 _eyeCheckAt = Time.unscaledTime + 0.40f;
-                Debug.Log($"[Face] eyes shut (state={Anim.Current} t={Progress():F2})");
+                GameLog.Log($"[Face] eyes shut (state={Anim.Current} t={Progress():F2})");
             }
             else if (target < 0.5f && _eyesShut)
             {
                 _eyesShut = false;
-                Debug.Log($"[Face] eyes open (state={Anim.Current} t={Progress():F2})");
+                GameLog.Log($"[Face] eyes open (state={Anim.Current} t={Progress():F2})");
             }
         }
 

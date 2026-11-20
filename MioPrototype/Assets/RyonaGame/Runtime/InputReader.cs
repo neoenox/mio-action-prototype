@@ -70,7 +70,7 @@ namespace Ryona.Game
                 _autoAttackInterval = interval;
 
             if (ForceMove || ForceRight || ForceAttack || ForceLightOnly)
-                Debug.Log($"[Input] 強制入力 move={ForceMove} right={ForceRight} attack={ForceAttack} " +
+                GameLog.Log($"[Input] 強制入力 move={ForceMove} right={ForceRight} attack={ForceAttack} " +
                     $"interval={_autoAttackInterval:F2}");
         }
 
@@ -104,7 +104,7 @@ namespace Ryona.Game
             _autoAttackPending = false;
             _autoAttackStep++;
 
-            Debug.Log($"[Input] auto attack {AutoAttackNames[want]}");
+            GameLog.Log($"[Input] auto attack {AutoAttackNames[want]}");
             return true;
         }
 

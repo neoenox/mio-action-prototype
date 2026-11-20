@@ -119,6 +119,9 @@ namespace Ryona.Game
             if (LaunchOptions.TryFloat("-pinshotdelay", out float d) && d >= 0f)
                 pinShotDelay = d;
             string pinBurst = LaunchOptions.Value("-pinburst");
+            // -anklegrabtest: 次の掴みを足取りに固定する（撮影・確認用）。
+            if (LaunchOptions.Has("-anklegrabtest"))
+                EnemyBrain.ForcedGrabKind = GrappleKind.AnkleGrab;
             bool tagCam = LaunchOptions.Has("-tagcam");
             bool tagCamFlip = LaunchOptions.Has("-tagcamflip");
 
@@ -171,7 +174,7 @@ namespace Ryona.Game
                 if (_pinShotDelay <= 0f && _pinShotPath != null)
                 {
                     ScreenCapture.CaptureScreenshot(_pinShotPath);
-                    Debug.Log($"[PinShot] {_pinShotPath}");
+                    GameLog.Log($"[PinShot] {_pinShotPath}");
                     _pinShotPath = null;
                 }
             }
@@ -183,7 +186,7 @@ namespace Ryona.Game
                 if (_heldPunchShotDelay <= 0f && _heldPunchShotPath != null)
                 {
                     ScreenCapture.CaptureScreenshot(_heldPunchShotPath);
-                    Debug.Log($"[HeldPunchShot] {_heldPunchShotPath}");
+                    GameLog.Log($"[HeldPunchShot] {_heldPunchShotPath}");
                     _heldPunchShotPath = null;
                 }
             }
@@ -204,10 +207,11 @@ namespace Ryona.Game
                         _grabbedOnce = true;
                         if (kind == GrappleKind.Pin)
                             _pinChainKnees = 0;
-                        Debug.Log($"[GrappleTest] 掴まれた kind={kind}");
+                        GameLog.Log($"[GrappleTest] 掴まれた kind={kind}");
                         if (kind == GrappleKind.Pin && _pinShotPath != null)
                             _pinShotDelay = Mathf.Max(0f, _pinShotDelaySeconds);
-                        if (kind == GrappleKind.Pin && _pinBurstPrefix != null && !_pinBurstDone)
+                        if ((kind == GrappleKind.Pin || kind == GrappleKind.AnkleGrab) &&
+                            _pinBurstPrefix != null && !_pinBurstDone)
                         {
                             _pinBurstDone = true;
                             StartCoroutine(PinBurstShots());
@@ -219,8 +223,8 @@ namespace Ryona.Game
                             StartCoroutine(HoldBurstShots(_overheadBurstPrefix, 50));
                         }
                     };
-                    _grapple.Escaped += () => { _holdFinished = true; Debug.Log("[GrappleTest] 振りほどけた"); };
-                    _grapple.Failed += () => { _holdFinished = true; Debug.Log("[GrappleTest] 押さえつけが時間切れで解放"); };
+                    _grapple.Escaped += () => { _holdFinished = true; GameLog.Log("[GrappleTest] 振りほどけた"); };
+                    _grapple.Failed += () => { _holdFinished = true; GameLog.Log("[GrappleTest] 押さえつけが時間切れで解放"); };
                 }
 
                 _belly = FindFirstObjectByType<HeldBellyPunchDirector>();
@@ -297,7 +301,7 @@ namespace Ryona.Game
                     wallSpot.z = 0f;
                     _player.transform.position = wallSpot;
                     _player.transform.rotation = Quaternion.LookRotation(Vector3.right);
-                    Debug.Log($"[GrappleTest] 壁の前へ移動 x={wallSpot.x:F2} faceZ={site.FaceZ:F2}");
+                    GameLog.Log($"[GrappleTest] 壁の前へ移動 x={wallSpot.x:F2} faceZ={site.FaceZ:F2}");
                 }
             }
 
@@ -331,14 +335,14 @@ namespace Ryona.Game
 
                 target.QueuePin();
                 _orders++;
-                Debug.Log($"[GrappleTest] #{_orders} {target.name} に押さえつけを指示 dist={best:F2}");
+                GameLog.Log($"[GrappleTest] #{_orders} {target.name} に押さえつけを指示 dist={best:F2}");
                 return;
             }
 
             target.QueueGrab();
 
             _orders++;
-            Debug.Log($"[GrappleTest] #{_orders} {target.name} に掴みを指示 dist={best:F2}");
+            GameLog.Log($"[GrappleTest] #{_orders} {target.name} に掴みを指示 dist={best:F2}");
         }
 
         void PlacePinChainReceiver(HitResult hit)
@@ -371,7 +375,13 @@ namespace Ryona.Game
         IEnumerator PinBurstShots()
         {
             int count = _wallPin ? 200 : 80;   // 壁版はレーンに戻るまで10秒撮る。
-            const float interval = 0.05f;
+            float interval = 0.05f;
+            // 壁拘束の全体（膝・猶予・二人がかり・3 人がかり・解放）は 25 秒以上かかるので、
+            // 枚数と間隔を変えられる（例: -pinburstframes=300 -pinburstinterval=0.1 で 30 秒）。
+            if (LaunchOptions.TryFloat("-pinburstframes", out float frames))
+                count = Mathf.Clamp((int)frames, 1, 2000);
+            if (LaunchOptions.TryFloat("-pinburstinterval", out float seconds))
+                interval = Mathf.Clamp(seconds, 0.02f, 0.5f);
 
             string dir = System.IO.Path.GetDirectoryName(_pinBurstPrefix);
             string name = System.IO.Path.GetFileNameWithoutExtension(_pinBurstPrefix);
@@ -387,7 +397,7 @@ namespace Ryona.Game
                 next += interval;
             }
 
-            Debug.Log($"[GrappleTest] pin burst {count} 枚 {_pinBurstPrefix}_XX.png");
+            GameLog.Log($"[GrappleTest] pin burst {count} 枚 {_pinBurstPrefix}_XX.png");
         }
 
         /// <summary>
@@ -411,7 +421,7 @@ namespace Ryona.Game
                 next += interval;
             }
 
-            Debug.Log($"[GrappleTest] overhead burst {count} 枚 {prefix}_XX.png");
+            GameLog.Log($"[GrappleTest] overhead burst {count} 枚 {prefix}_XX.png");
         }
 
         /// <summary>
@@ -468,7 +478,7 @@ namespace Ryona.Game
             }
 
             Vector3 root = _player.transform.position;
-            Debug.Log($"[WallClear] face={face:F2} rootZ={root.z:F2} rootOver={root.z - face:F3} " +
+            GameLog.Log($"[WallClear] face={face:F2} rootZ={root.z:F2} rootOver={root.z - face:F3} " +
                       $"{bones} hairOver={through}/{joints.Length} hairMax={deepestSigned:F3} " +
                       $"captorZ={(_grapple.Captor != null ? _grapple.Captor.transform.position.z - face : 0f):F3}");
 
@@ -478,7 +488,7 @@ namespace Ryona.Game
             if (!float.IsNaN(meshZ))
             {
                 string verdict = meshZ > face ? "貫通" : "OK";
-                Debug.Log($"[WallMesh] maxZ-face={meshZ - face:F3} ({verdict})");
+                GameLog.Log($"[WallMesh] maxZ-face={meshZ - face:F3} ({verdict})");
             }
         }
 
@@ -514,7 +524,7 @@ namespace Ryona.Game
                 if (localMax > face && Time.time - _meshLogAt > 1f)
                 {
                     _meshLogAt = Time.time;
-                    Debug.Log($"[WallMesh] {smr.name} maxZ-face={localMax - face:F3}");
+                    GameLog.Log($"[WallMesh] {smr.name} maxZ-face={localMax - face:F3}");
                 }
                 any = true;
             }
@@ -528,7 +538,7 @@ namespace Ryona.Game
                     && Time.time - _meshLogAt > 1f)
                 {
                     float zz = mf.transform.position.z;
-                    if (zz > face) { _meshLogAt = Time.time; Debug.Log($"[WallMesh] mesh {mf.name} z={zz - face:F3}"); }
+                    if (zz > face) { _meshLogAt = Time.time; GameLog.Log($"[WallMesh] mesh {mf.name} z={zz - face:F3}"); }
                 }
 
                 var filter = mf.GetComponent<MeshFilter>();
@@ -546,7 +556,7 @@ namespace Ryona.Game
                     if (zOnly > face && Time.time - _meshLogAt > 1f)
                     {
                         _meshLogAt = Time.time;
-                        Debug.Log($"[WallMesh] bounds {mf.name} mesh={filter.sharedMesh.name} " +
+                        GameLog.Log($"[WallMesh] bounds {mf.name} mesh={filter.sharedMesh.name} " +
                                   $"maxZ-face={zOnly - face:F3} centerZ={cc.z:F2} ext=({ee.x:F2},{ee.y:F2},{ee.z:F2})");
                     }
                 }
@@ -574,7 +584,7 @@ namespace Ryona.Game
 
         void OnBellyPunchPerformed()
         {
-            Debug.Log("[GrappleTest] 腹パン演出 開始");
+            GameLog.Log("[GrappleTest] 腹パン演出 開始");
 
             if (_burstPrefix != null && !_burstDone)
             {
@@ -609,7 +619,7 @@ namespace Ryona.Game
                 next += interval;
             }
 
-            Debug.Log($"[GrappleTest] burst {count} 枚 {_burstPrefix}_XX.png");
+            GameLog.Log($"[GrappleTest] burst {count} 枚 {_burstPrefix}_XX.png");
             yield return new WaitForSecondsRealtime(0.6f);
             Application.Quit();
         }
@@ -660,7 +670,7 @@ namespace Ryona.Game
         void CaptureHit(HitResult result)        {
             if (_hitShotPath == null || (_hitAfterThrowOnly && !_holdFinished)) return;
             ScreenCapture.CaptureScreenshot(_hitShotPath);
-            Debug.Log($"[EnemyHitShot] {_hitShotPath}");
+            GameLog.Log($"[EnemyHitShot] {_hitShotPath}");
             _hitShotPath = null;
         }
 
@@ -704,7 +714,7 @@ namespace Ryona.Game
             float aR = Mathf.Min(Vector3.Distance(wr, handR), Vector3.Distance(wr, chest));
             float aL = Mathf.Min(Vector3.Distance(wl, handL), Vector3.Distance(wl, chest));
 
-            Debug.Log($"[GrappleContact] rootZ={root.z:F2} " +
+            GameLog.Log($"[GrappleContact] rootZ={root.z:F2} " +
                       $"wristR=({wr.x:F2},{wr.y:F2},{wr.z:F2}) wristL=({wl.x:F2},{wl.y:F2},{wl.z:F2}) " +
                       $"chest=({chest.x:F2},{chest.y:F2},{chest.z:F2}) " +
                       $"shR=({shR.x:F2},{shR.y:F2},{shR.z:F2}) shL=({shL.x:F2},{shL.y:F2},{shL.z:F2}) " +
