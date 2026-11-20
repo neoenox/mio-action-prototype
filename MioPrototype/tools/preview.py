@@ -45,6 +45,15 @@ OUT_ROOT = PROJECT / "Verify" / "preview"
 # 撮りたい場面ごとの起動引数。フレーム数と間隔もここに持つ。
 #   burst: 連番キャプチャの接頭辞フラグ（Debug の各ドライバが読む）
 SCENARIOS = {
+    # 修正済みモーションを 1 本のビルドで順番に再生（デバッグメニューと同じ番号）。
+    "motionseq": dict(args=["-motionseq=1,2,3,4,5,6,7,8,9,10", "-motionseqinterval=3.5"],
+                      burst="-motionseqburst", frames=760, interval=0.05),
+    # 手首ロック（後ろ手の拘束リング）。割る動きまで撮る。
+    "wristlock": dict(args=["-wristlocktest"], burst="-wristlockburst",
+                      frames=140, interval=0.05),
+    # 挟み撃ちの突き飛ばし（ピンポン）。前後の2体で往復→腹パンでダウン。
+    "pinball": dict(args=["-pinballtest"], burst="-pinballburst",
+                    frames=180, interval=0.05),
     # 壁押さえつけ（壁へ押し出す版）。膝〜二人がかり〜3 人がかりまで含む。
     "wallpin": dict(args=["-grappletest", "-wallpintest"], burst="-pinburst",
                     frames=200, interval=0.05),
@@ -68,6 +77,9 @@ SCENARIOS = {
                  frames=100, interval=0.05),
     "haulprone": dict(args=["-haultest", "-mountprone"], burst="-mountburst",
                       frames=100, interval=0.05),
+    # 地面マウント（跨ってのパンチ）。マウントのカメラ（GroundMountAttack.FrameMount）を見る。
+    "mount": dict(args=[], burst="-mountburst", frames=110, interval=0.05),
+    "mountprone": dict(args=["-mountprone"], burst="-mountburst", frames=110, interval=0.05),
     # 頭上拘束（両手首を上へ引き上げる）。
     "overhead": dict(args=["-grappletest", "-overheadtest"], burst="-pinburst",
                      frames=120, interval=0.05),

@@ -19,6 +19,58 @@ namespace Ryona.Game
         ThirdPersonCamera _camera;
         float _splitPush;
 
+        // Y 字移行中に拘束役の体がレンズを覆わないよう、候補の構図ごとに顔可視率を測る。
+        Camera _faceProbe;
+        EnemyFigure[] _faceFigures;
+        float _nextFigureRefresh;
+        static readonly float[] FaceCandidateTurns = { 0f, 28f, -28f, 55f, -55f, 80f, -80f };
+        static readonly float[] FaceCandidateScales = { 1f, 1.35f, 1.7f };
+
+        void OnDestroy()
+        {
+            if (_faceProbe != null)
+                Destroy(_faceProbe.gameObject);
+        }
+
+        Camera FaceProbe()
+        {
+            if (_faceProbe == null)
+            {
+                var go = new GameObject("Wall Pin Face Probe");
+                _faceProbe = go.AddComponent<Camera>();
+                // 無効カメラは投影行列が更新されず WorldToViewportPoint が壊れる。
+                // 何も描画しないカメラとして有効にしておく。
+                _faceProbe.enabled = true;
+                _faceProbe.cullingMask = 0;
+                _faceProbe.clearFlags = CameraClearFlags.Nothing;
+                _faceProbe.depth = -100f;
+                _faceProbe.useOcclusionCulling = false;
+            }
+            var main = Camera.main;
+            if (main != null)
+            {
+                _faceProbe.fieldOfView = main.fieldOfView;
+                _faceProbe.nearClipPlane = main.nearClipPlane;
+                _faceProbe.farClipPlane = main.farClipPlane;
+            }
+            _faceProbe.aspect = FaceVisibility.Aspect;
+            return _faceProbe;
+        }
+
+        FaceVisibility.Result ProbeFace(Vector3 position, Vector3 faceTarget)
+        {
+            if (Time.time >= _nextFigureRefresh)
+            {
+                _nextFigureRefresh = Time.time + 0.25f;
+                _faceFigures = FindObjectsByType<EnemyFigure>(FindObjectsSortMode.None);
+            }
+
+            Camera probe = FaceProbe();
+            probe.transform.SetPositionAndRotation(position,
+                Quaternion.LookRotation(faceTarget - position));
+            return FaceVisibility.Measure(probe, _targetRig.Head, _faceFigures);
+        }
+
         /// <summary>
         /// 壁押さえつけ（膝・猶予）のカメラ位置（彼女と拘束役の間の注視点からのずれ、m）。
         /// 以前の高さ 0.47m だと、拘束役の肩と腕越しに見下ろす形になり、彼女の顔が隠れた
@@ -172,6 +224,22 @@ namespace Ryona.Game
                     // 二体がかり（Y 字）は二人と彼女が並ぶので、少し斜めから引いた固定ショット。
                     // 角度・距離は WallSplitCamera が起動引数で切り替える
                     // （-wallsplitcam=hold なら壁押さえつけのショットのまま動かさない）。
+                    // 壁押さえつけのショットを共通の基準として作る。
+                    // Y 字へ移るときはこの画から角度・距離で寄せる（直線補間だと敵の体を通る）。
+                    Vector3 her = pinned.position + Vector3.up * 1.02f;
+                    Vector3 him = transform.position + Vector3.up * 1.02f;
+                    Vector3 heldTarget = Vector3.Lerp(her, him, 0.45f);
+                    float knee = Mathf.SmoothStep(0f, 1f, hold.KneePulse);
+                    Vector3 heldOffset = Vector3.Lerp(WallHeldShot, WallKneeShot, knee);
+
+                    // 背の低い拘束役は、彼の頭と肩が彼女の顔の高さに来て顔を隠す。
+                    // カメラを彼女の側へ寄せて、彼の体の横から顔を覗く。
+                    float shortT = _figure != null
+                        ? Mathf.InverseLerp(1.79f, 1.72f, _figure.Height)
+                        : 0f;
+                    heldOffset += new Vector3(0.65f, -0.15f, 0.55f) * shortT;
+                    Vector3 heldShot = heldTarget + heldOffset;
+
                     if (hold.WallSplitWeight > 0.01f)
                     {
                         // アシストが離れた直後（重みが抜ける 0.2 秒）は、拘束役を彼女の反対側へ
@@ -181,40 +249,72 @@ namespace Ryona.Game
                             : pinned.position + (pinned.position - transform.position);
                         WallSplitCamera.Build(pinned.position, pinned.forward,
                             transform.position, assist,
-                            out Vector3 shot, out Vector3 target,
+                            out Vector3 splitShot, out Vector3 splitTarget,
                             CombatConstants.WallGangCameraBack * hold.WallGangWeight,
                             CombatConstants.WallGangCameraShift * hold.WallGangWeight);
 
                         // 段階が進むほど彼女へ寄る（序盤は引き、締めで大きく寄る）。
                         _splitPush = Mathf.MoveTowards(_splitPush, hold.WallSplitCameraPushTarget,
                             Time.unscaledDeltaTime * 0.7f);
-                        // 締めの膝入れは、少し上から腹と顔の両方が入る構図にする。
-                        // 彼女の顔が画面から切れないことを優先する（狙いを下げすぎると頭が切れる）。
                         float lowering = Mathf.InverseLerp(0.10f, 0.15f, _splitPush);
-                        // 締めの一撃で彼女の体が持ち上がるので、狙いは下げずに少し上げて頭の余裕を作る。
-                        target.y += 0.03f * lowering;
-                        shot.y += 0.06f * lowering;
-                        shot = target + (shot - target) * (1f - 0.40f * _splitPush);
-                        _camera.RequestCinematicShot(shot, target);
+                        splitTarget.y += 0.03f * lowering;
+                        splitShot.y += 0.06f * lowering;
+                        splitShot = splitTarget + (splitShot - splitTarget) * (1f - 0.40f * _splitPush);
+
+                        float w = Mathf.Clamp01(hold.WallSplitWeight);
+                        Vector3 pivot = pinned.position + Vector3.up * 1.02f;
+                        Vector3 from = heldShot - pivot;
+                        Vector3 to = splitShot - pivot;
+                        Vector3 direction = Vector3.Slerp(
+                            from.sqrMagnitude > 1e-6f ? from.normalized : Vector3.back,
+                            to.sqrMagnitude > 1e-6f ? to.normalized : Vector3.back, w);
+                        float radius = Mathf.Lerp(from.magnitude, to.magnitude, w);
+                        Vector3 shot = pivot + direction * radius;
+                        Vector3 target = Vector3.Lerp(heldTarget, splitTarget, w);
+
+                        // 角度補間だけだと拘束役の背中を通ることがある（実測 #193〜#197）。
+                        // 周囲の候補を顔可視率で採点し、隠れない経路へ逃がす。
+                        Vector3 faceTarget = _targetRig.Head.position + Vector3.up * 0.06f;
+                        float bestVisible = -1f;
+                        Vector3 bestShot = shot;
+                        bool avoid = hold.WallGangWeight <= 0.01f;
+                        float[] turns = FaceCandidateTurns;
+                        for (int i = 0; avoid && i < turns.Length; i++)
+                        {
+                            for (int j = 0; j < FaceCandidateScales.Length; j++)
+                            {
+                                Vector3 candidate = pivot +
+                                    Quaternion.AngleAxis(turns[i], Vector3.up) * (shot - pivot) * FaceCandidateScales[j];
+                                candidate.y += j * 0.35f;
+                                var reading = ProbeFace(candidate, faceTarget);
+                                float visible = reading.Visible + (reading.Readable ? 0.5f : 0f);
+                                if (visible > bestVisible)
+                                {
+                                    bestVisible = visible;
+                                    bestShot = candidate;
+                                }
+                            }
+                        }
+                        // 途中の経路がすべて塞がっている場合は、実測で顔が読める確定構図へ逃がす。
+                        if (avoid && w >= 0.05f)
+                        {
+                            var splitReading = ProbeFace(splitShot, faceTarget);
+                            float splitVisible = splitReading.Visible + (splitReading.Readable ? 0.5f : 0f);
+                            if (splitVisible > bestVisible)
+                            {
+                                bestVisible = splitVisible;
+                                bestShot = splitShot;
+                            }
+                        }
+
+                        // 追従補間だと避けたはずの敵の体を通ってしまう。回避したフレームは即切替にする。
+                        bool dodged = (bestShot - shot).sqrMagnitude > 0.01f;
+                        _camera.RequestCinematicShot(bestShot, target, cut: dodged);
                         return;
                     }
 
                     _splitPush = 0f;
-                    Vector3 her = pinned.position + Vector3.up * 1.02f;
-                    Vector3 him = transform.position + Vector3.up * 1.02f;
-                    Vector3 mid = Vector3.Lerp(her, him, 0.45f);
-                    float knee = Mathf.SmoothStep(0f, 1f, hold.KneePulse);
-                    Vector3 offset = Vector3.Lerp(WallHeldShot, WallKneeShot, knee);
-
-                    // 背の低い拘束役は、彼の頭と肩が彼女の顔の高さに来て顔を隠す。
-                    // カメラを彼女の側へ寄せて、彼の体の横から顔を覗く。
-                    // 1.79m 以上は従来のまま（Enemy 2 / 3）、1.72m で最大。
-                    float shortT = _figure != null
-                        ? Mathf.InverseLerp(1.79f, 1.72f, _figure.Height)
-                        : 0f;
-                    offset += new Vector3(0.65f, -0.15f, 0.55f) * shortT;
-
-                    _camera.RequestCinematicShot(mid + offset, mid);
+                    _camera.RequestCinematicShot(heldShot, heldTarget);
                     return;
                 }
 

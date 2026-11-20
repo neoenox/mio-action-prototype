@@ -74,9 +74,19 @@ namespace Ryona.Game
                         Vector3 toPlayer = Player.transform.position - transform.position;
                         toPlayer.y = 0f;
                         if (Vector3.Dot(transform.forward, toPlayer.normalized) >= 0.7f)
-                            grabbed = _pinPending ? TryPin()
-                                : _bearHugPending ? TryBearHug()
-                                : TryGrab();
+            if (Role == EnemyRole.Tools &&
+                (LaunchOptions.Has("-wristlocktest") ||
+                 UnityEngine.Random.value < RyonaConfig.Instance.WristLock.Chance))
+                            {
+                                var wrist = Player.GetComponent<PlayerWristLock>();
+                                grabbed = wrist != null && wrist.TryAttach(this);
+                                if (!grabbed)
+                                    grabbed = TryGrab();
+                            }
+                            else
+                                grabbed = _pinPending ? TryPin()
+                                    : _bearHugPending ? TryBearHug()
+                                    : TryGrab();
                     }
                     else if (PunchTouchesPlayer())
                     {

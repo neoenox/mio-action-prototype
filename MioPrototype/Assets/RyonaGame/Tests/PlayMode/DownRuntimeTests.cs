@@ -629,5 +629,79 @@ namespace Ryona.Tests
             yield return new WaitForSeconds(_anim.GetUpSeconds + 0.3f);
             Assert.IsFalse(_stats.IsDown, "脱出後に立ち上がれていない");
         }
+        [UnityTest]
+        public IEnumerator MountKeepsFaceVisibleWhileAttackerCovers()
+        {
+            yield return LoadPlayer(holdEnemies: false);
+            PrepareMount(forward: false);
+            var mount = _stats.GetComponent<GroundMountAttack>();
+
+            float deadline = Time.realtimeSinceStartup + 6f;
+            while (mount.Stage < GroundMountAttack.Beat.Mount && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.GreaterOrEqual(mount.Stage, GroundMountAttack.Beat.Mount, "マウントに入らない");
+
+            // 跨った直後は通常のベルトカメラ（引きの全体）で見せる設計なので、
+            // マウントのカメラ（FrameMount）が担当するパンチの区間から測る。
+            deadline = Time.realtimeSinceStartup + 6f;
+            while (mount.Stage < GroundMountAttack.Beat.Windup && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.GreaterOrEqual(mount.Stage, GroundMountAttack.Beat.Windup, "パンチが始まらない");
+
+            var figures = Object.FindObjectsByType<EnemyFigure>(FindObjectsSortMode.None);
+            int frames = 0;
+            float sum = 0f;
+            int badLensStreak = 0, worstLensStreak = 0;
+            float minUpDot = 1f;
+            float minDistance = float.MaxValue, maxDistance = 0f, maxElevation = 0f;
+            int smallFaceFrames = 0;
+            int sideSwitches = 0, lastSide = 0;
+            float sideStart = Time.realtimeSinceStartup;
+            deadline = Time.realtimeSinceStartup + 2f;
+            while (mount.Stage >= GroundMountAttack.Beat.Mount &&
+                   mount.Stage < GroundMountAttack.Beat.Dismount &&
+                   Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+                sum += FaceVisibility.Measure(Camera.main, _anim.Rig.Head, figures).Visible;
+                float lens = FaceVisibility.LensClearance(Camera.main.transform.position, figures);
+                badLensStreak = lens < 0.5f ? badLensStreak + 1 : 0;
+                worstLensStreak = Mathf.Max(worstLensStreak, badLensStreak);
+                minUpDot = Mathf.Min(minUpDot, Vector3.Dot(Camera.main.transform.up, Vector3.up));
+                // 遠すぎる画（上空からの豆粒）を止める。可視率だけでは豆粒でも満点になる。
+                Vector3 toCamera = Camera.main.transform.position - _anim.Rig.Head.position;
+                float distance = toCamera.magnitude;
+                minDistance = Mathf.Min(minDistance, distance);
+                maxDistance = Mathf.Max(maxDistance, distance);
+                float flat = new Vector3(toCamera.x, 0f, toCamera.z).magnitude;
+                maxElevation = Mathf.Max(maxElevation, Mathf.Atan2(toCamera.y, Mathf.Max(0.001f, flat)) * Mathf.Rad2Deg);
+                if (FaceVisibility.ScreenFaceSize(Camera.main, _anim.Rig.Head) < GroundMountAttack.MountMinFaceSize)
+                    smallFaceFrames++;
+                int side = System.Math.Sign(Vector3.Dot(
+                    Camera.main.transform.position - _anim.Rig.Head.position, _stats.transform.right));
+                if (lastSide != 0 && side != 0 && side != lastSide)
+                    sideSwitches++;
+                lastSide = side;
+                frames++;
+            }
+
+            float avg = frames > 0 ? sum / frames : 0f;
+            Debug.Log($"[MountFaceVisible] frames={frames} avgVisible={avg:F2} " +
+                      $"dist={minDistance:F2}..{maxDistance:F2} elev<={maxElevation:F0} smallFace={smallFaceFrames}");
+            // 寄りすぎ（敵の体が画面を覆う）と引きすぎ（上空からの豆粒）の両方を止める。
+            Assert.GreaterOrEqual(minDistance, 1.2f, $"カメラが近すぎる ({minDistance:F2}m)");
+            // 頭からの距離（候補は頭と腰の間の注視点から水平 1.4〜2.6m・高さ 0.9〜1.5m）。
+            // 読める大きさかは下の顔の大きさで見る。上空からの豆粒（実測 6.1m）はここで止まる。
+            Assert.LessOrEqual(maxDistance, 3.2f, $"カメラが遠すぎる ({maxDistance:F2}m)");
+            Assert.LessOrEqual(maxElevation, GroundMountAttack.MountMaxElevation + 15f,
+                $"真上から見下ろしすぎている ({maxElevation:F0}°)");
+            Assert.LessOrEqual(smallFaceFrames, frames / 10, $"顔が小さすぎるコマが多い ({smallFaceFrames}/{frames})");
+            Assert.Greater(frames, 10);
+            Assert.GreaterOrEqual(avg, 0.60f, $"マウント中に顔が隠れすぎている (avg={avg:F2})");
+            Assert.Less(worstLensStreak, 3, $"レンズ前に敵が長く留まる ({worstLensStreak} コマ)");
+            Assert.Greater(minUpDot, 0.3f, $"カメラが逆さまになる (up·up={minUpDot:F2})");
+            float seconds = Mathf.Max(0.1f, Time.realtimeSinceStartup - sideStart);
+            Assert.Less(sideSwitches / seconds, 1f, $"側の切り替えが多すぎる ({sideSwitches} 回 / {seconds:F1}s)");
+        }
     }
 }

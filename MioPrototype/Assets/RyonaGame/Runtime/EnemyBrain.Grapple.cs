@@ -38,6 +38,29 @@ namespace Ryona.Game
         }
 
         /// <summary>
+        /// ピンポンの起点。拘束を前提とせず、胸を突くタッグ技の風を開始する。
+        /// </summary>
+        public bool TryStartPinballPunch(float windupScale = 1f)
+        {
+            if (!isActiveAndEnabled || Phase == EnemyPhase.Dead || Phase == EnemyPhase.Windup ||
+                Phase == EnemyPhase.Attack || Phase == EnemyPhase.Stagger || IsRising ||
+                Player == null || Player.IsDead)
+                return false;
+            if (Group != null && !Group.TryAcquireAttackToken(this))
+                return false;
+
+            BeginAttackWindup(AttackId.Jab, fromThrow: false, PunchZone.Body);
+            if (Mathf.Abs(windupScale - 1f) > 0.001f)
+            {
+                _run.Windup *= windupScale;
+                _timer = _run.Windup;
+            }
+            _tagPunchPending = true;
+            _tagPunchSwing = true;
+            return true;
+        }
+
+
         /// 拘束中のプレイヤーへ、タッグ技のジャブを開始する（狙いは腹 or 顔）。
         /// 正面・間合い内・攻撃トークンありのときだけ開始する。
         /// 演出側（<see cref="HeldBellyPunchDirector"/>）が位置と向きを合わせてから呼ぶ。
@@ -90,6 +113,12 @@ namespace Ryona.Game
             // 狙いはこの一振りだけ固定する。ForceZone を書き換えると -punchzone の指定を
             // 食ってしまうので、引数で渡す。
             BeginAttackWindup(AttackId.Jab, fromThrow, zone);
+            // コンボ中のタッグ技は役割の予備動作倍率を外す。投げ直後の一発は打撃役の速さを活かす。
+            if (!fromThrow)
+            {
+                _run.Windup = Mathf.Max(0.05f, WindupOf(AttackId.Jab));
+                _timer = _run.Windup;
+            }
             // 溜めの長さ。1 未満も効かせる（軽い一発は短く振りかぶって素早く入る）。
             if (Mathf.Abs(windupScale - 1f) > 0.001f)
             {

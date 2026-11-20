@@ -296,7 +296,7 @@ namespace Ryona.EditorTools
             var gate = gateGo.AddComponent<BeltScreenLock>();
             gate.Camera = camRig;
             gate.Motor = motor;
-            gate.Group = group;
+            // ロック中心は EncounterDirector が LockAt で渡す（Group 依存は撤去）。
             // 画面幅・余白・関所の幅は RyonaConfig.BeltLock 側。ここでは設定しない。
             // --- 保存 -------------------------------------------------
             EnsureFolder("Assets/Scenes");

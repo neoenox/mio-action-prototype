@@ -38,6 +38,8 @@ namespace Ryona.Game
         Text _lockText;
         BeltScreenLock _screenLock;
         PlayerMotor _motor;
+        Text _wristText;
+        PlayerWristLock _wrist;
 
         /// <summary>ステージ終了の中央表示（通常は非表示）。</summary>
         internal RectTransform _bannerRoot;
@@ -115,6 +117,7 @@ namespace Ryona.Game
             UpdateEncounter();
             UpdateLockHint();
             UpdateGrapple();
+            UpdateWristLock();
         }
 
         /// <summary>
@@ -367,7 +370,20 @@ namespace Ryona.Game
             _lockText.color = new Color(1f, 0.85f, 0.45f, alpha);
         }
 
-        /// <summary>撃破数と「全滅 → 次の波」のカウントダウン。</summary>
+        void UpdateWristLock()
+        {
+            if (_wristText == null)
+                return;
+            if (_wrist == null)
+                _wrist = FindFirstObjectByType<PlayerWristLock>();
+            bool locked = _wrist != null && _wrist.IsLocked;
+            _wristText.gameObject.SetActive(locked);
+            if (!locked)
+                return;
+            _wristText.text = $"手首ロック — J/K/L で割る {_wrist.Inputs}/{_wrist.InputsToBreak}　{_wrist.Remaining:F1}s";
+        }
+
+
         void UpdateEncounter()
         {
             if (_encounterText == null)
@@ -384,7 +400,9 @@ namespace Ryona.Game
 
             if (_encounter.Cleared)
             {
-                _encounterText.text = "全滅 → 右へ進め";
+                _encounterText.text = _encounter.ArenaMovingNext
+                    ? "右へ進め → 次のエリア"
+                    : $"次の一団まで {_encounter.NextWaveRemaining:F1}s";
                 _encounterText.color = new Color(1f, 0.85f, 0.45f, 0.95f);
             }
             else
@@ -510,6 +528,17 @@ namespace Ryona.Game
             _grappleText = NewText(_grappleRoot, 0f, 4f, 560f, 60f, string.Empty, 24, TextAnchor.UpperCenter);
             _grappleFill = NewBar(_grappleRoot, 0f, 66f, 560f, 10f, new Color(0.95f, 0.45f, 0.35f));
             _grappleRoot.gameObject.SetActive(false);
+
+            // 手首ロックの表示（画面左上、体力の下）。帯が腕と腹に重ならない位置。
+            var wristRect = NewRect("WristLock", root, 26f, 150f, 420f, 30f,
+                new Vector2(0f, 1f), new Vector2(0f, 1f));
+            _wristText = wristRect.gameObject.AddComponent<Text>();
+            _wristText.font = JapaneseFont;
+            _wristText.fontSize = 18;
+            _wristText.alignment = TextAnchor.UpperLeft;
+            _wristText.color = new Color(0.45f, 0.85f, 1f, 0.95f);
+            _wristText.raycastTarget = false;
+            wristRect.gameObject.SetActive(false);
 
             // 操作の説明（右下）。タイトルを出さないので、プレイ画面に常に置く。
             var helpRect = NewRect("ControlsHelp", root, 26f, 22f, 420f, 150f,

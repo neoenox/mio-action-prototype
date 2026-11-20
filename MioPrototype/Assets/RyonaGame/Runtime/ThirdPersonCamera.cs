@@ -165,6 +165,15 @@ namespace Ryona.Game
         Vector3 _shotPosition;
         Vector3 _shotTarget;
 
+        // 演出ショットが終わったあと、最後の画から通常カメラへ戻る補間。
+        // cut:true の意図的なカットはここを通さない。
+        const float CinematicExitSeconds = 0.35f;
+        Vector3 _exitFromPosition;
+        Quaternion _exitFromRotation;
+        Vector3 _lastCinematicPosition;
+        Quaternion _lastCinematicRotation;
+        bool _lastCinematicCut;
+        float _exitRemaining;
         // このフレームで実際に使う値（毎フレーム TickEffects が更新する）
         float _distanceScale = 1f;
         float _pivotOffsetY;
@@ -355,13 +364,32 @@ namespace Ryona.Game
             _cinematicCut = cut;
             _cinematicPosition = position;
             _cinematicTarget = target;
+            _exitRemaining = 0f;
         }
 
         void ApplyCinematicShot()
         {
             if (!_cinematicRequested)
             {
+                if (_cinematicActive && !_lastCinematicCut)
+                {
+                    _exitFromPosition = _lastCinematicPosition;
+                    _exitFromRotation = _lastCinematicRotation;
+                    _exitRemaining = CinematicExitSeconds;
+                }
                 _cinematicActive = false;
+
+                if (_exitRemaining > 0f)
+                {
+                    float t = 1f - Mathf.Clamp01(_exitRemaining / CinematicExitSeconds);
+                    t = Mathf.SmoothStep(0f, 1f, t);
+                    Vector3 basePosition = transform.position;
+                    Quaternion baseRotation = transform.rotation;
+                    transform.SetPositionAndRotation(
+                        Vector3.Lerp(_exitFromPosition, basePosition, t),
+                        Quaternion.Slerp(_exitFromRotation, baseRotation, t));
+                    _exitRemaining -= Time.unscaledDeltaTime;
+                }
                 return;
             }
 
@@ -376,7 +404,20 @@ namespace Ryona.Game
             Vector3 zoomedOffset = zoom < 1f
                 ? Vector3.ClampMagnitude(offset, Mathf.Max(0.75f, offset.magnitude * zoom))
                 : offset * zoom;
-            transform.SetPositionAndRotation(_shotTarget + zoomedOffset, Quaternion.LookRotation(-offset));
+            Vector3 look = -offset.normalized;
+            Vector3 shotUp = Vector3.up;
+            // 注視点がほぼ真下／真上だと LookRotation の up が不安定になり、画が反転する。
+            if (Vector3.Angle(look, Vector3.up) > 70f)
+            {
+                Vector3 right = Vector3.Cross(look, Vector3.up);
+                if (right.sqrMagnitude < 1e-6f)
+                    right = Vector3.right;
+                shotUp = Vector3.Cross(right.normalized, look).normalized;
+            }
+            transform.SetPositionAndRotation(_shotTarget + zoomedOffset, Quaternion.LookRotation(look, shotUp));
+            _lastCinematicPosition = transform.position;
+            _lastCinematicRotation = transform.rotation;
+            _lastCinematicCut = _cinematicCut;
             _cinematicActive = true;
             _cinematicRequested = false;
         }

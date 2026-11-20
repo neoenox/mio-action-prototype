@@ -825,3 +825,35 @@
 - PlayMode テスト: `Unity.exe -batchmode -runTests -projectPath <MioPrototype> -testPlatform PlayMode -testResults tests.xml`
   … 125 件。**タイトルが `Time.timeScale = 0` にする**ので、テストは `TestScene.LoadPrototype()` を通す
   （時間を戻す＋タイトルを飛ばす）。これを通さないと予備動作・ヒットストップ・カメラが観測できず複数件落ちる。
+
+
+## 2026-11-19 顔トドメ後の棒立ち
+
+- 症状: 顔パン → トドメ → 拘束が解けてから棒立ちのまま 0.28 秒待ち、その後倒れる。腹パンでは出ない。
+- 原因: `ReleaseWithFinisherDown()` が `_grapple.Release()` のあと、拘束役が倒れる場所を空ける 0.95m / 0.28s の後退を待ってから `ForceDown()` を呼んでいた。解放直後の `LateUpdate` が `Grabbed → Idle` へ戻し `ClearHeldGroggy()` で崩れ姿勢も消すので、後退中だけ立ち姿勢になる。
+- 修正: `ForceDown()` を後退より前に移動。次の `LateUpdate` で `State.Down` に入り、`Rig.SnapshotPose()` が崩れ姿勢を拾ったまま `DownBlendSeconds` で倒れる。カメラの `ApplyCollapseCamera()` と `Phase.Idle` は後退完了後のまま（他不具合の混入を避ける）。
+- テスト: `HeldBellyPunchTests` に、拘束役が 0.12m 動いた後から後退完了まで `IsDowned == false` のフレームが無いことを固定。待ちループも後退完了 (0.6m) まで待つよう更新。
+
+## 2026-11-20 モーションレビューの不具合（計画 A）
+
+- カメラ出口ブレンド: `ThirdPersonCamera` にシネマティック終了後 0.35 秒の戻し補間を追加。`cut:true` は従来どおり即切替（ haul #68→69 の 7.0 倍を unpublished の `CameraExitBlendTests` で固定）。
+- Y 字移行: `PinHoldPose` が壁押さえショットと Split ショットを `WallSplitWeight` で角度・距離補間するように変更。直線補間で敵の腰を通っていた問題（wallpin #193〜#195）に対処。
+- ずり落ち: `PoseGrabbed` の `slide` で背中を壁へ預け、足を前へ出して「空気椅子」を解消。
+- マウント: `GroundMountAttack.FrameMount` が両側の顔可視率を `FaceVisibility.Measure` で測って見える側を選び、`-mountlog` で `[MountFace]` 可視率を出す。
+- 検証: `motion_audit.py --compare` で haul は 7.0倍 → 5.1倍に改善（残る 5.1倍は `GroundHaulUp` の意図的カット）。wallpin は 4.6倍 → 5.6倍だが、突出箇所は序盤の別カットで Y 字移行（#55〜#70）は敵の体を通らず顔が読める。`preview.py --reel` も撮って GIF を確認した。
+
+## 2026-11-20 顔トドメ: 回避 → 崩れ → 命中と同時ダウン
+
+- `HeldBellyPunchDirector` に `Phase.FinisherDodge` を追加。トドメ役の予備動作残り `EvadeLeadSeconds` で拘束役が z+ へ回避し、彼女は `SetFinisherBuckle` で膝を崩す。命中したフレームに `ForceDown(forward: false)` を呼び、0.46 秒の余韻と後退を廃止した。腹パンは従来どおり。
+- `EnemyBrain.BeginEvade` が LateUpdate の z 合わせを上書きする。回避中は早期 return しないと通常の z 合わせに戻される（実測でハマった）。
+- `CharacterAnimator.LateUpdate` はバックル中だけ Grabbed → Idle への復帰と `ClearHeldGroggy` を抑える。
+- 設定は `RyonaConfig.Feel` の `EvadeLeadSeconds / EvadeDistance / EvadeSeconds / BuckleSeconds / BuckleDepth / DodgeHitGrace`。命中が来なければ保険の `ReleaseWithFinisherDown` へ落とす（コルーチンは `StartCoroutine` で起動する）。
+- 追記（4点修正）: 回避開始を 0.42s 前にし、z+ に加えて横 0.35m の斜め移動を追加。`BeginEvade` は `EndEvade()` まで位置を保持し、倒れ込み完了後に彼女から 0.7m 以上離れた地点へ戻す。`ForceDown` に 0.45m / 0.08m の launch を付け、`_downLaunched` で倒れを 0.34 倍に速めた。跳ねは命中時の `ClearFinisherBuckle` が原因で、`-hitlog` で腰 0.762→0.871 を確認してから、Down 移行の `SnapshotPose` 後に解除するよう順序を入れ替えた。
+
+## 2026-11-20 挟み撃ちの突き飛ばし（ピンポン）
+
+- `PinballRules`（RyonaCore）が往復ごとの距離・速さ・受け止め窓の狭まりと入力判定を持つ。EditMode で固定。
+- `PinballDirector` が前後 2 体の発生判定→起点の胸突き→`HandOff(shove:true)` の往復→最後の腹パン（うつ伏せダウン）を駆動。受け止めの窓だけ攻撃ボタンを受け、窓外の連打は無効。
+- `GrappleSession.PinballActive` で連打を止め、受け止め後の保持を 0.65s に短縮。ピンポン後は 23s のクールタイムで他拘束の連鎖を防ぐ。
+- 検証用: `-pinballtest` / `-pinballburst=<png>`、`preview.py pinball`。
+

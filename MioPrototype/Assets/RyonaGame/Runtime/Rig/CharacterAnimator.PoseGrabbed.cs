@@ -178,18 +178,20 @@ namespace Ryona.Game
                     float slide = Grapple.WallSlideWeight;
                     float lift = Grapple.WallRestraintWeight;
                     float impact = stage == WallStage.Slam ? Mathf.Sin(Mathf.PI * t) : 0f;
-                    pose.TorsoPitch = Mathf.Lerp(-8f, -2f, slide) - 10f * impact;
-                    pose.HeadPitch = Mathf.Lerp(Mathf.Lerp(10f, 6f, lift), 24f, slide) + 12f * impact;
+                    // 腰の沈みに合わせて背中を壁へ預け、足を前に出して座面を作る。
+                    // 膝だけを曲げると座面のない「空気椅子」に見える（実測）。
+                    pose.TorsoPitch = Mathf.Lerp(-8f, 8f, slide) - 10f * impact;
+                    pose.HeadPitch = Mathf.Lerp(Mathf.Lerp(10f, 6f, lift), 14f, slide) + 12f * impact;
                     pose.HipsOffset.y -= Mathf.Lerp(0.06f, 0.38f, slide) + 0.04f * impact;
-                    pose.HipsOffset.z -= 0.04f + 0.05f * slide;
+                    pose.HipsOffset.z -= 0.04f + 0.12f * slide;
                     float armsDrop = stage == WallStage.Slam ? t : 1f;
                     pose.ArmLUpper = pose.ArmRUpper = Vector3.Lerp(
                         new Vector3(0.50f, 0.20f, 0.55f), new Vector3(0.30f, -0.75f, 0.10f), armsDrop);
                     pose.ArmLFore = pose.ArmRFore = Vector3.Lerp(
                         new Vector3(-0.15f, 0.25f, 0.80f), new Vector3(-0.10f, -0.75f, 0.45f), armsDrop);
                     pose.HipsOffset.y -= 0.06f * lift;
-                    pose.FootL.z += 0.08f + 0.16f * slide;
-                    pose.FootR.z += 0.05f + 0.20f * slide;
+                    pose.FootL.z += 0.12f + 0.30f * slide;
+                    pose.FootR.z += 0.08f + 0.34f * slide;
                 }
                 return pose;
             }
@@ -300,7 +302,7 @@ namespace Ryona.Game
                 if (ready > 0f)
                 {
                     pose.TorsoPitch += 12f * ready;
-                    pose.HeadPitch -= 8f * ready;
+                    pose.HeadPitch -= 4f * ready;
                     pose.HipsOffset.y -= 0.02f * ready;
                     pose.HipsOffset.z -= 0.05f * ready;
                 }
@@ -312,7 +314,7 @@ namespace Ryona.Game
                 {
                     // 首の角度は上体に対して付くので、前傾ぶんを差し引いて相手の顔へ合わせる。
                     // 少しだけ顎を引く（+4°）。真っ直ぐ見上げると睨んでいるように見える。
-                    float wantPitch = _dreadPitch - pose.TorsoPitch + 4f;
+                    float wantPitch = Mathf.Clamp(_dreadPitch - pose.TorsoPitch + 4f, -6f, 25f);
                     pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, wantPitch, dread);
                     pose.HeadYaw = Mathf.Lerp(pose.HeadYaw, _dreadYaw, dread);
 

@@ -98,6 +98,17 @@ namespace Ryona.Game
         /// <summary>二体目が横に着いて、二人で押さえ始めたか。</summary>
         public bool IsWallSplitActive => _session.IsSplitActive;
 
+        /// <summary>ピンポン中か。連打ではなく踏みとどまり入力だけを受ける。</summary>
+        public bool IsPinballActive => _session.PinballActive;
+        internal void SetPinball(bool active)
+        {
+            _session.PinballActive = active;
+            if (active)
+                SuppressStruggle(10f);
+            else
+                ClearStruggleSuppression();
+        }
+
         /// <summary>二人がかりが始まったか（アシストが持ち場へ向かい始めた）。始まる前のアシストは、カメラの外で待つ。</summary>
         internal bool IsWallSplitStarted => _session.SplitStarted;
 
@@ -677,6 +688,10 @@ namespace Ryona.Game
             bool pressing = _frontEffortHold > 0f && FrontEscapeRemaining > 0f;
             FrontEscapeEffort = Mathf.MoveTowards(FrontEscapeEffort, pressing ? 1f : 0f,
                 Time.deltaTime / (pressing ? 0.30f : 0.45f));
+
+            // ピンポン中は連打を無効化し、踏みとどまりは演出側が受ける。
+            if (_session.PinballActive)
+                return;
 
             // 腹パンで「く」の字になっている間は、もがき入力を受け付けない。
             // 拘束は続くので、演出が終わればまた連打できる。

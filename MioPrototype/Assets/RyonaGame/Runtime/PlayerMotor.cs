@@ -237,6 +237,9 @@ namespace Ryona.Game
                 wish.Normalize();
 
             float speed = BaseSpeed * Stats.State.MoveSpeedMultiplier;
+            var wrist = GetComponent<PlayerWristLock>();
+            if (wrist != null)
+                speed *= wrist.MoveScale;
             Vector3 target = wish * speed;
             _velocity = Vector3.MoveTowards(_velocity, target, Acceleration * Time.deltaTime);
 

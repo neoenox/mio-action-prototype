@@ -916,24 +916,90 @@ namespace Ryona.Tests
             // 頭を離す実装は、腕が彼女から離れて羽交い締めが脇の下をくぐらなくなるため
             // 入れない。ここでは「頭が同じ位置に完全に重ならない」ことだけを確認する。
             Assert.Greater(nearestCaptorHead, 0.09f, $"反動で拘束役の頭と重ならない ({nearestHeadPose})");
-            yield return new WaitForSeconds(0.50f);
+            // 回避が始まる前にグロッキーを確認する（顔トドメは命中前に拘束が解ける）
+            yield return new WaitForSeconds(0.25f);
             Assert.IsTrue(_grapple.IsGrappled);
             Assert.Greater(_anim.HeldComboDangle, 0.9f, "顔パン5発後もグロッキー脱力状態に入る");
             AssertCaptorArmsHugFromBehind(captorFigure, "顔パンチ5発後のグロッキー");
             AssertPlayerArmsHookedOverCaptor(captorFigure, "顔パンチ5発後のグロッキー");
-            Vector3 captorBeforeDown = _captor.transform.position;
+            float[] startZ = new float[_enemies.Length];
+            for (int i = 0; i < _enemies.Length; i++)
+                startZ[i] = _enemies[i] != null ? _enemies[i].transform.position.z : 0f;
+            float maxEvade = 0f;
+            var faceFigures = new System.Collections.Generic.List<EnemyFigure>(
+                Object.FindObjectsByType<EnemyFigure>(FindObjectsSortMode.None));
+            int faceFrames = 0;
+            int faceGood = 0;
+            int hitFrameObserved = 0;
+            float hipsAtHit = 0f, minHipsAfterHit = float.MaxValue;
+            float footAtHit = 0f, maxFootLift = 0f, minSeparation = float.MaxValue;
+            bool releasedBeforeDown = false;
+            bool buckledBeforeDown = false;
 
             float downDeadline = Time.realtimeSinceStartup + 8f;
-            while ((!_player.IsDown || _grapple.IsGrappled ||
-                    _director.CurrentPhase != HeldBellyPunchDirector.Phase.Idle)
-                && Time.realtimeSinceStartup < downDeadline)
+            while ((!_player.IsDown || _director.CurrentPhase != HeldBellyPunchDirector.Phase.Idle)
+                   && Time.realtimeSinceStartup < downDeadline)
+            {
+                if (!_grapple.IsGrappled && !_player.IsDown)
+                    releasedBeforeDown = true;
+                var face = FaceVisibility.Measure(Camera.main, _anim.Rig.Head, faceFigures);
+                faceFrames++;
+                if (face.Visible >= FaceVisibility.GoodVisible)
+                    faceGood++;
+                if (_director.LastFinisherHitFrame > 0 && hitFrameObserved == 0)
+                {
+                    hitFrameObserved = _director.LastFinisherHitFrame;
+                    hipsAtHit = _anim.Rig.Hips.position.y;
+                    footAtHit = _anim.Rig.LFoot.position.y;
+                }
+                if (hitFrameObserved > 0)
+                {
+                    int age = Time.frameCount - hitFrameObserved;
+                    if (age <= 9)
+                    {
+                        minHipsAfterHit = Mathf.Min(minHipsAfterHit, _anim.Rig.Hips.position.y);
+                        maxFootLift = Mathf.Max(maxFootLift, _anim.Rig.LFoot.position.y - footAtHit);
+                    }
+                    if (_player.IsDown)
+                    {
+                        foreach (var enemy in _enemies)
+                        {
+                            if (enemy == null) continue;
+                            Vector3 d = enemy.transform.position - _player.transform.position;
+                            d.y = 0f;
+                            minSeparation = Mathf.Min(minSeparation, d.magnitude);
+                        }
+                    }
+                }
+                if (_anim.IsBuckling && !_player.IsDown)
+                    buckledBeforeDown = true;
+                for (int i = 0; i < _enemies.Length; i++)
+                {
+                    if (_enemies[i] != null)
+                        maxEvade = Mathf.Max(maxEvade, _enemies[i].transform.position.z - startZ[i]);
+                }
                 yield return null;
+            }
 
             Assert.IsFalse(_grapple.IsGrappled, "顔トドメのあと拘束が解ける");
             Assert.IsTrue(_player.IsDown, "顔トドメでダウンへ崩れ落ちる");
             Assert.IsFalse(_player.DownIsForward, "顔トドメは仰向けへ倒れる");
-            Assert.Greater(Vector3.Distance(_captor.transform.position, captorBeforeDown), 0.6f,
-                "仰向けで拘束役の体をすり抜けないよう、解放前に後ろへ空ける");
+            Assert.Greater(maxEvade, 0.3f,
+                "拘束役が画面後方（z+）へ回避する");
+            Assert.AreEqual(_director.LastFinisherHitFrame, _director.LastFinisherDownFrame,
+                "トドメ命中とダウンが同じフレーム");
+            if (faceFrames > 5)
+                Assert.GreaterOrEqual(faceGood / (float)faceFrames, 0.55f,
+                    $"回避〜ダウンの顔可視率が低い ({faceGood}/{faceFrames})");
+            if (hitFrameObserved > 0)
+            {
+                Assert.Greater(hipsAtHit - minHipsAfterHit, 0.15f,
+                    $"命中から 0.15 秒以内に腰が下がらない ({(hipsAtHit - minHipsAfterHit):F2}m)");
+                Assert.Less(maxFootLift, 0.05f, $"命中前後に足が跳ねる ({maxFootLift:F2}m)");
+                Assert.Greater(minSeparation, 0.5f, $"ダウン中に拘束役と重なる ({minSeparation:F2}m)");
+            }
+            Assert.IsTrue(releasedBeforeDown, "命中前に拘束が解けて膝を崩せる");
+            Assert.IsTrue(buckledBeforeDown, "解放直後に棒立ちせず崩れかかる");
         }
 
         /// <summary>

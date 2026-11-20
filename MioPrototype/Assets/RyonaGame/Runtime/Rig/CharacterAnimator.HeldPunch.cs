@@ -256,6 +256,46 @@ namespace Ryona.Game
         /// </summary>
         float _faceComboLift;
 
+        // 顔トドメ回避中: 拘束が解けても膝が崩れかかる姿勢を保つ。
+        float _buckleRemaining;
+        float _buckleTotal;
+        float _buckleDepth;
+        internal bool IsBuckling => _buckleRemaining > 0f;
+
+        /// <summary>トドメ回避の崩れかかりを開始する（秒・沈み深さ m）。</summary>
+        public void SetFinisherBuckle(float seconds, float depth)
+        {
+            _buckleTotal = Mathf.Max(0.05f, seconds);
+            _buckleRemaining = _buckleTotal;
+            _buckleDepth = Mathf.Max(0f, depth);
+        }
+
+        /// <summary>崩れ姿勢を打ち切る（命中・中断時）。</summary>
+        public void ClearFinisherBuckle()
+        {
+            _buckleRemaining = 0f;
+        }
+        /// <summary>膝が崩れて前のめりになる姿勢。拳を近づけるため沈みは浅く抑える。</summary>
+        PoseValues PoseFinisherBuckle()
+        {
+            float b = Mathf.SmoothStep(0f, 1f, 1f - Mathf.Clamp01(_buckleRemaining / Mathf.Max(0.05f, _buckleTotal)));
+            var pose = PoseDefaults();
+            pose.FootL += StanceFootL;
+            pose.FootR += StanceFootR;
+            pose.HipsOffset.y = StanceHipsY - _buckleDepth * b;
+            pose.HipsOffset.z = StanceHipsZ + 0.04f * b;
+            pose.LegTuck = 0.45f * b;
+            pose.TorsoPitch = -16f * b;
+            pose.HeadPitch = -4f * b;   // 上体を折っても顔は上げたまま（前髪で隠さない）
+            pose.HeadYaw = 8f * b;
+            pose.ArmLUpper = StanceArmLUpper + new Vector3(0.10f, -0.45f, 0.10f) * b;
+            pose.ArmRUpper = StanceArmRUpper + new Vector3(-0.10f, -0.45f, 0.10f) * b;
+            pose.ArmLFore = StanceArmLFore + new Vector3(0f, -0.25f, -0.10f) * b;
+            pose.ArmRFore = StanceArmRFore + new Vector3(0f, -0.25f, -0.10f) * b;
+            pose.Grip = 0f;
+            return pose;
+        }
+
         /// <summary>倒れている（立ち上がり中を含む）。移動できない区間。</summary>
         public bool IsDowned => _state == State.Down || _state == State.GetUp;
 

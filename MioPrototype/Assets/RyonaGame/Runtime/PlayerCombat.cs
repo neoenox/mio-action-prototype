@@ -122,6 +122,16 @@ namespace Ryona.Game
 
         void Update()
         {
+            // 手首ロック中は攻撃ではなく輪を割る入力として扱う（バッファにも積まない）。
+            var wrist = GetComponent<PlayerWristLock>();
+            if (wrist != null && wrist.IsLocked)
+            {
+                if (InputReader.LightPressed() || InputReader.HeavyPressed() || InputReader.BreakPressed())
+                    wrist.BreakInput();
+                CancelAttack();
+                _buffered = null;
+                return;
+            }
             if (Stats == null)
                 return;
 

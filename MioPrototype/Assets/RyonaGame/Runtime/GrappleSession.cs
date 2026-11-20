@@ -179,6 +179,9 @@ namespace Ryona.Game
         /// <summary>二体目の位置合わせが終わったか。</summary>
         public bool SplitReady { get; set; }
 
+        /// <summary>ピンポン演出中。連打による離脱を止め、踏みとどまり入力だけを受ける。</summary>
+        public bool PinballActive { get; set; }
+
         /// <summary>二体目が横へ着くまでの経過秒。</summary>
         public float SplitAssistAge { get; set; }
 

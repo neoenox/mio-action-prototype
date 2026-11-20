@@ -8,6 +8,15 @@ namespace Ryona.Game
     {
         void BeginHold(EnemyBrain captor, GrappleKind kind, bool blendContact)
         {
+            var wrist = GetComponent<PlayerWristLock>();
+            if (wrist != null && !wrist.IsLocked && wrist.InGrace)
+                return;
+            bool wristPenalty = wrist != null && wrist.IsLocked;
+            if (wristPenalty)
+                wrist.DetachOnGrab();
+            else if (wrist != null && wrist.HasGrabPenalty)
+                wristPenalty = true;
+
             if (IsGrappled || Stats == null || Stats.IsDead)
                 return;
 
@@ -31,6 +40,8 @@ namespace Ryona.Game
             // 腕が壊れているほど逃げにくい（仕様書 §4.3）
             float armInjury = Stats.State.Body[BodyPart.Arms];
             RequiredInputs = ResistanceMath.RequiredInputs(kind, 1f, armInjury);
+            if (wristPenalty && wrist != null)
+                RequiredInputs = RequiredInputs * wrist.EscapeNeedScale;
 
             _resistance = new GrappleResistance(kind, RequiredInputs);
             _session.Kind = kind;

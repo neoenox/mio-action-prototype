@@ -24,7 +24,7 @@ namespace Ryona.Tests
     {
 
         /// <summary>クリアタイムの保存先。<c>EncounterDirector</c> と同じキー。</summary>
-        const string BestKey = "Mio.BestClearSeconds.Normal10.v2";
+        const string BestKey = "Mio.BestClearSeconds.Normal10.v3";
 
         [TearDown]
         public void TearDown()
@@ -304,8 +304,8 @@ namespace Ryona.Tests
             Assert.AreEqual(1, director.Wave, "敵が残っているのに次の一団が出た");
             Assert.AreEqual(2, director.Alive, "撃破数が反映されていない");
 
-            // 全滅させると、歩いて進めなくても停滞タイマーで次が出る
-            director.StallSeconds = 0.3f;
+            // 全滅すると、歩かなくても同じアリーナの次の波が WaveGap 後に出る
+            director.WaveGap = 0.2f;
             KillAll(brains, player, lethal);
             Assert.AreEqual(0, director.Alive, "全滅していない");
 
@@ -313,7 +313,7 @@ namespace Ryona.Tests
             while (director.Wave < 2 && Time.realtimeSinceStartup < deadline)
                 yield return null;
 
-            Assert.AreEqual(2, director.Wave, "全滅後も次の一団が出ない");
+            Assert.AreEqual(2, director.Wave, "全滅後も同じアリーナの次の波が出ない");
             Assert.AreEqual(3, director.Alive, "次の一団が 3 体そろっていない");
         }
 

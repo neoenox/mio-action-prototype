@@ -135,18 +135,41 @@ namespace Ryona.Game
             return count;
         }
 
-        /// <summary>重い攻撃ほど出しにくくして、軽い刻みが主体になるようにする。</summary>
-        static float WeightOf(AttackId id)
+        /// <summary>役割ごとの攻撃の重み。掴み役は掴み、打撃役は速い打ち、道具役は弱め。</summary>
+        float WeightOf(AttackId id)
         {
-            switch (id)
+            switch (Role)
             {
-                case AttackId.Jab: return 1.10f;
-                case AttackId.Heavy: return 0.85f;
-                case AttackId.Break: return 0.70f;
-                case AttackId.Grab: return 0.75f;
-                default: return 0f;
+                case EnemyRole.Grappler:
+                    switch (id)
+                    {
+                        case AttackId.Jab: return 0.8f;
+                        case AttackId.Heavy: return 1.0f;
+                        case AttackId.Break: return 0.9f;
+                        case AttackId.Grab: return 1.6f;
+                        default: return 0f;
+                    }
+                case EnemyRole.Striker:
+                    switch (id)
+                    {
+                        case AttackId.Jab: return 1.6f;
+                        case AttackId.Heavy: return 1.2f;
+                        case AttackId.Break: return 0.7f;
+                        case AttackId.Grab: return 0.25f;
+                        default: return 0f;
+                    }
+                default:
+                    switch (id)
+                    {
+                        case AttackId.Jab: return 0.9f;
+                        case AttackId.Heavy: return 0.5f;
+                        case AttackId.Break: return 0.5f;
+                        case AttackId.Grab: return 0.4f;
+                        default: return 0f;
+                    }
             }
         }
+
 
         internal void BeginWindup(AttackId id) => BeginAttackWindup(id, fromThrow: false);
 
@@ -170,7 +193,7 @@ namespace Ryona.Game
                 Id = id,
                 Data = data,
                 Range = RangeOf(id),
-                Windup = fromThrow ? 0.12f : Mathf.Max(0.05f, WindupOf(id)),
+                Windup = fromThrow ? 0.12f : Mathf.Max(0.05f, WindupOf(id) * RoleWindupScale),
                 FromHeldThrow = fromThrow
             };
 

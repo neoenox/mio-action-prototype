@@ -86,6 +86,9 @@ namespace Ryona.Game
                 State.Attack => PoseAttack(),
                 _ => PoseDefaults(),
             };
+            // 顔トドメ回避中は拘束が解けていても崩れかかりを保つ。
+            if (IsBuckling)
+                pose = PoseFinisherBuckle();
 
             if (_state == State.Grabbed && (Time.time < _haulDazeUntil || (Grapple != null && Grapple.HaulHandoff)))
 

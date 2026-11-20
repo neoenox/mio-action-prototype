@@ -66,6 +66,14 @@ namespace Ryona.Game
         EnemyBrain _activeThirdTarget;
         Coroutine _sequence;
 
+        // 起動引数で指定した番号を順に再生する（実機の通し確認用）。
+        static int[] _autoIds;
+        static float _autoInterval = 3.5f;
+        static string _autoBurstPrefix;
+        static int _autoBurstFrames = 700;
+        static float _autoBurstInterval = 0.05f;
+        static bool _autoParsed;
+
         RectTransform _panelRect;
         Text _bodyText;
         string _lastRenderedText;
@@ -83,8 +91,37 @@ namespace Ryona.Game
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot() => Ensure();
 
+        static void ParseAutoOptions()
+        {
+            if (_autoParsed)
+                return;
+            _autoParsed = true;
+
+            string list = LaunchOptions.Value("-motionseq");
+            if (!string.IsNullOrEmpty(list))
+            {
+                string[] parts = list.Split(',');
+                var ids = new List<int>(parts.Length);
+                foreach (string part in parts)
+                {
+                    if (int.TryParse(part.Trim(), out int id) && id >= 1 && id <= MaxShortcutId)
+                        ids.Add(id);
+                }
+                _autoIds = ids.Count > 0 ? ids.ToArray() : null;
+            }
+
+            if (LaunchOptions.TryFloat("-motionseqinterval", out float interval) && interval > 0.5f)
+                _autoInterval = interval;
+            if (LaunchOptions.TryInt("-motionseqburstframes", out int frames) && frames > 0)
+                _autoBurstFrames = frames;
+            if (LaunchOptions.TryFloat("-motionseqburstinterval", out float burstInterval) && burstInterval > 0f)
+                _autoBurstInterval = burstInterval;
+            _autoBurstPrefix = LaunchOptions.Value("-motionseqburst");
+        }
+
         static void Ensure()
         {
+            ParseAutoOptions();
             if (FindFirstObjectByType<MotionShortcut>() != null)
                 return;
 
@@ -98,9 +135,41 @@ namespace Ryona.Game
         void Awake()
         {
             BuildUi();
+            if (_autoIds != null && _autoIds.Length > 0)
+                StartCoroutine(RunAutoSequence());
+            if (!string.IsNullOrEmpty(_autoBurstPrefix))
+                StartCoroutine(RunAutoBurst());
             ResolveReferences();
             RefreshUiText();
         }
+
+        System.Collections.IEnumerator RunAutoSequence()
+        {
+            yield return new WaitForSecondsRealtime(1f);
+            GameLog.Log($"[Shortcut] auto sequence start count={_autoIds.Length} interval={_autoInterval:F1}");
+            for (int i = 0; i < _autoIds.Length; i++)
+            {
+                ExecuteShortcut(_autoIds[i]);
+                GameLog.Log($"[Shortcut] auto {i + 1}/{_autoIds.Length} id={_autoIds[i]}");
+                yield return new WaitForSecondsRealtime(_autoInterval);
+            }
+            GameLog.Log("[Shortcut] auto sequence done");
+        }
+
+        System.Collections.IEnumerator RunAutoBurst()
+        {
+            string dir = System.IO.Path.GetDirectoryName(_autoBurstPrefix);
+            string name = System.IO.Path.GetFileNameWithoutExtension(_autoBurstPrefix);
+            float next = Time.unscaledTime;
+            for (int i = 0; i < _autoBurstFrames; i++)
+            {
+                while (Time.unscaledTime < next)
+                    yield return null;
+                ScreenCapture.CaptureScreenshot(System.IO.Path.Combine(dir, $"{name}_{i:000}.png"));
+                next += _autoBurstInterval;
+            }
+        }
+
 
         void Update()
         {

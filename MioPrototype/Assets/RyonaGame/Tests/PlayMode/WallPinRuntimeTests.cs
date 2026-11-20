@@ -1077,6 +1077,10 @@ namespace Ryona.Tests
             for (int i = 0; i < byRole.Length; i++)
                 byRole[i] = new System.Collections.Generic.Dictionary<string, int>();
             for (int i = 0; i < worst.Length; i++) worst[i] = 1f;
+            int transitionTotal = 0;
+            int transitionGood = 0;
+            float transitionWorst = 1f;
+            string transitionBlocker = null;
 
             float deadline = Time.realtimeSinceStartup + 70f;
             while (_grapple.IsWallPin && _grapple.WallPhase == WallStage.Held &&
@@ -1087,6 +1091,17 @@ namespace Ryona.Tests
                     : _grapple.WallPauseRemaining > 0f ? 1 : 0;
 
                 var result = FaceVisibility.Measure(Camera.main, anim.Rig.Head, figures);
+                if (_grapple.WallSplitWeight > 0.01f && _grapple.WallSplitWeight < 0.99f)
+                {
+                    transitionTotal++;
+                    if (result.Readable)
+                        transitionGood++;
+                    if (result.Visible < transitionWorst)
+                    {
+                        transitionWorst = result.Visible;
+                        transitionBlocker = result.Blocker;
+                    }
+                }
                 total[phase]++;
                 if (result.Readable)
                     good[phase]++;
@@ -1113,6 +1128,14 @@ namespace Ryona.Tests
                 }
                 yield return null;
             }
+
+            float transitionRatio = transitionTotal > 0 ? transitionGood / (float)transitionTotal : 1f;
+            UnityEngine.Debug.Log($"[FaceVisible] Y字移行: readable {transitionRatio:P0} " +
+                                  $"({transitionGood}/{transitionTotal}) worst={transitionWorst:F2} " +
+                                  $"blocker={transitionBlocker ?? "-"}");
+            if (transitionTotal > 3)
+                Assert.GreaterOrEqual(transitionRatio, 0.60f,
+                    $"Y字移行中に顔が読めるコマが少ない（{transitionRatio:P0}。遮蔽={transitionBlocker ?? "-"}）");
 
             for (int i = 0; i < names.Length; i++)
             {
