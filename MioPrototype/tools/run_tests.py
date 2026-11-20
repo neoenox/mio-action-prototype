@@ -162,7 +162,12 @@ def run_batch(name: str, unity: Path, stamp: str) -> dict:
                 "failed": 0, "skipped": 0, "failures": [], "elapsed": elapsed}
 
     stats = parse_results(xml)
-    stats.update(batch=name, ok=stats["failed"] == 0, elapsed=elapsed)
+    stats.update(
+        batch=name,
+        ok=stats["failed"] == 0 and code == 0,
+        elapsed=elapsed,
+        runner_exit_code=code,
+    )
     if stats["total"] == 0:
         # フィルタの綴り間違いなどで 1 件も走らないのは「成功」ではない。
         stats["ok"] = False
@@ -179,6 +184,10 @@ def run_batch(name: str, unity: Path, stamp: str) -> dict:
         print(f"    結果: {xml}")
     return stats
 
+
+def result_exit_code(results: list[dict]) -> int:
+    """全バッチが1件以上を実行し、runnerも成功した場合だけ0を返す。"""
+    return 0 if results and all(result["ok"] for result in results) else 1
 
 # ------------------------------------------------------------------ 入口
 
@@ -244,9 +253,9 @@ def main() -> int:
     total_failed = sum(r["failed"] for r in results)
     total_all = sum(r["total"] for r in results)
     print(f"  合計 {total_all} 件 / 失敗 {total_failed} 件 / {elapsed:.0f} 秒")
-    if total_failed:
-        print("  結果 XML は Logs/tests-*.xml に残っています。")
-    return 0 if total_failed == 0 else 1
+    if any(not result["ok"] for result in results):
+        print("  結果 XML またはUnity runnerの失敗を確認してください。Logs/tests-*.xml を参照。")
+    return result_exit_code(results)
 
 
 if __name__ == "__main__":
