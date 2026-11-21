@@ -53,7 +53,16 @@ namespace Ryona.Game
         // 破棄されたかどうか。読み込み中に破棄された場合を catch 節から見分ける。
         bool _disposed;
 
-        void OnDestroy() => _disposed = true;
+        void OnDestroy()
+        {
+            _disposed = true;
+
+            // シーン破棄・再読み込みで、読み込み済みの VRM を手放す。
+            // 破棄順は保証されないので、既に消えている場合（_instance == null）は何もしない。
+            DisposeVrm(_instance);
+            _instance = null;
+            _ready = false;
+        }
 
         // VRM 側の骨
         Transform _hips, _chest, _head;
@@ -122,7 +131,7 @@ namespace Ryona.Game
             // await の間にシーンが破棄されることがある
             if (_disposed || this == null)
             {
-                Destroy(vrm.gameObject);
+                DisposeVrm(vrm.gameObject);
                 return false;
             }
 
@@ -447,6 +456,43 @@ namespace Ryona.Game
 
             Quaternion proxyRel = Quaternion.Inverse(root) * proxy.rotation;
             vrm.rotation = root * proxyRel * restRel;
+        }
+
+        /// <summary>
+        /// 読み込んだ VRM を手放す。
+        ///
+        /// UniVRM は読み込み時に Mesh・Texture・Material を作り、その所有権を
+        /// <see cref="UniGLTF.RuntimeGltfInstance"/> に持たせる。GameObject を消すだけでも
+        /// Unity の OnDestroy 経由で解放されるが、解放の入口が散らばっていると
+        /// 「どこで手放したか」が読めず、VRAM に残っていても気付けない。
+        /// IDisposable を明示的に呼んでから、まだ残っていれば GameObject を破棄する。
+        ///
+        /// 注意: このバージョン（UniVRM 0.131.4）の RuntimeGltfInstance.Dispose() は
+        /// ルート GameObject を Destroy するだけで、リソースの実解放はその OnDestroy が行う。
+        /// **実機での VRAM 計測は未実施**（この Dispose でどれだけ減るかは未確認）。
+        ///
+        /// Dispose が GameObject を消していれば下の Destroy は空振りするので、
+        /// 二重呼び出し・破棄済みの GameObject でも落ちない。
+        /// </summary>
+        static void DisposeVrm(GameObject instance)
+        {
+            if (instance == null)
+                return;
+
+            try
+            {
+                if (instance.TryGetComponent<UniGLTF.RuntimeGltfInstance>(out var gltf))
+                    gltf.Dispose();
+            }
+            catch (System.Exception e)
+            {
+                // 破棄順によっては、中で触っている Transform が既に無い。
+                // 片付けの失敗でゲームを止める理由は無いので警告に落とす。
+                Debug.LogWarning($"[Ryona] 敵 VRM の解放に失敗（続行します）: {e.GetType().Name}: {e.Message}");
+            }
+
+            if (instance != null)
+                Destroy(instance);
         }
     }
 
