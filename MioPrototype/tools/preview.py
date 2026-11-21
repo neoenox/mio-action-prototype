@@ -122,6 +122,28 @@ def unity_running() -> bool:
         return False
 
 
+# ビルド成否の判定結果。終了コードを第一の根拠にし、ログは裏取りと詳細表示に使う。
+BUILD_OK = "ok"                        # 終了コード 0 ＋ 成功の記録あり
+BUILD_EXIT_CODE = "exit-code"          # Unity が非ゼロで終了した
+BUILD_COMPILE_ERROR = "compile-error"  # 終了コード 0 だがコンパイルエラーが残っている
+BUILD_UNCONFIRMED = "unconfirmed"      # 終了コード 0 だが成功の記録が無い
+
+
+def build_outcome(exit_code: int, log_text: str) -> str:
+    """ビルドの成否を判定する（BuildAndPlay.cmd と同じく終了コードが基準）。
+
+    ログの `build result=Succeeded` / `up to date` は、終了コード 0 の中身を
+    裏取りする用途にだけ使う。ログだけで成功とはみなさない。
+    """
+    if exit_code != 0:
+        return BUILD_EXIT_CODE
+    if "error CS" in log_text:
+        return BUILD_COMPILE_ERROR
+    if "build result=Succeeded" in log_text or "up to date" in log_text:
+        return BUILD_OK
+    return BUILD_UNCONFIRMED
+
+
 def build_player() -> bool:
     unity = unity_exe()
     if unity is None:
@@ -141,14 +163,17 @@ def build_player() -> bool:
         "-logFile", str(log),
     ]).returncode
     text = log.read_text(encoding="utf-8", errors="replace") if log.exists() else ""
-    if "error CS" in text:
-        print("  x コンパイルエラー:")
-        for line in text.splitlines():
-            if "error CS" in line:
-                print("    " + line.strip())
-        return False
-    if "build result=Succeeded" not in text and "up to date" not in text:
-        print(f"  ! ビルドに失敗した可能性。ログ: {log}")
+    outcome = build_outcome(code, text)
+    if outcome != BUILD_OK:
+        if "error CS" in text:
+            print("  x コンパイルエラー:")
+            for line in text.splitlines():
+                if "error CS" in line:
+                    print("    " + line.strip())
+        if outcome == BUILD_EXIT_CODE:
+            print(f"  x Unity が終了コード {code} で終了した。ログ: {log}")
+        else:
+            print(f"  ! ビルドに失敗した可能性。ログ: {log}")
         return False
     print("  ok")
     return True
