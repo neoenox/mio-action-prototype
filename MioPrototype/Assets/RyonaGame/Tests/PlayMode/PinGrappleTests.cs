@@ -124,7 +124,10 @@ namespace Ryona.Tests
             float hpBefore = _player.State.Hp;
 
             _grapple.Begin(_captor, GrappleKind.Pin);
-            yield return new WaitForSeconds(CombatConstants.GrappleLimitSeconds + 0.4f);
+            // 時間切れの Failed が飛ぶまで待つ（0.4 秒は余裕ぶんの上限）。
+            yield return TestWait.UntilOrTimeout(() => failed,
+                CombatConstants.GrappleLimitSeconds + 0.4f,
+                "押さえつけが時間切れにならず Failed が飛ばない");
 
             Assert.IsTrue(failed, "時間切れで Failed が飛んでいない");
             Assert.IsFalse(_grapple.IsGrappled);
@@ -219,6 +222,7 @@ namespace Ryona.Tests
             Assert.Less(Vector3.Distance(atReach, _player.transform.position), 0.09f,
                 "The player stays near the contact point on the first frame of the grab.");
 
+            // 寄せの移動が収まるまで待って、間合い（距離）そのものを測る。
             yield return new WaitForSeconds(0.22f);
             Assert.AreEqual(kind == GrappleKind.Back ? 0.34f : 0.60f,
                 Vector3.Distance(_captor.transform.position, _player.transform.position), 0.035f);
@@ -290,12 +294,13 @@ namespace Ryona.Tests
 
             float lastKnee = CombatConstants.FrontGrappleEscapeSeconds +
                 (CombatConstants.PinKneeCount - 1) * CombatConstants.PinKneeInterval;
+            // 膝蹴りは等間隔（PinKneeInterval）で入るので、間隔を跨いで 5 発ぶんの時間を進める。
             yield return new WaitForSeconds(lastKnee + 0.25f);
 
             Assert.AreEqual(CombatConstants.PinKneeCount, hits, "押さえつけ中に膝蹴りが 5 発入る");
             Assert.Less(_player.State.Hp, hpBefore - 10f, "膝蹴り 5 発ぶん HP が減る");
 
-            // 時間切れより前に蹴り終わっている
+            // 時間切れより前に蹴り終わっていることを、時間を進めて確かめる（否定の確認）。
             yield return new WaitForSeconds(0.1f);
             Assert.AreEqual(CombatConstants.PinKneeCount, hits, "制限時間内に 5 発で収まる");
         }
@@ -429,6 +434,7 @@ namespace Ryona.Tests
             while (!_grapple.IsGrappled && Time.realtimeSinceStartup < deadline)
                 yield return null;
             Assert.AreEqual(GrappleKind.Pin, _grapple.Kind);
+            // 押さえつけの姿勢が組み上がるまで待ってから、頭の位置を測る（再生位置が対象）。
             yield return new WaitForSeconds(0.3f);
             var figure = _captor.GetComponent<EnemyFigure>();
             Assert.IsNotNull(figure);

@@ -141,11 +141,13 @@ namespace Ryona.Tests
             Assert.IsTrue(rolledWhileMounted, "The attacker rolls the player after straddling her.");
             Assert.AreEqual(5, hits);
             Assert.Greater(reaction, 27f, "A landed punch visibly snaps the head away.");
+            // マウント後に追い打ちが入らないことを見るため、時間を進める（否定の確認）。
             yield return new WaitForSeconds(1f);
             Assert.AreEqual(5, hits, "The player has time to request get-up after the mount.");
             Assert.IsTrue(_stats.IsDown);
             _stats.RequestGetUp();
-            yield return new WaitForSeconds(_anim.GetUpSeconds + 0.15f);
+            yield return TestWait.UntilOrTimeout(() => !_stats.IsDown, _anim.GetUpSeconds + 0.15f,
+                "起き上がりが終わらない");
             Assert.IsFalse(_stats.IsDown);
         }
 
@@ -332,9 +334,10 @@ namespace Ryona.Tests
             yield return LoadPlayer(holdEnemies: false);
             PrepareMount(forward: true);
             float hp = _stats.State.Hp;
+            // マウントが始まった直後（0.85 秒）で起き上がる。どの段階で抜けられるかが対象なので時間で待つ。
             yield return new WaitForSeconds(0.85f);
             _stats.RequestGetUp();
-            yield return new WaitForSeconds(1.5f);
+            yield return TestWait.UntilOrTimeout(() => !_stats.IsDown, 1.5f, "起き上がりが終わらない");
             Assert.IsFalse(_stats.IsDown);
             Assert.IsTrue(_stats.DownIsForward, "The enemy never rolled the player.");
             Assert.AreEqual(hp, _stats.State.Hp, 0.001f);
@@ -355,7 +358,8 @@ namespace Ryona.Tests
             for (int i = 0; i < 6; i++)
                 mount.Struggle();
 
-            yield return new WaitForSeconds(1.5f);
+            yield return TestWait.UntilOrTimeout(() => !_stats.IsDown, 1.5f,
+                "もがいて抜けたあとに立ち上がらない");
             Assert.IsFalse(_stats.IsDown);
             Assert.AreEqual(hp, _stats.State.Hp, 0.001f);
         }
@@ -384,7 +388,10 @@ namespace Ryona.Tests
             Assert.AreEqual(CharacterAnimator.State.GetUp, _anim.Current);
             Assert.IsTrue(_stats.IsStunned, "起き上がり中は操作を受け付けない");
 
-            yield return new WaitForSeconds(_anim.GetUpSeconds + 0.1f);
+            yield return TestWait.UntilOrTimeout(
+                () => !_anim.IsDowned && !_stats.IsDown && !_stats.IsStunned,
+                _anim.GetUpSeconds + 0.1f,
+                "復帰後の起き上がりが終わらない");
             Assert.IsFalse(_anim.IsDowned);
             Assert.IsFalse(_stats.IsDown);
             Assert.IsFalse(_stats.IsStunned);
@@ -405,7 +412,8 @@ namespace Ryona.Tests
             Assert.GreaterOrEqual(_stats.State.Hp, 1f, "HP が 0 になっている");
 
             float before = _stats.State.Hp;
-            yield return new WaitForSeconds(0.25f);
+            yield return TestWait.UntilOrTimeout(() => _stats.State.Hp > before, 0.25f,
+                "体力が自動回復しない");
             Assert.Greater(_stats.State.Hp, before, "体力が自動回復していない");
 
             _stats.SetGodMode(false);
@@ -448,12 +456,13 @@ namespace Ryona.Tests
             Assert.IsTrue(_stats.State.IsDown, "ダウンしていない");
             Assert.IsTrue(_motor.IsAirborne, "ダウンの瞬間に浮いていない（その場で崩れるだけになっている）");
 
-            // 0.08 秒後には目に見えて浮いている（滞空は 0.24 秒）
+            // 0.08 秒後には目に見えて浮いている（滞空は 0.24 秒）。滞空の途中の高さなので時間で測る。
             yield return new WaitForSeconds(0.08f);
             Assert.Greater(_stats.transform.position.y, start.y + 0.05f,
                 $"浮いていない（y={_stats.transform.position.y:F2}）");
 
             // 0.6 秒後には着地して、後ろへ下がっている（姿勢側でも倒れるので 0.3m で見る）
+            // 着地してからの移動量を測るので、飛行後の同じ時点を見るために時間で待つ。
             yield return new WaitForSeconds(0.6f);
             Assert.IsFalse(_motor.IsAirborne, "着地していない");
 
@@ -519,7 +528,7 @@ namespace Ryona.Tests
 
             Assert.IsTrue(_stats.IsDown && _stats.DownIsForward, "背後からの一撃でうつ伏せに倒れる");
 
-            // 倒れきるまで待つ（0.78 秒 + 余裕）
+            // 倒れきるまで待つ（0.78 秒 + 余裕）。手の位置は姿勢の再生位置で決まるので時間で待つ。
             yield return new WaitForSeconds(1.0f);
 
             var rig = _anim.Rig;
@@ -575,6 +584,7 @@ namespace Ryona.Tests
             yield return HitUntilDown();
             Assert.IsTrue(_stats.State.IsDown, "ダウンしていない");
 
+            // 入力がない間はダウンが続くことを見る（否定の確認なので時間を進める）。
             yield return new WaitForSeconds(CombatConstants.DownDuration + 0.5f);
             Assert.IsTrue(_stats.State.IsDown, "入力がない間はダウンが続く");
             Assert.AreEqual(CharacterAnimator.State.Down, _anim.Current);
@@ -585,6 +595,7 @@ namespace Ryona.Tests
             Assert.AreEqual(CharacterAnimator.State.GetUp, _anim.Current);
             Assert.IsTrue(_stats.State.IsDown, "起き上がり中は操作をロックする");
 
+            // 起き上がりの再生尺そのものを見る（直後の Idle はアニメーター任せなので時間で待つ）。
             yield return new WaitForSeconds(_anim.GetUpSeconds + 0.1f);
             Assert.IsFalse(_stats.State.IsDown, "ダウンが明けていない");
             Assert.AreEqual(CharacterAnimator.State.Idle, _anim.Current,
@@ -616,7 +627,8 @@ namespace Ryona.Tests
             yield return null;
             Assert.IsTrue(_stats.GetUpRequested || _stats.IsGettingUp, "脱出後に起き上がり要求/開始に入っていない");
 
-            yield return new WaitForSeconds(_anim.GetUpSeconds + 0.3f);
+            yield return TestWait.UntilOrTimeout(() => !_stats.IsDown, _anim.GetUpSeconds + 0.3f,
+                "脱出後に立ち上がらない");
             Assert.IsFalse(_stats.IsDown, "脱出後に立ち上がれていない");
         }
         [UnityTest]

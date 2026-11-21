@@ -313,7 +313,13 @@ namespace Ryona.Tests
                 bystanders[i].enabled = true;
             }
 
-            yield return new WaitForSeconds(1.8f);
+            // 待機役が左右へ下がりきるのを待つ。二人の位置は直後にもアサートする。
+            yield return TestWait.UntilOrTimeout(
+                () => _grapple.IsWallPin
+                    && bystanders[0].transform.position.x <= center.x - 3.9f
+                    && bystanders[1].transform.position.x >= center.x + 1.8f,
+                1.8f,
+                "壁拘束中に待機役が左右へ下がらない");
             Assert.IsTrue(_grapple.IsWallPin);
             Assert.LessOrEqual(bystanders[0].transform.position.x, center.x - 3.9f);
             Assert.GreaterOrEqual(bystanders[1].transform.position.x, center.x + 1.8f);

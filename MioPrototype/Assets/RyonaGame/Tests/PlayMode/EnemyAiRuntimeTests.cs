@@ -257,7 +257,7 @@ namespace Ryona.Tests
             while (!grapple.IsGrappled && Time.realtimeSinceStartup < deadline) yield return null;
             Assert.IsTrue(grapple.IsGrappled, "Enemy should grab");
 
-            // 後ろ拘束は時間切れで解けない（投げも無い）
+            // 後ろ拘束は時間切れで解けない（投げも無い）。時間を進めて確かめる（否定の確認）。
             yield return new WaitForSeconds(3.4f);
             Assert.IsTrue(grapple.IsGrappled, "Back hold must not time out");
             Assert.IsFalse(grapple.HasTimeLimit);
@@ -310,6 +310,7 @@ namespace Ryona.Tests
             waiting.FeintChance = 0f;
             waiting.CanPin = false;
 
+            // 味方が休んでも入れ替わらないことを見る（否定の確認なので時間を進める）。
             yield return new WaitForSeconds(0.65f);
             Assert.IsFalse(waiting.IsFlanking, "味方が休むたびに入れ替わらない");
 
