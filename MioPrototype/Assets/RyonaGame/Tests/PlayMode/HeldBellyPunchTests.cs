@@ -39,8 +39,7 @@ namespace Ryona.Tests
         {
             yield return TestScene.LoadPrototype();
 
-            _player = Object.FindFirstObjectByType<PlayerStats>();
-            Assert.IsNotNull(_player, "PlayerStats がシーンに無い");
+            _player = TestScene.FindPlayer();
 
             _grapple = _player.GetComponent<PlayerGrapple>();
             Assert.IsNotNull(_grapple, "PlayerGrapple が無い");
@@ -82,17 +81,8 @@ namespace Ryona.Tests
             if (!waitForAnimator)
                 yield break;
 
-            float deadline = Time.realtimeSinceStartup + 8f;
-            while (Time.realtimeSinceStartup < deadline)
-            {
-                _anim = _player.GetComponentInChildren<CharacterAnimator>();
-                if (_anim != null && _anim.Rig != null && _anim.Rig.Ready)
-                    break;
-                yield return null;
-            }
-
-            Assert.IsTrue(_anim != null && _anim.Rig != null && _anim.Rig.Ready,
-                "キャラクターのリグが組み上がらない（VRM の読み込み待ちで時間切れ）");
+            yield return TestRig.WaitReady(_player, 8f);
+            _anim = TestRig.RequireReady(_player);
         }
 
         [UnityTest]

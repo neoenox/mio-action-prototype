@@ -33,22 +33,12 @@ namespace Ryona.Tests
         {
             yield return TestScene.LoadPrototype();
 
-            _stats = Object.FindFirstObjectByType<PlayerStats>();
-            Assert.IsNotNull(_stats, "PlayerStats がシーンに無い");
+            _stats = TestScene.FindPlayer();
             _motor = _stats.GetComponent<PlayerMotor>();
             Assert.IsNotNull(_motor, "PlayerMotor が PlayerStats と同じオブジェクトに無い");
 
-            float deadline = Time.realtimeSinceStartup + 8f;
-            while (Time.realtimeSinceStartup < deadline)
-            {
-                _anim = _stats.GetComponentInChildren<CharacterAnimator>();
-                if (_anim != null && _anim.Rig != null && _anim.Rig.Ready)
-                    break;
-                yield return null;
-            }
-
-            Assert.IsTrue(_anim != null && _anim.Rig != null && _anim.Rig.Ready,
-                "キャラクターのリグが組み上がらない");
+            yield return TestRig.WaitReady(_stats, 8f);
+            _anim = TestRig.RequireReady(_stats);
 
             // テスト中は AI に殴らせない（当てるのはこのテストだけ）
             foreach (var enemy in Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))

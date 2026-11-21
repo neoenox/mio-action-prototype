@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 
 namespace Ryona.Game
@@ -91,7 +92,9 @@ namespace Ryona.Game
             public Shape Shape;
         }
 
-        static readonly Dictionary<EnemyFigure, Proxy[]> Cache = new Dictionary<EnemyFigure, Proxy[]>();
+        // 破棄された EnemyFigure をキーに残すと、シーン再読込やテストのたびに proxies が積み上がる。
+        // ConditionalWeakTable なら敵が GC されるときに一緒に解放される。
+        static readonly ConditionalWeakTable<EnemyFigure, Proxy[]> Cache = new ConditionalWeakTable<EnemyFigure, Proxy[]>();
         static readonly Vector3[] Points = new Vector3[5];
 
         /// <summary>
@@ -215,6 +218,10 @@ namespace Ryona.Game
             if (Cache.TryGetValue(enemy, out Proxy[] cached))
                 return cached;
 
+            // 破棄直後の敵はキーにできない（Unity の擬似 null は別インスタンスとして残るため）。
+            if (enemy == null)
+                return System.Array.Empty<Proxy>();
+
             var list = new List<Proxy>();
             foreach (var filter in enemy.GetComponentsInChildren<MeshFilter>(true))
             {
@@ -233,7 +240,7 @@ namespace Ryona.Game
             }
 
             Proxy[] proxies = list.ToArray();
-            Cache[enemy] = proxies;
+            Cache.Add(enemy, proxies);
             return proxies;
         }
 

@@ -263,7 +263,11 @@ namespace Ryona.Game
                         transform.rotation = look;
                     }
                     else
-                        transform.rotation = Quaternion.Slerp(transform.rotation, look, TurnSpeed * Time.deltaTime);
+                    {
+                        // 線形係数のまま dt を掛けると 144fps で 60fps の 2.4 倍速く回る。
+                        transform.rotation = Quaternion.Slerp(transform.rotation, look,
+                            1f - Mathf.Exp(-TurnSpeed * Time.deltaTime));
+                    }
                 }
             }
 

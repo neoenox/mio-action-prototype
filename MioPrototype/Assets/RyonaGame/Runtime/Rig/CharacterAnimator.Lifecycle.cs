@@ -179,11 +179,15 @@ namespace Ryona.Game
             if (Stats != null && Stats.State != null && Stats.IsDown)
             {
                 if (_state != State.Down && (_state != State.GetUp || !Stats.IsGettingUp))
+                {
                     SetState(State.Down, Mathf.Max(0.4f, Stats.DownRemaining - GetUpSeconds));
+                    MarkHitStateChanged();
+                }
                 return;
             }
 
             SetState(State.Stagger, Mathf.Max(0.12f, result.StunSeconds));
+            MarkHitStateChanged();
         }
 
     }

@@ -278,19 +278,30 @@ namespace Ryona.Game
         // --- 二体がかりの見た目 -------------------------------------
         /// <summary>Y 字拘束の見た目 0..1（手首の開き・二人の腕の持ち方に使う）。</summary>
         public float SplitWeight { get; private set; }
+        float _splitWeightPhase;
 
         /// <summary>二体目が横に着いて、二人で押さえ始めているか。</summary>
         public bool IsSplitActive => IsWall && Stage == WallStage.Held &&
             Assist != null && SplitReady && Assist.IsAlive && Assist.isActiveAndEnabled;
 
-        /// <summary>Y 字の見た目を目標へ寄せる（0.22 秒で切り替わる速さ）。</summary>
+        /// <summary>
+        /// Y 字の見た目を目標へ寄せる。線形 0.22 秒だと立位から膝崩れが一瞬で落ち、
+        /// 首が振れて前髪が顔を覆った（実測 wallsplit #270〜#275）。
+        /// 位相を 0.6 秒かけて SmoothStep に通し、入りと抜きの両方を滑らかにする。
+        /// </summary>
         public void TickSplitWeight(float dt)
         {
-            SplitWeight = Mathf.MoveTowards(SplitWeight, IsSplitActive ? 1f : 0f, dt / 0.22f);
+            float target = IsSplitActive ? 1f : 0f;
+            _splitWeightPhase = Mathf.MoveTowards(_splitWeightPhase, target, dt / 0.60f);
+            SplitWeight = Mathf.SmoothStep(0f, 1f, _splitWeightPhase);
         }
 
         /// <summary>二人がかりの見た目を初期化する。</summary>
-        public void ResetSplitWeight() => SplitWeight = 0f;
+        public void ResetSplitWeight()
+        {
+            SplitWeight = 0f;
+            _splitWeightPhase = 0f;
+        }
 
 
         /// <summary>今の段階の経過を進める。<paramref name="seconds"/> はその段階の長さ。</summary>
@@ -323,7 +334,7 @@ namespace Ryona.Game
             SplitStarted = false;
             SplitReady = false;
             SplitAssistAge = 0f;
-            SplitWeight = 0f;
+            ResetSplitWeight();
         }
     }
 }

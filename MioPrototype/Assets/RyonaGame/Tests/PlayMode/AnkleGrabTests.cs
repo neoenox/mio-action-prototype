@@ -36,8 +36,7 @@ namespace Ryona.Tests
 
             EnemyBrain.ForcedGrabKind = null;
 
-            _player = Object.FindFirstObjectByType<PlayerStats>();
-            Assert.IsNotNull(_player, "PlayerStats がシーンに無い");
+            _player = TestScene.FindPlayer();
 
             _grapple = _player.GetComponent<PlayerGrapple>();
             Assert.IsNotNull(_grapple, "PlayerGrapple が無い");

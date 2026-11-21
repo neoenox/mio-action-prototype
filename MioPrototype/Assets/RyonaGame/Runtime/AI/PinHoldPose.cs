@@ -19,57 +19,14 @@ namespace Ryona.Game
         ThirdPersonCamera _camera;
         float _splitPush;
 
-        // Y 字移行中に拘束役の体がレンズを覆わないよう、候補の構図ごとに顔可視率を測る。
-        Camera _faceProbe;
-        EnemyFigure[] _faceFigures;
-        float _nextFigureRefresh;
-        static readonly float[] FaceCandidateTurns = { 0f, 28f, -28f, 55f, -55f, 80f, -80f };
-        static readonly float[] FaceCandidateScales = { 1f, 1.35f, 1.7f };
-
-        void OnDestroy()
-        {
-            if (_faceProbe != null)
-                Destroy(_faceProbe.gameObject);
-        }
-
-        Camera FaceProbe()
-        {
-            if (_faceProbe == null)
-            {
-                var go = new GameObject("Wall Pin Face Probe");
-                _faceProbe = go.AddComponent<Camera>();
-                // 無効カメラは投影行列が更新されず WorldToViewportPoint が壊れる。
-                // 何も描画しないカメラとして有効にしておく。
-                _faceProbe.enabled = true;
-                _faceProbe.cullingMask = 0;
-                _faceProbe.clearFlags = CameraClearFlags.Nothing;
-                _faceProbe.depth = -100f;
-                _faceProbe.useOcclusionCulling = false;
-            }
-            var main = Camera.main;
-            if (main != null)
-            {
-                _faceProbe.fieldOfView = main.fieldOfView;
-                _faceProbe.nearClipPlane = main.nearClipPlane;
-                _faceProbe.farClipPlane = main.farClipPlane;
-            }
-            _faceProbe.aspect = FaceVisibility.Aspect;
-            return _faceProbe;
-        }
-
-        FaceVisibility.Result ProbeFace(Vector3 position, Vector3 faceTarget)
-        {
-            if (Time.time >= _nextFigureRefresh)
-            {
-                _nextFigureRefresh = Time.time + 0.25f;
-                _faceFigures = FindObjectsByType<EnemyFigure>(FindObjectsSortMode.None);
-            }
-
-            Camera probe = FaceProbe();
-            probe.transform.SetPositionAndRotation(position,
-                Quaternion.LookRotation(faceTarget - position));
-            return FaceVisibility.Measure(probe, _targetRig.Head, _faceFigures);
-        }
+        // Y 字の構図の基準。Y 字に入った瞬間の二人の位置で構図を決め、打撃中は動かさない。
+        // 毎フレームの位置で決めると、踏み込みのたびに注視点・距離・側が変わって画が揺れる（ユーザー報告）。
+        bool _splitFramed;
+        EnemyBrain _splitAssistRef;
+        bool _splitGang;
+        Vector3 _splitCaptorAnchor;
+        Vector3 _splitAssistAnchor;
+        float _nextSplitLog;
 
         /// <summary>
         /// 壁押さえつけ（膝・猶予）のカメラ位置（彼女と拘束役の間の注視点からのずれ、m）。
@@ -97,12 +54,17 @@ namespace Ryona.Game
             if (!_brain.IsPinning)
             {
                 _rearFraming = 0f;
+                _splitFramed = false;
                 return;
             }
 
             var hold = _brain.Player.GetComponent<PlayerGrapple>();
             if (hold == null || !hold.IsGrappled || hold.Captor != _brain || hold.Kind != GrappleKind.Pin)
+            {
+                // 拘束が途中で解けたら、次の Y 字は基準を取り直してから始める。
+                _splitFramed = false;
                 return;
+            }
 
             if (_targetRig == null)
                 _targetRig = _brain.Player.GetComponentInChildren<ProceduralRig>();
@@ -242,77 +204,53 @@ namespace Ryona.Game
 
                     if (hold.WallSplitWeight > 0.01f)
                     {
-                        // アシストが離れた直後（重みが抜ける 0.2 秒）は、拘束役を彼女の反対側へ
-                        // 鏡映して代用する。ここで別ショットへ落とすとカメラが跳ねる。
-                        Vector3 assist = hold.WallAssist != null
-                            ? hold.WallAssist.transform.position
-                            : pinned.position + (pinned.position - transform.position);
+                        // 構図の基準を取るのは、Y 字に入った瞬間と、アシストが入れ替わった／3 人目が加わったときだけ。
+                        bool gang = hold.WallGangWeight > 0.5f;
+                        bool reframe = !_splitFramed || hold.WallAssist != _splitAssistRef || gang != _splitGang;
+                        if (reframe)
+                        {
+                            _splitCaptorAnchor = transform.position;
+                            // アシストが離れた直後は、拘束役を彼女の反対側へ鏡映して代用する。
+                            _splitAssistAnchor = hold.WallAssist != null
+                                ? hold.WallAssist.transform.position
+                                : pinned.position + (pinned.position - transform.position);
+                            _splitAssistRef = hold.WallAssist;
+                            _splitGang = gang;
+                        }
+
                         WallSplitCamera.Build(pinned.position, pinned.forward,
-                            transform.position, assist,
+                            _splitCaptorAnchor, _splitAssistAnchor,
                             out Vector3 splitShot, out Vector3 splitTarget,
                             CombatConstants.WallGangCameraBack * hold.WallGangWeight,
                             CombatConstants.WallGangCameraShift * hold.WallGangWeight);
 
-                        // 段階が進むほど彼女へ寄る（序盤は引き、締めで大きく寄る）。
-                        _splitPush = Mathf.MoveTowards(_splitPush, hold.WallSplitCameraPushTarget,
-                            Time.unscaledDeltaTime * 0.7f);
+                        // 段階が進むほど彼女へ寄る（序盤は引き、締めで大きく寄る）。打撃ごとの段差が出ないよう緩く追う。
+                        _splitPush = Mathf.Lerp(_splitPush, hold.WallSplitCameraPushTarget,
+                            1f - Mathf.Exp(-1.5f * Time.unscaledDeltaTime));
                         float lowering = Mathf.InverseLerp(0.10f, 0.15f, _splitPush);
                         splitTarget.y += 0.03f * lowering;
                         splitShot.y += 0.06f * lowering;
                         splitShot = splitTarget + (splitShot - splitTarget) * (1f - 0.40f * _splitPush);
 
-                        float w = Mathf.Clamp01(hold.WallSplitWeight);
-                        Vector3 pivot = pinned.position + Vector3.up * 1.02f;
-                        Vector3 from = heldShot - pivot;
-                        Vector3 to = splitShot - pivot;
-                        Vector3 direction = Vector3.Slerp(
-                            from.sqrMagnitude > 1e-6f ? from.normalized : Vector3.back,
-                            to.sqrMagnitude > 1e-6f ? to.normalized : Vector3.back, w);
-                        float radius = Mathf.Lerp(from.magnitude, to.magnitude, w);
-                        Vector3 shot = pivot + direction * radius;
-                        Vector3 target = Vector3.Lerp(heldTarget, splitTarget, w);
+                        // Y 字に入る瞬間は、押さえつけの画から 1 回だけ意図的にカットする。
+                        // 角度で補間すると拘束役の背中の後ろを通り、顔が隠れる（実測 wallpin #193〜#197）。
+                        // 候補を毎フレーム採点してカットする方式は、打撃のたびに画が飛んだ（ユーザー報告）。
+                        // reframe でもカットすると、入り直しの 1 フレーム前に背中が残った（実測 2026-11-21）。
+                        bool cut = !_splitFramed;
+                        _splitFramed = true;
+                        _camera.RequestCinematicShot(splitShot, splitTarget, cut: cut);
 
-                        // 角度補間だけだと拘束役の背中を通ることがある（実測 #193〜#197）。
-                        // 周囲の候補を顔可視率で採点し、隠れない経路へ逃がす。
-                        Vector3 faceTarget = _targetRig.Head.position + Vector3.up * 0.06f;
-                        float bestVisible = -1f;
-                        Vector3 bestShot = shot;
-                        bool avoid = hold.WallGangWeight <= 0.01f;
-                        float[] turns = FaceCandidateTurns;
-                        for (int i = 0; avoid && i < turns.Length; i++)
+                        if (LaunchOptions.Has("-splitcamlog") && Time.unscaledTime >= _nextSplitLog)
                         {
-                            for (int j = 0; j < FaceCandidateScales.Length; j++)
-                            {
-                                Vector3 candidate = pivot +
-                                    Quaternion.AngleAxis(turns[i], Vector3.up) * (shot - pivot) * FaceCandidateScales[j];
-                                candidate.y += j * 0.35f;
-                                var reading = ProbeFace(candidate, faceTarget);
-                                float visible = reading.Visible + (reading.Readable ? 0.5f : 0f);
-                                if (visible > bestVisible)
-                                {
-                                    bestVisible = visible;
-                                    bestShot = candidate;
-                                }
-                            }
+                            _nextSplitLog = Time.unscaledTime + 0.1f;
+                            GameLog.Log($"[SplitCam] shot={splitShot} target={splitTarget} reframe={reframe} " +
+                                        $"push={_splitPush:F2} w={hold.WallSplitWeight:F2} gang={hold.WallGangWeight:F2}");
                         }
-                        // 途中の経路がすべて塞がっている場合は、実測で顔が読める確定構図へ逃がす。
-                        if (avoid && w >= 0.05f)
-                        {
-                            var splitReading = ProbeFace(splitShot, faceTarget);
-                            float splitVisible = splitReading.Visible + (splitReading.Readable ? 0.5f : 0f);
-                            if (splitVisible > bestVisible)
-                            {
-                                bestVisible = splitVisible;
-                                bestShot = splitShot;
-                            }
-                        }
-
-                        // 追従補間だと避けたはずの敵の体を通ってしまう。回避したフレームは即切替にする。
-                        bool dodged = (bestShot - shot).sqrMagnitude > 0.01f;
-                        _camera.RequestCinematicShot(bestShot, target, cut: dodged);
                         return;
                     }
 
+                    _splitFramed = false;
+                    _splitAssistRef = null;
                     _splitPush = 0f;
                     _camera.RequestCinematicShot(heldShot, heldTarget);
                     return;

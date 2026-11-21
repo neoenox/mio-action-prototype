@@ -36,8 +36,7 @@ namespace Ryona.Tests
             // 背後からの掴みは羽交い締めと髪掴みの抽選。ここでは羽交い締めに固定する。
             EnemyBrain.ForcedGrabKind = GrappleKind.Back;
 
-            _player = Object.FindFirstObjectByType<PlayerStats>();
-            Assert.IsNotNull(_player, "PlayerStats がシーンに無い");
+            _player = TestScene.FindPlayer();
 
             _grapple = _player.GetComponent<PlayerGrapple>();
             Assert.IsNotNull(_grapple, "PlayerGrapple が無い");
@@ -102,19 +101,6 @@ namespace Ryona.Tests
             yield return null;
         }
 
-        IEnumerator WaitGameSeconds(float seconds)
-        {
-            float end = Time.time + seconds;
-            float deadline = Time.realtimeSinceStartup + seconds * 10f + 5f;
-            while (Time.time < end && Time.realtimeSinceStartup < deadline)
-            {
-                if (Time.timeScale <= 0f)
-                    Time.timeScale = 1f;
-
-                yield return null;
-            }
-        }
-
         IEnumerator BeginWallHold()
         {
             Vector3 lane = _player.transform.position;
@@ -147,7 +133,7 @@ namespace Ryona.Tests
             Assert.IsTrue(_grapple.IsGrappled);
             Assert.AreEqual(GrappleKind.Back, _grapple.Kind);
             Assert.IsFalse(_grapple.IsWallPin);
-            yield return WaitGameSeconds(0.4f);
+            yield return TestTime.WaitGameSeconds(0.4f);
             Assert.Less(_animator.Rig.LHand.position.y, _animator.Rig.Head.position.y);
             Assert.Less(_animator.Rig.RHand.position.y, _animator.Rig.Head.position.y);
         }
@@ -161,7 +147,7 @@ namespace Ryona.Tests
             Assert.IsTrue(_grapple.IsGrappled);
 
             // 貼り付き（0.40 秒）が終わるまで待つ。
-            yield return WaitGameSeconds(0.7f);
+            yield return TestTime.WaitGameSeconds(0.7f);
 
             Vector3 head = _animator.Rig.Head.position;
             Vector3 handL = _animator.Rig.LHand.position;

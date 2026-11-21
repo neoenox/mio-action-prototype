@@ -715,7 +715,10 @@ namespace Ryona.Game
                 float impact = HeldBellyPunchImpact;
                 pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, (32f + 6f * fatigue) * impact, fold);
                 // 胴の前傾を首で打ち消し、腹で折れても顔は前に残す（前髪で顔が隠れない）。
-                pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, (-52f - 4f * fatigue) * Mathf.Lerp(1f, impact, 0.6f), fold);
+                // 締めの impact=1.7 だと -79° まで反って天井を向くので、通常の腹パンと同じ -64° で止める。
+                float splitHeadPitch = Mathf.Max(-64f,
+                    (-52f - 4f * fatigue) * Mathf.Lerp(1f, impact, 0.6f));
+                pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, splitHeadPitch, fold);
                 pose.HeadYaw += side * 10f * impact * fold;
                 pose.TorsoRoll += side * 6f * impact * fold;
                 pose.HipsOffset.y -= (0.10f + 0.03f * fatigue) * impact * fold;

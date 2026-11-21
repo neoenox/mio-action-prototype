@@ -21,6 +21,7 @@ namespace Ryona.Game
         float _nextAllowed;
         float _nextRollAt;
         bool _active;
+        bool _roundsRunning;
         bool _inputUsed;
         float _catchAt;
         int _round;
@@ -94,9 +95,32 @@ namespace Ryona.Game
             if (_stats == null || _grapple == null)
                 return;
 
+            // 締めのあと少しの間は、倒れる彼女を寄りで見せる（すぐ引きに戻すと倒れる姿が小さくなる）。
+            if (!_active && Time.time < _holdFrameUntil && _camera != null)
+                _camera.HoldFocus(0.55f, 0f, _stats.transform.position.x, 0.3f);
+
             if (_active)
             {
                 FrameCamera();
+
+                // 起点の胸突きが当たらないまま待ち続けない（背後に掴まれたまま固まる）。
+                if (_round == 0 && !_roundsRunning)
+                {
+                    if (Time.unscaledTime >= _nextWaitLog)
+                    {
+                        _nextWaitLog = Time.unscaledTime + 0.25f;
+                        GameLog.Log($"[Pinball] wait opening front={(_front != null ? _front.name : "none")} " +
+                                    $"phase={(_front != null ? _front.Phase.ToString() : "-")} " +
+                                    $"dist={(_front != null ? Mathf.Abs(_front.transform.position.x - _stats.transform.position.x) : 0f):F2}");
+                    }
+                    if (Time.time >= _openingDeadline)
+                    {
+                        GameLog.Log("[Pinball] cancel: 起点の胸突きが当たらない（時間切れ）");
+                        _grapple.Release();
+                        Cancel();
+                        return;
+                    }
+                }
                 if (!_inputUsed && (InputReader.LightPressed() || InputReader.HeavyPressed() || InputReader.BreakPressed()))
                 {
                     _inputUsed = true;
@@ -109,13 +133,25 @@ namespace Ryona.Game
                 return;
             }
 
-            if (LaunchOptions.Has("-pinballtest") && Time.time >= _nextAllowed)
+            if (LaunchOptions.Has("-pinballtest"))
             {
-                if (TryFindPair(out var front, out var rear))
+                // 検証用: 敵が前後に揃うのを待たず、自分で並べて必ず始める。
+                // 以前は「たまたま前後に揃ったら」だけで、25 秒走らせても始まらないことがあった（実測）。
+                // 開始直後に敵がまだ湧いていないこともあるので、成功するまで再試行する。
+                if (!_testArranged && Time.time >= 2f && !_grapple.IsGrappled && !_stats.IsDown)
                 {
-                    StartPinball(front, rear);
-                    return;
+                    if (ArrangeTestPair(out var front, out var rear))
+                    {
+                        _testArranged = true;
+                        StartPinball(front, rear);
+                    }
+                    else if (Time.unscaledTime >= _nextTestArrangeLog)
+                    {
+                        _nextTestArrangeLog = Time.unscaledTime + 1f;
+                        GameLog.Log("[Pinball] 検証用の2体がまだ揃っていない（再試行します）");
+                    }
                 }
+                return;
             }
 
             if (_grapple.IsGrappled)
@@ -166,6 +202,51 @@ namespace Ryona.Game
             return Time.time - _lastBusyAt < AfterGrappleGraceSeconds;
         }
 
+        bool _testArranged;
+        float _openingDeadline;
+        float _nextWaitLog;
+        float _nextTestArrangeLog;
+
+        /// <summary>
+        /// 起点の胸突きが当たるまでの待ちの上限（秒）。当たらないまま待つと、彼女は背後の敵に
+        /// 掴まれたまま（連打も止められて）動けなくなる（実測: 前の敵が胸に手を当てたまま固まった）。
+        /// </summary>
+        const float OpeningTimeoutSeconds = 2.5f;
+
+        /// <summary>起点の胸突きを打つ前の敵の立ち位置（彼女からの距離、m）。ジャブの届く範囲（1.25m）の内側。</summary>
+        const float OpeningStandOff = 1.0f;
+
+        /// <summary>検証用: 2 体を彼女の前後 1.4m に並べ、残りは遠ざけて止める。</summary>
+        bool ArrangeTestPair(out EnemyBrain front, out EnemyBrain rear)
+        {
+            front = null;
+            rear = null;
+            var list = new System.Collections.Generic.List<EnemyBrain>();
+            foreach (var e in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            {
+                if (e != null && e.isActiveAndEnabled && e.IsAlive)
+                    list.Add(e);
+            }
+            if (list.Count < 2)
+                return false;
+
+            Vector3 p = _stats.transform.position;
+            front = list[0];
+            rear = list[1];
+            // 自分の攻撃の予備動作中だと胸突きを始められない（実測 phase=Windup で中止）。
+            front.CancelBystanderWindup(0f);
+            rear.CancelBystanderWindup(0f);
+            front.transform.SetPositionAndRotation(new Vector3(p.x + 1.4f, 0f, p.z), Quaternion.Euler(0f, -90f, 0f));
+            rear.transform.SetPositionAndRotation(new Vector3(p.x - 1.4f, 0f, p.z), Quaternion.Euler(0f, 90f, 0f));
+            for (int i = 2; i < list.Count; i++)
+            {
+                list[i].transform.position = new Vector3(p.x + 8f + i, 0f, p.z);
+                list[i].LockForHandOff(12f);
+            }
+            GameLog.Log($"[Pinball] test arranged front={front.name} rear={rear.name}");
+            return true;
+        }
+
         bool TryFindPair(out EnemyBrain front, out EnemyBrain rear)
         {
             front = null;
@@ -206,6 +287,7 @@ namespace Ryona.Game
             _front = front;
             _rear = rear;
             _active = true;
+            _roundsRunning = false;
             _round = 0;
             _inputUsed = false;
             _nextAllowed = Time.time + Mathf.Max(4f, RyonaConfig.Instance.Pinball.CooldownSeconds) + 3f;
@@ -219,14 +301,26 @@ namespace Ryona.Game
             }
 
             // 起点は前の敵の胸突き。通常攻撃と同じく予備動作の音が出る。
-            front.transform.position = new Vector3(_stats.transform.position.x + 1.4f, 0f, _stats.transform.position.z);
-            front.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+            // 前の敵は彼女の正面（前の敵がいる側）に立たせ、彼女の方を向かせる。
+            // 以前は 1.4m に置いており、胸突き（ジャブ）の届く 1.25m より遠く、毎回空振りした
+            // （実測 StrikeMiss dist=1.40 range=1.25）。往復が始まらず、背後に掴まれたまま固まっていた。
+            // 回転も Euler(0,180,0) 固定で、奥行き方向（カメラの方）を向いていた。
+            Vector3 her = _stats.transform.position;
+            float side = Mathf.Sign(front.transform.position.x - her.x);
+            if (Mathf.Abs(side) < 0.5f)
+                side = 1f;
+            front.CancelBystanderWindup(0f);
+            front.transform.SetPositionAndRotation(new Vector3(her.x + OpeningStandOff * side, 0f, her.z),
+                Quaternion.LookRotation(new Vector3(-side, 0f, 0f), Vector3.up));
             if (!front.TryStartPinballPunch())
             {
+                GameLog.Log($"[Pinball] cancel: {front.name} が胸突きを始められない phase={front.Phase}");
+                _grapple.Release();
                 Cancel();
                 return;
             }
             _catchAt = Time.time + front.TagPunchSecondsToStrike + CatchLeadSeconds;
+            _openingDeadline = Time.time + OpeningTimeoutSeconds;
             GameLog.Log($"[Pinball] start front={front.name} rear={rear.name}");
             if (!string.IsNullOrEmpty(_burstPrefix))
                 StartCoroutine(BurstShots());
@@ -234,12 +328,19 @@ namespace Ryona.Game
 
         void OnHitReceived(HitResult result)
         {
-            if (!_active || _round != 0 || result.Damage <= 0f)
+            if (_active && _finishPending && result.Damage > 0f && _stats.LastAttackerBrain == _front)
+            {
+                FinishOnHit();
+                return;
+            }
+
+            if (!_active || _round != 0 || _roundsRunning || result.Damage <= 0f)
                 return;
             if (_stats.LastAttackerBrain != _front)
                 return;
 
             GameLog.Log("[Pinball] opening punch landed");
+            _roundsRunning = true;
             StartCoroutine(RunRounds());
         }
 
@@ -255,7 +356,7 @@ namespace Ryona.Game
 
                 if (_rules.IsFinal(_round))
                 {
-                    Finish();
+                    yield return FinishPunch();
                     yield break;
                 }
 
@@ -267,17 +368,94 @@ namespace Ryona.Game
             }
         }
 
-        void Finish()
+        bool _finishPending;
+        float _shotsUntil;
+        float _holdFrameUntil;
+
+        /// <summary>締めのあと寄りを保つ秒数。</summary>
+        const float FinishHoldSeconds = 1.2f;
+
+        /// <summary>
+        /// 締め: 前の敵が彼女の正面へ詰めて、腹へ実際に一発入れる。当たった瞬間に前へ崩れてダウン。
+        /// 以前は離れた位置の前の敵の名義でダメージだけ与えていて、殴る動きがないまま倒れた。
+        /// </summary>
+        IEnumerator FinishPunch()
         {
+            if (_front == null || !_front.IsAlive)
+            {
+                FinishFallback();
+                yield break;
+            }
+
+            // 打てる距離（OpeningStandOff）まで短く詰める。瞬間移動にしない。
+            Vector3 her = _stats.transform.position;
+            float side = Mathf.Sign(_front.transform.position.x - her.x);
+            if (Mathf.Abs(side) < 0.5f)
+                side = 1f;
+            Vector3 from = _front.transform.position;
+            Vector3 to = new Vector3(her.x + OpeningStandOff * side, from.y, her.z);
+            Quaternion fromRot = _front.transform.rotation;
+            Quaternion face = Quaternion.LookRotation(new Vector3(-side, 0f, 0f), Vector3.up);
+            _front.CancelBystanderWindup(0f);
+            const float stepSeconds = 0.25f;
+            for (float t = 0f; t < stepSeconds; t += Time.deltaTime)
+            {
+                if (!_active)
+                    yield break;
+                // 位置と向きを同じ s で補間する。毎フレームの現在値を起点にすると
+                // 向きが指数的にしか追従せず、詰め終わっても彼女を向いていない。
+                float s = Mathf.SmoothStep(0f, 1f, t / stepSeconds);
+                _front.transform.SetPositionAndRotation(
+                    Vector3.Lerp(from, to, s),
+                    Quaternion.Slerp(fromRot, face, s));
+                yield return null;
+            }
+            _front.transform.SetPositionAndRotation(to, face);
+
+            _finishPending = true;
+            if (!_front.TryStartPinballPunch(1.25f))
+            {
+                FinishFallback();
+                yield break;
+            }
+            GameLog.Log($"[Pinball] finish punch windup {_front.name}");
+
+            // 命中は OnHitReceived が受ける。来なければ保険で倒す（詰み防止）。
+            float deadline = Time.time + 1.6f;
+            while (_active && _finishPending && Time.time < deadline)
+                yield return null;
+            if (_active && _finishPending)
+                FinishFallback();
+        }
+
+        /// <summary>締めの一発が当たった瞬間。拘束を離して、腹を抱えて前へ崩れる。</summary>
+        void FinishOnHit()
+        {
+            _finishPending = false;
+            _grapple.Release();
+            _stats.ForceDown(CombatConstants.DownDuration, "pinball-finish", _front.transform,
+                launchDistance: 0f, launchHeight: 0f, forward: true);
+            GameLog.Log("[Pinball] finish punch landed → prone down");
+            Cancel();
+            _holdFrameUntil = Time.time + FinishHoldSeconds;
+        }
+
+        /// <summary>締めの一発が出せない・当たらないときの保険（ダメージだけ与えて倒す）。</summary>
+        void FinishFallback()
+        {
+            _finishPending = false;
             var attack = AttackLibrary.Heavy();
             attack.id = "pinball_finish";
             attack.damage = 12f;
             attack.partDamage = 26f;
-            _stats.ReceiveHit(_front.State, attack, _front.transform, heldBellyDamage: 26f, isTagPunch: false);
-            _stats.ForceDown(CombatConstants.DownDuration, "pinball-finish", _front.transform,
-                launchDistance: 0f, launchHeight: 0f, forward: true);
-            GameLog.Log("[Pinball] finish → prone down");
+            _grapple.Release();
+            if (_front != null)
+                _stats.ReceiveHit(_front.State, attack, _front.transform, heldBellyDamage: 26f, isTagPunch: false);
+            _stats.ForceDown(CombatConstants.DownDuration, "pinball-finish",
+                _front != null ? _front.transform : null, launchDistance: 0f, launchHeight: 0f, forward: true);
+            GameLog.Log("[Pinball] finish fallback → prone down");
             Cancel();
+            _holdFrameUntil = Time.time + FinishHoldSeconds;
         }
 
         void Escape()
@@ -296,8 +474,10 @@ namespace Ryona.Game
         void Cancel()
         {
             _active = false;
+            _roundsRunning = false;
+            _finishPending = false;
+            _shotsUntil = Time.unscaledTime + 1.5f;
             _stats?.GroundMount?.DelayNextSearch(4f);
-            _grapple?.SetPinball(false);
             _grapple?.SetPinball(false);
             if (_camera != null)
                 _camera.HoldFocus(1f, 0f, 0f, 0f);
@@ -315,7 +495,8 @@ namespace Ryona.Game
         {
             int index = 0;
             float next = Time.unscaledTime;
-            while (_active && index < 120)
+            // 終わった後も 1.5 秒撮る（締めで倒れるところまで見る）。
+            while (index < 120 && (_active || Time.unscaledTime < _shotsUntil))
             {
                 while (Time.unscaledTime < next)
                     yield return null;

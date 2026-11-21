@@ -32,23 +32,12 @@ namespace Ryona.Tests
         {
             yield return TestScene.LoadPrototype();
 
-            PlayerStats stats = Object.FindFirstObjectByType<PlayerStats>();
-            Assert.IsNotNull(stats, "PlayerStats がシーンに無い");
+            PlayerStats stats = TestScene.FindPlayer();
 
             // VRM の読み込み後にリグと CharacterAnimator が付く。組み上がるまで待つ。
-            float deadline = Time.realtimeSinceStartup + 12f;
-            while (Time.realtimeSinceStartup < deadline)
-            {
-                _anim = stats.GetComponentInChildren<CharacterAnimator>();
-                if (_anim != null && _anim.Rig != null && _anim.Rig.Ready)
-                {
-                    _rig = _anim.Rig;
-                    break;
-                }
-                yield return null;
-            }
-
-            Assert.IsTrue(_rig != null, "キャラクターのリグが組み上がらない（VRM の読み込み待ちで時間切れ）");
+            yield return TestRig.WaitReady(stats, 12f);
+            _anim = TestRig.RequireReady(stats);
+            _rig = _anim.Rig;
         }
 
         static string Violations(JointRomMonitor monitor)

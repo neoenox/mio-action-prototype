@@ -41,11 +41,14 @@ namespace Ryona.Game
             if (!IsBuckling && (Grapple == null || !Grapple.IsGrappled || Grapple.IsHandingOff || Grapple.Kind != GrappleKind.Back))
             {
                 if (Grapple != null && (!Grapple.IsGrappled || Grapple.IsHandingOff))
-                    _heldBellyPunchRemaining = 0f;
+                {
+                    // 即 0 にすると腹の折れが 1 コマで消える。短く残して減算に任せる。
+                    _heldBellyPunchRemaining = Mathf.Min(_heldBellyPunchRemaining, 0.10f);
+                }
                 ClearHeldGroggy();
                 _finisherHoistTarget = false;
-                FinisherHoistWeight = 0f;
-                _heldFaceFatigue = 0f;
+                // 下げ側は下の MoveTowards（0.10 秒）に任せる。即 0 だと吊り上がりが飛ぶ。
+                _heldFaceFatigue = Mathf.MoveTowards(_heldFaceFatigue, 0f, dt / 0.12f);
             }
             else
             {
@@ -92,6 +95,8 @@ namespace Ryona.Game
             }
 
             State before = _state;
+            // 被弾イベントが状態を直接替えた場合も、遷移としてスナップショットを取る。
+            bool hitStateChanged = ConsumeHitStateChanged();
             bool held = Grapple != null && Grapple.IsGrappled && (Stats == null || !Stats.IsDead);
 
             if (held)
@@ -203,7 +208,7 @@ namespace Ryona.Game
             }
 
             // 状態が変わった瞬間に前の姿勢を控え、そこから寄せる（カクつき防止）
-            if (_state != before)
+            if (_state != before || hitStateChanged)
             {
                 Rig.SnapshotPose();
                 _blend = 0f;

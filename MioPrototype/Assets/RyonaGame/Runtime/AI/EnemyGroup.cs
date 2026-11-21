@@ -45,9 +45,6 @@ namespace Ryona.Game
             }
         }
 
-        /// <summary>現在攻撃トークンを持っている敵。読み取り専用。</summary>
-        public IReadOnlyList<EnemyBrain> Attackers => _attackers;
-
         /// <summary>登録されている敵。読み取り専用（間合いの重なり回避に使う）。</summary>
         public IReadOnlyList<EnemyBrain> Members
         {

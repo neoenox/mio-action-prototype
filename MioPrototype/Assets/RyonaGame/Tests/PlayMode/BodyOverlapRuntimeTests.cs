@@ -28,22 +28,11 @@ namespace Ryona.Tests
         {
             yield return TestScene.LoadPrototype();
 
-            _stats = Object.FindFirstObjectByType<PlayerStats>();
-            Assert.IsNotNull(_stats, "PlayerStats がシーンに無い");
+            _stats = TestScene.FindPlayer();
 
-            float deadline = Time.realtimeSinceStartup + 12f;
-            while (Time.realtimeSinceStartup < deadline)
-            {
-                _anim = _stats.GetComponentInChildren<CharacterAnimator>();
-                if (_anim != null && _anim.Rig != null && _anim.Rig.Ready)
-                {
-                    _rig = _anim.Rig;
-                    break;
-                }
-                yield return null;
-            }
-
-            Assert.IsTrue(_rig != null, "キャラクターのリグが組み上がらない（VRM の読み込み待ちで時間切れ）");
+            yield return TestRig.WaitReady(_stats, 12f);
+            _anim = TestRig.RequireReady(_stats);
+            _rig = _anim.Rig;
         }
 
         static EnemyFigure[] SeparateAllFromPlayer(Transform playerRoot)

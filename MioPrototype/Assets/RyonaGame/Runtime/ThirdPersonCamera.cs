@@ -7,6 +7,9 @@ namespace Ryona.Game
     /// 目標距離を外部から差し替えられるようにしてある。
     /// </summary>
     [AddComponentMenu("Ryona/Third Person Camera")]
+    // 演出ポーズ（21000〜）が確定したあと、遮蔽フェード（23000）より前に構図を決める。
+    // 既定の 0 だとポーズより 1 フレーム早く動き、カット直前に古い姿勢が残る。
+    [DefaultExecutionOrder(22500)]
     public sealed class ThirdPersonCamera : ConfigurableMonoBehaviour
     {
         [Header("References")]
@@ -393,9 +396,18 @@ namespace Ryona.Game
                 return;
             }
 
-            // Cut to the other side of the actors, then track the shot without following each jolt.
-            float follow = _cinematicActive && !_cinematicCut
-                ? 1f - Mathf.Exp(-13f * Time.unscaledDeltaTime) : 1f;
+            // 入りの 1 フレーム目は直前のベルト画の位置・向きを起点にする。
+            // ここを 0 初期化のまま補間すると、原点からカメラが飛んでくる。
+            if (!_cinematicActive)
+            {
+                _shotPosition = transform.position;
+                _shotTarget = transform.position + transform.forward * Mathf.Max(1f, _initialDistance);
+            }
+
+            // cut が指定されたときだけ即座に切り替える。それ以外は前の画から補間して入る。
+            float follow = _cinematicCut
+                ? 1f
+                : 1f - Mathf.Exp(-13f * Time.unscaledDeltaTime);
             _shotPosition = Vector3.Lerp(_shotPosition, _cinematicPosition, follow);
             _shotTarget = Vector3.Lerp(_shotTarget, _cinematicTarget, follow);
             // 固定ショットも、狙いと角度を保ったままホイールで距離を変える。
@@ -723,7 +735,9 @@ namespace Ryona.Game
             float pushIn = Mathf.LerpUnclamped(1f, _pushScale, Envelope(_pushRemaining, _pushDuration));
             float pullOut = Mathf.LerpUnclamped(1f, _pullScale, Envelope(_pullRemaining, _pullDuration));
 
-            // 寄りが生きている間は寄りを優先する
+            // 寄りが生きている間は寄りを優先する。
+            // ここに追加の平滑化を入れると、1 発目の寄りが遅れ、グロッキー後の復帰も
+            // 既存テストの期限（5 秒）を 0.001 秒超える。入りの補間は RequestCinematicShot 側で行う。
             _distanceScale = pushIn < 1f ? pushIn : pullOut;
             _pivotOffsetY = Mathf.LerpUnclamped(0f, _pivotMeters, Envelope(_pivotRemaining, _pivotDuration));
         }

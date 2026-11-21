@@ -46,6 +46,7 @@ namespace Ryona.Game
         const float CloseBodyFadeDistance = 2.4f;
 
         Transform _player;
+        Camera _camera;
         EnemyBrain _brain;
         Renderer[] _renderers;
         Material[][] _originals;
@@ -70,6 +71,14 @@ namespace Ryona.Game
         {
             ResolvePlayer();
             Refresh();
+        }
+
+        /// <summary>メインカメラは 1 つだけ。敵ごとの LateUpdate で毎回探さないように控える。</summary>
+        Camera MainCamera()
+        {
+            if (_camera == null)
+                _camera = Camera.main;
+            return _camera;
         }
 
         /// <summary>彼女のトランスフォームを探す。敵の生成順に依存しないようにする。</summary>
@@ -219,7 +228,7 @@ namespace Ryona.Game
         /// <summary>カメラ → 彼女 の線の上に、彼女より手前で入っているか。</summary>
         bool IsOccluding()
         {
-            Camera cam = Camera.main;
+            Camera cam = MainCamera();
             if (cam == null)
             {
                 _dbgWhy = "nocam";
@@ -302,7 +311,7 @@ namespace Ryona.Game
 
         bool InFrontOfWallShot(PlayerGrapple hold)
         {
-            var cam = Camera.main;
+            var cam = MainCamera();
             if (cam == null || hold.Captor == null)
                 return false;
 

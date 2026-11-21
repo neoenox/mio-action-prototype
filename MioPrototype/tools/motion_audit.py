@@ -18,27 +18,14 @@ preview.py が撮った連番に対して、隣り合うフレームの画像差
 from __future__ import annotations
 
 import argparse
-import glob
-import os
 import sys
 from pathlib import Path
 
-PROJECT = Path(__file__).resolve().parent.parent
-PREVIEW_ROOT = PROJECT / "Verify" / "preview"
+from frameseq import LEGACY_PREFIXES, PREVIEW_ROOT, frame_files, frame_index
 
 
-def frames(d: Path) -> list[str]:
-    files = glob.glob(str(Path(d) / "f_*.png"))
-    files += glob.glob(str(Path(d) / "pin_*.png"))
-    files += glob.glob(str(Path(d) / "belly_*.png"))
-    files += glob.glob(str(Path(d) / "face_*.png"))
-    files += glob.glob(str(Path(d) / "knee_*.png"))
-    files += glob.glob(str(Path(d) / "front_*.png"))
-
-    def index(p: str) -> int:
-        return int(os.path.splitext(os.path.basename(p))[0].split("_")[1])
-
-    return sorted(set(files), key=index)
+def frames(d: Path) -> list[Path]:
+    return frame_files(d, LEGACY_PREFIXES)
 
 
 def diffs(d: Path, size=(160, 90)) -> tuple[list[float], list[int]]:
@@ -51,10 +38,10 @@ def diffs(d: Path, size=(160, 90)) -> tuple[list[float], list[int]]:
     values: list[float] = []
     indices: list[int] = []
     for f in files:
-        im = Image.open(f).convert("L").resize(size, Image.BILINEAR)
+        im = Image.open(f).convert("L").resize(size, Image.Resampling.BILINEAR)
         if prev is not None:
             values.append(ImageStat.Stat(ImageChops.difference(im, prev)).mean[0])
-            indices.append(int(os.path.splitext(os.path.basename(f))[0].split("_")[1]))
+            indices.append(frame_index(f))
         prev = im
     return values, indices
 
@@ -100,7 +87,7 @@ def audit_sheet(path: Path, rows: int, cols: int, top: int) -> float:
         row = []
         for c in range(cols):
             box = (c * cw, r * ch, (c + 1) * cw, (r + 1) * ch)
-            row.append(im.crop(box).resize((160, 90), Image.BILINEAR))
+            row.append(im.crop(box).resize((160, 90), Image.Resampling.BILINEAR))
         grid.append(row)
 
     for r in range(rows):
@@ -131,7 +118,7 @@ def strip(d: Path, a: int, b: int, out: Path) -> None:
 
     files = frames(d)
     sel = [f for f in files
-           if a <= int(os.path.splitext(os.path.basename(f))[0].split("_")[1]) <= b]
+           if a <= frame_index(f) <= b]
     if not sel:
         print("  ! その区間にフレームが無い")
         return
@@ -143,8 +130,8 @@ def strip(d: Path, a: int, b: int, out: Path) -> None:
     sheet = Image.new("RGB", (cols * width, rows * (h + 14)), (10, 10, 10))
     draw = ImageDraw.Draw(sheet)
     for i, f in enumerate(sel):
-        idx = int(os.path.splitext(os.path.basename(f))[0].split("_")[1])
-        im = Image.open(f).convert("RGB").resize((width, h), Image.LANCZOS)
+        idx = frame_index(f)
+        im = Image.open(f).convert("RGB").resize((width, h), Image.Resampling.LANCZOS)
         x, y = (i % cols) * width, (i // cols) * (h + 14)
         sheet.paste(im, (x, y + 14))
         draw.text((x + 3, y + 1), f"#{idx}", fill=(255, 255, 0))

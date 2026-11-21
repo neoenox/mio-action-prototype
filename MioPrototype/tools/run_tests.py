@@ -185,10 +185,9 @@ def run_batch(name: str, unity: Path, stamp: str) -> dict:
 # ------------------------------------------------------------------ 入口
 
 def main() -> int:
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except AttributeError:
-        pass
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if reconfigure is not None:
+        reconfigure(encoding="utf-8", errors="replace")
 
     parser = argparse.ArgumentParser(
         description="Unity のテストをクラス分割で一括実行する。")

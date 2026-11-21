@@ -38,7 +38,7 @@ python tools/preview.py --list                        # 撮れる場面の一覧
 
 出力は `MioPrototype/Verify/preview/<場面>-<時刻>/`（`Verify/` は `.gitignore` 済み）に
 `sheet.png`（0.25 秒ごとのコマ送り）・`preview.gif`・`compare.png`。場面は
-`wallpin` / `frontpin` / `belly` / `bellybody` / `face` / `ankle` / `haul`。新しい場面は
+`wallpin` / `wallsplit` / `frontpin` / `belly` / `bellybody` / `face` / `ankle` / `haul`。新しい場面は
 `preview.py` の `SCENARIOS` に足す。
 
 ### 毎回のプレビュー（1 コマンド）
@@ -56,6 +56,8 @@ python tools/preview.py --reel
 - before/after の比較シートも作る場合:
   `python tools/preview_reel.py --belly-before <dir> --pin-before <dir>`。
 - 「撮ったが見ていない」を防ぐため、変更を完了とする前に GIF を開いて確認する。
+- **AI は `preview.gif` を画像として読み込まない**。`sheet.png`・`compare.png`・`motion_audit.py --strip` の PNG で確認する
+  （アニメーション GIF を会話に入れるとプロバイダーが 400 を返し続け、作業が止まった。実例 2026-11-21）。
 
 ### 動きの不自然さは数字で拾う
 
@@ -97,7 +99,8 @@ python tools/motion_audit.py Verify/preview/<dir> --strip 110 117 -o seq.png
 - EditMode は `Ryona.Tests`（`Ryona.Core` のみ参照）、PlayMode は `Ryona.PlayTests`（`Ryona.Game` を参照）。
 - まとめて回すときは `MioPrototype/tools/run_tests.py`（コンパイル確認込み）。
 - 速回しの例: `python tools/run_tests.py --filter "BearHugTests|OverheadRuntimeTests" --skip-compile`（数十秒）。
-- 検証は2層。開発中は `--filter` で対象クラスのみ（数十秒）。確定前は下の表の影響バッチだけを回す（`edit` は常に含める）。
+- **テストはコミットの直前にだけ回す**（2026-11-20 の指定）。開発中は回さず、見た目と挙動の確認は撮影（`preview.py`・`motion_audit.py`）とログで行う。
+  コミット前は下の表の影響バッチを回す（`edit` は常に含める）。
 
 | 変更した場所 | 回すバッチ |
 |---|---|
@@ -106,8 +109,9 @@ python tools/motion_audit.py Verify/preview/<dir> --strip 110 117 -o seq.png
 | `CharacterAnimator*` / `Rig/**` / `AI/**`（姿勢・関節） | `motion` ＋ `grapple` |
 | `Config/**` / `OcclusionFade` / `ThirdPersonCamera` / `PlayerStats` | `misc` |
 
-- 複数領域に触れたら和集合。全バッチは1日1回の作業終了時と、3バッチ以上にまたがる変更を確定する前に回す。
+- 複数領域に触れたら和集合。3バッチ以上にまたがる変更をコミットする前は全バッチを回す。
 - 全バッチで落ちたテストが再実行で通っても即「フレーク」と決めず、`--filter` で同一テストを3回連続回す。3回とも通れば既知フレークとしてここに1行追加し、1回でも落ちれば実バグとして原因を直す。
+- 既知フレーク（2026-11-21）: `VrmRuntimeTests.Vrmが読み込まれリグが組み上がる` が全バッチで1回だけ「肘が下りていない」で失敗。`--filter VrmRuntimeTests` で3回連続パス（各2/2）を確認済み。
 - 全緑の記録は `MioPrototype/Verify/test-baseline.txt`（日付・HEAD・各バッチ結果）に1行追記する。
 - 既存テストには**設計意図が書かれている**ことがある（例：顔パンの首振りは 40° 以上必要）。
   値を変えて落ちたときは、まずテストの意図を読む。

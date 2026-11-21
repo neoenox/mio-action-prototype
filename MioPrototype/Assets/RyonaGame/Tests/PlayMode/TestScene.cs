@@ -1,4 +1,6 @@
 using System.Collections;
+using NUnit.Framework;
+using Ryona.Game;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -58,6 +60,14 @@ namespace Ryona.Tests
 
             AudioListener.volume = _volumeBeforeTests;
             _silenced = false;
+        }
+
+        /// <summary>シーンのプレイヤー。居なければテストを失敗させる。</summary>
+        public static PlayerStats FindPlayer()
+        {
+            var stats = Object.FindFirstObjectByType<PlayerStats>();
+            Assert.IsNotNull(stats, "PlayerStats がシーンに無い");
+            return stats;
         }
 
         public static IEnumerator LoadPrototype()

@@ -30,8 +30,7 @@ namespace Ryona.Tests
         {
             yield return TestScene.LoadPrototype();
 
-            _player = Object.FindFirstObjectByType<PlayerStats>();
-            Assert.IsNotNull(_player, "PlayerStats がシーンに無い");
+            _player = TestScene.FindPlayer();
 
             _grapple = _player.GetComponent<PlayerGrapple>();
             Assert.IsNotNull(_grapple, "PlayerGrapple が無い");
@@ -81,17 +80,8 @@ namespace Ryona.Tests
 
             // 彼女のリグ（VRM 読み込み後に組み上がる）が出来てから測る。
             // 読み込み途中のリグを掴むと、腕の位置が実際と違って「肘が内側」に見える。
-            float rigDeadline = Time.realtimeSinceStartup + 8f;
-            CharacterAnimator anim = null;
-            while (Time.realtimeSinceStartup < rigDeadline)
-            {
-                anim = _player.GetComponentInChildren<CharacterAnimator>();
-                if (anim != null && anim.Rig != null && anim.Rig.Ready)
-                    break;
-                yield return null;
-            }
-            Assert.IsTrue(anim != null && anim.Rig != null && anim.Rig.Ready,
-                "彼女のリグが組み上がらない（VRM の読み込み待ちで時間切れ）");
+            yield return TestRig.WaitReady(_player, 8f);
+            var anim = TestRig.RequireReady(_player, "彼女のリグが組み上がらない（VRM の読み込み待ちで時間切れ）");
             var rig = anim.Rig;
             var figure = _captor.GetComponent<EnemyFigure>();
 

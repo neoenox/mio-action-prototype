@@ -33,8 +33,8 @@ namespace Ryona.Game
 
         EnemyFigure[] _faceFigures;
         // マウントのカメラ候補。彼女の体の脇を中心に、頭の方向へ ±30° まで振る。
-        // 遠く・高い候補を入れると「レンズが敵から遠い」だけで勝ち、上空からの豆粒の画になる（実測 face #155〜#190）。
-        static readonly float[] FaceDistances = { 1.4f, 1.7f, 2.0f, 2.3f, 2.6f };
+        // 最遠の 2.6m を外して寄せた（2026-11-20）。レンズ前の余裕は 0.5m 下限で守る。
+        static readonly float[] FaceDistances = { 1.4f, 1.7f, 2.0f, 2.3f };
         static readonly float[] FaceHeights = { 0.9f, 1.2f, 1.5f };
         static readonly float[] FaceYaws = { -30f, -15f, 0f, 15f, 30f };
 
@@ -664,7 +664,7 @@ namespace Ryona.Game
                 Vector3 flat = new Vector3(_shotOffset.x, 0f, _shotOffset.z);
                 float elevation = Mathf.Atan2(_shotOffset.y, Mathf.Max(0.001f, flat.magnitude)) * Mathf.Rad2Deg;
                 float side = Mathf.Sign(Vector3.Dot(_shotOffset, flank));
-                GameLog.Log($"[MountFace] visible={shot.Visible:F2} facing={shot.FacingAngle:F0} " +
+                GameLog.Log($"[MountFace] visible={shot.Visible:F2} readable={(shot.Readable ? 1 : 0)} facing={shot.FacingAngle:F0} " +
                             $"size={MountFaceSize * 100f:F1}% lens={_mountLens:F2} dist={flat.magnitude:F2} " +
                             $"elev={elevation:F0} side={side:F0} blocker={shot.Blocker ?? "none"}");
             }
@@ -689,9 +689,13 @@ namespace Ryona.Game
             if (size < MountMinFaceSize)
                 return float.MinValue;
 
+            // 後頭部の画は Visible が満点でも表情が読めない。減点ではなく不採用にする。
+            // （実測: mount #10〜 で敵の腕の下の後頭部が最高得点になっていた）。
+            if (!reading.Readable)
+                return float.MinValue;
+
             float score = reading.Visible
-                          + (reading.InFrame >= 0.99f ? 0f : -0.5f)
-                          - (reading.Readable ? 0f : 0.2f);
+                          + (reading.InFrame >= 0.99f ? 0f : -0.5f);
 
             // レンズが下限に近い画（0.65〜0.95m）は少し減点。それより遠くても加点はしない。
             if (lens < 0.95f)
