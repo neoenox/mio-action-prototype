@@ -66,7 +66,8 @@ namespace Ryona.Game
                 || LaunchOptions.Has("-hitlog")
                 || LaunchOptions.Has("-statlog")
                 || LaunchOptions.Has("-pinlog")
-                || LaunchOptions.Has("-jointlog");
+                || LaunchOptions.Has("-jointlog")
+                || LaunchOptions.Has("-facelog");
 
             // 既定で黙るビルドでだけ、ON にしたことを 1 行知らせる
             // （Editor / Development Build では毎回出るので出さない）。

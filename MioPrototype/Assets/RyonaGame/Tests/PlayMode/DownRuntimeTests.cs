@@ -687,7 +687,9 @@ namespace Ryona.Tests
                 $"真上から見下ろしすぎている ({maxElevation:F0}°)");
             Assert.LessOrEqual(smallFaceFrames, frames / 10, $"顔が小さすぎるコマが多い ({smallFaceFrames}/{frames})");
             Assert.Greater(frames, 10);
-            Assert.GreaterOrEqual(avg, 0.60f, $"マウント中に顔が隠れすぎている (avg={avg:F2})");
+            // 全場面共通の下限 0.75。横スクロールのカメラでは FacingAngle が 90° 台で常態なので
+            // Readable ではなく Visible（画面内かつ非遮蔽）を見る。
+            Assert.GreaterOrEqual(avg, 0.75f, $"マウント中に顔が隠れすぎている (avg={avg:F2})");
             Assert.Less(worstLensStreak, 3, $"レンズ前に敵が長く留まる ({worstLensStreak} コマ)");
             Assert.Greater(minUpDot, 0.3f, $"カメラが逆さまになる (up·up={minUpDot:F2})");
             float seconds = Mathf.Max(0.1f, Time.realtimeSinceStartup - sideStart);

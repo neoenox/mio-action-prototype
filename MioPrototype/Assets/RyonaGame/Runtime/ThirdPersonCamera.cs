@@ -281,6 +281,7 @@ namespace Ryona.Game
                 TickBelt();
                 ApplyCinematicShot();
                 Framed = true;
+                LogFaceVisibility();
                 return;
             }
 
@@ -359,6 +360,30 @@ namespace Ryona.Game
 
             ApplyCinematicShot();
             Framed = true;
+            LogFaceVisibility();
+        }
+
+        /// <summary>
+        /// 実際に使っているカメラで、毎フレームの顔可視率を 1 行で出す（<c>-facelog</c>）。
+        /// 演出ごとにログを足すと場面の追加時に漏れるので、ここに集約する。
+        /// ダウン中はうつ伏せで <see cref="FaceVisibility.FacingLimit"/> を超えるのが必然のため、
+        /// Readable ではなく InFrame を採用する（実測: うつ伏せの FacingAngle は 60° 超）。
+        /// </summary>
+        void LogFaceVisibility()
+        {
+            if (!LaunchOptions.Has("-facelog"))
+                return;
+            if (_anim == null || _anim.Rig == null || !_anim.Rig.Ready || _anim.Rig.Head == null)
+                return;
+            var cam = GetComponent<Camera>();
+            if (cam == null)
+                return;
+
+            var figures = FindObjectsByType<EnemyFigure>(FindObjectsSortMode.None);
+            var r = FaceVisibility.Measure(cam, _anim.Rig.Head, figures);
+            bool down = _anim.Current == CharacterAnimator.State.Down;
+            GameLog.Log($"[Face] t={Time.time:F2} v={r.Visible:F2} f={r.InFrame:F2} r={(r.Readable ? 1 : 0)} " +
+                        $"a={r.FacingAngle:F0} b={r.Blocker ?? "-"} down={(down ? 1 : 0)}");
         }
 
         internal void RequestCinematicShot(Vector3 position, Vector3 target, bool cut = false)

@@ -63,7 +63,8 @@ namespace Ryona.Tests
             Assert.IsTrue(_stats.DownIsForward, "ピンポンの締めはうつ伏せ");
             Assert.IsFalse(_director.IsActive, "演出が終わっていない");
             if (faceFrames > 5)
-                Assert.GreaterOrEqual(faceGood / (float)faceFrames, 0.55f,
+                // 全場面共通の下限 0.75（Readable ではなく Visible）。
+                Assert.GreaterOrEqual(faceGood / (float)faceFrames, 0.75f,
                     $"往復中に顔が読めない ({(faceGood / (float)faceFrames):F2})");
         }
 

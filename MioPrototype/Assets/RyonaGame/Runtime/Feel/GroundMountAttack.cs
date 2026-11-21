@@ -533,6 +533,8 @@ namespace Ryona.Game
             Vector3 flank = Vector3.Cross(Vector3.up, axis);
             if (Vector3.Dot(flank, Vector3.back) < 0f)
                 flank = -flank;
+            // 注視点を頭寄りにすると顔はわずかに残るが、カメラの移動が大きくなり
+            // フレーム間差分が 4.2 -> 5.3 倍に悪化した（実測 2026-11-21）。腰固定に戻す。
             Vector3 target = TargetRig.Hips.position + axis * 0.09f + Vector3.up * 0.32f;
             _camera.RequestCinematicShot(target + flank * 1.85f + axis * 0.53f + Vector3.up * 1.18f, target);
         }

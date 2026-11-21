@@ -162,7 +162,8 @@ namespace Ryona.Tests
             float ratio = frames > 0 ? (float)inFrame / frames : 0f;
             Debug.Log($"[HaulFaceVisible] prone={prone} frames={frames} avgVisible={avg:F2} goodRatio={ratio:F2}");
             Assert.Greater(frames, 10);
-            Assert.GreaterOrEqual(avg, 0.50f, $"引き起こし中の顔可視率が低い (prone={prone}, avg={avg:F2})");
+            // 全場面共通の下限 0.75（Readable ではなく Visible。理由は DownRuntimeTests のコメント参照）。
+            Assert.GreaterOrEqual(avg, 0.75f, $"引き起こし中の顔可視率が低い (prone={prone}, avg={avg:F2})");
         }
     }
 }

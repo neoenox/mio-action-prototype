@@ -20,9 +20,14 @@ namespace Ryona.EditorTools
         /// <summary>最後にビルドが通った時刻。これより新しいソースがあれば作り直す。</summary>
         const string StampName = ".buildstamp";
 
-        /// <summary>ビルド結果に影響する拡張子。これが更新されたら作り直す。</summary>
+        /// <summary>
+        /// ビルド結果に影響する拡張子。これが更新されたら作り直す。
+        /// 録音素材（.wav 等）も Resources 経由でビルドに入るので、入れていないと
+        /// 声を足した／差し替えたのに古い exe のままになる（実測 2026-11-21）。
+        /// </summary>
         static readonly string[] WatchedExtensions =
-            { ".cs", ".unity", ".prefab", ".asset", ".mat", ".controller", ".asmdef", ".shader" };
+            { ".cs", ".unity", ".prefab", ".asset", ".mat", ".controller", ".asmdef", ".shader",
+              ".wav", ".mp3", ".ogg" };
 
         static string ProjectRoot => Directory.GetParent(Application.dataPath).FullName;
         static string ExePath => Path.Combine(ProjectRoot, OutFolder, ExeName);
