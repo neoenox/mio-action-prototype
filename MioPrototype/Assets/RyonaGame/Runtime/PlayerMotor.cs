@@ -7,7 +7,7 @@ namespace Ryona.Game
     /// </summary>
     [RequireComponent(typeof(CharacterController))]
     [AddComponentMenu("Ryona/Player Motor")]
-    public sealed class PlayerMotor : MonoBehaviour
+    public sealed class PlayerMotor : ConfigurableMonoBehaviour
     {
         [Header("References")]
         public PlayerStats Stats;
@@ -136,7 +136,7 @@ namespace Ryona.Game
             BeltFacing = s.BeltFacing;
         }
 
-        void Awake()
+        protected override void Awake()
         {
             ApplySettings(RyonaConfig.Instance.Motor);
 
@@ -144,6 +144,12 @@ namespace Ryona.Game
             _controller = GetComponent<CharacterController>();
             if (Stats == null)
                 Stats = GetComponent<PlayerStats>();
+        }
+
+        public override void OnConfigChanged(RyonaConfig config)
+        {
+            ApplySettings(config.Motor);
+            GameLog.Log("[PlayerMotor] Config hot-reloaded");
         }
 
         /// <summary>
@@ -231,6 +237,9 @@ namespace Ryona.Game
                 wish.Normalize();
 
             float speed = BaseSpeed * Stats.State.MoveSpeedMultiplier;
+            var wrist = GetComponent<PlayerWristLock>();
+            if (wrist != null)
+                speed *= wrist.MoveScale;
             Vector3 target = wish * speed;
             _velocity = Vector3.MoveTowards(_velocity, target, Acceleration * Time.deltaTime);
 
@@ -254,7 +263,11 @@ namespace Ryona.Game
                         transform.rotation = look;
                     }
                     else
-                        transform.rotation = Quaternion.Slerp(transform.rotation, look, TurnSpeed * Time.deltaTime);
+                    {
+                        // 線形係数のまま dt を掛けると 144fps で 60fps の 2.4 倍速く回る。
+                        transform.rotation = Quaternion.Slerp(transform.rotation, look,
+                            1f - Mathf.Exp(-TurnSpeed * Time.deltaTime));
+                    }
                 }
             }
 

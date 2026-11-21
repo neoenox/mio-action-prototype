@@ -8,7 +8,7 @@ namespace Ryona.Game
     /// ダメージ計算は DamageResolver に丸投げし、ここは「いつ・誰に」だけを扱う。
     /// </summary>
     [AddComponentMenu("Ryona/Player Combat")]
-    public sealed class PlayerCombat : MonoBehaviour
+    public sealed class PlayerCombat : ConfigurableMonoBehaviour
     {
         [Header("References")]
         public PlayerStats Stats;
@@ -81,7 +81,7 @@ namespace Ryona.Game
         public event Action<AttackData> AttackStarted;
 
         /// <summary>ヒット時に発火。ヒットストップとカメラワークはここに繋ぐ。</summary>
-        public event Action<HitResult, IDamageable> HitLanded;
+        public event Action<HitResult> HitLanded;
 
         /// <summary>調整値は <see cref="RyonaConfig.Combat"/> が真実源。シーンの保存値は使わない。</summary>
         void ApplySettings(RyonaConfig.CombatSettings s)
@@ -93,7 +93,7 @@ namespace Ryona.Game
             ComboWindowSeconds = s.ComboWindowSeconds;
         }
 
-        void Awake()
+        protected override void Awake()
         {
             ApplySettings(RyonaConfig.Instance.Combat);
 
@@ -114,8 +114,24 @@ namespace Ryona.Game
             }
         }
 
+        public override void OnConfigChanged(RyonaConfig config)
+        {
+            ApplySettings(config.Combat);
+            GameLog.Log("[PlayerCombat] Config hot-reloaded");
+        }
+
         void Update()
         {
+            // 手首ロック中は攻撃ではなく輪を割る入力として扱う（バッファにも積まない）。
+            var wrist = GetComponent<PlayerWristLock>();
+            if (wrist != null && wrist.IsLocked)
+            {
+                if (InputReader.LightPressed() || InputReader.HeavyPressed() || InputReader.BreakPressed())
+                    wrist.BreakInput();
+                CancelAttack();
+                _buffered = null;
+                return;
+            }
             if (Stats == null)
                 return;
 
@@ -432,7 +448,6 @@ namespace Ryona.Game
             Vector3 fist = FistPoint();
 
             EnemyBrain hitEnemy = null;
-            IDamageable hitTarget = null;
             float nearestGap = float.PositiveInfinity;
 
             foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
@@ -441,10 +456,6 @@ namespace Ryona.Game
                     continue;
 
                 if (!InFistReach(fist, enemy))
-                    continue;
-
-                var target = enemy.GetComponent<IDamageable>();
-                if (target == null || ReferenceEquals(target, this))
                     continue;
 
                 // 範囲内に複数いるときは、拳の軸に一番近い体を 1 体だけ選ぶ。
@@ -457,17 +468,16 @@ namespace Ryona.Game
 
                 nearestGap = gap;
                 hitEnemy = enemy;
-                hitTarget = target;
             }
 
-            if (hitTarget != null)
+            if (hitEnemy != null)
             {
-                var result = hitTarget.TakeHit(Stats.State, attack);
+                var result = hitEnemy.TakeHit(Stats.State, attack);
 
                 Log($"[Combat] hit {attack.id} dmg={result.Damage:F0} " +
                     $"stagger={result.Stagger}");
 
-                HitLanded?.Invoke(result, hitTarget);
+                HitLanded?.Invoke(result);
             }
 
             if (TraceFist)

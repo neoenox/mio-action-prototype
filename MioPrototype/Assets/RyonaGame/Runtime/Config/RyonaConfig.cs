@@ -149,6 +149,9 @@ namespace Ryona.Game
         public sealed class EnemySettings
         {
             [Header("Tuning")]
+            [Tooltip("敵 1 体の最大 HP。3 体 × 100 では彼女の火力（軽 8）で倒しきれないため低め。個体差は付けない。再生中の変更は次回の再生から効く")]
+            public float MaxHp = 48f;
+
             [Tooltip("歩き（追跡）の速度 m/s")]
             public float MoveSpeed = 2.6f;
 
@@ -300,11 +303,20 @@ namespace Ryona.Game
         [Serializable]
         public sealed class EncounterSettings
         {
-            [Tooltip("次の一団が出るまでに進む距離（1 画面ぶん）")]
-            public float ScreenSpan = 8f;
+            [Tooltip("アリーナ中心の間隔（m）。-screenspan=N で上書き")]
+            public float ArenaPitch = 10f;
 
-            [Tooltip("画面の右端の、これだけ外から入ってくる（m）")]
-            public float SpawnAhead = 5.4f;
+            [Tooltip("1 アリーナに入る波の数")]
+            [Min(1)] public int WavesPerArena = 2;
+
+            [Tooltip("アリーナの数")]
+            [Min(1)] public int ArenaCount = 5;
+
+            [Tooltip("この X に近づいたらアリーナをロックする（中心との差 m）")]
+            public float EntryOffset = 2f;
+
+            [Tooltip("同じアリーナで次の波が出るまでの秒")]
+            public float WaveGap = 1.2f;
 
             [Tooltip("プレイヤーの目の前に出ないための最小距離（m）")]
             public float MinSpawnGap = 2.2f;
@@ -315,32 +327,54 @@ namespace Ryona.Game
             [Range(0f, 1f)] public float BodyDropVolume = 0.95f;
         }
 
+
         /// <summary>画面ロック（<see cref="BeltScreenLock"/>）の調整値。</summary>
         [Serializable]
         public sealed class BeltLockSettings
         {
-            [Tooltip("ロック時に見せる画面の半幅（m）。旧シーン値は 5（スクリプト初期化子は 3.2）")]
-            public float HalfWidth = 5f;
+            [Tooltip("ロック時に見せる画面の半幅（m）。カメラから測れないときだけ使う予備値")]
+            public float HalfWidth = 3.2f;
 
-            [Tooltip("画面端の余白（m）。旧シーン値は 1.6（スクリプト初期化子は 0.9）")]
-            public float EdgeMargin = 1.6f;
+            [Tooltip("画面端の余白（m）。端で体が切れない余地")]
+            public float EdgeMargin = 0.5f;
 
-            [Tooltip("関所を置く距離の幅（m）")]
-            public float GateRange = 3f;
+            [Tooltip("ロック中にカメラが動ける範囲（m）")]
+            public float GateRange = 0.5f;
+        }
 
-            [Tooltip("敵の走査間隔（秒）")]
-            public float ScanSeconds = 0.1f;
 
-            [Tooltip("この距離まで敵が入ったらロックを検討する（m）")]
-            public float EngageRange = 4.5f;
+        // --- ピンポン --------------------------------------------------------------
 
-            [Tooltip("画面端からこのぶん内側で敵を検知する（m）")]
-            public float EngageScreenMargin = 0f;
+        [Serializable]
+        public sealed class PinballSettings
+        {
+            [Range(0f, 1f)] public float Chance = 0.35f;
+            public float CooldownSeconds = 20f;
+            public int Rounds = 3;
+            public float WindowHalfSeconds = 0.12f;
+            public float WindowNarrowing = 0.02f;
+            public float Distance = 1.15f;
+            public float DistanceGain = 0.18f;
+            public float Speed = 3.2f;
+            public float SpeedGain = 0.5f;
         }
 
         // --- 演出 --------------------------------------------------------------
 
-        /// <summary>ヒットストップ・揺れ・声（<see cref="CombatFeel"/>）の調整値。</summary>
+
+        [Serializable]
+        public sealed class WristLockSettings
+        {
+            [Range(0f, 1f)] public float Chance = 0f;
+            public float Duration = 4f;
+            public int InputsToBreak = 8;
+            public float MoveScale = 0.7f;
+            public float EscapeNeedScale = 1.3f;
+            public float Cooldown = 25f;
+            public float Grace = 1.5f;
+        }
+
+
         [Serializable]
         public sealed class FeelSettings
         {
@@ -361,6 +395,25 @@ namespace Ryona.Game
             [Tooltip("Heavy のときのヒットストップ倍率")]
             public float HeavyHitStopScale = 1.3f;
 
+            [Header("Face Finisher Dodge")]
+            [Tooltip("予備動作の残り何秒で回避を始めるか")]
+            public float EvadeLeadSeconds = 0.42f;
+            [Tooltip("拘束役が z+ へ回避する距離（m）")]
+            public float EvadeDistance = 0.90f;
+            [Tooltip("回避の所要秒")]
+            public float EvadeSeconds = 0.30f;
+            [Tooltip("彼女が膝を崩す秒・沈みの深さ（m）")]
+            public float BuckleSeconds = 0.30f;
+            public float BuckleDepth = 0.15f;
+            [Tooltip("回避開始から命中が来ないときの保険（秒）")]
+            public float DodgeHitGrace = 0.40f;
+            [Tooltip("回避の横成分（m）。固定カメラでも動きが見えるようにする")]
+            public float EvadeLateral = 0.35f;
+            [Tooltip("命中後に回避位置を保つ秒")]
+            public float EvadeHoldSeconds = 1.10f;
+            [Tooltip("顔トドメで倒れる瞬間の小さな launch（m / m）")]
+            public float FinisherLaunchDistance = 0.45f;
+            public float FinisherLaunchHeight = 0.08f;
             [Header("Voice")]
             [Tooltip("被弾の声を続けて出さない間隔（秒）。連続で殴られても「あっあっあっ」にしない")]
             public float HurtVoiceInterval = 0.55f;
@@ -417,7 +470,11 @@ namespace Ryona.Game
 
         [Header("Feel")]
         public FeelSettings Feel = new FeelSettings();
+        [Header("Pinball")]
+        public PinballSettings Pinball = new PinballSettings();
         public CameraDirectionSettings CameraDirection = new CameraDirectionSettings();
+        [Header("Wrist Lock")]
+        public WristLockSettings WristLock = new WristLockSettings();
 
         /// <summary>
         /// Resources 上のアセット名。<c>Assets/RyonaGame/Resources/{ResourcePath}.asset</c>。
@@ -430,10 +487,40 @@ namespace Ryona.Game
         /// <summary>
         /// 唯一の設定アセット。無ければ既定値のインスタンスを返す（テスト・空シーン用）。
         /// 参照は各コンポーネントの <c>Awake</c> で 1 度取るだけでよい。
+        /// エディタでアセットを編集すると <see cref="OnConfigChanged"/> が発火する。
         /// </summary>
-        public static RyonaConfig Instance =>
-            _instance != null
-                ? _instance
-                : _instance = Resources.Load<RyonaConfig>(ResourcePath) ?? CreateInstance<RyonaConfig>();
+        public static RyonaConfig Instance
+        {
+            get
+            {
+                if (_instance != null)
+                    return _instance;
+
+                _instance = Resources.Load<RyonaConfig>(ResourcePath) ?? CreateInstance<RyonaConfig>();
+                return _instance;
+            }
+            internal set => _instance = value;
+        }
+
+        /// <summary>
+        /// 設定変更時のコールバック。<see cref="ConfigurableMonoBehaviour"/> が購読する。
+        /// </summary>
+        public static event Action<RyonaConfig> OnConfigChanged;
+
+        /// <summary>
+        /// 設定の再適用を通知する。通常はエディタの <c>OnValidate</c> から呼ばれる。
+        /// </summary>
+        internal static void NotifyChanged(RyonaConfig config)
+        {
+            OnConfigChanged?.Invoke(config != null ? config : Instance);
+        }
+
+#if UNITY_EDITOR
+        void OnValidate()
+        {
+            // インスペクタで値を変えた瞬間、再生中のコンポーネントへ再適用する。
+            NotifyChanged(this);
+        }
+#endif
     }
 }

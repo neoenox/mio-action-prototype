@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Ryona.Game
 {
-    public sealed partial class EnemyBrain : MonoBehaviour, IDamageable
+    public sealed partial class EnemyBrain : MonoBehaviour
     {
         /// <summary>
         /// ダメージを受ける。解決は <see cref="DamageResolver"/> に任せ、

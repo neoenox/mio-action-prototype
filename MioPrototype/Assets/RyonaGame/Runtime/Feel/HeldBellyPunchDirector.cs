@@ -33,7 +33,7 @@ namespace Ryona.Game
         [Tooltip("連撃が顔面パンチになる確率。0 で腹パンのみ、1 で顔面のみ")]
         public float FacePunchChance = 0.5f;
 
-        [Tooltip("次の腹パンを指示するまでの秒数（前の一発が当たってから）")]
+        [Tooltip("5 発の速さの全体つまみ。間隔そのものは段の表（BellyGapBeats / FaceGapBeats）が持つ")]
         public float ComboIntervalSeconds = 0.68f;
 
         [Tooltip("1 発ごとの被弾姿勢の長さ")]
@@ -42,14 +42,26 @@ namespace Ryona.Game
         [Tooltip("腹に当ててから拳を引き切るまでの秒数")]
         public float FistHoldSeconds = 0.24f;
 
-        [Tooltip("最後の一発のあと、グロッキー脱力を見せる秒数")]
-        public float ComboTailSeconds = 0.90f;
+        [Tooltip("最後の一発のあと、グロッキー脱力を見せる秒数（この間にカメラが決めの全身へ引く）")]
+        public float ComboTailSeconds = 0.35f;
 
-        [Tooltip("グロッキー後に拘束役が脇を引き上げて晒す秒数（この直後からトドメの振りかぶりに入る）")]
-        public float FinisherHoistSeconds = 0.05f;
+        [Tooltip("グロッキー後に拘束役が脇を引き上げて晒す秒数（持ち上がりきってからトドメの振りかぶりに入る）")]
+        public float FinisherHoistSeconds = 0.55f;
 
+        [Tooltip("トドメ予備動作の残りこの秒で拘束役を回避させる（顔のみ）")]
+        [System.NonSerialized] public float EvadeLeadSeconds = 0.42f;
+        [System.NonSerialized] public float EvadeDistance = 0.90f;
+        [System.NonSerialized] public float EvadeSeconds = 0.30f;
+        [System.NonSerialized] public float BuckleSeconds = 0.30f;
+        [System.NonSerialized] public float BuckleDepth = 0.15f;
         [Tooltip("トドメの一撃を当ててから拘束を離して崩れ落ちるまでの余韻秒数")]
         public float CollapseHoldSeconds = 0.46f;
+        [System.NonSerialized] public float DodgeHitGrace = 0.40f;
+        [System.NonSerialized] public float EvadeLateral = 0.35f;
+        [System.NonSerialized] public float EvadeHoldSeconds = 1.10f;
+        [System.NonSerialized] public float FinisherLaunchDistance = 0.45f;
+        [System.NonSerialized] public float FinisherLaunchHeight = 0.08f;
+
 
         [Tooltip("カメラが通常に戻ってから引き渡しを試すまでの秒数")]
         public float HandOffDelaySeconds = 1f;
@@ -92,6 +104,16 @@ namespace Ryona.Game
         [Tooltip("顔面パンチ中のヨーオフセット。腹パンと同程度に回り込んで、彼女の顔と拳を同時に見せる")]
         public float FaceCameraYawOffset = -36f;
 
+        [Header("Camera (finisher)")]
+        [Tooltip("決め（抱え上げ）で引く距離倍率。基本距離 5.2m × この値。0.42 で約 2.2m（全身と顔が入る）")]
+        public float FinisherCameraDistanceScale = 0.42f;
+
+        [Tooltip("決めの注視点。コンボ中の注視点からの差分（負で下＝浮いた足が入る）")]
+        public float FinisherCameraPivotDelta = -0.12f;
+
+        [Tooltip("決めの俯角。コンボ中からの差分（負で見上げ）")]
+        public float FinisherCameraPitchDelta = -6f;
+
         [Header("Aim")]
         [Tooltip("腹パン役を立たせる、プレイヤーの腹からの前方距離（m）。離して踏み込ませると拳の移動が見える")]
         public float AttackerDistance = 0.85f;
@@ -127,6 +149,9 @@ namespace Ryona.Game
 
             /// <summary>トドメ命中後、反応を見せ切ってから拘束を離して崩れ落ちる。</summary>
             Collapse = 5,
+
+            /// <summary>顔トドメ: 拘束役が回避し、彼女が膝を崩して命中を待つ。</summary>
+            FinisherDodge = 6,
         }
 
         /// <summary>いまの段階（テスト・デバッグ表示用）。</summary>
@@ -134,15 +159,18 @@ namespace Ryona.Game
 
         /// <summary>5 発の連撃中か（投げが決まってからトドメ／引き渡しへ移るまで）。</summary>
         public bool IsPerforming => _phase == Phase.Combo;
-        public bool IsFinisherActive => _phase == Phase.Finisher || _phase == Phase.Collapse;
-        public bool IsCameraActive => _phase == Phase.Combo || _phase == Phase.Finisher || _phase == Phase.Collapse;
+        public bool IsFinisherActive => _phase == Phase.Finisher ||
+            _phase == Phase.FinisherDodge || _phase == Phase.Collapse;
+        public bool IsCameraActive => _phase == Phase.Combo || _phase == Phase.Finisher ||
+            _phase == Phase.FinisherDodge || _phase == Phase.Collapse;
         internal bool IsBodySequence => IsCameraActive && _comboZone == PunchZone.Body;
         internal bool IsFaceSequence => IsCameraActive && _comboZone == PunchZone.Face;
         internal bool IsFaceCombo => IsPerforming && _comboZone == PunchZone.Face;
         internal bool IsBodyCombo => IsPerforming && _comboZone == PunchZone.Body;
         internal EnemyBrain BellyPuncher => DreadEnemy != null ? DreadEnemy : _thrower;
 
-        public bool IsThrowIncoming => _phase != Phase.Combo && _phase != Phase.Finisher && _phase != Phase.Collapse
+        public bool IsThrowIncoming => _phase != Phase.Combo && _phase != Phase.Finisher &&
+            _phase != Phase.FinisherDodge && _phase != Phase.Collapse
             && _thrower != null && _thrower.isActiveAndEnabled &&
             (_thrower.IsPreparingHeldThrow || _thrower.IsHandOffLocked);
 
@@ -200,6 +228,15 @@ namespace Ryona.Game
         int _hits;
         PunchZone _comboZone;
 
+        /// <summary>
+        /// いま飛んでいる一発の強さ（発注時の段の値）。当たった瞬間の彼女の折れを
+        /// 「打たれた回数」ではなく「その一発の強さ」に合わせるために持つ。
+        /// </summary>
+        float _orderPower = 1f;
+
+        /// <summary>いま飛んでいる一発で拳を腹に押し込んでいる長さ（強さに連動する）。</summary>
+        float _orderHold = 0.24f;
+
         /// <summary>コンボ開始時のカメラ位置が彼女の右側にあるか（顔面パンチを打つ腕を決める）。</summary>
         bool _cameraOnHerRight;
 
@@ -212,6 +249,37 @@ namespace Ryona.Game
         float _finisherHoistTimer;
         bool _finisherOrdered;
         float _collapseReleaseTimer;
+        bool _dodgeStarted;
+        float _dodgeTimeout;
+        EnemyBrain _evadeCaptor;
+        internal int LastFinisherHitFrame { get; private set; }
+        internal int LastFinisherDownFrame { get; private set; }
+
+        /// <summary>決めの全身ショットへ寄せた度合い（0 = コンボの寄り、1 = 全身）。</summary>
+        float _finisherShotBlend;
+        float _hoistProbeTimer;
+
+        /// <summary>
+        /// 抱え上げで体が実際に浮いているかを測る。目視で「浮いて見える」ではなく、
+        /// 足首・つま先・腰がルート（＝床）から何 m 上にあるかを出す。
+        /// </summary>
+        void LogHoistProbe()
+        {
+            _hoistProbeTimer -= Time.deltaTime;
+            if (_hoistProbeTimer > 0f)
+                return;
+            _hoistProbeTimer = 0.10f;
+
+            var rig = _anim != null ? _anim.Rig : null;
+            if (rig == null || rig.LFoot == null || rig.LToe == null)
+                return;
+
+            float rootY = _stats.transform.position.y;
+            float ankle = Mathf.Min(rig.LFoot.position.y, rig.RFoot.position.y) - rootY;
+            float toe = Mathf.Min(rig.LToe.position.y, rig.RToe.position.y) - rootY;
+            float hips = rig.Hips != null ? rig.Hips.position.y - rootY : 0f;
+            GameLog.Log($"[Hoist] w={FinisherHoist:F2} hips={hips:F3} ankle={ankle:F3} toe={toe:F3} t={Time.time:F2}");
+        }
 
         bool _punchInFlight;
         float _hitTimeout;
@@ -346,8 +414,9 @@ namespace Ryona.Game
             // 一発がコンボを始められず、拘束されているのに演出だけ出ない）
             _cooldown = 0f;
 
-            // 腹パンのタッグ技は後ろ拘束のときだけ
-            if (kind != GrappleKind.Back)
+            // 腹パンのタッグ技は後ろ拘束のときだけ。ピンポンの背後の受け止めも Back だが、
+            // ピンポンの往復と連撃が同じ拘束の上で並行して走るので始めない。
+            if (kind != GrappleKind.Back || _grapple.IsPinballActive)
                 return;
 
             _phase = Phase.WaitingThrow;
@@ -386,6 +455,8 @@ namespace Ryona.Game
             _finisherHoistTimer = 0f;
             _finisherOrdered = false;
             _collapseReleaseTimer = 0f;
+            _dodgeStarted = false;
+            _anim?.ClearFinisherBuckle();
             _punchInFlight = false;
             _hitTimeout = 0f;
             _attempts = 0;
@@ -395,6 +466,20 @@ namespace Ryona.Game
             SetDreadTarget(null);
             _anim?.EndHeldThrowLead();
             _anim?.SetFinisherHoist(false);
+        }
+        void Awake()
+        {
+            var feel = RyonaConfig.Instance.Feel;
+            EvadeLeadSeconds = feel.EvadeLeadSeconds;
+            EvadeDistance = feel.EvadeDistance;
+            EvadeSeconds = feel.EvadeSeconds;
+            BuckleSeconds = feel.BuckleSeconds;
+            BuckleDepth = feel.BuckleDepth;
+            DodgeHitGrace = feel.DodgeHitGrace;
+            EvadeLateral = feel.EvadeLateral;
+            EvadeHoldSeconds = feel.EvadeHoldSeconds;
+            FinisherLaunchDistance = feel.FinisherLaunchDistance;
+            FinisherLaunchHeight = feel.FinisherLaunchHeight;
         }
 
         void Update()
@@ -412,7 +497,11 @@ namespace Ryona.Game
                 Subscribe();
             }
 
-            if (!_grapple.IsGrappled || _grapple.IsHandingOff || _grapple.Kind != GrappleKind.Back)
+            // ピンポンの背後の受け止めも羽交い締め（Back）として扱われるが、タッグ腹パンの連撃は始めない。
+            // 始めると、ピンポンの往復と顔パンの連撃が同じ拘束の上で並行して走る（実測）。
+            if ((!_grapple.IsGrappled || _grapple.IsHandingOff || _grapple.Kind != GrappleKind.Back ||
+                 _grapple.IsPinballActive)
+                && _phase != Phase.FinisherDodge)
             {
                 if (_phase != Phase.Idle || _thrower != null)
                     ResetHold();
@@ -430,6 +519,15 @@ namespace Ryona.Game
 
             if (_cooldown > 0f)
                 _cooldown = Mathf.Max(0f, _cooldown - Time.deltaTime);
+
+            // 決めの画へ寄せる／戻す。グロッキーの 0.35 秒で引くので、カットせずに移る。
+            float wideTarget = IsFinisherActive || (_phase == Phase.Combo && _hits >= ComboHitsTotal) ? 1f : 0f;
+            _finisherShotBlend = Mathf.MoveTowards(_finisherShotBlend, wideTarget,
+                Time.deltaTime / (wideTarget > 0.5f ? Mathf.Max(0.12f, ComboTailSeconds) : 0.25f));
+
+            // 抱え上げの実測（足首・つま先・腰が床から何 m 浮いているか）。
+            if (wideTarget > 0.5f)
+                LogHoistProbe();
 
             switch (_phase)
             {
@@ -450,6 +548,12 @@ namespace Ryona.Game
                     SuppressBystanders(0.9f);
                     _comboPuncher?.StayPlanted(0.4f);
                     UpdateFinisher();
+                    if (IsCameraActive)
+                        HoldFraming();
+                    break;
+                case Phase.FinisherDodge:
+                    SuppressBystanders(1.4f);
+                    UpdateFinisherDodge();
                     if (IsCameraActive)
                         HoldFraming();
                     break;
@@ -507,8 +611,10 @@ namespace Ryona.Game
                 bool openingLeft = _comboZone == PunchZone.Face
                     ? ChooseFacePunchSide(openingPuncher)
                     : ChooseBellyPunchSide();
-                if (openingPuncher.TryStartOpeningPunch(_comboZone, FistHoldSeconds,
-                        _comboZone == PunchZone.Face ? FacePunchPower(0) : BellyPunchPower(0),
+                float openingPower = _comboZone == PunchZone.Face ? FacePunchPower(0) : BellyPunchPower(0);
+                _orderPower = openingPower;
+                _orderHold = FistHoldSeconds;
+                if (openingPuncher.TryStartOpeningPunch(_comboZone, FistHoldSeconds, openingPower,
                         openingLeft))
                 {
                     _punchInFlight = true;
@@ -568,6 +674,12 @@ namespace Ryona.Game
                 OnFinisherHitReceived();
                 return;
             }
+            if (_phase == Phase.FinisherDodge && IsDodgeFinisherHit(result))
+            {
+                OnDodgeFinisherHitReceived();
+                return;
+            }
+
 
             if (_phase != Phase.Combo || !IsTagPunchHit(result))
                 return;
@@ -590,13 +702,14 @@ namespace Ryona.Game
             //   腹: 腰が押し戻され、その上で上体が前に折れる
             //   顔: 通常の顔面パンチと同じく、首が手前（カメラ側）へ振れる
             LastLandedZone = zone;
-            var puncher = _stats.LastAttacker.GetComponent<EnemyBrain>();
+            var puncher = _stats.LastAttackerBrain;   // 被弾時に控えた本体（破棄済み Transform を触らない）
             if (puncher != null)
                 _comboPuncher = puncher;
             if (zone == PunchZone.Body || puncher != _guardPuncher)
                 SetPunchGuard(zone == PunchZone.Body ? puncher : null);
 
             float liftBeat = 0f;
+            float bendLog = 0f;
             if (zone == PunchZone.Body)
                 _bellyHits++;
             if (_anim != null)
@@ -611,22 +724,32 @@ namespace Ryona.Game
                     bool finalHit = _hits >= ComboHitsTotal;
                     float faceFatigue = Mathf.InverseLerp(1f, 4f, _hits);
                     float faceSeconds = !finalHit
-                        ? Mathf.Max(HitPoseSeconds, ComboIntervalSeconds + 0.70f)
+                        ? Mathf.Max(HitPoseSeconds, GapAfter(_hits, zone) + 0.70f)
                         : Mathf.Max(HitPoseSeconds, ComboTailSeconds + 0.25f);
                     _anim.PlayHeldFacePunch(faceSeconds, push,
                         FacePunchPower(Mathf.Max(0, _hits - 1)), faceFatigue, finalHit);
+                    bendLog = FacePunchPower(Mathf.Max(0, _hits - 1));
                 }
                 else
                 {
                     float fatigue = Mathf.InverseLerp(1f, 4f, _bellyHits);
                     float basePose = HitPoseSeconds + 0.32f * fatigue;
-                    // 5 発の間は立ち直らない見せ方にする。引き起こしで腹を突き出した直後に次を当てる。
                     bool finalHit = _hits >= ComboHitsTotal;
-                    float poseSeconds = !finalHit
-                        ? Mathf.Max(basePose, 1.05f)
-                        : Mathf.Max(basePose, ComboTailSeconds + 0.25f);
-                    float hold = 0.34f + 0.03f * Mathf.Min(4, _bellyHits - 1);
-                    float impact = Mathf.Lerp(0.85f, 1.55f, fatigue);
+                    // 間隔は段の表から取る。ここを固定値のままだと、強弱を付けても
+                    // 等間隔の「作業」に見える（4 発目の前だけ休符になる）。
+                    float gap = finalHit ? 0f : GapAfter(_hits, zone);
+                    // 拘束役が腹を差し出す拍（liftBeat）が次の一発の間隔を決めている。
+                    // 折れの長さを間隔から逆算して、拍と間隔を必ず一致させる。
+                    float poseSeconds = finalHit
+                        ? Mathf.Max(basePose, ComboTailSeconds + 0.25f)
+                        : Mathf.Max(basePose, (gap + 0.26f) / 0.72f);
+                    // 折れの深さも打たれた回数ではなく、その一発の強さに合わせる。
+                    // 回数だけで深くすると、4 発目を浅く打っても彼女は一番深く折れたままになり、
+                    // 殴る側の「弱」と食い違う（実測で確認する）。
+                    float impact = Mathf.Lerp(0.80f, 1.60f,
+                        Mathf.InverseLerp(0.74f, 1.50f, _orderPower));
+                    float hold = _orderHold;
+                    bendLog = impact;
                     _anim.PlayHeldBellyPunch(poseSeconds, fatigue, impact, hold, finalHit);
                     if (!finalHit)
                         liftBeat = poseSeconds * 0.72f - 0.26f;
@@ -643,13 +766,19 @@ namespace Ryona.Game
             {
                 _comboEndTimer = Mathf.Max(0.1f, ComboTailSeconds, liftBeat);
                 _comboPuncher?.StayPlanted(_comboEndTimer + FinisherHoistSeconds + 1.2f);
-                GameLog.Log($"[HeldPunch] combo {_hits}/{ComboHitsTotal} ({zone}) → groggy");
+                GameLog.Log($"[HeldPunch] combo {_hits}/{ComboHitsTotal} ({zone}) → groggy " +
+                          $"power={_orderPower:F2} hitT={Time.time:F2} bend={bendLog:F2}");
             }
             else
             {
-                float interval = zone == PunchZone.Body ? ComboIntervalSeconds * 0.72f : ComboIntervalSeconds;
+                float interval = GapAfter(_hits, zone);
                 _nextPunchTimer = Mathf.Max(0.1f, interval, liftBeat);
-                GameLog.Log($"[HeldPunch] combo {_hits}/{ComboHitsTotal} ({zone})");
+                // 長い間隔では、殴る側に一度体を起こして引き直させる（弱い一発の前の休符）。
+                if (interval >= 0.5f)
+                    _comboPuncher?.SetTagRest(Mathf.Max(0.1f, interval - 0.10f));
+                GameLog.Log($"[HeldPunch] combo {_hits}/{ComboHitsTotal} ({zone}) " +
+                          $"power={_orderPower:F2} gap={interval:F2} " +
+                          $"hitT={Time.time:F2} bend={bendLog:F2}");
             }
 
             if (_hits == 1)
@@ -737,6 +866,7 @@ namespace Ryona.Game
 
             _phase = Phase.Idle;
             _comboPuncher?.ClearPlanted();
+            _comboPuncher?.SetTagRest(0f);
             SetDreadTarget(null);
             // 投げの崩れが残ったままコンボを終えない（崩れた姿勢のまま次の拘束へ入らない）。
             _anim?.EndHeldThrowLead();
@@ -773,6 +903,8 @@ namespace Ryona.Game
             _finisherOrdered = false;
             _punchInFlight = false;
             _attempts = 0;
+            _dodgeStarted = false;
+            _anim?.ClearFinisherBuckle();
             _grapple.ClearStruggleSuppression();
             _anim?.SetFinisherHoist(true);
             _comboPuncher?.StayPlanted(_finisherHoistTimer + 2.0f);
@@ -787,6 +919,16 @@ namespace Ryona.Game
                 _finisherHoistTimer -= Time.deltaTime;
                 return;
             }
+            // 顔トドメ: 予備動作の終わり際に拘束役を退かせ、彼女を崩れかからせる。
+            if (!_dodgeStarted && _comboZone == PunchZone.Face && _comboPuncher != null)
+            {
+                float left = _comboPuncher.TagPunchSecondsToStrike;
+                if (!float.IsNaN(left) && left <= EvadeLeadSeconds)
+                {
+                    BeginFaceFinisherDodge();
+                    return;
+                }
+            }
 
             if (_punchInFlight)
             {
@@ -798,7 +940,7 @@ namespace Ryona.Game
                     if (_attempts >= 3)
                     {
                         GameLog.Log("[HeldPunch] finisher timeout → release down");
-                        ReleaseWithFinisherDown();
+                        StartCoroutine(ReleaseWithFinisherDown());
                     }
                 }
                 return;
@@ -819,8 +961,105 @@ namespace Ryona.Game
             if (_attempts >= 4)
             {
                 GameLog.Log("[HeldPunch] no finisher attacker → release down");
-                ReleaseWithFinisherDown();
+                StartCoroutine(ReleaseWithFinisherDown());
             }
+        }
+
+        /// <summary>顔トドメ: 命中直前に拘束役を奥へ退かせ、彼女を崩れかからせる。</summary>
+        void BeginFaceFinisherDodge()
+        {
+            _dodgeStarted = true;
+            _dodgeTimeout = Mathf.Max(0.1f, EvadeLeadSeconds) + Mathf.Max(0.1f, DodgeHitGrace);
+            _evadeCaptor = _grapple?.Captor;
+            _evadeCaptor?.BeginEvade(EvadeDistance, EvadeSeconds, _evadeCaptor.transform.position.x >= _stats.transform.position.x
+                ? EvadeLateral : -EvadeLateral);
+            _grapple?.Release();
+            _grapple?.SuppressStruggle(BuckleSeconds + DodgeHitGrace);
+            HoldOthers(Mathf.Max(ReleaseGraceSeconds, 1.4f));
+
+            _anim?.SetFinisherHoist(false);
+            _anim?.SetFinisherBuckle(BuckleSeconds, BuckleDepth);
+            _phase = Phase.FinisherDodge;
+            RefreshCamera(1.2f);
+            GameLog.Log($"[HeldPunch] face dodge begin t={Time.time:F2}");
+        }
+
+        void UpdateFinisherDodge()
+        {
+            _dodgeTimeout -= Time.deltaTime;
+            if (_dodgeTimeout > 0f)
+                return;
+
+            // 命中が来なければ保険の解放ダウンへ落とす（詰み防止）。
+            GameLog.Log("[HeldPunch] dodge hit missed → fallback release down");
+            _anim?.ClearFinisherBuckle();
+            _dodgeStarted = false;
+            _phase = Phase.Idle;
+            StartCoroutine(ReleaseWithFinisherDown());
+            StartCoroutine(HoldEvadeUntilLanded());
+        }
+
+        System.Collections.IEnumerator HoldEvadeUntilLanded()
+        {
+            yield return new WaitForSecondsRealtime(Mathf.Max(0.2f, EvadeHoldSeconds));
+            _evadeCaptor?.EndEvade();
+            _evadeCaptor = null;
+        }
+
+
+        void OnDodgeFinisherHitReceived()
+        {
+            _punchInFlight = false;
+            _dodgeStarted = false;
+            LastLandedZone = PunchZone.Face;
+
+            var puncher = _stats.LastAttackerBrain != null ? _stats.LastAttackerBrain : _comboPuncher;
+            if (puncher != null)
+                _comboPuncher = puncher;
+
+            HitStop.Play(0.115f);
+            LastFinisherHitFrame = Time.frameCount;
+            _impactPulse = 1.35f;
+            if (_camera != null && _camera.TryGetComponent<CameraShake>(out var shake))
+                shake.Shake(0.048f, 0.34f);
+
+            if (_anim != null)
+            {
+                _anim.EndHeldThrowLead();
+                Vector3 push = puncher != null
+                    ? puncher.transform.forward * 0.55f - puncher.TagFaceOutside
+                    : _stats.transform.forward;
+                _anim.PlayHeldFacePunch(0.42f, push, 1.45f, 1f, finalHit: true, keepGroggy: true);
+                // 崩れ姿勢は Down 移行の SnapshotPose に残す。ここで消すと腰が跳ねる（実測）。
+            }
+
+            _stats.ClearHeldBellyDamage();
+            Vector3 launchDir = puncher != null
+                ? (_stats.transform.position - puncher.transform.position + Vector3.forward * 0.6f).normalized
+                : (Vector3.back + Vector3.forward * 0.6f).normalized;
+            _stats.ForceDown(CombatConstants.DownDuration, "held-face-finisher",
+                puncher != null ? puncher.transform : _stats.LastAttacker,
+                launchDistance: FinisherLaunchDistance, launchHeight: FinisherLaunchHeight,
+                forward: false, launchDirection: launchDir);
+            LastFinisherDownFrame = Time.frameCount;
+            StartCoroutine(HoldEvadeUntilLanded());
+
+            ApplyCollapseCamera();
+            _phase = Phase.Idle;
+            HoldOthers(Mathf.Max(ReleaseGraceSeconds, 1.1f));
+            GameLog.Log($"[HeldPunch] face finisher hit + down same frame t={Time.time:F2}");
+            GameLog.Log($"[HeldPunch] combo end {_hits}/{ComboHitsTotal} ({_comboZone}) → finisher down");
+        }
+
+        bool IsDodgeFinisherHit(HitResult result)
+        {
+            if (!_stats.LastHitWasTagPunch || result.Damage <= 0f)
+                return false;
+            if ((_stats.LastHitZone ?? PunchZone.Body) != PunchZone.Face)
+                return false;
+            // 回避中は拘束役がいないため、トドメ役であることの確認は行わない。
+            // 遅れて届く一撃を取りこぼすと保険のダウンに落ちて「命中と同時」が壊れる。
+            return true;
         }
 
         void OnFinisherHitReceived()
@@ -830,7 +1069,7 @@ namespace Ryona.Game
 
             PunchZone zone = _stats.LastHitZone ?? _comboZone;
             LastLandedZone = zone;
-            var puncher = _stats.LastAttacker != null ? _stats.LastAttacker.GetComponent<EnemyBrain>() : _comboPuncher;
+            var puncher = _stats.LastAttackerBrain != null ? _stats.LastAttackerBrain : _comboPuncher;
             if (puncher != null)
                 _comboPuncher = puncher;
             if (zone == PunchZone.Body || puncher != _guardPuncher)
@@ -861,8 +1100,14 @@ namespace Ryona.Game
             _collapseReleaseTimer = Mathf.Max(0.15f, CollapseHoldSeconds);
             RefreshCamera(1.2f);
             _grapple.SuppressStruggle(0.6f);
-            GameLog.Log($"[HeldPunch] finisher landed ({zone}) → collapse hold");
+            GameLog.Log($"[HeldPunch] finisher landed ({zone}) → collapse hold hitT={Time.time:F2}");
         }
+
+        /// <summary>顔トドメで仰向けに倒れる前に、背後の拘束役が空ける距離（m）。</summary>
+        const float CaptorBackstepDistance = 0.95f;
+
+        /// <summary>その後退にかける秒数。</summary>
+        const float CaptorBackstepSeconds = 0.28f;
 
         void UpdateCollapse()
         {
@@ -870,18 +1115,22 @@ namespace Ryona.Game
             if (_collapseReleaseTimer > 0f)
                 return;
 
-            ReleaseWithFinisherDown();
+            _collapseReleaseTimer = 0f;   // コルーチン開始後の再入を防ぐ
+            StartCoroutine(ReleaseWithFinisherDown());
         }
 
-        void ReleaseWithFinisherDown()
+        System.Collections.IEnumerator ReleaseWithFinisherDown()
         {
             var captor = _grapple != null ? _grapple.Captor : null;
             Transform attackerTf = _comboPuncher != null
                 ? _comboPuncher.transform
                 : (_stats != null ? _stats.LastAttacker : null);
 
+            // 顔トドメは回避側で奥へ離れているため、ここでは後退しない。
+
             SetPunchGuard(null);
             _comboPuncher?.ClearPlanted();
+            _comboPuncher?.SetTagRest(0f);
             _thrower?.ClearPlanted();
             SetDreadTarget(null);
             HasAttacker = false;
@@ -889,14 +1138,14 @@ namespace Ryona.Game
             _anim?.SetFinisherHoist(false);
             _finisherHoistTimer = 0f;
             _finisherOrdered = false;
-            _collapseReleaseTimer = 0f;
             _punchInFlight = false;
-
-            ApplyCollapseCamera();
-            _phase = Phase.Idle;
 
             captor?.LockForHandOff(0.55f);
             _grapple?.Release();
+
+
+            // 解放直後の LateUpdate が Grabbed → Idle へ戻すため、拘束役の後退を待ってから
+            // ダウンさせると、その間だけ彼女が棒立ちで見える。先にダウンへ入れておく。
             if (_stats != null && !_stats.IsDead)
             {
                 _stats.ClearHeldBellyDamage();
@@ -906,8 +1155,13 @@ namespace Ryona.Game
                     attackerTf, launchDistance: 0f, launchHeight: 0f, forward: prone);
             }
 
+
+            ApplyCollapseCamera();
+            _phase = Phase.Idle;
+
             HoldOthers(Mathf.Max(ReleaseGraceSeconds, 1.1f));
             GameLog.Log($"[HeldPunch] combo end {_hits}/{ComboHitsTotal} ({_comboZone}) → finisher down");
+            yield break;
         }
 
     }

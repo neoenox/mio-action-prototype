@@ -17,11 +17,10 @@
 from __future__ import annotations
 
 import argparse
-import re
 from pathlib import Path
 
-PROJECT = Path(__file__).resolve().parent.parent
-PREVIEW_ROOT = PROJECT / "Verify" / "preview"
+from frameseq import PREVIEW_ROOT, frame_files
+
 DEFAULT_OUT = PREVIEW_ROOT / "reel"
 FONT_PATH = Path(r"C:/Windows/Fonts/meiryo.ttc")
 
@@ -35,8 +34,7 @@ def latest(pattern: str) -> Path | None:
 
 
 def frames(directory: Path) -> list[Path]:
-    files = list(directory.glob("f_*.png"))
-    return sorted(files, key=lambda p: int(re.search(r"(\d+)", p.stem).group(1)))
+    return frame_files(directory)
 
 
 def font(size: int):
@@ -68,7 +66,7 @@ def clip(files: list[Path], label: str, start: int, end: int, step: int = 2):
 
     out = []
     for i in range(start, min(end, len(files)), step):
-        im = Image.open(files[i]).convert("RGB").resize((WIDTH, HEIGHT), Image.LANCZOS)
+        im = Image.open(files[i]).convert("RGB").resize((WIDTH, HEIGHT), Image.Resampling.LANCZOS)
         draw = ImageDraw.Draw(im)
         draw.rectangle([0, HEIGHT - 34, WIDTH, HEIGHT], fill=(0, 0, 0))
         draw.text((10, HEIGHT - 29), label, font=font(16), fill=(255, 235, 120))
@@ -114,7 +112,7 @@ def build_reel(belly: Path | None, pin: Path | None, hair: Path | None, out: Pat
 def _cell(path: Path, label: str, size=(480, 270)):
     from PIL import Image, ImageDraw
 
-    im = Image.open(path).convert("RGB").resize(size, Image.LANCZOS)
+    im = Image.open(path).convert("RGB").resize(size, Image.Resampling.LANCZOS)
     draw = ImageDraw.Draw(im)
     draw.rectangle([0, 0, size[0], 26], fill=(0, 0, 0))
     draw.text((6, 4), label, font=font(15), fill=(255, 255, 255))

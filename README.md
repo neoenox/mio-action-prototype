@@ -47,9 +47,11 @@
 ## 遊びの流れ
 
 - キャラクターは横一列で戦います。奥や手前への移動はありません。
-- 敵が **3 体ずつ**湧いてきます。全滅させると次の一団が来ます
-- **10 波（30 体）**片付けると **STAGE CLEAR**
-- 倒した敵は起き上がって再び向かってきます（倒しっぱなしにはできません）
+- 敵が **3 体ずつ**湧いてきます。アリーナ（1 画面）ごとに **2 波**で、同じアリーナの全滅後は少し待つと次の波が来ます
+- 全アリーナを片付けると次へ進めます。**5 アリーナ × 2 波 = 10 波（30 体）**で **STAGE CLEAR**
+- 前後に敵が挟むと **挟み撃ちの突き飛ばし（ピンポン）** が起きることがあります。受け止めの瞬間に **J / K / L で踏ん張る** と抜けます（連打では抜けません）
+- 道具役に背中から**手首ロック**を付けられると、攻撃の代わりに **J / K / L で輪を割る** 操作になります（8 回か 4 秒で解けます）
+
 
 ## うまく戦うコツ
 
@@ -76,7 +78,7 @@
 
 ## 既知の割り切り（試作のため）
 
-- 敵 3 体は同じ見た目です（白いアンドロイド風のプリミティブ。色違いなどの個体差は未実装。VRM の差し替えは 1 体分のみ検証済み）
+- 敵 3 体は同じ形のプリミティブですが、**背丈で役割（掴み役・道具役・打撃役）が決まり、装甲と発光の差し色で見分けられます**
 - 敵の見た目はプリミティブ（球・カプセル）で、装甲の彫刻ディテール・顔の造形・布や髪の質感は出ません
 - VRM の敵は表示が 1 フレーム遅れます
 - 遮蔽は敵を「消す」方式です（VRM のシェーダ制約）
@@ -90,7 +92,7 @@
 
 ```
 MioPrototype.exe -sfxaudition                    効果音を1音ずつ聞く（1〜0 / Space）
-MioPrototype.exe -holdright -screenspan=7        右へ自動で歩き、波の間隔を 7m にする
+MioPrototype.exe -holdright -screenspan=7        右へ自動で歩き、アリーナ間隔を 7m にする
 MioPrototype.exe -encountertest -holdright       敵を自動で倒して波の進行を確認
 MioPrototype.exe -maxwaves=3                     3 波でクリア（終わり方の確認）
 MioPrototype.exe -camdist=5.2                    カメラ距離を差し替える
@@ -111,14 +113,14 @@ MioPrototype.exe -jointrom -jointlog             関節が人体の可動域を�
 |---|---|
 | `Camera` | `ThirdPersonCamera`（構図・ベルトカメラ・ダウン時の寄り） |
 | `Motor` / `Combat` / `VrmSlot` | `PlayerMotor` / `PlayerCombat` / `VrmCharacterSlot` |
-| `Enemy` / `EnemyReaction` / `Group` | `EnemyBrain`（間合い・速度・硬直・ストレイフ・予告）/ `EnemyReaction` / `EnemyGroup` |
+| `Enemy` / `EnemyReaction` / `Group` | `EnemyBrain`（最大 HP・間合い・速度・硬直・ストレイフ・予告）/ `EnemyReaction` / `EnemyGroup` |
 | `Grapple` | `PlayerGrapple` / `EnemyBrain`（足取りのもがき回数・制限時間・間合い・発生率） |
 | `Encounter` / `BeltLock` | `EncounterDirector`（出現間隔・人数）/ `BeltScreenLock`（画面幅・関所） |
 | `Feel` / `CameraDirection` | `CombatFeel`（ヒットストップ・揺れ・声）/ `CameraDirector`（寄り・引き） |
 
 - アセットが無いときは、Unity メニュー `Ryona > Setup > Create RyonaConfig (if missing)` で作成
 - 実行時の上書きは起動引数だけ（例: `-camdist=5.2`）。「アセット → 起動引数」の順で効きます
-- **個体ごとに違う値はシーンに残します**（敵の背丈 `EnemyFigure.Height` は 1.72 / 1.79 / 1.85、`MaxHp`、`CanPin`、マテリアル参照など）。
+- **個体ごとに違う値はシーンに残します**（敵の背丈 `EnemyFigure.Height` は 1.72 / 1.79 / 1.85、`CanPin`、マテリアル参照など）。
   全体で 1 つの値にできないものを無理に設定へ移すと、敵の体格差が消えます
 
 ## 構成

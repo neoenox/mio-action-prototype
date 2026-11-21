@@ -30,21 +30,11 @@ namespace Ryona.Tests
         {
             yield return TestScene.LoadPrototype();
 
-            var stats = Object.FindFirstObjectByType<PlayerStats>();
-            Assert.IsNotNull(stats, "PlayerStats がシーンに無い");
+            var stats = TestScene.FindPlayer();
 
             // VRM の読み込み後に CharacterAnimator が足されるので、組み上がるまで待つ
-            float deadline = Time.realtimeSinceStartup + 8f;
-            while (Time.realtimeSinceStartup < deadline)
-            {
-                _anim = stats.GetComponentInChildren<CharacterAnimator>();
-                if (_anim != null && _anim.Rig != null && _anim.Rig.Ready)
-                    break;
-                yield return null;
-            }
-
-            Assert.IsTrue(_anim != null && _anim.Rig != null && _anim.Rig.Ready,
-                "キャラクターのリグが組み上がらない（VRM の読み込み待ちで時間切れ）");
+            yield return TestRig.WaitReady(stats, 8f);
+            _anim = TestRig.RequireReady(stats);
         }
 
         /// <summary>被弾の姿勢を 1 回作って、そのときの角度を返す。</summary>

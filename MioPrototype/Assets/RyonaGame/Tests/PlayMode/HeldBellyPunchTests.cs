@@ -39,8 +39,7 @@ namespace Ryona.Tests
         {
             yield return TestScene.LoadPrototype();
 
-            _player = Object.FindFirstObjectByType<PlayerStats>();
-            Assert.IsNotNull(_player, "PlayerStats がシーンに無い");
+            _player = TestScene.FindPlayer();
 
             _grapple = _player.GetComponent<PlayerGrapple>();
             Assert.IsNotNull(_grapple, "PlayerGrapple が無い");
@@ -82,17 +81,8 @@ namespace Ryona.Tests
             if (!waitForAnimator)
                 yield break;
 
-            float deadline = Time.realtimeSinceStartup + 8f;
-            while (Time.realtimeSinceStartup < deadline)
-            {
-                _anim = _player.GetComponentInChildren<CharacterAnimator>();
-                if (_anim != null && _anim.Rig != null && _anim.Rig.Ready)
-                    break;
-                yield return null;
-            }
-
-            Assert.IsTrue(_anim != null && _anim.Rig != null && _anim.Rig.Ready,
-                "キャラクターのリグが組み上がらない（VRM の読み込み待ちで時間切れ）");
+            yield return TestRig.WaitReady(_player, 8f);
+            _anim = TestRig.RequireReady(_player);
         }
 
         [UnityTest]
@@ -152,6 +142,20 @@ namespace Ryona.Tests
         /// 彼女が腹パン・顔パンチで大きく動いた直後か。彼女の肩が動くぶん腕の
         /// 見かけの位置も動くので、その瞬間だけ許容を広げる（構えの検査は strict のまま）。
         /// </param>
+        /// <summary>
+        /// 足首（左右の低い方）がルート＝床から何 m 上にあるか。
+        /// 抱え上げで「実際に浮いたか」を目視ではなく数値で見るために使う。
+        /// </summary>
+        float MinAnkleAboveRoot()
+        {
+            var rig = _anim != null ? _anim.Rig : null;
+            if (rig == null || rig.LFoot == null || rig.RFoot == null)
+                return 0f;
+
+            float rootY = _player.transform.position.y;
+            return Mathf.Min(rig.LFoot.position.y, rig.RFoot.position.y) - rootY;
+        }
+
         void AssertCaptorArmsHugFromBehind(EnemyFigure figure, string pose, bool reaction = false)
         {
             var rig = _anim.Rig;
@@ -376,7 +380,10 @@ namespace Ryona.Tests
             var chest = _attacker.GetComponent<EnemyFigure>().ChestBone;
             yield return new WaitForSeconds(0.18f);
             float contactHeight = chest.position.y;
-            yield return new WaitForSeconds(0.25f);
+            // 5 発の間隔は段の表（腹 0.30 / 0.30 / 0.72 / 0.45 秒）で決まる。
+            // 以前は 1 発あたり 0.47 秒で、0.43 秒後でもまだ「拳を引いた後」だった。
+            // いまは 1 発目から 0.29 秒で 2 発目を発注するので、その手前で見る。
+            yield return new WaitForSeconds(0.06f);
 
             Assert.AreEqual(1, _director.ComboHitsLanded);
             Assert.IsFalse(_attacker.IsBellyPunch, "The fist should already be retracting.");
@@ -464,6 +471,9 @@ namespace Ryona.Tests
 
             // 被弾姿勢と拘束の継続を見るため、狙いを腹に固定する。
             _director.FacePunchChance = 0f;
+            // 既定のグロッキーは 0.35 秒で、姿勢を測るには短い。このテストは
+            // 「グロッキー中の姿勢とカメラ」を見るので、その区間だけ長く取る。
+            _director.ComboTailSeconds = 1.2f;
             PlaceAttackerInFront();
 
             LandOpeningThrow();
@@ -501,23 +511,77 @@ namespace Ryona.Tests
 
             Assert.AreEqual(5, _director.ComboHitsLanded, "The player must take 5 belly punches");
             Assert.AreEqual(PunchZone.Body, _director.LastLandedZone);
+            // 5 発目が入った直後は、まだグロッキーの寄りの画。ここから決めの全身へ引く。
+            Assert.Less(_camera.EffectDistanceScale, 0.32f, "グロッキーの頭は寄りの画のまま");
 
+            // グロッキーを長めに取っているので、寄りの画のまま姿勢を測れる。
             yield return new WaitForSeconds(0.95f);
             Assert.IsTrue(_grapple.IsGrappled, "グロッキー演出中は拘束を保つ");
             Assert.AreSame(_captor, _grapple.Captor);
             Assert.Greater(_anim.HeldComboDangle, 0.9f, "5発後はグロッキー脱力状態に入る");
-            Assert.Less(_camera.EffectDistanceScale, 0.32f, "グロッキー中も寄りのカメラを保つ");
             var captorFigure = _captor.GetComponent<EnemyFigure>();
             AssertCaptorArmsHugFromBehind(captorFigure, "腹パン5発後のグロッキー");
             AssertPlayerArmsHookedOverCaptor(captorFigure, "腹パン5発後のグロッキー");
+
+            float ankleBefore = MinAnkleAboveRoot();
 
             while (_director.CurrentPhase == HeldBellyPunchDirector.Phase.Combo && Time.realtimeSinceStartup < deadline)
                 yield return null;
             Assert.AreEqual(HeldBellyPunchDirector.Phase.Finisher, _director.CurrentPhase,
                 "引き渡し抽選が外れたらトドメ段階へ進む");
-            yield return new WaitForSeconds(0.40f);
-            Assert.Greater(_anim.FinisherHoistWeight, 0.5f, "拘束役が脇を引き上げて晒す");
-            Assert.Less(_camera.EffectDistanceScale, 0.32f, "トドメ中も寄りのカメラを保つ");
+
+            // 抱え上げは 0.45 秒かけて上がりきり、上がりきってからトドメが入る。
+            // 足首が実際に床から浮いたか（IK の目標も一緒に上がっていないと脚が伸びるだけ）と、
+            // その間の画が全身（広い距離）になっていることを、数値で押さえる。
+            // 顔は「画面内か（カメラの責任）」と「隠れていないか（遮蔽）」を分けて測る。
+            var figures = Object.FindObjectsByType<EnemyFigure>(FindObjectsSortMode.None);
+            int faceFrames = 0;
+            int faceVisibleFrames = 0;
+            int faceReadableFrames = 0;
+            bool faceAlwaysInFrame = true;
+            string faceBlocker = null;
+
+            float peakHoist = 0f;
+            float peakAnkle = ankleBefore;
+            float widestScale = 0f;
+            while (_director.CurrentPhase == HeldBellyPunchDirector.Phase.Finisher
+                && Time.realtimeSinceStartup < deadline)
+            {
+                peakHoist = Mathf.Max(peakHoist, _anim.FinisherHoistWeight);
+                peakAnkle = Mathf.Max(peakAnkle, MinAnkleAboveRoot());
+                widestScale = Mathf.Max(widestScale, _camera.EffectDistanceScale);
+
+                var face = FaceVisibility.Measure(Camera.main, _anim.Rig.Head, figures);
+                faceFrames++;
+                if (face.Visible >= FaceVisibility.GoodVisible)
+                    faceVisibleFrames++;
+                if (face.Readable)
+                    faceReadableFrames++;
+                if (face.InFrame < 0.999f)
+                    faceAlwaysInFrame = false;
+                if (face.Blocker != null)
+                    faceBlocker = face.Blocker;
+
+                yield return null;
+            }
+
+            float hoistAtImpact = _anim.FinisherHoistWeight;
+            Assert.AreEqual(HeldBellyPunchDirector.Phase.Collapse, _director.CurrentPhase,
+                "トドメが当たったら崩れ落ちの段階へ進む");
+            Assert.Greater(peakHoist, 0.98f, "抱え上げは上がりきるまで行く");
+            Assert.Greater(hoistAtImpact, 0.6f,
+                "トドメは持ち上がりきった位置で当たる（上げ始めに当たらない）");
+            Assert.Greater(peakAnkle - ankleBefore, 0.06f,
+                "抱え上げで足首が床から 6cm 以上浮く");
+            Assert.Greater(widestScale, 0.36f, "決めは全身が入る距離へ引いて撮る");
+
+            Debug.Log($"[HeldPunchCam] 決めの顔 可視={faceVisibleFrames}/{faceFrames} " +
+                      $"readable={faceReadableFrames}/{faceFrames} inFrame={faceAlwaysInFrame} " +
+                      $"blocker={faceBlocker ?? "なし"} scale={widestScale:F2}");
+            Assert.Greater(faceFrames, 0, "決めの画のフレームが取れていない");
+            Assert.IsTrue(faceAlwaysInFrame, "決めの画で顔が画面の外へ切れた");
+            Assert.GreaterOrEqual((float)faceVisibleFrames / faceFrames, 0.75f,
+                $"決めの画で顔が隠れている（blocker={faceBlocker ?? "なし"}）");
 
             while ((_grapple.IsGrappled || _director.CurrentPhase != HeldBellyPunchDirector.Phase.Idle)
                 && Time.realtimeSinceStartup < deadline)
@@ -842,20 +906,90 @@ namespace Ryona.Tests
             // 頭を離す実装は、腕が彼女から離れて羽交い締めが脇の下をくぐらなくなるため
             // 入れない。ここでは「頭が同じ位置に完全に重ならない」ことだけを確認する。
             Assert.Greater(nearestCaptorHead, 0.09f, $"反動で拘束役の頭と重ならない ({nearestHeadPose})");
-            yield return new WaitForSeconds(0.50f);
+            // 回避が始まる前にグロッキーを確認する（顔トドメは命中前に拘束が解ける）
+            yield return new WaitForSeconds(0.25f);
             Assert.IsTrue(_grapple.IsGrappled);
             Assert.Greater(_anim.HeldComboDangle, 0.9f, "顔パン5発後もグロッキー脱力状態に入る");
             AssertCaptorArmsHugFromBehind(captorFigure, "顔パンチ5発後のグロッキー");
             AssertPlayerArmsHookedOverCaptor(captorFigure, "顔パンチ5発後のグロッキー");
+            float[] startZ = new float[_enemies.Length];
+            for (int i = 0; i < _enemies.Length; i++)
+                startZ[i] = _enemies[i] != null ? _enemies[i].transform.position.z : 0f;
+            float maxEvade = 0f;
+            var faceFigures = new System.Collections.Generic.List<EnemyFigure>(
+                Object.FindObjectsByType<EnemyFigure>(FindObjectsSortMode.None));
+            int faceFrames = 0;
+            int faceGood = 0;
+            int hitFrameObserved = 0;
+            float hipsAtHit = 0f, minHipsAfterHit = float.MaxValue;
+            float footAtHit = 0f, maxFootLift = 0f, minSeparation = float.MaxValue;
+            bool releasedBeforeDown = false;
+            bool buckledBeforeDown = false;
 
             float downDeadline = Time.realtimeSinceStartup + 8f;
-            while ((_grapple.IsGrappled || _director.CurrentPhase != HeldBellyPunchDirector.Phase.Idle)
-                && Time.realtimeSinceStartup < downDeadline)
+            while ((!_player.IsDown || _director.CurrentPhase != HeldBellyPunchDirector.Phase.Idle)
+                   && Time.realtimeSinceStartup < downDeadline)
+            {
+                if (!_grapple.IsGrappled && !_player.IsDown)
+                    releasedBeforeDown = true;
+                var face = FaceVisibility.Measure(Camera.main, _anim.Rig.Head, faceFigures);
+                faceFrames++;
+                if (face.Visible >= FaceVisibility.GoodVisible)
+                    faceGood++;
+                if (_director.LastFinisherHitFrame > 0 && hitFrameObserved == 0)
+                {
+                    hitFrameObserved = _director.LastFinisherHitFrame;
+                    hipsAtHit = _anim.Rig.Hips.position.y;
+                    footAtHit = _anim.Rig.LFoot.position.y;
+                }
+                if (hitFrameObserved > 0)
+                {
+                    int age = Time.frameCount - hitFrameObserved;
+                    if (age <= 9)
+                    {
+                        minHipsAfterHit = Mathf.Min(minHipsAfterHit, _anim.Rig.Hips.position.y);
+                        maxFootLift = Mathf.Max(maxFootLift, _anim.Rig.LFoot.position.y - footAtHit);
+                    }
+                    if (_player.IsDown)
+                    {
+                        foreach (var enemy in _enemies)
+                        {
+                            if (enemy == null) continue;
+                            Vector3 d = enemy.transform.position - _player.transform.position;
+                            d.y = 0f;
+                            minSeparation = Mathf.Min(minSeparation, d.magnitude);
+                        }
+                    }
+                }
+                if (_anim.IsBuckling && !_player.IsDown)
+                    buckledBeforeDown = true;
+                for (int i = 0; i < _enemies.Length; i++)
+                {
+                    if (_enemies[i] != null)
+                        maxEvade = Mathf.Max(maxEvade, _enemies[i].transform.position.z - startZ[i]);
+                }
                 yield return null;
+            }
 
             Assert.IsFalse(_grapple.IsGrappled, "顔トドメのあと拘束が解ける");
             Assert.IsTrue(_player.IsDown, "顔トドメでダウンへ崩れ落ちる");
             Assert.IsFalse(_player.DownIsForward, "顔トドメは仰向けへ倒れる");
+            Assert.Greater(maxEvade, 0.3f,
+                "拘束役が画面後方（z+）へ回避する");
+            Assert.AreEqual(_director.LastFinisherHitFrame, _director.LastFinisherDownFrame,
+                "トドメ命中とダウンが同じフレーム");
+            if (faceFrames > 5)
+                Assert.GreaterOrEqual(faceGood / (float)faceFrames, 0.55f,
+                    $"回避〜ダウンの顔可視率が低い ({faceGood}/{faceFrames})");
+            if (hitFrameObserved > 0)
+            {
+                Assert.Greater(hipsAtHit - minHipsAfterHit, 0.15f,
+                    $"命中から 0.15 秒以内に腰が下がらない ({(hipsAtHit - minHipsAfterHit):F2}m)");
+                Assert.Less(maxFootLift, 0.05f, $"命中前後に足が跳ねる ({maxFootLift:F2}m)");
+                Assert.Greater(minSeparation, 0.5f, $"ダウン中に拘束役と重なる ({minSeparation:F2}m)");
+            }
+            Assert.IsTrue(releasedBeforeDown, "命中前に拘束が解けて膝を崩せる");
+            Assert.IsTrue(buckledBeforeDown, "解放直後に棒立ちせず崩れかかる");
         }
 
         /// <summary>
@@ -883,7 +1017,7 @@ namespace Ryona.Tests
             Application.logMessageReceived += cb;
 
             float maxFistSpeed = 0f;
-            float speedAtClosest = 0f;
+            float approachSpeed = 0f;
             float minFistHead = 99f;
             float minChestYaw = 99f;
             float maxChestYaw = -99f;
@@ -908,6 +1042,7 @@ namespace Ryona.Tests
                 EnemyBrain puncher = null;
                 EnemyFigure figure = null;
                 Vector3 prevFist = default;
+                float prevFistHead = float.PositiveInfinity;
                 Vector3 hitHeadStart = rig != null ? rig.Head.position : Vector3.zero;
                 bool hasPrevFist = false;
                 EnemyBrain lastPuncher = null;
@@ -943,6 +1078,7 @@ namespace Ryona.Tests
                         puncher = active;
                         figure = active.GetComponent<EnemyFigure>();
                         hasPrevFist = false;
+                        prevFistHead = float.PositiveInfinity;
                         hitHeadStart = rig.Head.position;
                         hitImpulse = 0f;
                         hitsSeen++;
@@ -967,10 +1103,15 @@ namespace Ryona.Tests
                         maxFistSpeed = Mathf.Max(maxFistSpeed, speed);
                         float fistHead = Vector3.Distance(fistPos, headPos);
                         if (fistHead < minFistHead)
-                        {
                             minFistHead = fistHead;
-                            speedAtClosest = speed;
-                        }
+
+                        // 当たった瞬間は拳を顔へ押し込んで止まるので、最短距離のコマは速度 0 になり得る。
+                        // 「当たる直前に減速していない」は、最後の 35cm を詰めている間の速さで見る
+                        // （距離が縮んでいるコマだけを拾う）。
+                        if (fistHead < 0.35f && fistHead < prevFistHead)
+                            approachSpeed = Mathf.Max(approachSpeed, speed);
+
+                        prevFistHead = fistHead;
                     }
 
                     hasPrevFist = true;
@@ -1023,8 +1164,8 @@ namespace Ryona.Tests
 
             // 敵: 拳は当たる直前に一番速く、顔まで届く。
             Assert.Greater(maxFistSpeed, 8f, $"拳が遅い（予備動作から振り抜きの最高速 {maxFistSpeed:F1}m/s）");
-            Assert.Greater(speedAtClosest, 3f,
-                $"拳が当たる瞬間に減速している（最接近時の速さ {speedAtClosest:F1}m/s）");
+            Assert.Greater(approachSpeed, 3f,
+                $"拳が当たる直前に減速している（最後の35cmを詰める速さ {approachSpeed:F1}m/s）");
             Assert.Less(minFistHead, 0.30f, $"拳が顔に届いていない（最接近 {minFistHead:F2}m）");
 
             // 敵: 胸のひねりと腰の踏み込みで体重を乗せる。
@@ -1670,7 +1811,7 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator 腹パン連撃は左右交互に打ちHUDを下げカメラを引かせずトドメで崩れ落ちる()
+        public IEnumerator 腹パン連撃は左右交互に打ちHUDを下げ決めだけカメラを引いて崩れ落ちる()
         {
             yield return LoadAndGrab(waitForAnimator: true, throwDelay: 10f);
             Vector3 center = _player.transform.position;
@@ -1690,6 +1831,7 @@ namespace Ryona.Tests
             Application.logMessageReceived += cb;
 
             float maxComboCamScale = 0f;
+            float maxFinisherCamScale = 0f;
             float maxHudY = float.NegativeInfinity;
             var hud = Object.FindFirstObjectByType<MatchHud>();
 
@@ -1704,12 +1846,18 @@ namespace Ryona.Tests
                 while ((_director.IsCameraActive || _director.ComboHitsLanded < 5)
                     && Time.realtimeSinceStartup < deadline)
                 {
-                    if (_director.IsPerforming || _director.CurrentPhase == HeldBellyPunchDirector.Phase.Finisher)
+                    // 5 発のあいだは寄りの画を保つ。引くのは決め（抱え上げ）だけ。
+                    // 5 発目が入ったあとはグロッキーで、そこから引くので計測しない。
+                    if (_director.IsPerforming)
                     {
-                        if (_director.ComboHitsLanded >= 1)
+                        if (_director.ComboHitsLanded >= 1 && _director.ComboHitsLanded < 5)
                             maxComboCamScale = Mathf.Max(maxComboCamScale, _camera.EffectDistanceScale);
                         if (hud != null && hud.GrappleHudY >= 0f)
                             maxHudY = Mathf.Max(maxHudY, hud.GrappleHudY);
+                    }
+                    else if (_director.CurrentPhase == HeldBellyPunchDirector.Phase.Finisher)
+                    {
+                        maxFinisherCamScale = Mathf.Max(maxFinisherCamScale, _camera.EffectDistanceScale);
                     }
                     yield return null;
                 }
@@ -1719,7 +1867,9 @@ namespace Ryona.Tests
                     Assert.AreNotEqual(sides[i - 1], sides[i], $"腹パンの腕が交互になっていない: {string.Join(",", sides)}");
 
                 Assert.Less(maxComboCamScale, 0.34f,
-                    $"コンボ・グロッキー・引き起こし中にカメラが引いてしまった（最大倍率 {maxComboCamScale:F2}）");
+                    $"5 発のあいだにカメラが引いてしまった（最大倍率 {maxComboCamScale:F2}）");
+                Assert.Greater(maxFinisherCamScale, 0.36f,
+                    $"決め（抱え上げ）は全身が入る距離まで引く（最大倍率 {maxFinisherCamScale:F2}）");
                 if (maxHudY >= 0f)
                     Assert.LessOrEqual(maxHudY, 32f, $"コンボ中の拘束HUDが下に退避していない（y={maxHudY:F1}）");
                 Assert.IsTrue(_player.IsDown && _player.DownIsForward, "腹トドメ後は前方へ崩れ落ちる");

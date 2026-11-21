@@ -252,7 +252,7 @@ namespace Ryona.Game
             EndShove();
             ApplyHandOffHold(kind);
             _session.HeldSeconds = 0f;
-            next.TakeOverHold(CombatConstants.GrappleLimitSeconds + 4f);
+            next.TakeOverHold(_session.PinballActive ? 0.65f : CombatConstants.GrappleLimitSeconds + 4f);
             IsHandingOff = false;
             Started?.Invoke(kind);
         }

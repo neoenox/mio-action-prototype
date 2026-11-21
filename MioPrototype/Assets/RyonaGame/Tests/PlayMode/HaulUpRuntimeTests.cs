@@ -33,19 +33,11 @@ namespace Ryona.Tests
             yield return TestScene.LoadPrototype();
             GroundHaulUp.Forced = true;
 
-            _stats = Object.FindFirstObjectByType<PlayerStats>();
-            Assert.IsNotNull(_stats);
+            _stats = TestScene.FindPlayer();
             _grapple = _stats.GetComponent<PlayerGrapple>();
 
-            float deadline = Time.realtimeSinceStartup + 8f;
-            while (Time.realtimeSinceStartup < deadline)
-            {
-                _anim = _stats.GetComponentInChildren<CharacterAnimator>();
-                if (_anim != null && _anim.Rig != null && _anim.Rig.Ready)
-                    break;
-                yield return null;
-            }
-            Assert.IsTrue(_anim != null && _anim.Rig != null && _anim.Rig.Ready, "リグが組み上がらない");
+            yield return TestRig.WaitReady(_stats, 8f);
+            _anim = TestRig.RequireReady(_stats);
 
             var enemies = Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None);
             Assert.Greater(enemies.Length, 0);

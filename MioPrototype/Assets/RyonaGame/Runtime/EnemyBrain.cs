@@ -49,7 +49,7 @@ namespace Ryona.Game
     }
 
     [AddComponentMenu("Ryona/Enemy Brain")]
-    public sealed partial class EnemyBrain : MonoBehaviour, IDamageable
+    public sealed partial class EnemyBrain : MonoBehaviour
     {
         /// <summary>敵が選ぶ攻撃の種類。この 4 つを距離と乱数で抽選する。</summary>
         public enum AttackId
@@ -92,7 +92,11 @@ namespace Ryona.Game
         internal RyonaConfig.EnemySettings S => _settings ??= RyonaConfig.Instance.Enemy.Clone();
 
         /// <summary>歩き（追跡）の速度 m/s。テストが個体ごとに差し替える。</summary>
-        public float MoveSpeed { get => S.MoveSpeed; set => S.MoveSpeed = value; }
+        public float MoveSpeed { get => S.MoveSpeed * RoleMoveScale; set => S.MoveSpeed = value; }
+
+        /// <summary>役割ごとの移動・予備動作の倍率。</summary>
+        internal float RoleMoveScale => Role == EnemyRole.Striker ? 1.05f : 1f;
+        internal float RoleWindupScale => Role == EnemyRole.Striker ? 0.82f : 1f;
 
         /// <summary>硬直・怯みが明けてから次の予備動作に入るまでの間隔。テストが攻撃を止めるのに使う。</summary>
         public float AttackCooldown { get => S.AttackCooldown; set => S.AttackCooldown = value; }
@@ -114,9 +118,8 @@ namespace Ryona.Game
         /// <summary>HP / 部位ダメージ / ひるみを持つ戦闘状態。攻撃側としても渡す。</summary>
         public CombatState State { get; } = new CombatState();
 
-        /// <summary>この個体の最大 HP。3 体 × 100 では倒しきれないため、雑魚は低めに。</summary>
-        [System.NonSerialized]
-        public float MaxHp = 48f;
+        /// <summary>MaxHp の設定ミス警告を一度だけ出す。</summary>
+        static bool _warnedInvalidMaxHp;
 
         /// <summary>現在の行動フェーズ。</summary>
         public EnemyPhase Phase { get; private set; } = EnemyPhase.Chase;
@@ -325,6 +328,21 @@ namespace Ryona.Game
         }
 
         internal bool HoldsBellyPunchGuard { get; set; }
+
+        /// <summary>
+        /// 休符の残り秒。5 発のあいだ、長い間隔の前だけ演出側が入れる。
+        /// 「弱い一発の前に一度体を起こして引き直す」ための間で、殴る側の演技に緩急を作る。
+        /// </summary>
+        float _tagRestSeconds;
+
+        internal void SetTagRest(float seconds) => _tagRestSeconds = Mathf.Max(0f, seconds);
+
+        /// <summary>休符の進行（0 = 通常の構え、1 = 起こして引いた状態）。</summary>
+        internal float TagPunchRest { get; private set; }
+
+        /// <summary>タッグ攻撃が命中する予定までの残り秒。予備動作中でなければ NaN。</summary>
+        internal float TagPunchSecondsToStrike =>
+            Phase == EnemyPhase.Windup && _tagPunchPending ? Mathf.Max(0f, _timer) : float.NaN;
         internal bool KeepsBellyPunchArm => HoldsBellyPunchGuard && !IsTagFacePunch
             && (IsBellyPunch || Phase == EnemyPhase.Recover || Phase == EnemyPhase.Chase || Phase == EnemyPhase.Strafe);
 
@@ -485,6 +503,9 @@ namespace Ryona.Game
         [Tooltip("正面から押さえつける（巨躯用）。既定は false。テストは -pintest")]
         public bool CanPin;
 
+        /// <summary>背丈で決まった役割（EncounterDirector が割り当てる）。</summary>
+        public EnemyRole Role { get; set; } = EnemyRole.Striker;
+
         // 間合い・クールダウン・膝蹴りの回数は CombatConstants に置いてある。
         // ここを public フィールドにすると、シーン（Prototype.unity）に保存された
         // 古い既定値が読み込まれてコードの値を上書きしてしまう（実測でそうなった）。
@@ -580,6 +601,42 @@ namespace Ryona.Game
             _handOffLockUntil = Time.time + length;
             _attackReadyAt = Time.time + length + 0.2f;
         }
+        /// <summary>
+        /// トドメを打つ直前に奥行き（z+）へ退く。腕を離して硬直させ、
+        /// 終わったら本来の「彼女の z に合わせる」へ戻す。
+        /// </summary>
+        public void BeginEvade(float distance, float seconds, float lateral = 0f)
+        {
+            AbsorbLungeOffset();
+            HideTelegraph();
+            IsHolding = false;
+            ClearGrappleState(clearAttackState: true);
+            ReleaseToken();
+            _timer = Mathf.Max(0.1f, seconds);
+            Phase = EnemyPhase.Recover;
+            _handOffLockUntil = Time.time + seconds;
+            _attackReadyAt = Time.time + seconds + 0.6f;
+            _evadeActive = true;
+            _evadeTargetOffset = Mathf.Max(0f, distance);
+            _evadeTargetLateral = lateral;
+            _evadeReturnPos = transform.position;
+        }
+
+        /// <summary>倒れ込みが終わるまで回避位置を保ち、ここで戻す。</summary>
+        public void EndEvade()
+        {
+            if (!_evadeActive)
+                return;
+
+            Vector3 away = _evadeReturnPos - (Player != null ? Player.transform.position : _evadeReturnPos);
+            away.y = 0f;
+            if (away.sqrMagnitude < 0.7f * 0.7f)
+                away = away.sqrMagnitude > 1e-4f ? away.normalized * 0.7f : Vector3.right * 0.7f;
+            _evadeReturnPos = (Player != null ? Player.transform.position : _evadeReturnPos) + away;
+            _evadeTargetOffset = 0f;
+            _evadeTargetLateral = 0f;
+        }
+
 
         /// <summary>いま押し出している最中か（見た目側が腕を突き出すのに使う）。</summary>
         public bool IsPushing => Time.time < _pushUntil;
@@ -631,6 +688,17 @@ namespace Ryona.Game
         float _wallReturn;
         float _wallReturnX;
         float _wallReturnZ;
+
+        // トドメ回避（奥行き z+）。彼女の z に合わせる LateUpdate より前に上書きする。
+        float _evadeOffset;
+        float _evadeTargetOffset;
+        bool _evadeActive;
+        float _evadeLateral;
+        float _evadeTargetLateral;
+
+        /// <summary>顔トドメで退いている最中か（退く・戻るの間を含む）。他の演出はこの敵を使わない。</summary>
+        internal bool IsEvading => _evadeActive || _evadeOffset > 0.001f || Mathf.Abs(_evadeLateral) > 0.001f;
+        Vector3 _evadeReturnPos;
 
         /// <summary>
         /// プレイヤーの拘束コンポーネント。最初に必要になったとき 1 度だけ探す。
@@ -830,9 +898,15 @@ namespace Ryona.Game
         {
             BuildAttacks();
 
-            // 個体ごとの最大 HP。3 体 × 100 では彼女の火力（軽 8）で倒しきれず、
-            // 殴られ続けて終わってしまうため、雑魚は低めにする。
-            State.SetMaxHp(MaxHp);
+            // 最大 HP は設定アセットが真実源（RyonaConfig.Enemy.MaxHp）。
+            // 3 体 × 100 では彼女の火力（軽 8）で倒しきれず、殴られ続けて終わってしまうため低め。
+            if (S.MaxHp < 1f && !_warnedInvalidMaxHp)
+            {
+                _warnedInvalidMaxHp = true;
+                Debug.LogWarning($"[Enemy] RyonaConfig.Enemy.MaxHp={S.MaxHp} は 1 未満。1 にクランプする");
+            }
+
+            State.SetMaxHp(S.MaxHp);
 
             // 検証用: -punchzone=face / body で、パンチの狙いを固定する
             string zone = LaunchOptions.Value("-punchzone");
@@ -920,6 +994,11 @@ namespace Ryona.Game
             _punchPoseHoldSeconds = Mathf.Max(0f, _punchPoseHoldSeconds - dt);
             if (_punchPoseHoldSeconds <= 0f)
                 _punchPoseHoldTotal = 0f;
+
+            // 休符（殴る側が上体を起こして引き直す間）。短い立ち上がりと戻りを持たせて、
+            // パチッと切り替わらないようにする。
+            _tagRestSeconds = Mathf.Max(0f, _tagRestSeconds - dt);
+            TagPunchRest = Mathf.MoveTowards(TagPunchRest, _tagRestSeconds > 0f ? 1f : 0f, dt / 0.12f);
 
             State.Tick(dt);
 
@@ -1219,6 +1298,30 @@ namespace Ryona.Game
             // ここで彼女の z に合わせると、持ち場（正面）へ寄れない（実測: z が彼女の位置へ戻る）。
             if (IsWallAssisting)
                 return;
+            // トドメ回避中は「彼女の z に合わせる」を上書きして奥行きへ退く。
+            if (_evadeActive || _evadeOffset > 0.001f || Mathf.Abs(_evadeLateral) > 0.001f)
+            {
+                if (_evadeTargetOffset > 0f || Mathf.Abs(_evadeTargetLateral) > 0.001f)
+                {
+                    _evadeOffset = Mathf.MoveTowards(_evadeOffset, _evadeTargetOffset, Time.deltaTime * 3f);
+                    _evadeLateral = Mathf.MoveTowards(_evadeLateral, _evadeTargetLateral, Time.deltaTime * 2f);
+                    Transform anchor = Player != null ? Player.transform : Target;
+                    if (anchor != null)
+                    {
+                        var evaded = transform.position;
+                        evaded.z = anchor.position.z + _evadeOffset;
+                        evaded.x = anchor.position.x + _evadeLateral;
+                        transform.position = evaded;
+                    }
+                }
+                else
+                {
+                    transform.position = Vector3.MoveTowards(transform.position, _evadeReturnPos, Time.deltaTime * 2.5f);
+                    if (Vector3.Distance(transform.position, _evadeReturnPos) < 0.01f)
+                        _evadeActive = false;
+                }
+                return;
+            }
 
             if (Target == null || (Player != null && Player.GroundMount.Owns(this)))
                 return;

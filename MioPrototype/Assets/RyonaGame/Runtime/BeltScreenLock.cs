@@ -3,58 +3,68 @@ using UnityEngine;
 namespace Ryona.Game
 {
     /// <summary>
-    /// ベルト（横スクロール）の画面ロック。ファイナルファイトと同じ作り。
+    /// アリーナ（ウェーブ）の画面ロック。中心は <see cref="LockAt"/> で外から決める。
     /// <para>
-    /// 敵が生きているあいだは、カメラもプレイヤーも 1 画面ぶんの範囲から出られない。
-    /// 全滅させるとロックが外れ、右へ歩いて次の画面まで進める。
-    /// これがないと、走って敵を置き去りにできてしまい、ただの横移動になる。
-    /// </para>
-    /// <para>
-    /// ロックするのは「戦いが画面に入ったとき」だけ。遠くに敵が湧いているだけで
-    /// カメラを止めると、歩いても画面が付いてこない（実測でそうなっていた）。
-    /// また、歩ける幅は固定値ではなくカメラの投影から測る。奥行きによって
-    /// 見える幅は変わるので、固定値だと画面外まで歩けてしまう。
+    /// 歩ける範囲はカメラの投影から毎回測る。奥行きにより見える幅が変わるため、
+    /// 固定値だと画面外まで歩けてしまう。カメラのゲート幅は別物で、構図づくりの
+    /// 僅かな追従を許す（min == max にすると LookAhead が潰れる実測あり）。
     /// </para>
     /// </summary>
     [AddComponentMenu("Ryona/Belt Screen Lock")]
-    public sealed class BeltScreenLock : MonoBehaviour
+    public sealed class BeltScreenLock : ConfigurableMonoBehaviour
     {
         [Header("References")]
         public ThirdPersonCamera Camera;
         public PlayerMotor Motor;
-        public EnemyGroup Group;
 
         [Header("Tuning")]
         [Tooltip("画面の半幅（m）。カメラから測れないときだけ使う予備値")]
         [System.NonSerialized] public float HalfWidth = 3.2f;
 
         [Tooltip("画面の端からこれだけ内側まで歩ける（m）。端で体が切れない余地")]
-        [System.NonSerialized] public float EdgeMargin = 0.9f;
+        [System.NonSerialized] public float EdgeMargin = 0.5f;
 
-        [Tooltip("ロック中にカメラが動ける範囲（m）。ロックした位置を中心に ±この値。" +
-                 "構図づくりの余裕で、彼女が歩ける幅とは別物")]
-        [System.NonSerialized] public float GateRange = 3.0f;
-
-        [Tooltip("敵の生存を確認する間隔（秒）")]
-        [System.NonSerialized] public float ScanSeconds = 0.1f;
-
-        [Header("Engage (ロックを始める条件)")]
-        [Tooltip("この距離以内に生きている敵がいれば、画面に映っていなくてもロックする（m）")]
-        [System.NonSerialized] public float EngageRange = 4.5f;
-
-        [Tooltip("画面の端からこの割合だけ外にいる敵もロックの対象にする（0 = 画面に入ってからロック）")]
-        [System.NonSerialized] public float EngageScreenMargin = 0f;
+        [Tooltip("ロック中にカメラが動ける範囲（m）")]
+        [System.NonSerialized] public float GateRange = 0.5f;
 
         float _lockX = float.NaN;
-        float _nextScan;
-        bool _alive;
-        Camera _cam;
+        bool _widthLogged;
 
-        /// <summary>いま画面がロックされているか。</summary>
+        /// <summary>いまアリーナがロックされているか。</summary>
         public bool IsLocked => !float.IsNaN(_lockX);
 
-        /// <summary>ロック中の画面の中心 X。</summary>
+        /// <summary>ロック中のアリーナ中心 X。</summary>
         public float LockX => _lockX;
+
+        /// <summary>アリーナをロックする。initial=true のときだけカメラを即座に中心へ寄せる。</summary>
+        public void LockAt(float centerX, bool initial = false)
+        {
+            _lockX = centerX;
+            _widthLogged = false;
+            if (initial && Camera != null)
+                Camera.SnapTo(_lockX);
+            GameLog.Log($"[Screen] lock x={_lockX:F2} initial={initial}");
+        }
+
+        /// <summary>ロックを外し、歩行とカメラの制限を戻す。</summary>
+        public void Release()
+        {
+            if (!IsLocked)
+                return;
+
+            _lockX = float.NaN;
+            if (Motor != null)
+            {
+                Motor.ForwardLimitX = float.PositiveInfinity;
+                Motor.BackLimitX = float.NegativeInfinity;
+            }
+            if (Camera != null)
+            {
+                Camera.GateMaxX = float.PositiveInfinity;
+                Camera.GateMinX = float.NegativeInfinity;
+            }
+            GameLog.Log("[Screen] unlock");
+        }
 
         /// <summary>調整値は <see cref="RyonaConfig.BeltLock"/> が真実源。シーンの保存値は使わない。</summary>
         void ApplySettings(RyonaConfig.BeltLockSettings s)
@@ -62,162 +72,58 @@ namespace Ryona.Game
             HalfWidth = s.HalfWidth;
             EdgeMargin = s.EdgeMargin;
             GateRange = s.GateRange;
-            ScanSeconds = s.ScanSeconds;
-            EngageRange = s.EngageRange;
-            EngageScreenMargin = s.EngageScreenMargin;
         }
 
-        void Awake()
+        protected override void Awake()
         {
             ApplySettings(RyonaConfig.Instance.BeltLock);
         }
 
-        void LateUpdate()
+        public override void OnConfigChanged(RyonaConfig config)
         {
-            if (Time.time >= _nextScan)
-            {
-                _nextScan = Time.time + Mathf.Max(0.02f, ScanSeconds);
-                _alive = AnyEngaged();
-            }
-
-            if (!_alive)
-            {
-                _lockX = float.NaN;
-            }
-            else if (float.IsNaN(_lockX))
-            {
-                // 戦いが始まった場所で画面を固定する。彼女を画面の中央に置いてから
-                // 止めないと、端に寄ったまま固まって見える。
-                _lockX = PlayerX();
-                if (Camera != null)
-                    Camera.SnapTo(_lockX);
-
-                GameLog.Log($"[Screen] lock x={_lockX:F2}");
-            }
-
-            // プレイヤーを縛るのは「戦いの中心（ロックした位置）」。
-            // カメラの実位置を使うと、カメラが彼女を追いかけた分だけ彼女も前に進めて
-            // しまい、1m 歩いた所で止まる（自分の位置で自分を縛る形になる）。
-            // 縛る範囲（1画面）と、カメラが動ける範囲（構図づくりの余裕）は別物。
-            if (IsLocked)
-            {
-                float center = _lockX;
-
-                // 歩ける幅は毎回カメラから測り直す。奥行き（z）が変わると
-                // 画面に映る幅も変わるので、固定値では端からはみ出す。
-                float half = Camera != null
-                    ? Camera.ScreenHalfWidth(PlayerZ())
-                    : HalfWidth;
-
-                float inner = Mathf.Max(0.2f, half - Mathf.Max(0f, EdgeMargin));
-
-                if (Motor != null)
-                {
-                    Motor.ForwardLimitX = center + inner;
-                    Motor.BackLimitX = center - inner;
-                }
-
-                if (Camera != null)
-                {
-                    // ここを固定点（min == max）にすると、カメラが 1mm も動けず
-                    // BeltLookAhead が clamp で潰れる。実測で彼女が画面の 71% に寄り、
-                    // 左半分が空いていた（vx=0.712 / enemyVx=0.884）。
-                    // 範囲にして追従を許すと、LookAhead と DeadZone の差だけ
-                    // 彼女が中心より左に置かれる（vx 0.35〜0.40）。
-                    float range = Mathf.Max(0.5f, GateRange);
-                    Camera.GateMaxX = _lockX + range;
-                    Camera.GateMinX = _lockX - range;
-                }
-            }
-            else
-            {
-                if (Motor != null)
-                {
-                    Motor.ForwardLimitX = float.PositiveInfinity;
-                    Motor.BackLimitX = float.NegativeInfinity;
-                }
-
-                if (Camera != null)
-                {
-                    Camera.GateMaxX = float.PositiveInfinity;
-                    Camera.GateMinX = float.NegativeInfinity;
-                }
-            }
+            ApplySettings(config.BeltLock);
+            GameLog.Log("[BeltScreenLock] Config hot-reloaded");
         }
 
-        float PlayerX()
+        void LateUpdate()
         {
-            Transform p = PlayerTransform();
-            return p != null ? p.position.x : transform.position.x;
+            if (!IsLocked)
+                return;
+
+            float center = _lockX;
+
+            // 歩ける幅は毎回カメラから測り直す。奥行き（z）が変わると
+            // 画面に映る幅も変わるので、固定値では端からはみ出す。
+            float half = Camera != null
+                ? Camera.ScreenHalfWidth(PlayerZ())
+                : HalfWidth;
+            float inner = Mathf.Max(0.2f, half - Mathf.Max(0f, EdgeMargin));
+            if (!_widthLogged)
+            {
+                _widthLogged = true;
+                GameLog.Log($"[Screen] walkable={2f * inner:F2}m half={half:F2} margin={EdgeMargin:F2}");
+            }
+
+            if (Motor != null)
+            {
+                Motor.ForwardLimitX = center + inner;
+                Motor.BackLimitX = center - inner;
+            }
+
+            if (Camera != null)
+            {
+                float range = Mathf.Max(0.5f, GateRange);
+                Camera.GateMaxX = center + range;
+                Camera.GateMinX = center - range;
+            }
         }
 
         float PlayerZ()
         {
-            Transform p = PlayerTransform();
+            Transform p = Motor != null ? Motor.transform
+                : (Camera != null ? Camera.Target : null);
             return p != null ? p.position.z : 0f;
-        }
-
-        Transform PlayerTransform()
-        {
-            if (Motor != null)
-                return Motor.transform;
-            if (Camera != null)
-                return Camera.Target;
-            return null;
-        }
-
-        /// <summary>
-        /// 画面ロックを始めるべき敵がいるか。
-        /// 「生きている」だけでは遠くの敵でロックしてしまうので、
-        /// 近い（<see cref="EngageRange"/> 以内）か、画面に映っている敵だけを見る。
-        /// </summary>
-        bool AnyEngaged()
-        {
-            if (Group == null)
-                return false;
-
-            // 起動直後はカメラの向きがまだ置かれていない。この段階の投影で
-            // 「画面に映っている」と判定すると、遠くの敵でロックしてしまう（実測）。
-            if (Camera != null && !Camera.Framed)
-                return false;
-
-            Transform player = PlayerTransform();
-            if (player == null)
-                return false;
-
-            var members = Group.Members;
-            for (int i = 0; i < members.Count; i++)
-            {
-                var brain = members[i];
-                if (brain == null || !brain.IsAlive)
-                    continue;
-
-                Vector3 d = brain.transform.position - player.position;
-                d.y = 0f;
-                if (d.magnitude <= Mathf.Max(0f, EngageRange))
-                    return true;
-
-                if (OnScreen(brain.transform.position + Vector3.up * 1.0f))
-                    return true;
-            }
-
-            return false;
-        }
-
-        /// <summary>その点が画面に入っているか（端の外側 <see cref="EngageScreenMargin"/> まで許す）。</summary>
-        bool OnScreen(Vector3 world)
-        {
-            if (_cam == null && Camera != null)
-                _cam = Camera.GetComponent<Camera>();
-            if (_cam == null)
-                return false;
-
-            float m = Mathf.Clamp01(EngageScreenMargin);
-            Vector3 v = _cam.WorldToViewportPoint(world);
-
-            return v.z > 0f &&
-                   v.x >= -m && v.x <= 1f + m &&
-                   v.y >= -m && v.y <= 1f + m;
         }
     }
 }
+

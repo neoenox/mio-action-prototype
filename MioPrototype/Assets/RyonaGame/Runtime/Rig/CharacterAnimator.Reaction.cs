@@ -131,7 +131,8 @@ namespace Ryona.Game
                 return;
 
             _dreadYaw = Mathf.Clamp(Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg, -70f, 70f);
-            _dreadPitch = Mathf.Clamp(-Mathf.Atan2(local.y, flat) * Mathf.Rad2Deg, -45f, 25f);
+            // 敵の顔が高くても顎を大きく上げると不自然になる。上向きは控えめにする。
+            _dreadPitch = Mathf.Clamp(-Mathf.Atan2(local.y, flat) * Mathf.Rad2Deg, -12f, 25f);
             _hasDreadAngles = true;
         }
 

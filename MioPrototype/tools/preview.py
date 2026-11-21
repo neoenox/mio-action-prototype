@@ -29,7 +29,6 @@
 from __future__ import annotations
 
 import argparse
-import glob
 import os
 import subprocess
 import sys
@@ -37,21 +36,36 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-PROJECT = Path(__file__).resolve().parent.parent            # MioPrototype/
+from frameseq import PREVIEW_ROOT as OUT_ROOT
+from frameseq import PROJECT, count_frames, frame_files, frame_index
+
 REPO = PROJECT.parent
 EXE = PROJECT / "Build" / "MioPrototype.exe"
-OUT_ROOT = PROJECT / "Verify" / "preview"
 
 # 撮りたい場面ごとの起動引数。フレーム数と間隔もここに持つ。
 #   burst: 連番キャプチャの接頭辞フラグ（Debug の各ドライバが読む）
 SCENARIOS = {
+    # 修正済みモーションを 1 本のビルドで順番に再生（デバッグメニューと同じ番号）。
+    "motionseq": dict(args=["-motionseq=1,2,3,4,5,6,7,8,9,10", "-motionseqinterval=3.5"],
+                      burst="-motionseqburst", frames=760, interval=0.05),
+    # 手首ロック（後ろ手の拘束リング）。割る動きまで撮る。
+    "wristlock": dict(args=["-wristlocktest"], burst="-wristlockburst",
+                      frames=140, interval=0.05),
+    # 挟み撃ちの突き飛ばし（ピンポン）。前後の2体で往復→腹パンでダウン。
+    "pinball": dict(args=["-pinballtest"], burst="-pinballburst",
+                    frames=180, interval=0.05),
     # 壁押さえつけ（壁へ押し出す版）。膝〜二人がかり〜3 人がかりまで含む。
     "wallpin": dict(args=["-grappletest", "-wallpintest"], burst="-pinburst",
                     frames=200, interval=0.05),
     # レーンの正面拘束（-nowallpin で壁版を避ける）。膝蹴りが入る。
     "frontpin": dict(args=["-grappletest", "-pintest", "-nowallpin"], burst="-pinburst",
                      frames=140, interval=0.05),
+    # 壁 2 人がかり（Y 字）の腹パンを最後まで撮る。
+    "wallsplit": dict(args=["-grappletest", "-wallpintest", "-splitcamlog"], burst="-pinburst",
+                      frames=360, interval=0.05),
+
     # 羽交い締めからの腹パン（5連撃→グロッキー→引き起こし→トドメ→崩れ落ち）。
+
     "belly": dict(args=["-grappletest"], burst="-heldpunchburst",
                   frames=195, interval=0.05),
     # 羽交い締めからの顔面パン（5連撃→グロッキー→引き起こし→トドメ→仰向けダウン）。
@@ -68,6 +82,9 @@ SCENARIOS = {
                  frames=100, interval=0.05),
     "haulprone": dict(args=["-haultest", "-mountprone"], burst="-mountburst",
                       frames=100, interval=0.05),
+    # 地面マウント（跨ってのパンチ）。マウントのカメラ（GroundMountAttack.FrameMount）を見る。
+    "mount": dict(args=[], burst="-mountburst", frames=110, interval=0.05),
+    "mountprone": dict(args=["-mountprone"], burst="-mountburst", frames=110, interval=0.05),
     # 頭上拘束（両手首を上へ引き上げる）。
     "overhead": dict(args=["-grappletest", "-overheadtest"], burst="-pinburst",
                      frames=120, interval=0.05),
@@ -162,7 +179,7 @@ def capture(scenario: str, outdir: Path, frames: int, interval: float, extra: li
         prev, stable = 0, 0
         while time.time() < deadline:
             time.sleep(1)
-            n = len(glob.glob(str(outdir / "f_*.png")))
+            n = count_frames(outdir)
             if n == prev:
                 stable += 1
                 if stable >= 8 and n > 0:
@@ -178,19 +195,18 @@ def capture(scenario: str, outdir: Path, frames: int, interval: float, extra: li
         except subprocess.TimeoutExpired:
             proc.kill()
 
-    got = len(glob.glob(str(outdir / "f_*.png")))
+    got = count_frames(outdir)
     print(f"  {got} 枚")
     return got
 
 
 # --- 画像の組み立て ----------------------------------------------------
 
-def frame_paths(d: Path) -> list[str]:
-    files = glob.glob(str(d / "f_*.png"))
-    return sorted(files, key=lambda p: int(os.path.splitext(os.path.basename(p))[0].split("_")[1]))
+def frame_paths(d: Path) -> list[Path]:
+    return frame_files(d)
 
 
-def make_sheet(files: list[str], out: Path, step: int, cols: int = 6, width: int = 320) -> None:
+def make_sheet(files: list[Path], out: Path, step: int, cols: int = 6, width: int = 320) -> None:
     from PIL import Image, ImageDraw
 
     picked = files[::max(1, step)]
@@ -200,8 +216,8 @@ def make_sheet(files: list[str], out: Path, step: int, cols: int = 6, width: int
     sheet = Image.new("RGB", (cols * width, rows * (h + 14)), (12, 12, 12))
     draw = ImageDraw.Draw(sheet)
     for i, f in enumerate(picked):
-        idx = int(os.path.splitext(os.path.basename(f))[0].split("_")[1])
-        im = Image.open(f).convert("RGB").resize((width, h), Image.LANCZOS)
+        idx = frame_index(f)
+        im = Image.open(f).convert("RGB").resize((width, h), Image.Resampling.LANCZOS)
         x, y = (i % cols) * width, (i // cols) * (h + 14)
         sheet.paste(im, (x, y + 14))
         draw.text((x + 3, y + 1), f"#{idx} {idx * 0.05:.2f}s", fill=(255, 255, 0))
@@ -209,7 +225,7 @@ def make_sheet(files: list[str], out: Path, step: int, cols: int = 6, width: int
     print(f"  sheet: {out.name} ({sheet.width}x{sheet.height})")
 
 
-def make_gif(files: list[str], out: Path, width: int = 480, every: int = 2) -> None:
+def make_gif(files: list[Path], out: Path, width: int = 480, every: int = 2) -> None:
     from PIL import Image
 
     frames = []
@@ -218,7 +234,8 @@ def make_gif(files: list[str], out: Path, width: int = 480, every: int = 2) -> N
             continue
         im = Image.open(f).convert("RGB")
         h = int(width * im.height / im.width)
-        frames.append(im.resize((width, h), Image.LANCZOS).quantize(colors=64, method=Image.MEDIANCUT))
+        frames.append(im.resize((width, h), Image.Resampling.LANCZOS)
+                      .quantize(colors=64, method=Image.Quantize.MEDIANCUT))
     if not frames:
         return
     frames[0].save(out, save_all=True, append_images=frames[1:],
@@ -242,7 +259,7 @@ def make_compare(old_dir: Path, new_dir: Path, out: Path, picks: int = 4, width:
     draw.text((6, h + 24), f"AFTER   {new_dir.name}", fill=(130, 255, 130))
     for i, idx in enumerate(idxs):
         for row, src in enumerate((old, new)):
-            im = Image.open(src[idx]).convert("RGB").resize((width, h), Image.LANCZOS)
+            im = Image.open(src[idx]).convert("RGB").resize((width, h), Image.Resampling.LANCZOS)
             y = 18 if row == 0 else h + 38
             sheet.paste(im, (i * width, y))
             draw.text((i * width + 4, y + h - 14), f"#{idx}", fill=(255, 255, 0))

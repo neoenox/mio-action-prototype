@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 
 namespace Ryona.Game
@@ -91,7 +92,9 @@ namespace Ryona.Game
             public Shape Shape;
         }
 
-        static readonly Dictionary<EnemyFigure, Proxy[]> Cache = new Dictionary<EnemyFigure, Proxy[]>();
+        // 破棄された EnemyFigure をキーに残すと、シーン再読込やテストのたびに proxies が積み上がる。
+        // ConditionalWeakTable なら敵が GC されるときに一緒に解放される。
+        static readonly ConditionalWeakTable<EnemyFigure, Proxy[]> Cache = new ConditionalWeakTable<EnemyFigure, Proxy[]>();
         static readonly Vector3[] Points = new Vector3[5];
 
         /// <summary>
@@ -150,6 +153,24 @@ namespace Ryona.Game
             return result;
         }
 
+        /// <summary>
+        /// 顔（直径 <see cref="FaceRadius"/> × 2）が画面の高さに占める割合（0..1）。
+        /// 可視率は「顔の 5 点が見えるか」なので、遠くて豆粒でも満点になる。読める大きさかはこれで見る。
+        /// </summary>
+        public static float ScreenFaceSize(Camera camera, Transform head)
+        {
+            if (camera == null || head == null)
+                return 0f;
+
+            Vector3 center = head.position + head.up * 0.06f + head.forward * 0.05f;
+            float depth = camera.transform.InverseTransformPoint(center).z;
+            if (depth <= camera.nearClipPlane)
+                return 0f;
+
+            float screenHeight = 2f * depth * Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad);
+            return screenHeight > 1e-4f ? FaceRadius * 2f / screenHeight : 0f;
+        }
+
         /// <summary>点が画面の中にあるか。縦横比は <see cref="Aspect"/> で固定して計算する。</summary>
         public static bool IsInFrame(Camera camera, Vector3 world)
         {
@@ -197,6 +218,10 @@ namespace Ryona.Game
             if (Cache.TryGetValue(enemy, out Proxy[] cached))
                 return cached;
 
+            // 破棄直後の敵はキーにできない（Unity の擬似 null は別インスタンスとして残るため）。
+            if (enemy == null)
+                return System.Array.Empty<Proxy>();
+
             var list = new List<Proxy>();
             foreach (var filter in enemy.GetComponentsInChildren<MeshFilter>(true))
             {
@@ -215,9 +240,61 @@ namespace Ryona.Game
             }
 
             Proxy[] proxies = list.ToArray();
-            Cache[enemy] = proxies;
+            Cache.Add(enemy, proxies);
             return proxies;
         }
+
+        /// <summary>
+        /// カメラ位置から敵のプリミティブ表面までの最短距離（m）。レンズのすぐ前に来た体を検出する。
+        /// </summary>
+        public static float LensClearance(Vector3 cameraPosition, IReadOnlyList<EnemyFigure> enemies)
+        {
+            float best = float.MaxValue;
+            if (enemies == null)
+                return best;
+
+            for (int e = 0; e < enemies.Count; e++)
+            {
+                EnemyFigure enemy = enemies[e];
+                if (enemy == null || !enemy.isActiveAndEnabled || IsFaded(enemy))
+                    continue;
+
+                Proxy[] proxies = ProxiesOf(enemy);
+                for (int i = 0; i < proxies.Length; i++)
+                {
+                    Transform t = proxies[i].Transform;
+                    if (t == null || !t.gameObject.activeInHierarchy)
+                        continue;
+
+                    Vector3 p = t.InverseTransformPoint(cameraPosition);
+                    float distance;
+                    switch (proxies[i].Shape)
+                    {
+                        case Shape.Cube:
+                            Vector3 q = new Vector3(
+                                Mathf.Max(0f, Mathf.Abs(p.x) - 0.5f),
+                                Mathf.Max(0f, Mathf.Abs(p.y) - 0.5f),
+                                Mathf.Max(0f, Mathf.Abs(p.z) - 0.5f));
+                            distance = q.magnitude;
+                            break;
+                        case Shape.Capsule:
+                            distance = Mathf.Sqrt(SegmentToPointSqr(
+                                new Vector3(0f, -0.5f, 0f), new Vector3(0f, 0.5f, 0f), p)) - 0.5f;
+                            break;
+                        default:
+                            distance = p.magnitude - 0.5f;
+                            break;
+                    }
+
+                    Vector3 s = t.lossyScale;
+                    distance *= Mathf.Min(s.x, Mathf.Min(s.y, s.z));
+                    if (distance < best)
+                        best = distance;
+                }
+            }
+            return best;
+        }
+
 
         /// <summary>
         /// 線分 <paramref name="from"/>→<paramref name="to"/> が、<paramref name="primitive"/> の形と交わるか。

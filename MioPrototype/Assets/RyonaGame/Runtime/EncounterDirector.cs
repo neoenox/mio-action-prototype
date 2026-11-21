@@ -15,7 +15,7 @@ namespace Ryona.Game
     /// </para>
     /// </summary>
     [AddComponentMenu("Ryona/Encounter Director")]
-    public sealed class EncounterDirector : MonoBehaviour
+    public sealed class EncounterDirector : ConfigurableMonoBehaviour
     {
         [Header("Stage (belt)")]
         [Tooltip("ステージの基準。ここを中心に画面と敵の出現位置を決める")]
@@ -24,11 +24,20 @@ namespace Ryona.Game
         [Tooltip("画面の中心を知るためのカメラ")]
         public ThirdPersonCamera Camera;
 
-        [Tooltip("次の一団が出るまでに進む距離（1 画面ぶん）")]
-        [System.NonSerialized] public float ScreenSpan = 8f;
+        /// <summary>最初のアリーナ中心。壁の並びと同じ X。</summary>
+        public const float StartX = -6f;
 
-        [Tooltip("画面の右端の、これだけ外から入ってくる（m）")]
-        [System.NonSerialized] public float SpawnAhead = 5.4f;
+        [Tooltip("アリーナ中心の間隔（m）。-screenspan=N で上書き")]
+        [System.NonSerialized] public float ArenaPitch = 10f;
+
+        [System.NonSerialized] public int WavesPerArena = 2;
+        [System.NonSerialized] public int ArenaCount = 5;
+
+        [Tooltip("この X に近づいたら次のアリーナをロックする（中心との差 m）")]
+        [System.NonSerialized] public float EntryOffset = 2f;
+
+        [Tooltip("同じアリーナで次の波が出るまでの秒")]
+        [System.NonSerialized] public float WaveGap = 1.2f;
 
         [Tooltip("プレイヤーの目の前に出ないための最小距離（m）")]
         [System.NonSerialized] public float MinSpawnGap = 2.2f;
@@ -41,30 +50,19 @@ namespace Ryona.Game
         [System.NonSerialized] public float EntrySpacing = 1.6f;
 
         [Header("Timing")]
-        /// <summary>倒れてから「倒れる音」を鳴らすまでの秒数。</summary>
         [System.NonSerialized] public float BodyDropDelay = 0.7f;
-
-        /// <summary>
-        /// 次の一団までの距離に届かないまま、これだけ動けなかったら次の一団を出す（秒）。
-        /// ステージの端や障害物でゲームが止まって見えるのを防ぐ。
-        /// </summary>
-        [System.NonSerialized] public float StallSeconds = 2.5f;
-
-        float _stallTimer;
-        float _lastPlayerX;
-
-        [Header("Sound")]
-        [Range(0f, 1f)] [System.NonSerialized] public float BodyDropVolume = 0.95f;
+        [System.NonSerialized] public float BodyDropVolume = 0.95f;
 
         readonly List<EnemyBrain> _enemies = new List<EnemyBrain>();
-
-        // 倒された敵の「着地待ち」（倒れる音を遅らせるため）
         readonly List<Vector3> _pendingDrops = new List<Vector3>();
         float _pendingTimer;
-
         float _collectRetry;
-        float _nextTriggerX = float.NaN;
-        float _lastWaveX;
+        float _nextWaveAt;
+        int _currentArena;
+        BeltScreenLock _lock;
+
+        /// <summary>現在の設定から作るアリーナ配置。</summary>
+        public ArenaPlan Plan => new ArenaPlan(StartX, ArenaPitch, WavesPerArena, ArenaCount);
 
         /// <summary>これまでに倒した数。</summary>
         public int Kills { get; private set; }
@@ -72,67 +70,79 @@ namespace Ryona.Game
         /// <summary>生きている敵の数。</summary>
         public int Alive { get; private set; }
 
-        /// <summary>いまの画面が片付いているか。</summary>
+        /// <summary>いまのアリーナが片付いているか。</summary>
         public bool Cleared => Alive <= 0;
 
-        /// <summary>これまでに出した一団の数。</summary>
+        /// <summary>これまでに出した波の数。</summary>
         public int Wave { get; private set; }
 
-        /// <summary>次の一団を出す X（計測用）。</summary>
-        public float NextTriggerX => _nextTriggerX;
+        /// <summary>次にロックするアリーナの入場 X（計測用）。</summary>
+        public float NextTriggerX => Plan.CenterOf(Plan.ArenaOf(Wave + 1)) - EntryOffset;
 
-        /// <summary>決められた数の一団を片付け終えたか（もう湧かない）。</summary>
+        /// <summary>同一アリーナの次の波までの残り秒（HUD 用）。</summary>
+        public float NextWaveRemaining => Mathf.Max(0f, _nextWaveAt - Time.time);
+
+        /// <summary>次の波が別アリーナなら true（HUD の案内出し分け用）。</summary>
+        public bool ArenaMovingNext => Plan.ArenaOf(Wave + 1) != _currentArena;
+
+        /// <summary>直近の波が入場した X（検証用）。</summary>
+        public float LastEntryX { get; private set; }
+
+        /// <summary>決められた数の波を片付けたか（0 なら無限）。</summary>
         public bool StageCleared { get; private set; }
 
-        /// <summary>
-        /// この数の一団を片付けたら終わり（0 なら無限）。1 波 = 敵 3 体。
-        /// シーンに保存された値に影響されないよう NonSerialized。
-        /// </summary>
         [System.NonSerialized] public int MaxWaves = 10;
-
-        /// <summary>ゲーム開始からクリアまでの秒数（クリア時のみ）。</summary>
         public float ClearTimeSeconds { get; private set; }
-
-        /// <summary>これまでの最速クリア（秒）。0 なら記録なし。</summary>
         public float BestClearSeconds { get; private set; }
 
-        const string BestTimeKey = "Mio.BestClearSeconds.Normal10.v2";
+        const string BestTimeKey = "Mio.BestClearSeconds.Normal10.v3";
         float _runSeconds;
-
-        /// <summary>この一団が始まってからの経過秒（テスト・HUD 用）。</summary>
         internal float RunSeconds => _runSeconds;
         bool _recordEligible = true;
 
         /// <summary>調整値は <see cref="RyonaConfig.Encounter"/> が真実源。シーンの保存値は使わない。</summary>
         void ApplySettings(RyonaConfig.EncounterSettings s)
         {
-            ScreenSpan = s.ScreenSpan;
-            SpawnAhead = s.SpawnAhead;
+            ArenaPitch = s.ArenaPitch;
+            WavesPerArena = s.WavesPerArena;
+            ArenaCount = s.ArenaCount;
+            EntryOffset = s.EntryOffset;
+            WaveGap = s.WaveGap;
             MinSpawnGap = s.MinSpawnGap;
             BodyDropDelay = s.BodyDropDelay;
             BodyDropVolume = s.BodyDropVolume;
         }
 
-        void Awake()
+        protected override void Awake()
         {
             ApplySettings(RyonaConfig.Instance.Encounter);
+        }
+
+        public override void OnConfigChanged(RyonaConfig config)
+        {
+            ApplySettings(config.Encounter);
+            GameLog.Log("[EncounterDirector] Config hot-reloaded");
         }
 
         void Start()
         {
             ApplyCommandLine();
             Collect();
+            _lock = FindFirstObjectByType<BeltScreenLock>();
 
             BestClearSeconds = PlayerPrefs.GetFloat(BestTimeKey, 0f);
 
-            // 最初の一団は、始まった画面の右端から入ってくる
+            // 最初のアリーナは開始位置で即ロックし、右端の外から第一波が入る。
             if (_enemies.Count > 0)
-                EnterWave(CenterX());
+            {
+                _currentArena = 0;
+                _lock?.LockAt(Plan.CenterOf(0), initial: true);
+                EnterWave(0);
+            }
         }
 
         /// <summary>
-        /// 比較用: <c>-screenspan=7</c> で「1 画面ぶんの距離」を差し替える。
-        /// シーンに保存された値を起動時だけ上書きするので、7 / 9 / 11 を撮り比べられる。
+        /// 比較用: <c>-screenspan=7</c> でアリーナ間隔を差し替える。
         /// </summary>
         void ApplyCommandLine()
         {
@@ -146,15 +156,15 @@ namespace Ryona.Game
 
             if (LaunchOptions.TryFloat("-screenspan", out float value) && value > 1f)
             {
-                ScreenSpan = value;
-                GameLog.Log($"[Encounter] ScreenSpan={ScreenSpan:F1}（起動引数で上書き）");
+                ArenaPitch = value;
+                GameLog.Log($"[Encounter] ArenaPitch={ArenaPitch:F1}（-screenspan から）");
             }
 
-            // 0 を渡すと無限（計測用）
+            // 0 を渡すと無限（計測用）。最後のアリーナに留まる。
             if (LaunchOptions.TryInt("-maxwaves", out int waves) && waves >= 0)
             {
                 MaxWaves = waves;
-                GameLog.Log($"[Encounter] MaxWaves={MaxWaves}（起動引数で上書き。0 は無限）");
+                GameLog.Log($"[Encounter] MaxWaves={MaxWaves}（0 は無限）");
             }
         }
 
@@ -195,18 +205,41 @@ namespace Ryona.Game
 
             Alive = CountAlive();
 
-            // 押さえつけ（Pin）は本来「巨躯」の役割だが、巨躯の見た目はまだ無い。
-            // 設計（docs/plans/2026-11-03-pin-grapple-design.md）の判断どおり、
-            // 既存の敵 1 体に任せて数値と姿勢を先に固める。
-            if (_enemies.Count > 0 && _enemies[_enemies.Count - 1] != null)
+            AssignRoles();
+            GameLog.Log($"[Encounter] 敵 {_enemies.Count} 体を登録 arena={ArenaCount} × {WavesPerArena} 波 pitch={ArenaPitch:F1}m " +
+                          $"（-screenspan=N で上書き可）");
+        }
+
+        /// <summary>
+        /// 背丈（同点は名前）で掴み役・道具役・打撃役を決める。CanPin は掴み役から導く。
+        /// </summary>
+        void AssignRoles()
+        {
+            var valid = new List<EnemyBrain>(_enemies.Count);
+            var candidates = new List<RoleCandidate>(_enemies.Count);
+            foreach (var brain in _enemies)
             {
-                var pinner = _enemies[_enemies.Count - 1];
-                pinner.CanPin = true;
-                GameLog.Log($"[Encounter] 押さえつけ担当: {pinner.name}");
+                if (brain == null)
+                    continue;
+                valid.Add(brain);
+                candidates.Add(new RoleCandidate(brain.name, HeightOf(brain), brain.CanPin));
             }
 
-            GameLog.Log($"[Encounter] 敵 {_enemies.Count} 体を登録 1画面={ScreenSpan:F1}m " +
-                $"（-screenspan=N で上書き可）");
+            for (int i = 0; i < valid.Count; i++)
+            {
+                var role = EnemyRoleRules.RoleOf(candidates, i);
+                valid[i].Role = role;
+                valid[i].CanPin = role == EnemyRole.Grappler;
+                GameLog.Log($"[Encounter] role {valid[i].name}={role} height={HeightOf(valid[i]):F2}");
+            }
+
+        }
+
+        /// <summary>敵の背丈（m）。<see cref="EnemyFigure"/> が無ければ 0。</summary>
+        static float HeightOf(EnemyBrain brain)
+        {
+            var figure = brain != null ? brain.GetComponent<EnemyFigure>() : null;
+            return figure != null ? figure.Height : 0f;
         }
 
         void OnDestroy()
@@ -230,7 +263,12 @@ namespace Ryona.Game
             GameLog.Log($"[Encounter] 撃破 {Kills} 残り {Alive} t={Time.time:F2}");
 
             if (Alive <= 0)
-                GameLog.Log($"[Encounter] 全滅 wave={Wave} 右へ進める t={Time.time:F2}");
+            {
+                _nextWaveAt = Time.time + WaveGap;
+                if (Plan.ArenaOf(Wave + 1) != _currentArena)
+                    _lock?.Release();
+                GameLog.Log($"[Encounter] 全滅 wave={Wave} arena={_currentArena} t={Time.time:F2}");
+            }
         }
 
         int CountAlive()
@@ -275,24 +313,19 @@ namespace Ryona.Game
                 }
             }
 
-            // 片付いていないあいだは次の一団を出さない
+            // 片付いていないあいだは次の波を出さない
             if (Alive > 0)
-            {
-                _stallTimer = 0f;
-                _lastPlayerX = PlayerX();
                 return;
-            }
 
             if (StageCleared)
                 return;
 
-            // 決められた数の一団を片付けたら終わり（0 なら無限）
+            // 決められた数の波を片付けたら終わり（0 なら無限）
             if (MaxWaves > 0 && Wave >= MaxWaves)
             {
                 StageCleared = true;
                 ClearTimeSeconds = _runSeconds;
 
-                // 最速を更新したときだけ保存（毎回書くと無駄にディスクへ行く）
                 if (_recordEligible && (BestClearSeconds <= 0f || ClearTimeSeconds < BestClearSeconds))
                 {
                     BestClearSeconds = ClearTimeSeconds;
@@ -300,46 +333,34 @@ namespace Ryona.Game
                     PlayerPrefs.Save();
                 }
 
-                // 終わったことを音でも知らせる（画面のバナーだけだと見落とす）
                 ProceduralSfx.Instance?.Play(SfxId.Clear, 1f);
+                _lock?.Release();
 
                 GameLog.Log($"[Encounter] STAGE CLEAR {Wave} 波 / 撃破 {Kills} " +
-                    $"time={ClearTimeSeconds:F1}s best={BestClearSeconds:F1}s t={Time.time:F2}");
+                            $"time={ClearTimeSeconds:F1}s best={BestClearSeconds:F1}s t={Time.time:F2}");
                 return;
             }
 
-            float centerX = CenterX();
-
-            if (float.IsNaN(_nextTriggerX))
-                _nextTriggerX = _lastWaveX + ScreenSpan;
-
-            // 1 画面ぶん進んだら、次の一団が右端から入ってくる
-            if (centerX >= _nextTriggerX)
+            int nextArena = Plan.ArenaOf(Wave + 1);
+            bool sameArena = nextArena == _currentArena && (_lock == null || _lock.IsLocked);
+            if (sameArena)
             {
-                EnterWave(centerX);
-                return;
+                // 同じアリーナに波が残っていれば、歩かせず WaveGap で次を出す。
+                if (Time.time < _nextWaveAt)
+                    return;
+            }
+            else
+            {
+                // 最後の波を片付けたらロックは外れている。次のアリーナの入場地点まで歩かせる。
+                float entryX = Plan.CenterOf(nextArena) - EntryOffset;
+                if (PlayerX() < entryX)
+                    return;
+
+                _lock?.LockAt(Plan.CenterOf(nextArena));
+                _currentArena = nextArena;
             }
 
-            // 進めないときの逃げ道。
-            // ステージの端や障害物で「次の一団までの距離」に届かないと、
-            // 画面がロックされないまま何も起きず、ゲームが止まって見える。
-            // 一定時間まったく前に進めていなければ、待たせずに次の一団を出す。
-            float playerX = PlayerX();
-            if (playerX - _lastPlayerX > 0.05f)
-            {
-                _lastPlayerX = playerX;
-                _stallTimer = 0f;
-                return;
-            }
-
-            _lastPlayerX = playerX;
-            _stallTimer += Time.deltaTime;
-
-            if (_stallTimer >= StallSeconds)
-            {
-                GameLog.Log($"[Encounter] {StallSeconds:F1} 秒進めないので次の一団を出します (x={playerX:F2})");
-                EnterWave(centerX);
-            }
+            EnterWave(nextArena);
         }
 
         float PlayerX()
@@ -359,14 +380,14 @@ namespace Ryona.Game
             sfx.PlayAt(position, SfxId.BodyDrop, BodyDropVolume);
         }
 
-        /// <summary>画面の右端の外に一団を並べて、歩いて入ってこさせる。</summary>
-        void EnterWave(float centerX)
+        /// <summary>アリーナ右端の外に一団を並べて、歩いて入ってこさせる。</summary>
+        void EnterWave(int arena)
         {
-            _lastWaveX = centerX;
-
-            // 画面の右端の外。ただし彼女の目の前には出さない（いきなり現れない）。
-            float playerX = Player != null ? Player.position.x : centerX;
-            float edge = Mathf.Max(centerX + SpawnAhead, playerX + Mathf.Max(0f, MinSpawnGap));
+            float playerX = PlayerX();
+            float z = Player != null ? Player.position.z : 0f;
+            float half = Camera != null ? Camera.ScreenHalfWidth(z) : 5f;
+            float edge = Mathf.Max(Plan.EntryX(arena, half, 1f),
+                                   playerX + Mathf.Max(0f, MinSpawnGap));
 
             for (int i = 0; i < _enemies.Count; i++)
             {
@@ -374,23 +395,21 @@ namespace Ryona.Game
                 if (brain == null)
                     continue;
 
-                float z = Player != null ? Player.position.z : 0f;
                 Vector3 pos = new Vector3(edge + i * EntrySpacing, 0f, z);
-
                 brain.transform.SetPositionAndRotation(pos, Quaternion.Euler(0f, -90f, 0f));
                 brain.Revive();
             }
 
-            // 足音・予備動作の音は 1 体ごとに鳴らすと 3 重なって割れるので、一団につき 1 回。
             var sfx = ProceduralSfx.Instance;
             if (sfx != null)
                 sfx.PlayAt(new Vector3(edge, 0f, 0f), SfxId.TellHeavy, 0.7f);
 
             Alive = CountAlive();
             Wave++;
-            _nextTriggerX = centerX + ScreenSpan;
 
-            GameLog.Log($"[Encounter] wave {Wave} 敵 {Alive} 体が右端から入場 (x={edge:F1}) t={Time.time:F2}");
+            LastEntryX = edge;
+            GameLog.Log($"[Encounter] wave {Wave} arena {arena} center={Plan.CenterOf(arena):F1} " +
+                        $"敵 {Alive} 体が右端から入場 (x={edge:F1}) t={Time.time:F2}");
 
             StartCoroutine(VerifyStanding());
         }

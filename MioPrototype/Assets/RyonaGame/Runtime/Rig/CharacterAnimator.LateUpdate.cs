@@ -31,24 +31,31 @@ namespace Ryona.Game
                 _shoveTime = Mathf.Max(0f, _shoveTime - dt);
 
             // 腹パンと顔パンの反動。ヒットストップ中は dt=0 なので、当たった瞬間の姿勢で止まる。
+            if (_buckleRemaining > 0f)
+                _buckleRemaining = Mathf.Max(0f, _buckleRemaining - dt);
+
             _heldBellyPunchRemaining = Mathf.Max(0f, _heldBellyPunchRemaining - dt);
             if (Time.frameCount != _heldFacePunchStartFrame)
                 _heldFacePunchRemaining = Mathf.Max(0f, _heldFacePunchRemaining - dt);
 
-            if (Grapple == null || !Grapple.IsGrappled || Grapple.IsHandingOff || Grapple.Kind != GrappleKind.Back)
+            if (!IsBuckling && (Grapple == null || !Grapple.IsGrappled || Grapple.IsHandingOff || Grapple.Kind != GrappleKind.Back))
             {
                 if (Grapple != null && (!Grapple.IsGrappled || Grapple.IsHandingOff))
-                    _heldBellyPunchRemaining = 0f;
+                {
+                    // 即 0 にすると腹の折れが 1 コマで消える。短く残して減算に任せる。
+                    _heldBellyPunchRemaining = Mathf.Min(_heldBellyPunchRemaining, 0.10f);
+                }
                 ClearHeldGroggy();
                 _finisherHoistTarget = false;
-                FinisherHoistWeight = 0f;
-                _heldFaceFatigue = 0f;
+                // 下げ側は下の MoveTowards（0.10 秒）に任せる。即 0 だと吊り上がりが飛ぶ。
+                _heldFaceFatigue = Mathf.MoveTowards(_heldFaceFatigue, 0f, dt / 0.12f);
             }
             else
             {
                 _rearHoldGroggy = Mathf.Max(_rearHoldGroggy, Mathf.Max(HeldBellyDangle, HeldFaceDangle));
+                // 抱え上げは 0.45 秒かけて上がりきる（0.24 秒だと、持ち上がる前にトドメが入っていた）。
                 FinisherHoistWeight = Mathf.MoveTowards(FinisherHoistWeight, _finisherHoistTarget ? 1f : 0f,
-                    dt / (_finisherHoistTarget ? 0.24f : 0.10f));
+                    dt / (_finisherHoistTarget ? 0.45f : 0.10f));
             }
 
             // 投げの崩れ。引き込まれる動きなので、パンチの折れ（0.07 秒）よりゆっくり入れる。
@@ -88,6 +95,8 @@ namespace Ryona.Game
             }
 
             State before = _state;
+            // 被弾イベントが状態を直接替えた場合も、遷移としてスナップショットを取る。
+            bool hitStateChanged = ConsumeHitStateChanged();
             bool held = Grapple != null && Grapple.IsGrappled && (Stats == null || !Stats.IsDead);
 
             if (held)
@@ -164,6 +173,8 @@ namespace Ryona.Game
                     break;
 
                 case State.Grabbed:
+                    if (IsBuckling)
+                        break;
                     if (Grapple == null || !Grapple.IsGrappled)
                     {
                         if (Stats != null && Stats.IsDead)
@@ -197,7 +208,7 @@ namespace Ryona.Game
             }
 
             // 状態が変わった瞬間に前の姿勢を控え、そこから寄せる（カクつき防止）
-            if (_state != before)
+            if (_state != before || hitStateChanged)
             {
                 Rig.SnapshotPose();
                 _blend = 0f;
@@ -216,6 +227,11 @@ namespace Ryona.Game
                     _ => IdleBlendSeconds
                 };
             }
+
+            // 顔トドメの崩れ姿勢は Down 移行のスナップショットに残してから解除する。
+            // 命中時に先に解除すると、グロッキーの高い腰へ一度戻ってから倒れる（実測で跳ねる）。
+            if (_state == State.Down && before != State.Down && IsBuckling)
+                ClearFinisherBuckle();
 
             // 引き渡しで拘束の種類（Back / Pin / BearHug）が変わると、姿勢が一瞬で
             // 切り替わって見える。今の姿勢から 0.14 秒かけて新しい形へ寄せる。
@@ -301,6 +317,7 @@ namespace Ryona.Game
             }
 
             ApplyPose();
+
 
             // 突き飛ばされた瞬間: 姿勢を組んだ後に足す（上体が前へ・腕が後ろへ・顔は起こす）。
             // ApplyPose より前に書くと上書きされるので、必ずこの位置で。

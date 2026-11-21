@@ -33,8 +33,7 @@ namespace Ryona.Tests
         {
             yield return TestScene.LoadPrototype();
 
-            _stats = Object.FindFirstObjectByType<PlayerStats>();
-            Assert.IsNotNull(_stats, "PlayerStats がシーンに無い");
+            _stats = TestScene.FindPlayer();
 
             _face = _stats.gameObject.AddComponent<PlayerFace>();
             _face.Stats = _stats;

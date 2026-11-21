@@ -14,14 +14,21 @@ namespace Ryona.Game
             // 見た目だけをロボットに寄せる。プリミティブなので骨格・判定・モーションは
             // これまでと同じ（白い装甲・黒いインテーク・青い発光の 3 材質で組む）。
             var source = ClothMaterial != null ? ClothMaterial : BodyMaterial;
-            var armor = Solid(source, new Color(0.84f, 0.86f, 0.90f));
+            var role = Brain != null ? Brain.Role : EnemyRole.Striker;
+            Color armorTint = role == EnemyRole.Grappler ? new Color(0.90f, 0.86f, 0.80f)
+                : role == EnemyRole.Tools ? new Color(0.80f, 0.90f, 0.84f)
+                : new Color(0.84f, 0.86f, 0.90f);
+            Color glowTint = role == EnemyRole.Grappler ? new Color(1.00f, 0.55f, 0.15f)
+                : role == EnemyRole.Tools ? new Color(0.25f, 1.00f, 0.55f)
+                : new Color(0.20f, 0.70f, 1.00f);
+            var armor = Solid(source, armorTint);
             var joint = Solid(source, new Color(0.055f, 0.060f, 0.070f));
             var visor = Solid(source, new Color(0.012f, 0.015f, 0.022f));
             var glow = Solid(source, new Color(0.02f, 0.10f, 0.16f));
             SetSurface(armor, 0.10f, 0.80f);   // 白いセラミック装甲
             SetSurface(joint, 0.30f, 0.50f);   // 黒いインナー・関節
             SetSurface(visor, 0.60f, 0.92f);   // 黒いバイザー（鏡面寄り）
-            SetGlow(glow, new Color(0.20f, 0.70f, 1.00f) * 2.6f);
+            SetGlow(glow, glowTint * 2.6f);
             var skin = armor;
             var cloth = armor;
             var pants = armor;

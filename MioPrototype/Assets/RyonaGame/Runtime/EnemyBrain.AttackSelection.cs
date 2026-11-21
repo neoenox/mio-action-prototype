@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Ryona.Game
 {
-    public sealed partial class EnemyBrain : MonoBehaviour, IDamageable
+    public sealed partial class EnemyBrain : MonoBehaviour
     {
         /// <summary>
         /// 距離と乱数で攻撃を選ぶ。直前と同じ攻撃は避け、同じ攻撃の 3 連続は禁止する。
@@ -135,22 +135,50 @@ namespace Ryona.Game
             return count;
         }
 
-        /// <summary>重い攻撃ほど出しにくくして、軽い刻みが主体になるようにする。</summary>
-        static float WeightOf(AttackId id)
+        /// <summary>役割ごとの攻撃の重み。掴み役は掴み、打撃役は速い打ち、道具役は弱め。</summary>
+        float WeightOf(AttackId id)
         {
-            switch (id)
+            switch (Role)
             {
-                case AttackId.Jab: return 1.10f;
-                case AttackId.Heavy: return 0.85f;
-                case AttackId.Break: return 0.70f;
-                case AttackId.Grab: return 0.75f;
-                default: return 0f;
+                case EnemyRole.Grappler:
+                    switch (id)
+                    {
+                        case AttackId.Jab: return 0.8f;
+                        case AttackId.Heavy: return 1.0f;
+                        case AttackId.Break: return 0.9f;
+                        case AttackId.Grab: return 1.6f;
+                        default: return 0f;
+                    }
+                case EnemyRole.Striker:
+                    switch (id)
+                    {
+                        case AttackId.Jab: return 1.6f;
+                        case AttackId.Heavy: return 1.2f;
+                        case AttackId.Break: return 0.7f;
+                        case AttackId.Grab: return 0.25f;
+                        default: return 0f;
+                    }
+                default:
+                    switch (id)
+                    {
+                        case AttackId.Jab: return 0.9f;
+                        case AttackId.Heavy: return 0.5f;
+                        case AttackId.Break: return 0.5f;
+                        case AttackId.Grab: return 0.4f;
+                        default: return 0f;
+                    }
             }
         }
 
+
         internal void BeginWindup(AttackId id) => BeginAttackWindup(id, fromThrow: false);
 
-        void BeginAttackWindup(AttackId id, bool fromThrow)
+        /// <param name="zoneOverride">
+        /// この一振りだけ狙いを固定する。タッグ技（腹 / 顔）は呼び出し側が狙いを決めて渡す。
+        /// <see cref="ForceZone"/> を一時的に書き換える方式だと、起動引数 <c>-punchzone</c> で
+        /// 入れた値が最初のタッグ技で消え、以後の抽選に戻ってしまう。
+        /// </param>
+        void BeginAttackWindup(AttackId id, bool fromThrow, PunchZone? zoneOverride = null)
         {
             _currentAttack = id;
             ClearTransientAttackState();
@@ -165,7 +193,7 @@ namespace Ryona.Game
                 Id = id,
                 Data = data,
                 Range = RangeOf(id),
-                Windup = fromThrow ? 0.12f : Mathf.Max(0.05f, WindupOf(id)),
+                Windup = fromThrow ? 0.12f : Mathf.Max(0.05f, WindupOf(id) * RoleWindupScale),
                 FromHeldThrow = fromThrow
             };
 
@@ -173,7 +201,8 @@ namespace Ryona.Game
             WindupProgress = 0f;
 
             // 狙いを決める。崩しは腹、素早い一撃は顔寄り、重い一撃は腹寄り。
-            Zone = ForceZone ?? id switch
+            // 「この一振りだけの指定」→「検証用の固定（-punchzone）」→「抽選」の順で効かせる。
+            Zone = zoneOverride ?? ForceZone ?? id switch
             {
                 AttackId.Jab => UnityEngine.Random.value < S.JabFaceChance ? PunchZone.Face : PunchZone.Body,
                 AttackId.Heavy => UnityEngine.Random.value < S.HeavyFaceChance ? PunchZone.Face : PunchZone.Body,

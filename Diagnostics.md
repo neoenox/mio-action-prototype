@@ -49,7 +49,10 @@
 | `-leftpunch` | 弱を必ず左で打つ（2段目の姿勢確認） |
 | `-holdattack [-attackinterval=秒]` | 強も混ぜて自動で殴る |
 | `-holdright` / `-holdmove` | 右へ歩き続ける（波の進行確認） |
-| `-holdmash` | もがき入力を自動で入れる |
+| `-wristlocktest [-wristlockburst=<PNG>]` | 道具役が手首ロックを必ず付けに来る。連番を撮る |
+
+| `-motionseq=1,2,3 [-motionseqinterval=秒] [-motionseqburst=<PNG>]` | デバッグメニューの番号を順番に自動再生。既定 3.5 秒間隔。連番を撮る場合は burst を指定 |
+
 | `-grappletest [-holdmash] [-grappleback\|-grapplefront\|-grappleside]` | 数秒ごとに最寄りの敵を彼女の**背後 1m**（既定）に立たせて掴みを指示する。後ろ拘束は時間切れで解けない。付けなければ **1.6 秒後に腹パン5連続 → くの字 → 3 秒のクールタイム → また 5 連続**を、**振りほどく（`-holdmash`）まで繰り返す**。`-grapplefront` は「正面からでは掴めない」ことの確認用（掴みは背後からのみ成立する）。掴まれている間は `[GrappleContact]` を 0.25 秒ごとに出力（敵ローカル座標で手首・胸・肩・彼女の両手） |
 | `-grappleleft` | `-grappletest` で澪を左向きにして拘束させる。左向きの演出カメラを確認する用途 |
 | `-heldpunchshot=<png>` | 腹パン演出の開始 0.12 秒後を撮影（`-grappletest` と併用） |
@@ -73,6 +76,7 @@
 | `-nowallprops` | 実行時に作る壁パネル（3 か所）を止める。ジオメトリ側に `WallPinSite` を置いたとき用 |
 | `-overheadtest` | `-grappletest` と併用。壁押さえつけでの頭上拘束を再現。 `-overheadburst=<png>` で撮影 |
 | `-walllog` | 壁押さえつけ中、体の骨・髪のジョイント・**描画メッシュ**が壁の表面からどれだけ手前かを 0.25 秒ごとログ（`[WallClear]` / `[WallMesh]` / `[HairWall]`）。貫通の判定は `[WallMesh]` を見る（骨だけでは見落とす） |
+| `-splitcamlog` | 壁 2 人がかり（Y 字）中、0.1 秒ごとに `[SplitCam]`（shot・target・reframe・push・WallSplitWeight・WallGangWeight）を出す。`-grappletest -wallpintest` と併用（`preview.py wallsplit` が付ける） |
 | `-pinshot=<png>` | 押さえつけ開始から 0.30 秒後を撮影（`-pintest` と併用）。`-pinshotdelay=` で秒数を差し替え |
 | `-pinburst=<prefix>` | 押さえつけ開始から 0.05 秒ごとに 40 枚（2.0 秒ぶん）。膝蹴り（1.5 秒）の前後を追う |
 | `-downburst=<prefix> [-downhits=light\|heavy\|break\|belly]` | 起動 1.5 秒後から 0.30 秒おきに彼女へ攻撃を当て、**ダウンした瞬間**から 0.05 秒ごとに 40 枚（2.0 秒ぶん）撮る。撮影中は AI の攻撃を止める（当てるのはドライバだけ）。`belly` は腹ヒット扱い（前へ崩れるダウンの確認用） |
@@ -84,7 +88,8 @@
 | `-mountwide` / `-mountsolo` / `-mounttop` | `-mountburst` の撮影カメラ。`wide`＝体の真横寄り、`solo`＝敵を非表示（彼女の腕だけ見る）、`top`＝真上から。ロール中の彼女の腕を読むときは `-mountwide -mountsolo -mounttop` |
 | `-nofeint` | 敵のフェイントを切る。掴みもフェイント対象（22%）なので、数秒の検証では「掴めなかった」のか「引かれた」のか区別できない。切ってから回す |
 | `-encountertest [-encounterkills=N]` | 2秒ごとに敵を1体倒して決着と波の進行を回す |
-| `-screenspan=N` | 波の「1画面ぶんの距離」を起動時だけ差し替える（既定 8）。7/9/11 を再ビルドなしで撮り比べられる |
+| `-screenspan=N` | アリーナ中心の間隔を起動時だけ差し替える（既定 10）。7/9/11 を再ビルドなしで撮り比べられる |
+| `-mountlog` | マウント中の顔可視率を `[MountFace]` で 0.25 秒ごとに出す（遮蔽した敵の名前付き） |
 | `-maxwaves=N` | 何波で STAGE CLEAR にするか（既定 10、`0` で無限＝耐久試験用） |
 | `-camdist=N` | カメラ距離を差し替える（既定 5.2）。構図の撮り比べ用 |
 | `-titleshot=<png>` | タイトル表示を 1 秒後に撮影し、2.2 秒後に自動開始（押せない環境での目視確認用） |

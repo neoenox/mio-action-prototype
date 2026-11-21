@@ -7,7 +7,10 @@ namespace Ryona.Game
     /// 目標距離を外部から差し替えられるようにしてある。
     /// </summary>
     [AddComponentMenu("Ryona/Third Person Camera")]
-    public sealed class ThirdPersonCamera : MonoBehaviour
+    // 演出ポーズ（21000〜）が確定したあと、遮蔽フェード（23000）より前に構図を決める。
+    // 既定の 0 だとポーズより 1 フレーム早く動き、カット直前に古い姿勢が残る。
+    [DefaultExecutionOrder(22500)]
+    public sealed class ThirdPersonCamera : ConfigurableMonoBehaviour
     {
         [Header("References")]
         public Transform Target;
@@ -165,13 +168,22 @@ namespace Ryona.Game
         Vector3 _shotPosition;
         Vector3 _shotTarget;
 
+        // 演出ショットが終わったあと、最後の画から通常カメラへ戻る補間。
+        // cut:true の意図的なカットはここを通さない。
+        const float CinematicExitSeconds = 0.35f;
+        Vector3 _exitFromPosition;
+        Quaternion _exitFromRotation;
+        Vector3 _lastCinematicPosition;
+        Quaternion _lastCinematicRotation;
+        bool _lastCinematicCut;
+        float _exitRemaining;
         // このフレームで実際に使う値（毎フレーム TickEffects が更新する）
         float _distanceScale = 1f;
         float _pivotOffsetY;
         bool _holdingFocusThisFrame;
         bool _holdingFocusBelt;
 
-        void Awake()
+        protected override void Awake()
         {
             // 調整値は設定アセットから写す。シーンに保存された値は読まない
             // （NonSerialized なので、そもそもシーンの値は入ってこない）。
@@ -190,6 +202,13 @@ namespace Ryona.Game
             _initialDistance = Distance;
             _targetDistance = Distance;
             _smoothPivot = Pivot();
+        }
+
+        /// <summary>設定が変わったら、カメラの調整値を焼き直す。</summary>
+        public override void OnConfigChanged(RyonaConfig config)
+        {
+            ApplySettings(config.Camera);
+            GameLog.Log("[Cam] Config hot-reloaded");
         }
 
         /// <summary>
@@ -348,19 +367,47 @@ namespace Ryona.Game
             _cinematicCut = cut;
             _cinematicPosition = position;
             _cinematicTarget = target;
+            _exitRemaining = 0f;
         }
 
         void ApplyCinematicShot()
         {
             if (!_cinematicRequested)
             {
+                if (_cinematicActive && !_lastCinematicCut)
+                {
+                    _exitFromPosition = _lastCinematicPosition;
+                    _exitFromRotation = _lastCinematicRotation;
+                    _exitRemaining = CinematicExitSeconds;
+                }
                 _cinematicActive = false;
+
+                if (_exitRemaining > 0f)
+                {
+                    float t = 1f - Mathf.Clamp01(_exitRemaining / CinematicExitSeconds);
+                    t = Mathf.SmoothStep(0f, 1f, t);
+                    Vector3 basePosition = transform.position;
+                    Quaternion baseRotation = transform.rotation;
+                    transform.SetPositionAndRotation(
+                        Vector3.Lerp(_exitFromPosition, basePosition, t),
+                        Quaternion.Slerp(_exitFromRotation, baseRotation, t));
+                    _exitRemaining -= Time.unscaledDeltaTime;
+                }
                 return;
             }
 
-            // Cut to the other side of the actors, then track the shot without following each jolt.
-            float follow = _cinematicActive && !_cinematicCut
-                ? 1f - Mathf.Exp(-13f * Time.unscaledDeltaTime) : 1f;
+            // 入りの 1 フレーム目は直前のベルト画の位置・向きを起点にする。
+            // ここを 0 初期化のまま補間すると、原点からカメラが飛んでくる。
+            if (!_cinematicActive)
+            {
+                _shotPosition = transform.position;
+                _shotTarget = transform.position + transform.forward * Mathf.Max(1f, _initialDistance);
+            }
+
+            // cut が指定されたときだけ即座に切り替える。それ以外は前の画から補間して入る。
+            float follow = _cinematicCut
+                ? 1f
+                : 1f - Mathf.Exp(-13f * Time.unscaledDeltaTime);
             _shotPosition = Vector3.Lerp(_shotPosition, _cinematicPosition, follow);
             _shotTarget = Vector3.Lerp(_shotTarget, _cinematicTarget, follow);
             // 固定ショットも、狙いと角度を保ったままホイールで距離を変える。
@@ -369,7 +416,20 @@ namespace Ryona.Game
             Vector3 zoomedOffset = zoom < 1f
                 ? Vector3.ClampMagnitude(offset, Mathf.Max(0.75f, offset.magnitude * zoom))
                 : offset * zoom;
-            transform.SetPositionAndRotation(_shotTarget + zoomedOffset, Quaternion.LookRotation(-offset));
+            Vector3 look = -offset.normalized;
+            Vector3 shotUp = Vector3.up;
+            // 注視点がほぼ真下／真上だと LookRotation の up が不安定になり、画が反転する。
+            if (Vector3.Angle(look, Vector3.up) > 70f)
+            {
+                Vector3 right = Vector3.Cross(look, Vector3.up);
+                if (right.sqrMagnitude < 1e-6f)
+                    right = Vector3.right;
+                shotUp = Vector3.Cross(right.normalized, look).normalized;
+            }
+            transform.SetPositionAndRotation(_shotTarget + zoomedOffset, Quaternion.LookRotation(look, shotUp));
+            _lastCinematicPosition = transform.position;
+            _lastCinematicRotation = transform.rotation;
+            _lastCinematicCut = _cinematicCut;
             _cinematicActive = true;
             _cinematicRequested = false;
         }
@@ -675,7 +735,9 @@ namespace Ryona.Game
             float pushIn = Mathf.LerpUnclamped(1f, _pushScale, Envelope(_pushRemaining, _pushDuration));
             float pullOut = Mathf.LerpUnclamped(1f, _pullScale, Envelope(_pullRemaining, _pullDuration));
 
-            // 寄りが生きている間は寄りを優先する
+            // 寄りが生きている間は寄りを優先する。
+            // ここに追加の平滑化を入れると、1 発目の寄りが遅れ、グロッキー後の復帰も
+            // 既存テストの期限（5 秒）を 0.001 秒超える。入りの補間は RequestCinematicShot 側で行う。
             _distanceScale = pushIn < 1f ? pushIn : pullOut;
             _pivotOffsetY = Mathf.LerpUnclamped(0f, _pivotMeters, Envelope(_pivotRemaining, _pivotDuration));
         }

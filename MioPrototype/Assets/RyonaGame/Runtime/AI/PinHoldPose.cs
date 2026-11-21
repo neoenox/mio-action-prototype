@@ -19,6 +19,15 @@ namespace Ryona.Game
         ThirdPersonCamera _camera;
         float _splitPush;
 
+        // Y 字の構図の基準。Y 字に入った瞬間の二人の位置で構図を決め、打撃中は動かさない。
+        // 毎フレームの位置で決めると、踏み込みのたびに注視点・距離・側が変わって画が揺れる（ユーザー報告）。
+        bool _splitFramed;
+        EnemyBrain _splitAssistRef;
+        bool _splitGang;
+        Vector3 _splitCaptorAnchor;
+        Vector3 _splitAssistAnchor;
+        float _nextSplitLog;
+
         /// <summary>
         /// 壁押さえつけ（膝・猶予）のカメラ位置（彼女と拘束役の間の注視点からのずれ、m）。
         /// 以前の高さ 0.47m だと、拘束役の肩と腕越しに見下ろす形になり、彼女の顔が隠れた
@@ -45,12 +54,17 @@ namespace Ryona.Game
             if (!_brain.IsPinning)
             {
                 _rearFraming = 0f;
+                _splitFramed = false;
                 return;
             }
 
             var hold = _brain.Player.GetComponent<PlayerGrapple>();
             if (hold == null || !hold.IsGrappled || hold.Captor != _brain || hold.Kind != GrappleKind.Pin)
+            {
+                // 拘束が途中で解けたら、次の Y 字は基準を取り直してから始める。
+                _splitFramed = false;
                 return;
+            }
 
             if (_targetRig == null)
                 _targetRig = _brain.Player.GetComponentInChildren<ProceduralRig>();
@@ -172,49 +186,73 @@ namespace Ryona.Game
                     // 二体がかり（Y 字）は二人と彼女が並ぶので、少し斜めから引いた固定ショット。
                     // 角度・距離は WallSplitCamera が起動引数で切り替える
                     // （-wallsplitcam=hold なら壁押さえつけのショットのまま動かさない）。
-                    if (hold.WallSplitWeight > 0.01f)
-                    {
-                        // アシストが離れた直後（重みが抜ける 0.2 秒）は、拘束役を彼女の反対側へ
-                        // 鏡映して代用する。ここで別ショットへ落とすとカメラが跳ねる。
-                        Vector3 assist = hold.WallAssist != null
-                            ? hold.WallAssist.transform.position
-                            : pinned.position + (pinned.position - transform.position);
-                        WallSplitCamera.Build(pinned.position, pinned.forward,
-                            transform.position, assist,
-                            out Vector3 shot, out Vector3 target,
-                            CombatConstants.WallGangCameraBack * hold.WallGangWeight,
-                            CombatConstants.WallGangCameraShift * hold.WallGangWeight);
-
-                        // 段階が進むほど彼女へ寄る（序盤は引き、締めで大きく寄る）。
-                        _splitPush = Mathf.MoveTowards(_splitPush, hold.WallSplitCameraPushTarget,
-                            Time.unscaledDeltaTime * 0.7f);
-                        // 締めの膝入れは、少し上から腹と顔の両方が入る構図にする。
-                        // 彼女の顔が画面から切れないことを優先する（狙いを下げすぎると頭が切れる）。
-                        float lowering = Mathf.InverseLerp(0.10f, 0.15f, _splitPush);
-                        // 締めの一撃で彼女の体が持ち上がるので、狙いは下げずに少し上げて頭の余裕を作る。
-                        target.y += 0.03f * lowering;
-                        shot.y += 0.06f * lowering;
-                        shot = target + (shot - target) * (1f - 0.40f * _splitPush);
-                        _camera.RequestCinematicShot(shot, target);
-                        return;
-                    }
-
-                    _splitPush = 0f;
+                    // 壁押さえつけのショットを共通の基準として作る。
+                    // Y 字へ移るときはこの画から角度・距離で寄せる（直線補間だと敵の体を通る）。
                     Vector3 her = pinned.position + Vector3.up * 1.02f;
                     Vector3 him = transform.position + Vector3.up * 1.02f;
-                    Vector3 mid = Vector3.Lerp(her, him, 0.45f);
+                    Vector3 heldTarget = Vector3.Lerp(her, him, 0.45f);
                     float knee = Mathf.SmoothStep(0f, 1f, hold.KneePulse);
-                    Vector3 offset = Vector3.Lerp(WallHeldShot, WallKneeShot, knee);
+                    Vector3 heldOffset = Vector3.Lerp(WallHeldShot, WallKneeShot, knee);
 
                     // 背の低い拘束役は、彼の頭と肩が彼女の顔の高さに来て顔を隠す。
                     // カメラを彼女の側へ寄せて、彼の体の横から顔を覗く。
-                    // 1.79m 以上は従来のまま（Enemy 2 / 3）、1.72m で最大。
                     float shortT = _figure != null
                         ? Mathf.InverseLerp(1.79f, 1.72f, _figure.Height)
                         : 0f;
-                    offset += new Vector3(0.65f, -0.15f, 0.55f) * shortT;
+                    heldOffset += new Vector3(0.65f, -0.15f, 0.55f) * shortT;
+                    Vector3 heldShot = heldTarget + heldOffset;
 
-                    _camera.RequestCinematicShot(mid + offset, mid);
+                    if (hold.WallSplitWeight > 0.01f)
+                    {
+                        // 構図の基準を取るのは、Y 字に入った瞬間と、アシストが入れ替わった／3 人目が加わったときだけ。
+                        bool gang = hold.WallGangWeight > 0.5f;
+                        bool reframe = !_splitFramed || hold.WallAssist != _splitAssistRef || gang != _splitGang;
+                        if (reframe)
+                        {
+                            _splitCaptorAnchor = transform.position;
+                            // アシストが離れた直後は、拘束役を彼女の反対側へ鏡映して代用する。
+                            _splitAssistAnchor = hold.WallAssist != null
+                                ? hold.WallAssist.transform.position
+                                : pinned.position + (pinned.position - transform.position);
+                            _splitAssistRef = hold.WallAssist;
+                            _splitGang = gang;
+                        }
+
+                        WallSplitCamera.Build(pinned.position, pinned.forward,
+                            _splitCaptorAnchor, _splitAssistAnchor,
+                            out Vector3 splitShot, out Vector3 splitTarget,
+                            CombatConstants.WallGangCameraBack * hold.WallGangWeight,
+                            CombatConstants.WallGangCameraShift * hold.WallGangWeight);
+
+                        // 段階が進むほど彼女へ寄る（序盤は引き、締めで大きく寄る）。打撃ごとの段差が出ないよう緩く追う。
+                        _splitPush = Mathf.Lerp(_splitPush, hold.WallSplitCameraPushTarget,
+                            1f - Mathf.Exp(-1.5f * Time.unscaledDeltaTime));
+                        float lowering = Mathf.InverseLerp(0.10f, 0.15f, _splitPush);
+                        splitTarget.y += 0.03f * lowering;
+                        splitShot.y += 0.06f * lowering;
+                        splitShot = splitTarget + (splitShot - splitTarget) * (1f - 0.40f * _splitPush);
+
+                        // Y 字に入る瞬間は、押さえつけの画から 1 回だけ意図的にカットする。
+                        // 角度で補間すると拘束役の背中の後ろを通り、顔が隠れる（実測 wallpin #193〜#197）。
+                        // 候補を毎フレーム採点してカットする方式は、打撃のたびに画が飛んだ（ユーザー報告）。
+                        // reframe でもカットすると、入り直しの 1 フレーム前に背中が残った（実測 2026-11-21）。
+                        bool cut = !_splitFramed;
+                        _splitFramed = true;
+                        _camera.RequestCinematicShot(splitShot, splitTarget, cut: cut);
+
+                        if (LaunchOptions.Has("-splitcamlog") && Time.unscaledTime >= _nextSplitLog)
+                        {
+                            _nextSplitLog = Time.unscaledTime + 0.1f;
+                            GameLog.Log($"[SplitCam] shot={splitShot} target={splitTarget} reframe={reframe} " +
+                                        $"push={_splitPush:F2} w={hold.WallSplitWeight:F2} gang={hold.WallGangWeight:F2}");
+                        }
+                        return;
+                    }
+
+                    _splitFramed = false;
+                    _splitAssistRef = null;
+                    _splitPush = 0f;
+                    _camera.RequestCinematicShot(heldShot, heldTarget);
                     return;
                 }
 

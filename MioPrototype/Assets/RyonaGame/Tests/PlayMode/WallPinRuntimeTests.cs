@@ -179,7 +179,7 @@ namespace Ryona.Tests
             Assert.IsTrue(anim.Rig != null && anim.Rig.Ready, "リグが完成していない");
 
             // 貼り付き（0.40 秒）と姿勢のブレンドが終わるまで待つ。
-            yield return WaitGameSeconds(0.7f);
+            yield return TestTime.WaitGameSeconds(0.7f);
 
             Vector3 head = anim.Rig.Head.position;
             float gapL = face - anim.Rig.LHand.position.z;
@@ -198,7 +198,7 @@ namespace Ryona.Tests
             for (int i = 0; i < 4; i++)
             {
                 _grapple.Struggle();
-                yield return WaitGameSeconds(0.05f);
+                yield return TestTime.WaitGameSeconds(0.05f);
                 Assert.IsTrue(_grapple.IsGrappled, "まだ抜けてはいけない");
                 Assert.Less(face - anim.Rig.LHand.position.z, 0.15f,
                     $"もがき中に左手首が壁から浮いた（{face - anim.Rig.LHand.position.z:F2}m）");
@@ -341,7 +341,7 @@ namespace Ryona.Tests
                 _grapple.Struggle();
             Assert.IsFalse(_grapple.IsGrappled);
             _captor.enabled = false;
-            yield return WaitGameSeconds(0.9f);
+            yield return TestTime.WaitGameSeconds(0.9f);
             Assert.Less(Mathf.Abs(_player.transform.position.z), 0.1f);
             Assert.AreEqual(0f, wall.RiseProgress);
         }
@@ -357,8 +357,7 @@ namespace Ryona.Tests
         {
             yield return TestScene.LoadPrototype();
 
-            _player = Object.FindFirstObjectByType<PlayerStats>();
-            Assert.IsNotNull(_player, "PlayerStats がシーンに無い");
+            _player = TestScene.FindPlayer();
 
             _grapple = _player.GetComponent<PlayerGrapple>();
             Assert.IsNotNull(_grapple, "PlayerGrapple が無い");
@@ -517,20 +516,6 @@ namespace Ryona.Tests
             }
         }
 
-        /// <summary>指定秒だけゲーム内時間を進める（VRM 読込中の timeScale 0 に耐える）。</summary>
-        IEnumerator WaitGameSeconds(float seconds)
-        {
-            float end = Time.time + seconds;
-            float deadline = Time.realtimeSinceStartup + seconds * 10f + 5f;
-            while (Time.time < end && Time.realtimeSinceStartup < deadline)
-            {
-                if (Time.timeScale <= 0f)
-                    Time.timeScale = 1f;
-
-                yield return null;
-            }
-        }
-
         [UnityTest]
         public IEnumerator 壁の前で押さえつけると壁へ押し出される()
         {
@@ -542,7 +527,7 @@ namespace Ryona.Tests
             Assert.IsTrue(_grapple.IsGrappled, "押さえつけが始まらない");
             Assert.IsTrue(_grapple.IsWallPin, "壁の前なのに壁押さえつけにならない");
 
-            yield return WaitGameSeconds(0.4f);
+            yield return TestTime.WaitGameSeconds(0.4f);
 
             Assert.Greater(_player.transform.position.z, 1.0f,
                 "彼女が壁側へ押し出されていない");
@@ -566,7 +551,7 @@ namespace Ryona.Tests
             Assert.IsTrue(_grapple.IsWallPin, "壁押さえつけが始まらない");
 
             // 押し出し（0.18 秒）と姿勢のブレンドが終わるまで待つ。
-            yield return WaitGameSeconds(0.5f);
+            yield return TestTime.WaitGameSeconds(0.5f);
 
             var anim = _player.GetComponentInChildren<CharacterAnimator>();
             Assert.IsNotNull(anim, "CharacterAnimator が無い");
@@ -647,7 +632,7 @@ namespace Ryona.Tests
             Assert.IsFalse(_grapple.IsGrappled, "もがいても抜けられない");
             Assert.IsFalse(_grapple.IsWallPin, "壁押さえつけの状態が残っている");
 
-            yield return WaitGameSeconds(0.4f);
+            yield return TestTime.WaitGameSeconds(0.4f);
 
             Assert.AreEqual(0f, _player.transform.position.z, 0.08f,
                 "レーン（z=0）へ戻っていない");
@@ -667,7 +652,7 @@ namespace Ryona.Tests
             Assert.IsTrue(anim.Rig != null && anim.Rig.Ready, "リグが完成していない");
 
             // 壁に押し付けられている間の腰の高さ（姿勢の基準）。
-            yield return WaitGameSeconds(0.5f);
+            yield return TestTime.WaitGameSeconds(0.5f);
             float pinnedHips = anim.Rig.Hips.position.y - _player.transform.position.y;
 
             int need = Mathf.CeilToInt(_grapple.RequiredInputs);
@@ -677,11 +662,11 @@ namespace Ryona.Tests
             Assert.IsFalse(_grapple.IsWallPin, "壁押さえつけの状態が残っている");
 
             // レーンへ戻る途中（まだ壁際）。姿勢は壁の反りが残っていること。
-            yield return WaitGameSeconds(0.10f);
+            yield return TestTime.WaitGameSeconds(0.10f);
             float midHips = anim.Rig.Hips.position.y - _player.transform.position.y;
 
             // 戻りきったあとの立ち姿勢（比較用の基準）。
-            yield return WaitGameSeconds(0.5f);
+            yield return TestTime.WaitGameSeconds(0.5f);
             float idleHips = anim.Rig.Hips.position.y - _player.transform.position.y;
 
             Assert.Greater(idleHips - pinnedHips, 0.01f,
@@ -730,7 +715,7 @@ namespace Ryona.Tests
             var anim = _player.GetComponentInChildren<CharacterAnimator>();
             Assert.IsNotNull(anim, "CharacterAnimator が無い");
             Assert.IsTrue(anim.Rig != null && anim.Rig.Ready, "リグが完成していない");
-            yield return WaitGameSeconds(0.35f);
+            yield return TestTime.WaitGameSeconds(0.35f);
             float spread = Mathf.Abs(anim.Rig.LHand.position.x - anim.Rig.RHand.position.x);
             Assert.Greater(spread, 0.5f, $"手首が Y 字に開いていない（{spread:F2}m）");
         }
@@ -1036,7 +1021,7 @@ namespace Ryona.Tests
             deadline = Time.realtimeSinceStartup + 4f;
             while (_grapple.WallGangWeight < 0.99f && Time.realtimeSinceStartup < deadline)
                 yield return null;
-            yield return WaitGameSeconds(0.3f);
+            yield return TestTime.WaitGameSeconds(0.3f);
 
             float rootY = _player.transform.position.y;
             float leftHandY = anim.Rig.LHand.position.y - rootY;
@@ -1077,6 +1062,10 @@ namespace Ryona.Tests
             for (int i = 0; i < byRole.Length; i++)
                 byRole[i] = new System.Collections.Generic.Dictionary<string, int>();
             for (int i = 0; i < worst.Length; i++) worst[i] = 1f;
+            int transitionTotal = 0;
+            int transitionGood = 0;
+            float transitionWorst = 1f;
+            string transitionBlocker = null;
 
             float deadline = Time.realtimeSinceStartup + 70f;
             while (_grapple.IsWallPin && _grapple.WallPhase == WallStage.Held &&
@@ -1087,6 +1076,17 @@ namespace Ryona.Tests
                     : _grapple.WallPauseRemaining > 0f ? 1 : 0;
 
                 var result = FaceVisibility.Measure(Camera.main, anim.Rig.Head, figures);
+                if (_grapple.WallSplitWeight > 0.01f && _grapple.WallSplitWeight < 0.99f)
+                {
+                    transitionTotal++;
+                    if (result.Readable)
+                        transitionGood++;
+                    if (result.Visible < transitionWorst)
+                    {
+                        transitionWorst = result.Visible;
+                        transitionBlocker = result.Blocker;
+                    }
+                }
                 total[phase]++;
                 if (result.Readable)
                     good[phase]++;
@@ -1113,6 +1113,14 @@ namespace Ryona.Tests
                 }
                 yield return null;
             }
+
+            float transitionRatio = transitionTotal > 0 ? transitionGood / (float)transitionTotal : 1f;
+            UnityEngine.Debug.Log($"[FaceVisible] Y字移行: readable {transitionRatio:P0} " +
+                                  $"({transitionGood}/{transitionTotal}) worst={transitionWorst:F2} " +
+                                  $"blocker={transitionBlocker ?? "-"}");
+            if (transitionTotal > 3)
+                Assert.GreaterOrEqual(transitionRatio, 0.60f,
+                    $"Y字移行中に顔が読めるコマが少ない（{transitionRatio:P0}。遮蔽={transitionBlocker ?? "-"}）");
 
             for (int i = 0; i < names.Length; i++)
             {
@@ -1329,7 +1337,7 @@ namespace Ryona.Tests
 
             // Y 字へ開ききり、1 発目が当たる前（振りかぶり中）の姿勢を基準にする。
             // （二人がかりでは手首は壁ではなく正面へ出るので、壁のクリアランスは 1 体のときのテストで見る）
-            yield return WaitGameSeconds(0.30f);
+            yield return TestTime.WaitGameSeconds(0.30f);
 
             float baseChestZ = anim.Rig.Chest.position.z;
             float baseHipsY = anim.Rig.Hips.position.y;
@@ -1392,7 +1400,7 @@ namespace Ryona.Tests
             Assert.IsNotNull(anim, "CharacterAnimator が無い");
             Assert.IsTrue(anim.Rig != null && anim.Rig.Ready, "リグが完成していない");
 
-            yield return WaitGameSeconds(0.7f);
+            yield return TestTime.WaitGameSeconds(0.7f);
             AssertHandClearance(anim, face);
         }
 
@@ -1407,7 +1415,7 @@ namespace Ryona.Tests
             while (!_grapple.IsWallSplitActive && Time.realtimeSinceStartup < deadline)
                 yield return null;
             Assert.IsTrue(_grapple.IsWallSplitActive, "二人がかりが始まらない");
-            yield return WaitGameSeconds(0.35f);
+            yield return TestTime.WaitGameSeconds(0.35f);
 
             Vector3 her = _player.transform.position;
             WallSplitCamera.Build(her, _player.transform.forward,

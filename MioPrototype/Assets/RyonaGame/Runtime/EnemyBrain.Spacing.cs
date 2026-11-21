@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Ryona.Game
 {
-    public sealed partial class EnemyBrain : MonoBehaviour, IDamageable
+    public sealed partial class EnemyBrain : MonoBehaviour
     {
         void Move(Vector3 direction)
         {
@@ -105,7 +105,8 @@ namespace Ryona.Game
         void Face(Vector3 forward, float dt)
         {
             Quaternion look = Quaternion.LookRotation(forward, Vector3.up);
-            float t = Mathf.Clamp01(Mathf.Max(0f, S.TurnSpeed) * dt);
+            // 線形係数 * dt だとフレームレートで旋回速度が変わる。経過時間から係数を作る。
+            float t = 1f - Mathf.Exp(-Mathf.Max(0f, S.TurnSpeed) * dt);
             transform.rotation = Quaternion.Slerp(transform.rotation, look, t);
         }
 

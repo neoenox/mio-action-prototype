@@ -132,8 +132,21 @@ namespace Ryona.Game
     [AddComponentMenu("Ryona/Wall Pin Props")]
     public sealed class WallPinProps : MonoBehaviour
     {
-        /// <summary>壁を置く X。10m 間隔だと 1 画面ごとに 1 か所くらいになる。</summary>
-        static readonly float[] SiteX = { -6f, 4f, 14f, 24f };
+        /// <summary>壁を置く X。アリーナ中心と同じ式から作る。</summary>
+        static readonly float[] SiteX = BuildSiteX();
+
+        static float[] BuildSiteX()
+        {
+            var s = RyonaConfig.Instance.Encounter;
+            float pitch = LaunchOptions.TryFloat("-screenspan", out float span) && span > 1f
+                ? span : s.ArenaPitch;
+            var plan = new ArenaPlan(EncounterDirector.StartX, pitch,
+                                     s.WavesPerArena, s.ArenaCount);
+            var sites = new float[plan.ArenaCount];
+            for (int i = 0; i < sites.Length; i++)
+                sites[i] = plan.CenterOf(i);
+            return sites;
+        }
 
         const float FaceZ = 1.78f;
         const float PanelHeight = 2.18f;

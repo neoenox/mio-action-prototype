@@ -194,7 +194,7 @@ namespace Ryona.Game
                 19, -70f, new Color(0.78f, 0.79f, 0.85f, 0.75f), FontStyle.Normal);
 
             // クリア記録があれば出す（PlayerPrefs に保存済み）
-            float best = PlayerPrefs.GetFloat("Mio.BestClearSeconds.Normal10.v2", 0f);
+            float best = PlayerPrefs.GetFloat("Mio.BestClearSeconds.Normal10.v3", 0f);
             if (best > 0f)
             {
                 int minutes = Mathf.FloorToInt(best / 60f);

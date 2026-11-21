@@ -36,7 +36,13 @@ namespace Ryona.Game
         /// 押さえつけ（Pin）の時間切れ。後ろ拘束では呼ばない。
         /// 壁では投げてから解放する。腹ダメージが上限に達していればうつ伏せに倒れる。
         /// </summary>
-        void Fail()
+        /// <param name="resolveBellyDown">
+        /// 拘束中に溜まった腹ダメージをダウンとして消化するか。
+        /// 壁の投げ捨ては、この直後に投げ捨てのダウンを自分で起こすので false で呼ぶ
+        /// （true のままだと 1 フレームに 2 回ダウンし、<c>[Down] held-belly</c> と
+        /// <c>[Down] wall-toss</c> が並ぶ）。
+        /// </param>
+        void Fail(bool resolveBellyDown = true)
         {
             if (IsWallPin && WallPhase == WallStage.Held && !Stats.IsDown)
             {
@@ -54,7 +60,7 @@ namespace Ryona.Game
             if (ankleTrip)
                 Stats.ForceDown(CombatConstants.DownDuration, "ankle-trip",
                     captor != null ? captor.transform : null, forward: true);
-            else
+            else if (resolveBellyDown)
                 Stats.ResolveHeldBellyDown();
 
             // 拘束を解いた直後に、別の敵から即座に追撃されないようにする。

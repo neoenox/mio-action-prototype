@@ -39,7 +39,14 @@ namespace Ryona.Game
         /// </summary>
         [System.NonSerialized] public float NearFadeRatio = 0.72f;
 
+        /// <summary>
+        /// 彼女より奥にいても、カメラからこの距離にいる敵は体が画面を覆うので薄くする。
+        /// 決めの全身ショットで横に回り込んだ第三の敵がレンズ前に入るのを防ぐ（実測 1.8m）。
+        /// </summary>
+        const float CloseBodyFadeDistance = 2.4f;
+
         Transform _player;
+        Camera _camera;
         EnemyBrain _brain;
         Renderer[] _renderers;
         Material[][] _originals;
@@ -64,6 +71,14 @@ namespace Ryona.Game
         {
             ResolvePlayer();
             Refresh();
+        }
+
+        /// <summary>メインカメラは 1 つだけ。敵ごとの LateUpdate で毎回探さないように控える。</summary>
+        Camera MainCamera()
+        {
+            if (_camera == null)
+                _camera = Camera.main;
+            return _camera;
         }
 
         /// <summary>彼女のトランスフォームを探す。敵の生成順に依存しないようにする。</summary>
@@ -158,8 +173,13 @@ namespace Ryona.Game
                 (hold.Captor == _brain || hold.WallAssist == _brain || hold.WallThird == _brain);
             bool inFrontOfWallShot = wallShot && hold.Captor != _brain && !splitShot &&
                 InFrontOfWallShot(hold);
+            // 拘束役と殴打役は消すと腹パン／顔パンの演出が成立しないので、近接フェードから守る。
+            bool heldParticipant = hold != null && hold.IsGrappled &&
+                (hold.Captor == _brain ||
+                 (_brain != null && _brain.Player != null && _brain.Player.LastAttackerBrain == _brain));
+
             float target = inFrontOfWallShot ? 0f : 1f;
-            if (!wallShot && !inMountShot && IsOccluding())
+            if (!heldParticipant && !wallShot && !inMountShot && IsOccluding())
                 target = MinAlpha;
             if (Mathf.Approximately(target, _alpha) && _applied)
                 return;
@@ -208,7 +228,7 @@ namespace Ryona.Game
         /// <summary>カメラ → 彼女 の線の上に、彼女より手前で入っているか。</summary>
         bool IsOccluding()
         {
-            Camera cam = Camera.main;
+            Camera cam = MainCamera();
             if (cam == null)
             {
                 _dbgWhy = "nocam";
@@ -229,7 +249,13 @@ namespace Ryona.Game
                 return false;
             }
 
-            // 彼女より奥にいるなら遮蔽していない
+            // 彼女より奥にいてもカメラから近い敵は横から体が画面を覆う（決めの全身ショットで実測）。
+            if (NeedsCloseBodyFade(toSelf.magnitude, playerDist))
+            {
+                _dbgWhy = $"close dist={toSelf.magnitude:F2}";
+                return true;
+            }
+
             if (toSelf.magnitude > playerDist)
             {
                 _dbgWhy = "behind";
@@ -276,9 +302,16 @@ namespace Ryona.Game
             return screenGap < allowed;
         }
 
+        /// <summary>
+        /// 彼女より奥にいても、カメラから近い敵は体が画面を覆うのでフェード対象にする。
+        /// 距離だけで決まるのでテストからも呼べる。
+        /// </summary>
+        internal static bool NeedsCloseBodyFade(float selfDistance, float playerDistance)
+            => selfDistance > playerDistance && selfDistance < CloseBodyFadeDistance;
+
         bool InFrontOfWallShot(PlayerGrapple hold)
         {
-            var cam = Camera.main;
+            var cam = MainCamera();
             if (cam == null || hold.Captor == null)
                 return false;
 

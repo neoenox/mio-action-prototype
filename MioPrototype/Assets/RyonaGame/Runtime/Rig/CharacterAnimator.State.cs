@@ -4,6 +4,21 @@ namespace Ryona.Game
 {
     public sealed partial class CharacterAnimator : MonoBehaviour
     {
+        // 被弾イベントは LateUpdate の外で呼ばれる。状態は即座に切り替える必要がある
+        // （ReceiveHit の直後に Current を見るテストがある）が、そうすると LateUpdate の
+        // 遷移検出を素通りしてスナップショットが取られない。変更の事実だけを渡し、
+        // LateUpdate 側で before との比較に加える。
+        bool _hitStateNeedsBlend;
+
+        internal void MarkHitStateChanged() => _hitStateNeedsBlend = true;
+
+        internal bool ConsumeHitStateChanged()
+        {
+            bool changed = _hitStateNeedsBlend;
+            _hitStateNeedsBlend = false;
+            return changed;
+        }
+
         void SetState(State state, float duration)
         {
             _state = state;

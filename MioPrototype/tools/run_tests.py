@@ -9,7 +9,9 @@ EditMode と PlayMode をいくつかのまとまりに分けて順に走らせ�
 
     python tools/run_tests.py                  # コンパイル確認 → 全部
     python tools/run_tests.py --only edit      # EditMode だけ
-    python tools/run_tests.py --only grapple   # 拘束系の PlayMode だけ
+    python tools/run_tests.py --only grapple   # 拘束系の PlayMode だけ（約8分）
+    python tools/run_tests.py --filter "BearHugTests|OverheadRuntimeTests"
+                                               # 指定したクラスだけ（数十秒、開発中の確認向け）
     python tools/run_tests.py --skip-compile   # コンパイル確認を省略（速い）
     python tools/run_tests.py --list           # バッチ名の一覧
 
@@ -35,11 +37,11 @@ LOGS = PROJECT / "Logs"
 BATCHES: dict[str, tuple[str, str | None, str, int]] = {
     "edit": ("EditMode", None,
              "戦闘ルール・関節可動域（EditMode）", 900),
-    "grapple": ("PlayMode", "WallPinRuntime|PinGrapple|HeldBellyPunch|BearHug|OverheadRuntime|AnkleGrab",
+    "grapple": ("PlayMode", "WallPinRuntime|PinGrapple|HeldBellyPunch|BearHug|OverheadRuntime|AnkleGrab|GrappleSessionTests|PinballRuntimeTests|WristLockRuntimeTests",
                 "拘束・壁・腹パン（PlayMode）", 2400),
-    "motion": ("PlayMode", "DownRuntime|HaulUpRuntime|FeelRuntime|HurtPose|JointRomRuntime|BodyOverlapRuntime",
+    "motion": ("PlayMode", "DownRuntime|HaulUpRuntime|FeelRuntime|HurtPose|JointRomRuntime|BodyOverlapRuntime|FaceVisibilityLensTests",
                "ダウン・手応え・被弾姿勢（PlayMode）", 1800),
-    "misc": ("PlayMode", "EnemyAiRuntime|PlayabilityRegression|PlayerFaceRuntime|TestAudio|UiRuntime|VrmRuntime|HairBodyRuntime",
+    "misc": ("PlayMode", "EnemyAiRuntime|PlayabilityRegression|PlayerFaceRuntime|TestAudio|UiRuntime|VrmRuntime|HairBodyRuntime|HotReloadTests|EnemyHpRuntimeTests|OcclusionFadeTests|CameraExitBlendTests|ArenaRuntimeTests|EnemyRoleRuntimeTests",
              "AI・UI・表情・VRM・遊びの回帰（PlayMode）", 2400),
 }
 
@@ -192,17 +194,17 @@ def result_exit_code(results: list[dict]) -> int:
 # ------------------------------------------------------------------ 入口
 
 def main() -> int:
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except AttributeError:
-        pass
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if reconfigure is not None:
+        reconfigure(encoding="utf-8", errors="replace")
 
     parser = argparse.ArgumentParser(
         description="Unity のテストをクラス分割で一括実行する。")
     parser.add_argument("--only", help="実行するバッチ（カンマ区切り: edit,grapple,motion,misc）")
     parser.add_argument("--skip-compile", action="store_true", help="コンパイル確認を省略する")
     parser.add_argument("--unity", help="Unity.exe のパスを明示する")
-    parser.add_argument("--list", action="store_true", help="バッチ一覧を出して終了する")
+    parser.add_argument("--filter", help="PlayMode のテスト名フィルタ（正規表現）。指定時はこのテストだけ実行")
+    parser.add_argument("--list", action="store_true", help="バッチ名の一覧")
     args = parser.parse_args()
 
     if args.list:
@@ -211,13 +213,17 @@ def main() -> int:
             print(f"  {name:8s} {platform:8s} {desc}")
         return 0
 
-    names = ALL_ORDER
-    if args.only:
-        names = [n.strip() for n in args.only.split(",") if n.strip()]
-        unknown = [n for n in names if n not in BATCHES]
-        if unknown:
-            print(f"知らないバッチ: {unknown}。使えるもの: {', '.join(ALL_ORDER)}")
-            return 2
+    if args.filter:
+        BATCHES["custom"] = ("PlayMode", args.filter, f"指定テスト: {args.filter}", 900)
+        names = ["custom"]
+    else:
+        names = ALL_ORDER
+        if args.only:
+            names = [n.strip() for n in args.only.split(",") if n.strip()]
+            unknown = [n for n in names if n not in BATCHES]
+            if unknown:
+                print(f"知らないバッチ: {unknown}。使えるもの: {', '.join(ALL_ORDER)}")
+                return 2
 
     unity = Path(args.unity) if args.unity else unity_exe(PROJECT)
     if unity is None or not unity.exists():

@@ -1024,6 +1024,11 @@ namespace Ryona.Game
                     target = Progress() < EyeOpenAtGetUp ? 1f : 0f;
             }
 
+            // グロッキー〜抱え上げの間は目を閉じる。半眼のまま殴られ続けるより、
+            // 意識が遠のいて晒されているように見える（倒れて閉じるまで繋がる）。
+            if (Anim != null && (Anim.HeldComboDangle > 0.5f || Anim.FinisherHoistWeight > 0.4f))
+                target = 1f;
+
             _eyeClose = Mathf.MoveTowards(_eyeClose, target, dt / Mathf.Max(0.01f, EyeCloseSeconds));
 
             if (target > 0.5f && !_eyesShut)

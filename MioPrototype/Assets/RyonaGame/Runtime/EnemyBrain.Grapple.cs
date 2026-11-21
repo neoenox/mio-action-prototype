@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Ryona.Game
 {
-    public sealed partial class EnemyBrain : MonoBehaviour, IDamageable
+    public sealed partial class EnemyBrain : MonoBehaviour
     {
         /// <summary>
         /// 次の掴みの種類を固定する（撮影・テスト用）。null なら抽選。
@@ -38,6 +38,29 @@ namespace Ryona.Game
         }
 
         /// <summary>
+        /// ピンポンの起点。拘束を前提とせず、胸を突くタッグ技の風を開始する。
+        /// </summary>
+        public bool TryStartPinballPunch(float windupScale = 1f)
+        {
+            if (!isActiveAndEnabled || Phase == EnemyPhase.Dead || Phase == EnemyPhase.Windup ||
+                Phase == EnemyPhase.Attack || Phase == EnemyPhase.Stagger || IsRising ||
+                Player == null || Player.IsDead)
+                return false;
+            if (Group != null && !Group.TryAcquireAttackToken(this))
+                return false;
+
+            BeginAttackWindup(AttackId.Jab, fromThrow: false, PunchZone.Body);
+            if (Mathf.Abs(windupScale - 1f) > 0.001f)
+            {
+                _run.Windup *= windupScale;
+                _timer = _run.Windup;
+            }
+            _tagPunchPending = true;
+            _tagPunchSwing = true;
+            return true;
+        }
+
+
         /// 拘束中のプレイヤーへ、タッグ技のジャブを開始する（狙いは腹 or 顔）。
         /// 正面・間合い内・攻撃トークンありのときだけ開始する。
         /// 演出側（<see cref="HeldBellyPunchDirector"/>）が位置と向きを合わせてから呼ぶ。
@@ -87,9 +110,17 @@ namespace Ryona.Game
             if (Group != null && !Group.TryAcquireAttackToken(this))
                 return false;
 
-            ForceZone = zone;
-            BeginAttackWindup(AttackId.Jab, fromThrow);
-            if (windupScale > 1.001f)
+            // 狙いはこの一振りだけ固定する。ForceZone を書き換えると -punchzone の指定を
+            // 食ってしまうので、引数で渡す。
+            BeginAttackWindup(AttackId.Jab, fromThrow, zone);
+            // コンボ中のタッグ技は役割の予備動作倍率を外す。投げ直後の一発は打撃役の速さを活かす。
+            if (!fromThrow)
+            {
+                _run.Windup = Mathf.Max(0.05f, WindupOf(AttackId.Jab));
+                _timer = _run.Windup;
+            }
+            // 溜めの長さ。1 未満も効かせる（軽い一発は短く振りかぶって素早く入る）。
+            if (Mathf.Abs(windupScale - 1f) > 0.001f)
             {
                 _run.Windup *= windupScale;
                 _timer = _run.Windup;
@@ -107,7 +138,6 @@ namespace Ryona.Game
                 (forceLeft ?? (camera != null &&
                     Vector3.Dot(camera.transform.position - transform.position, transform.right) > 0f));
             _tagFacePower = Mathf.Clamp(forcePower, 0.6f, 1.95f);
-            ForceZone = null;
 
             GameLog.Log($"[HeldPunch] order {name} zone={zone} dist={distance:F2} " +
                       $"pos=({transform.position.x:F2},{transform.position.z:F2}) " +

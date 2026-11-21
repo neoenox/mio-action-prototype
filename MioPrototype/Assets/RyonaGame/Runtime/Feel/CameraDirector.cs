@@ -16,7 +16,7 @@ namespace Ryona.Game
     /// 演出はすべて「当たった／殴られた」の結果だけを起点にしている。
     /// </summary>
     [AddComponentMenu("Ryona/Camera Director")]
-    public sealed class CameraDirector : MonoBehaviour
+    public sealed class CameraDirector : ConfigurableMonoBehaviour
     {
         [Header("References")]
         public ThirdPersonCamera Rig;
@@ -100,9 +100,15 @@ namespace Ryona.Game
             DeathHoldSeconds = s.DeathHoldSeconds;
         }
 
-        void Awake()
+        protected override void Awake()
         {
             ApplySettings(RyonaConfig.Instance.CameraDirection);
+        }
+
+        public override void OnConfigChanged(RyonaConfig config)
+        {
+            ApplySettings(config.CameraDirection);
+            GameLog.Log("[CameraDirector] Config hot-reloaded");
         }
 
         void Start()
@@ -187,7 +193,7 @@ namespace Ryona.Game
 
         // --- 購読ハンドラ -----------------------------------------------
 
-        void OnHitLanded(HitResult result, IDamageable target)
+        void OnHitLanded(HitResult result)
         {
             if (Rig == null)
                 return;
