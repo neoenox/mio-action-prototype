@@ -15,6 +15,9 @@ namespace Ryona.Game
 
             ClearPinHandOff();
             IsGrappled = false;
+
+            // 振りほどきも解除のひとつ。連打の最後の 1 発がそのまま攻撃にならないよう時刻を残す（Issue #55）。
+            ReleasedAt = Time.time;
             _session.LimitRemaining = 0f;
             _session.SuppressRemaining = 0f;
             _session.Captor = null;
@@ -35,6 +38,7 @@ namespace Ryona.Game
         /// <summary>
         /// 押さえつけ（Pin）の時間切れ。後ろ拘束では呼ばない。
         /// 壁では投げてから解放する。腹ダメージが上限に達していればうつ伏せに倒れる。
+        /// 実際の解除は <see cref="Release"/> が行う（解除時刻もそこで記録される）。
         /// </summary>
         /// <param name="resolveBellyDown">
         /// 拘束中に溜まった腹ダメージをダウンとして消化するか。

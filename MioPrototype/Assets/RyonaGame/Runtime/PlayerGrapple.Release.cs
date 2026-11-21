@@ -25,6 +25,16 @@ namespace Ryona.Game
             }
 
             IsGrappled = false;
+
+            // 解除時刻を残す（もがきの連打が攻撃として暴発しないように。Issue #55）。
+            // ここを通る解除経路は、時間切れ（Fail）／壁の投げ捨てと段階遷移の打ち切り
+            // （TickWallToss・TickWallTransition）／引き渡しの中断（CanContinueHandOff）／
+            // 押さえつけの受け渡し中止・掴んでいた相手の死亡／彼女の死亡／プレビュー用のリセット。
+            // 掴まれていないときに呼ばれることもある（ResetForMotionPreview）ので、
+            // 実際に解けたときだけ時刻を進める（解除済みの判定は wasGrappled と同じ）。
+            if (wasGrappled)
+                ReleasedAt = Time.time;
+
             HaulHandoff = false;
             FrontEscapeEffort = 0f;
             _frontEffortHold = 0f;
