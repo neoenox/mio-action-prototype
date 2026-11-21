@@ -342,6 +342,18 @@ namespace Ryona.Game
         /// <summary>掴まれているか。</summary>
         public bool IsGrappled { get; private set; }
 
+        /// <summary>
+        /// 最後に拘束が解けた時刻（<see cref="Time.time"/>）。一度も解けていなければ十分過去（<see cref="NeverReleased"/>）。
+        /// 解除の直後は、もがきの連打がそのまま攻撃として出てしまうので、
+        /// <see cref="PlayerCombat.GrappleReleaseLockSeconds"/> がここを見て入力を少しだけ止める。
+        /// 更新するのは <see cref="Release"/> と <see cref="Escape"/> の 2 か所だけ。
+        /// 引き渡し（<see cref="HandOff"/>）は掴まれたままなので解除として扱わない。
+        /// </summary>
+        public float ReleasedAt { get; private set; } = NeverReleased;
+
+        /// <summary>まだ一度も拘束が解けていないことを表す時刻（<c>Time.time - ReleasedAt</c> が必ずロック秒を超える）。</summary>
+        const float NeverReleased = -999f;
+
         /// <summary>引き起こしから直接入った拘束か。入った直後は腕を下ろしたままにする。</summary>
         internal bool HaulHandoff { get; set; }
 

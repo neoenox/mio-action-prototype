@@ -49,6 +49,8 @@ namespace Ryona.Game
             _session.HeldSeconds = 0f;
             _session.SuppressRemaining = 0f;
             IsGrappled = true;
+            // 掴まれた瞬間は「解除」ではないので ReleasedAt は更新しない
+            // （更新すると、掴まれた直後の攻撃入力に逆にロックがかかる）。
             StrugglePulse = 0f;
             FrontEscapeEffort = 0f;
             _frontEffortHold = 0f;

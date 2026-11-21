@@ -18,6 +18,9 @@ namespace Ryona.Game
 
             EndWallPin();
 
+            // 引き渡しは掴まれたままなので、解除時刻（ReleasedAt）は更新しない。
+            // ここで更新すると、たらい回しの途中で攻撃入力にロックがかかる。
+
             var previous = Captor;
             if (shove && (previous == null || !previous.IsAlive))
                 return;

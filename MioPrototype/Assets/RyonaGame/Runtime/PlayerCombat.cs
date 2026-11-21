@@ -50,6 +50,24 @@ namespace Ryona.Game
         [Tooltip("3段コンボの受付時間。この秒数内に弱を押すと次の段へ進む")]
         [System.NonSerialized] public float ComboWindowSeconds = 0.45f;
 
+        /// <summary>
+        /// 拘束を解かれた直後に、新しい攻撃を受け付けない秒数。
+        /// 拘束中はもがきのために J / K / L を連打するので、解除の瞬間に
+        /// 押されていた分がそのまま攻撃になると、振りほどいた直後に勝手に殴ってしまう。
+        /// <para>
+        /// <see cref="InputBufferSeconds"/>（硬直中の先行入力）とは目的が違うので別の値にしている。
+        /// 先行入力は「押した意思を保留して空いたフレームで撃つ」ものだが、こちらは
+        /// 「もがきの連打を攻撃として拾わない」ためのマスクなので、ロック中の押下は捨てる。
+        /// </para>
+        /// <para>
+        /// 0.12 秒は体感での板挟み調整用の暫定値（人差し指の連打の間隔が約 0.08〜0.10 秒）。
+        /// 短くすると最後の 1 発が攻撃として漏れ、長くすると解除後の反撃がもたつく。
+        /// <see cref="RyonaConfig.CombatSettings"/> には入れていない（シリアライズ済み
+        /// アセットの互換を壊さないため）。実測で決まったら設定へ戻す。
+        /// </para>
+        /// </summary>
+        [System.NonSerialized] public float GrappleReleaseLockSeconds = 0.12f;
+
         /// <summary>拳の軌跡を 1 フレームごとにログる（`-hitlog`）。</summary>
         [System.NonSerialized] public bool TraceFist;
 
@@ -159,6 +177,21 @@ namespace Ryona.Game
                 return;
             }
 
+            // 拘束を解かれた直後の入力ロック（Issue #55）。
+            // もがきの連打（J / K / L）の残りを攻撃として拾わない。
+            // 先行入力にも積まない。積むとロックが明けたフレームでまとめて出て、
+            // 「解除直後に勝手に殴る」という同じ問題が 0.12 秒遅れて起きるだけになる。
+            // ここより上（手首ロック・死亡・ダウン・IsGrappled）のガードが優先で、
+            // ここより下（先行入力の消費・通常の攻撃受付）より前に置く。
+            // なお、掴まれている間は毎フレーム CancelAttack しているので、ここで _attack は必ず null。
+            if (IsGrappleReleaseLocked)
+            {
+                _buffered = null;
+                _bufferedStep = 0;
+                _bufferedAge = 0f;
+                return;
+            }
+
             // 硬直中は次を受け付けない。押された分は先行入力として保持だけしておく。
             if (_attack != null)
             {
@@ -225,6 +258,12 @@ namespace Ryona.Game
 
         /// <summary>踏み込みで出た足がまだ体の下へ戻り切っていない。</summary>
         bool FeetNotSettled => _motor != null && _motor.LungeTravel > SettleEpsilon;
+
+        /// <summary>
+        /// 拘束を解かれた直後の猶予中か。解除時刻は <see cref="PlayerGrapple.ReleasedAt"/> が持つ。
+        /// </summary>
+        bool IsGrappleReleaseLocked =>
+            _grapple != null && Time.time - _grapple.ReleasedAt < GrappleReleaseLockSeconds;
 
         /// <summary>
         /// 攻撃中／足の戻り待ちに押された攻撃を 1 つだけ覚えておく。
