@@ -1,0 +1,31 @@
+name: Unity runner unit tests
+
+on:
+  pull_request:
+    paths:
+      - 'MioPrototype/tools/run_tests.py'
+      - 'MioPrototype/tools/test_run_tests.py'
+      - '.github/workflows/runner-unit-tests.yml'
+  push:
+    branches: ['**']
+    paths:
+      - 'MioPrototype/tools/run_tests.py'
+      - 'MioPrototype/tools/test_run_tests.py'
+      - '.github/workflows/runner-unit-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  runner-unit-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Test Unity runner exit handling without launching Unity
+        run: python -m unittest discover -s MioPrototype/tools -p 'test_run_tests.py' -v
