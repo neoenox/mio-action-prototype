@@ -1,4 +1,5 @@
 using UnityEditor;
+using UnityEditorInternal;
 using UnityEngine;
 
 namespace Ryona.EditorTools
@@ -10,6 +11,7 @@ namespace Ryona.EditorTools
     ///
     /// - 変更が無ければ何もしない（<see cref="PlayerBuild.IsStale"/>）
     /// - Play 中はビルドしない（終了後に改めて予約する）
+    /// - エディタが非アクティブ（他アプリ操作中）の間はビルドしない（戻ってから作り直す）
     /// - メニュー <c>Ryona/Auto Build Player</c> でオン・オフできる（既定はオン）
     /// </summary>
     [InitializeOnLoad]
@@ -19,6 +21,13 @@ namespace Ryona.EditorTools
 
         /// <summary>コンパイル直後にエディタが触られるかもしれないので、少し置いてから動く。</summary>
         const double DebounceSeconds = 15.0;
+
+        /// <summary>
+        /// エディタが非アクティブな間の見直し間隔。コンパイル待ち（2 秒）と同じくらいの短さにして、
+        /// エディタに戻ってから数秒以内に差分ビルドが始まるようにする。
+        /// 非アクティブ中はこの間隔で時刻を見るだけなので、毎フレーム作り直すより負荷が低い。
+        /// </summary>
+        const double InactiveRetrySeconds = 3.0;
 
         static double _dueAt = -1.0;
         static bool _building;
@@ -84,6 +93,22 @@ namespace Ryona.EditorTools
             if (EditorApplication.isCompiling || EditorApplication.isUpdating)
             {
                 Schedule(2.0);
+                return;
+            }
+
+            // エディタが非アクティブ（他のアプリを操作中）の間はビルドしない。
+            // 連続してコードを直している最中にビルドが走ると、そのたびにエディタが固まって
+            // 保存もままならなくなるため。ここで一度見送り、戻ってきたら改めて差分を見る
+            // （ファイルを見に行く IsStale() も、アクティブになるまで呼ばない）。
+            //
+            // UnityEditor.EditorApplication.isFocused はメインウィンドウのフォーカスを見るので、
+            // Inspector など別のエディタウィンドウを触っただけでも false になりうる。ここで欲しいのは
+            // 「アプリ自体が前面か」なので、アプリ全体の状態を返す
+            // UnityEditorInternal.InternalEditorUtility.isApplicationActive を使う
+            // （Unity 6.4 / 6000.4.5f1 の UnityEditor.dll に public static bool の getter があることを確認済み）。
+            if (!InternalEditorUtility.isApplicationActive)
+            {
+                Schedule(InactiveRetrySeconds);
                 return;
             }
 
