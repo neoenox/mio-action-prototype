@@ -163,7 +163,15 @@ def run_batch(name: str, unity: Path, stamp: str) -> dict:
         return {"batch": name, "ok": False, "total": 0, "passed": 0,
                 "failed": 0, "skipped": 0, "failures": [], "elapsed": elapsed}
 
-    stats = parse_results(xml)
+    try:
+        stats = parse_results(xml)
+    except ET.ParseError as e:
+        # 破損した XML でトレースバックに落とすと、残りのバッチの結果が読めなくなる。
+        # バッチ 1 本の失敗として扱い、まとめまで進める。
+        print(f"  x 結果 XML を読めなかった（{e}）。ログ: {log}")
+        return {"batch": name, "ok": False, "total": 0, "passed": 0,
+                "failed": 0, "skipped": 0, "failures": [], "elapsed": elapsed,
+                "runner_exit_code": code}
     stats.update(
         batch=name,
         ok=stats["failed"] == 0 and code == 0,
