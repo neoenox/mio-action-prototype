@@ -32,7 +32,11 @@ if not errorlevel 1 (
 
 echo [build] rebuilding if anything changed...
 "%UNITY%" -batchmode -nographics -quit -projectPath "%PROJECT%" -executeMethod Ryona.EditorTools.PlayerBuild.BuildWindowsFromCli -logFile "%PROJECT%\Logs\batchbuild.log"
-if errorlevel 1 echo [build] build failed - see Logs\batchbuild.log
+if errorlevel 1 (
+  echo [build] build failed - see Logs\batchbuild.log
+  popd
+  exit /b 1
+)
 
 :launch
 if not exist "%EXE%" (
