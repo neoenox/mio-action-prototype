@@ -113,7 +113,9 @@ namespace Ryona.Tests
             Assert.IsFalse(grapple.IsGrappled);
             Assert.IsTrue(_director.BlockedByOtherSequence, "拘束が解けた直後に始まり得る（顔トドメの回避の隙）");
 
-            yield return new WaitForSeconds(1.7f);
+            // 拘束が解けた直後の猶予（時間で消える）が明けるのを待つ。1.7 秒は上限。
+            yield return TestWait.UntilOrTimeout(() => !_director.BlockedByOtherSequence, 1.7f,
+                "拘束が解けた直後の猶予が明けない");
             Assert.IsFalse(_director.BlockedByOtherSequence, "猶予が明けても始まらない");
         }
 

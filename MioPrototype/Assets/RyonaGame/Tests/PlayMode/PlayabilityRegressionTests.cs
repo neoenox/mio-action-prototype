@@ -20,6 +20,7 @@ namespace Ryona.Tests
         public IEnumerator NewEncounterStartsItsOwnClock()
         {
             yield return TestScene.LoadPrototype();
+            // 遭遇演出が動き出すのを待ってから RunSeconds を見る（経過時間の測定）。
             yield return new WaitForSeconds(0.3f);
             var first = Object.FindFirstObjectByType<EncounterDirector>();
             Assert.Greater(first.RunSeconds, 0.2f);
@@ -226,6 +227,7 @@ namespace Ryona.Tests
             Assert.IsTrue(holder.IsHolding);
             Assert.IsFalse(holder.HasAttackToken, "The holder must free the attack slot");
             float hp = player.State.Hp;
+            // 拘束の間合いが詰まるまでの移動量を測るので、その時点を時間で待つ。
             yield return new WaitForSeconds(0.22f);
             float holdGap = Vector3.Distance(holder.transform.position, player.transform.position);
             while (grapple.IsGrappled && player.State.Hp >= hp && Time.realtimeSinceStartup < end)
@@ -283,7 +285,9 @@ namespace Ryona.Tests
             player.ReceiveHit(attacker.State, AttackLibrary.Light(), attacker.transform);
             Assert.Less(player.State.Hp, hp);
 
-            yield return new WaitForSeconds(0.16f);
+            yield return TestWait.UntilOrTimeout(
+                () => animator.Current == CharacterAnimator.State.Grabbed, 0.16f,
+                "掴まれた姿勢に入らない");
             Assert.AreEqual(CharacterAnimator.State.Grabbed, animator.Current);
             Assert.AreSame(captor, grapple.Captor);
             Assert.AreEqual(kind, grapple.Kind);
@@ -318,7 +322,7 @@ namespace Ryona.Tests
             Assert.AreEqual(GrappleKind.Back, grapple.Kind);
             // 腕の角度は 0.16 秒の補間で目標へ寄る。0.65 秒だと肘の高さが
             // 数 mm 単位で残り、しきい値（肩の 10cm 下）をまたいで不安定になる。
-            // 姿勢が収束してから測る。
+            // 姿勢が収束してから測る。ゆらぎが収まる時間そのものを見るので時間で待つ。
             yield return new WaitForSeconds(1.2f);
             yield return null;
             var figure = holder.GetComponent<EnemyFigure>();

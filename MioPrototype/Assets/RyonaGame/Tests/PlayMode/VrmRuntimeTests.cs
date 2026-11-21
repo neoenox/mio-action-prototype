@@ -76,6 +76,7 @@ namespace Ryona.Tests
             Assert.IsNotNull(animator);
             Assert.IsNotNull(rig);
 
+            // アイドル姿勢の腰の高さを基準にするので、再生が落ち着くまで待つ（時間が対象）。
             yield return new WaitForSeconds(0.2f);
             float hipsIdle = rig.Hips.position.y;
 
@@ -86,7 +87,11 @@ namespace Ryona.Tests
                 stats.ReceiveHit(new CombatState(), hit);
 
             yield return null;
-            yield return new WaitForSeconds(0.55f);
+            // ダウン姿勢（腰が落ちるまで）になるのを待つ。0.55 秒は上限として使う。
+            yield return TestWait.UntilOrTimeout(
+                () => animator.Current == CharacterAnimator.State.Down && rig.Hips.position.y < hipsIdle - 0.1f,
+                0.55f,
+                "ひるみが蓄積してもダウン状態にならない");
 
             Assert.AreEqual(CharacterAnimator.State.Down, animator.Current,
                 "ひるみが蓄積してもダウン状態になっていない");

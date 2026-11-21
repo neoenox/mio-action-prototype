@@ -89,6 +89,7 @@ namespace Ryona.Tests
         public IEnumerator RearCaptorFollowsBellyRecoilButStaysBracedForFacePunch()
         {
             yield return LoadAndGrab(waitForAnimator: true, directorEnabled: false);
+            // 後ろ拘束の姿勢が落ち着いてから二人を置き直す（再生位置が対象）。
             yield return new WaitForSeconds(0.2f);
             Vector3 center = _player.transform.position;
             center.x = -3f;
@@ -96,6 +97,7 @@ namespace Ryona.Tests
             _captor.TakeOverHold(10f);
             _player.transform.SetPositionAndRotation(center, facing);
             _captor.transform.SetPositionAndRotation(center + Vector3.left * 0.34f, facing);
+            // 置き直した位置へ拘束の姿勢が追従するまで待つ（時間が対象）。
             yield return new WaitForSeconds(0.25f);
 
             var figure = _captor.GetComponent<EnemyFigure>();
@@ -112,6 +114,7 @@ namespace Ryona.Tests
             Assert.Greater(headGap, 0.26f, $"拘束役の頭が被っている（頭中心 {headGap:F3}m）");
 
             _anim.PlayHeldBellyPunch(0.55f);
+            // 反動が最大になる再生位置（0.14 秒）で測るので時間で待つ。
             yield return new WaitForSeconds(0.14f);
             float bellyDepth = _captor.transform.InverseTransformPoint(figure.HeadBone.position).z;
             Assert.Greater(_anim.DebugTorsoPitch, 27f, "The upper body folds over the abdomen.");
@@ -120,8 +123,10 @@ namespace Ryona.Tests
             Assert.Greater(bellyDepth, headDepth + 0.04f, "The captor bends with the player's folded upper body.");
             AssertCaptorArmsHugFromBehind(figure, "腹パンの反動", reaction: true);
 
+            // 反動が収まるまでの残り（再生位置）を待つ。
             yield return new WaitForSeconds(0.5f);
             _anim.PlayHeldFacePunch(0.55f);
+            // 顔パンの反動のピーク（再生位置）で測る。
             yield return new WaitForSeconds(0.10f);
             float faceDepth = _captor.transform.InverseTransformPoint(figure.HeadBone.position).z;
             Assert.That(faceDepth, Is.InRange(headDepth - 0.105f, headDepth + 0.04f),
@@ -453,6 +458,7 @@ namespace Ryona.Tests
 
             Assert.IsFalse(_grapple.HasTimeLimit, "Back hold must have no time limit");
 
+            // 時間切れで解けないことの確認なので、時間を進める（否定の確認）。
             yield return new WaitForSeconds(3.4f);
 
             Assert.IsTrue(_grapple.IsGrappled, "Back hold must not release on a timer");
@@ -515,6 +521,7 @@ namespace Ryona.Tests
             Assert.Less(_camera.EffectDistanceScale, 0.32f, "グロッキーの頭は寄りの画のまま");
 
             // グロッキーを長めに取っているので、寄りの画のまま姿勢を測れる。
+            // グロッキーの再生位置（ComboTailSeconds）を跨ぐ待ちなので時間で待つ。
             yield return new WaitForSeconds(0.95f);
             Assert.IsTrue(_grapple.IsGrappled, "グロッキー演出中は拘束を保つ");
             Assert.AreSame(_captor, _grapple.Captor);
@@ -688,6 +695,7 @@ namespace Ryona.Tests
                 yield return null;
             }
             Assert.Less(Time.realtimeSinceStartup, deadline, "カメラが通常の構図に戻る");
+            // 構図が戻ってから次の段へ進むまでの間（受け渡しの待ち時間そのもの）を確かめる。
             yield return new WaitForSeconds(0.7f);
             Assert.AreSame(_captor, _grapple.Captor, "構図が戻った直後も元の拘束を保つ");
             Assert.IsFalse(_grapple.IsStruggleSuppressed, "受け渡しを待つ間ももがける");
@@ -731,6 +739,7 @@ namespace Ryona.Tests
             yield return LoadAndGrab(waitForAnimator: true, throwDelay: 10f);
             PrepareAttackerPoseTest(0.82f);
             _attacker.HoldFire(10f);
+            // 腹パンと顔パンチの抽選を切り替える時点を再生位置に合わせるので時間で待つ。
             yield return new WaitForSeconds(0.2f);
             _director.FacePunchChance = 1f;
             Assert.IsTrue(_anim.Rig.TryGetRestRotation(_anim.Rig.Head, out Quaternion restHead));
@@ -834,6 +843,7 @@ namespace Ryona.Tests
         public IEnumerator 投げから派生した連撃の顔面パンチで首が手前へ振れる()
         {
             yield return LoadAndGrab(waitForAnimator: true);
+            // 拘束の姿勢が落ち着いてから打ち手の位置を整える（時間が対象）。
             yield return new WaitForSeconds(0.2f);
             // 場面の端や他の敵の攻撃権に左右されず、実際の保持姿勢で連撃を測る。
             PrepareAttackerPoseTest(0.82f);
@@ -900,6 +910,7 @@ namespace Ryona.Tests
             Assert.AreEqual(5, _director.ComboHitsLanded);
             Assert.AreEqual(PunchZone.Face, _director.LastLandedZone);
             // 5 発目の反動が収まってから、拘束役の腕がまだ脇の下をくぐっているかを見る。
+            // 反動の再生尺を待つので時間で待つ。
             yield return new WaitForSeconds(0.55f);
             AssertCaptorArmsHugFromBehind(captorFigure, "顔パンチ5発目", reaction: true);
             // 前回コミット（849ac5e）の見た目を基準にする。拘束役の体を後ろへ引いて
@@ -907,6 +918,7 @@ namespace Ryona.Tests
             // 入れない。ここでは「頭が同じ位置に完全に重ならない」ことだけを確認する。
             Assert.Greater(nearestCaptorHead, 0.09f, $"反動で拘束役の頭と重ならない ({nearestHeadPose})");
             // 回避が始まる前にグロッキーを確認する（顔トドメは命中前に拘束が解ける）
+            // 命中からの経過時間で段が進むので、その再生位置を待つ。
             yield return new WaitForSeconds(0.25f);
             Assert.IsTrue(_grapple.IsGrappled);
             Assert.Greater(_anim.HeldComboDangle, 0.9f, "顔パン5発後もグロッキー脱力状態に入る");
@@ -1282,6 +1294,7 @@ namespace Ryona.Tests
             float deadline = Time.realtimeSinceStartup + 3f;
             while (!_camera.IsFocusing && Time.realtimeSinceStartup < deadline)
                 yield return null;
+            // カメラの寄りの補間（時間で進む）を待つ。ここは実時間で数える。
             yield return new WaitForSecondsRealtime(0.25f);
 
             Assert.IsTrue(_camera.IsFocusing, "Camera must focus during the combo");
@@ -1552,6 +1565,7 @@ namespace Ryona.Tests
             while (_grapple.IsGrappled && t < 3f)
             {
                 _grapple.Struggle();
+                // 当たりの瞬間の硬直（0.12 秒）を跨いで、もがき続ける時間を作る。
                 yield return new WaitForSeconds(0.12f);
                 t += 0.12f;
             }
@@ -1559,7 +1573,8 @@ namespace Ryona.Tests
             Assert.IsFalse(_grapple.IsGrappled, "腹パン中でももがけば抜けられる");
 
             // 抜けたら演出も止まる
-            yield return new WaitForSeconds(0.2f);
+            yield return TestWait.UntilOrTimeout(() => !_director.IsPerforming, 0.2f,
+                "抜けたあともコンボが続いている");
             Assert.IsFalse(_director.IsPerforming, "抜けたらコンボは終わる");
         }
 
@@ -1623,6 +1638,7 @@ namespace Ryona.Tests
                     // 掴み直し用の待機中に、通常攻撃で新たに倒されないようにする。
                     foreach (var enemy in _enemies)
                         enemy.HoldFire(0.75f);
+                    // 掴み直しの前に、押さえていた攻撃を手放す間（時間）を置く。
                     yield return new WaitForSeconds(0.5f);
 
                     // ダウンは「操作があるまで続く」仕様（DownRuntimeTests の
@@ -1665,13 +1681,15 @@ namespace Ryona.Tests
             _attacker.transform.position += _player.transform.right * 0.45f;
             _director.SetDreadTarget(_attacker);
 
-            yield return new WaitForSeconds(0.25f);
+            yield return TestWait.UntilOrTimeout(() => _anim.DreadLook >= 0.95f, 0.25f,
+                "敵へ顔を向けない");
             Assert.GreaterOrEqual(_anim.DreadLook, 0.95f, "最初に敵へ顔を向ける");
             float firstYaw = _anim.DebugHeadYaw;
             float firstPitch = _anim.DebugHeadPitch + _anim.DebugTorsoPitch;
             Assert.Greater(firstYaw, 10f, "最初の敵の横位置が顔の角度に反映される");
 
             PlaceAttackerInFront(0.72f);
+            // 敵を動かしてから顔の向きが戻るまでの時間（追従はしないので変化量を測る）。
             yield return new WaitForSeconds(0.14f);
             Assert.AreEqual(firstYaw, _anim.DebugHeadYaw, 3f, "敵の移動に顔が追従する");
             Assert.AreEqual(firstPitch, _anim.DebugHeadPitch + _anim.DebugTorsoPitch, 5f);
@@ -1680,12 +1698,15 @@ namespace Ryona.Tests
             _attacker.BeginWindup(EnemyBrain.AttackId.Jab);
             _attacker.SetTagPunchSwingForTest(true);
             _attacker.TickWindup(0.24f);
-            yield return new WaitForSeconds(0.14f);
+            yield return TestWait.UntilOrTimeout(
+                () => _attacker.Phase == EnemyPhase.Windup && _anim.DreadLook < 0.05f, 0.14f,
+                "振りかぶっても敵から視線を外さない");
             Assert.AreEqual(EnemyPhase.Windup, _attacker.Phase);
             Assert.Less(_anim.DreadLook, 0.05f, "殴られる前に敵から視線を外す");
 
             _attacker.LockForHandOff(1f);
             _anim.PlayHeldBellyPunch(0.55f);
+            // 反動が終わってグロッキーに戻るまでの再生位置を待つ。
             yield return new WaitForSeconds(0.62f);
             Assert.GreaterOrEqual(_anim.DreadLook, 0.95f, "腹パンの反応が終わったら顔を上げる");
             Assert.AreEqual(firstYaw, _anim.DebugHeadYaw, 3f, "被弾後も最初の敵の位置を基準にする");
@@ -1782,6 +1803,7 @@ namespace Ryona.Tests
             PlaceAttackerInFront(0.85f);
 
             _anim.PlayHeldBellyPunch(0.60f, fatigue: 1f, impact: 1.4f, holdSeconds: 0.18f, finalHit: true);
+            // 5 発目の拘束が終わってグロッキーへ移るまでの再生位置を待つ。
             yield return new WaitForSeconds(0.75f);
 
             Assert.Greater(_anim.HeldComboDangle, 0.95f, "5発後はグロッキー脱力状態に入る");
@@ -1790,12 +1812,14 @@ namespace Ryona.Tests
 
             _player.LastHitZone = PunchZone.Body;
             Hit(_attacker, PunchZone.Body, isTagPunch: false);
+            // 折れリアクションのピーク（再生位置）で測る。
             yield return new WaitForSeconds(0.10f);
 
             Assert.Greater(_anim.HeldBellyPunchFold, 0.5f, "グロッキー中に通常の腹パンを受けると折れリアクションが出る");
             Assert.Greater(_anim.DebugTorsoPitch, groggyPitch + 20f, "腹パンで上体が前へ折れる");
             Assert.Greater(_anim.HeldComboDangle, 0.95f, "被弾中もグロッキー状態は保たれる");
 
+            // 折れリアクションがグロッキー姿勢へ戻るまでの再生位置を待つ。
             yield return new WaitForSeconds(0.55f);
             Assert.Less(Mathf.Abs(_anim.DebugTorsoPitch - groggyPitch), 4f, "反応後は元のグロッキー姿勢へ戻る");
             Assert.Greater(_anim.HeldComboDangle, 0.95f, "反応後もグロッキー状態が続く");
@@ -1803,6 +1827,7 @@ namespace Ryona.Tests
 
             _player.LastHitZone = PunchZone.Face;
             Hit(_attacker, PunchZone.Face, isTagPunch: false);
+            // 首振りのピーク（再生位置）で測る。
             yield return new WaitForSeconds(0.06f);
 
             Assert.Greater(_anim.HeldFacePunchImpulse, 0.4f, "グロッキー中に通常の顔パンを受けると首振りが出る");

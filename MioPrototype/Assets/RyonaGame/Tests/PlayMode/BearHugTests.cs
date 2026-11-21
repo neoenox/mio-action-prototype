@@ -100,6 +100,7 @@ namespace Ryona.Tests
             Assert.IsNotNull(camera);
 
             float hpBefore = _player.State.Hp;
+            // 締め付けの位相とカメラの寄りが乗るまで待つ（再生位置と補間が対象）。
             yield return new WaitForSeconds(0.55f);
             Assert.Greater(_grapple.FrontEscapeRemaining, 0f);
             Assert.Less(camera.EffectDistanceScale, 0.30f, "締め付けの前から顔と腕が見える距離まで寄る");
@@ -190,7 +191,7 @@ namespace Ryona.Tests
             Assert.IsFalse(_grapple.IsGrappled, "12 回もがけば振りほどける");
             Assert.AreEqual(EnemyPhase.Stagger, _captor.Phase, "振りほどかれた側はよろける");
 
-            // 脱出後に締め付けが続かない。
+            // 脱出後に締め付けが続かない（否定の確認なので、時間を進めて見る）。
             float hpAfter = _player.State.Hp;
             yield return new WaitForSeconds(1.2f);
             Assert.AreEqual(hpAfter, _player.State.Hp, 0.01f, "脱出後も締め付けが続いている");

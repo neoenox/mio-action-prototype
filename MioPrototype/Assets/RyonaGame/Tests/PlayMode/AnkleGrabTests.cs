@@ -121,7 +121,10 @@ namespace Ryona.Tests
             _grapple.Failed += () => failed = true;
 
             _grapple.Begin(_captor, GrappleKind.AnkleGrab);
-            yield return new WaitForSeconds(RyonaConfig.Instance.Grapple.AnkleLimitSeconds + 0.4f);
+            // 時間切れの Failed が飛び、転ぶまで待つ（0.4 秒は余裕ぶんの上限）。
+            yield return TestWait.UntilOrTimeout(() => failed && _player.IsDown,
+                RyonaConfig.Instance.Grapple.AnkleLimitSeconds + 0.4f,
+                "足取りが時間切れにならず、前へ転ばない");
 
             Assert.IsTrue(failed, "時間切れで Failed が飛んでいない");
             Assert.IsFalse(_grapple.IsGrappled, "転んだら拘束は解ける");
