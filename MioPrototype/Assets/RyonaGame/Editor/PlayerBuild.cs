@@ -27,7 +27,7 @@ namespace Ryona.EditorTools
         /// </summary>
         static readonly string[] WatchedExtensions =
             { ".cs", ".unity", ".prefab", ".asset", ".mat", ".controller", ".asmdef", ".shader",
-              ".wav", ".mp3", ".ogg" };
+              ".wav", ".mp3", ".ogg", ".vrm" };
 
         static string ProjectRoot => Directory.GetParent(Application.dataPath).FullName;
         static string ExePath => Path.Combine(ProjectRoot, OutFolder, ExeName);
@@ -55,14 +55,15 @@ namespace Ryona.EditorTools
             if (!Directory.Exists(assets))
                 return true;
 
-            string editorDir = Path.DirectorySeparatorChar + "Editor" + Path.DirectorySeparatorChar;
+            // Windows でも Linux でも同じ判定にするため区切りを '/' に揃える。
+            string editorDir = "/Editor/";
             foreach (string file in Directory.EnumerateFiles(assets, "*", SearchOption.AllDirectories))
             {
                 if (!WatchedExtensions.Contains(Path.GetExtension(file).ToLowerInvariant()))
                     continue;
 
                 // エディタ専用コードはプレイヤーに入らないので、変更しても作り直さない。
-                if (file.Contains(editorDir))
+                if (file.Replace('\\', '/').Contains(editorDir))
                     continue;
 
                 if (File.GetLastWriteTimeUtc(file) > builtAt)
