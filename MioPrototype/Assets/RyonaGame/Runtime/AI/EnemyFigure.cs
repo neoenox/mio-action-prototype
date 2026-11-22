@@ -275,12 +275,30 @@ namespace Ryona.Game
         /// <summary>検証用。歩行の位相（0〜1）。0〜0.62 が右足の接地。</summary>
         public float WalkPhase { get; private set; }
 
-        /// <summary>片足が接地している割合。</summary>
+        /// <summary>ゆっくり歩くときの、片足が接地している割合。</summary>
         public const float WalkDuty = 0.62f;
 
-        /// <summary>一歩で踏み出す幅。速いほど大きい。</summary>
+        /// <summary>小走りの接地割合。0.5 未満なので両足が浮く瞬間がある。</summary>
+        const float JogDuty = 0.44f;
+
+        /// <summary>
+        /// 歩き(0)→小走り(1)の度合い。敵は 1.6〜2.6 m/s で動くので、歩きのままだと
+        /// 足の回転だけが上がって秒間 5〜6 歩の「チョコチョコ」になった（指定 2026-11-22）。
+        /// </summary>
+        public static float JogAmount(float speed)
+            => Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(1.1f, 2.3f, speed));
+
+        /// <summary>片足が接地している割合。速いほど短い（小走りになる）。</summary>
+        public static float WalkDutyFor(float speed)
+            => Mathf.Lerp(WalkDuty, JogDuty, JogAmount(speed));
+
+        /// <summary>
+        /// 一歩で踏み出す幅（足首の前後の振れ幅の半分）。速いほど大きい。
+        /// 上限は脚の長さ（0.48H）と小走りの腰の高さで決まる。以前の 0.215m は身長の 1 割強しかなく、
+        /// 歩幅が狭すぎた。
+        /// </summary>
         public static float WalkReach(float speed)
-            => Mathf.Clamp(0.09f + speed * 0.055f, 0.10f, 0.215f);
+            => Mathf.Clamp(0.10f + speed * 0.085f, 0.11f, 0.31f);
 
         // --- 立ち上がりの姿勢（0 / 0.28 / 0.55 / 0.80 / 1.0 の 5 点を補間） -----
         // 仰向け → 上体を起こす → しゃがみ → 立ち上がる。
@@ -331,7 +349,7 @@ namespace Ryona.Game
                 if (d.sqrMagnitude > 1e-6f)
                     _walkDir = d.normalized;
             }
-            float cycle = 2f * WalkReach(speed) / WalkDuty;
+            float cycle = 2f * WalkReach(speed) / WalkDutyFor(speed);
             _walkDist = u * cycle;
             Step(0f, true);
         }

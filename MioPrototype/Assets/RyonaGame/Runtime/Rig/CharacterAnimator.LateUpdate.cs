@@ -316,7 +316,7 @@ namespace Ryona.Game
                 }
             }
 
-            ApplyPose();
+            ApplyPose(dt);
 
 
             // 突き飛ばされた瞬間: 姿勢を組んだ後に足す（上体が前へ・腕が後ろへ・顔は起こす）。

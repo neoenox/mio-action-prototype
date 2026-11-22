@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Threading.Tasks;
 using UnityEngine;
 using UniVRM10;
@@ -138,11 +138,20 @@ namespace Ryona.Game
             // 組み込みの失敗は async だと握り潰されるので、必ずログに出す
             try
             {
-                return Setup(vrm);
+                bool ok = Setup(vrm);
+                if (!ok)
+                {
+                    // 失敗してもモデルは既に親付けされている。残すとプリミティブと重なる。
+                    DisposeVrm(vrm.gameObject);
+                    _instance = null;
+                }
+                return ok;
             }
             catch (System.Exception e)
             {
                 Debug.LogError($"[Ryona] 敵 VRM の組み込みに失敗: {FileName}\n{e}");
+                DisposeVrm(vrm.gameObject);
+                _instance = null;
                 return false;
             }
         }

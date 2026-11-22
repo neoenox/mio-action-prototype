@@ -24,9 +24,15 @@ namespace Ryona.Game
             // 寝返り・片膝・立ちの自然な曲線。腕は自分で床を押さず、脱力して垂らす。
             var pose = PoseGetUp(lift);
 
-            float limp = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.05f, 0.70f, lift));
-            Vector3 hangLUpper = new Vector3(0.24f, -0.94f, 0.04f);
-            Vector3 hangLFore = new Vector3(0.14f, -0.95f, 0.18f);
+            // 背後から両脇へ腕を差し込まれて持ち上がるので、横へ転がらず真っ直ぐ起こされる
+            // （自分で起きる曲線の「横に転がって座る」は使わない）。
+            pose.LaySide = 0f;
+            pose.TorsoRoll = 0f;
+
+            // 腕は脇の下に入った敵の前腕に押し上げられ、二の腕が横へ開いて肘から先が垂れる。
+            float limp = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.0f, 0.35f, lift));
+            Vector3 hangLUpper = new Vector3(0.66f, -0.70f, 0.12f);
+            Vector3 hangLFore = new Vector3(0.22f, -0.95f, 0.16f);
             pose.ArmLUpper = Vector3.Lerp(DownArmLUpper, hangLUpper, limp);
             pose.ArmLFore = Vector3.Lerp(DownArmLFore, hangLFore, limp);
             pose.ArmRUpper = Vector3.Lerp(DownArmRUpper, Mirror(hangLUpper), limp);
@@ -77,10 +83,11 @@ namespace Ryona.Game
             Vector3 downUpperR = (fwd * 0.52f - left * 0.62f - up * 0.20f).normalized;
             Vector3 downForeR = (fwd * 0.58f + left * 0.52f - up * 0.26f).normalized;
 
-            Vector3 hangUpperL = (left * 0.22f - up * 0.96f + fwd * 0.08f).normalized;
-            Vector3 hangForeL = (left * 0.12f - up * 0.96f + fwd * 0.22f).normalized;
-            Vector3 hangUpperR = (-left * 0.22f - up * 0.96f + fwd * 0.08f).normalized;
-            Vector3 hangForeR = (-left * 0.12f - up * 0.96f + fwd * 0.22f).normalized;
+            // 正面から脇の下へ腕を差し込まれているので、二の腕は横へ開いて敵の前腕に乗る。
+            Vector3 hangUpperL = (left * 0.66f - up * 0.70f + fwd * 0.12f).normalized;
+            Vector3 hangForeL = (left * 0.22f - up * 0.95f + fwd * 0.16f).normalized;
+            Vector3 hangUpperR = (-left * 0.66f - up * 0.70f + fwd * 0.12f).normalized;
+            Vector3 hangForeR = (-left * 0.22f - up * 0.95f + fwd * 0.16f).normalized;
 
             float pulse = Mathf.Clamp01(haul.StrugglePulse);
             if (pulse > 0.001f)

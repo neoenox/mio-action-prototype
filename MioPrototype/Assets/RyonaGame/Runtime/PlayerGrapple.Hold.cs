@@ -6,21 +6,24 @@ namespace Ryona.Game
 {
     public sealed partial class PlayerGrapple : MonoBehaviour
     {
-        void BeginHold(EnemyBrain captor, GrappleKind kind, bool blendContact, float contactSeconds = GrabContactSeconds)
+        bool BeginHold(EnemyBrain captor, GrappleKind kind, bool blendContact, float contactSeconds = GrabContactSeconds)
         {
+            // 先にガードを通す。拘束中・死亡中に他敵が触れただけで
+            // 手首ロックを解除してしまうと、後で本来のペナルティが消える。
+            if (IsGrappled || Stats == null || Stats.IsDead)
+                return false;
+
             var wrist = GetComponent<PlayerWristLock>();
             if (wrist != null && !wrist.IsLocked && wrist.InGrace)
-                return;
+                return false;
             bool wristPenalty = wrist != null && wrist.IsLocked;
             if (wristPenalty)
                 wrist.DetachOnGrab();
             else if (wrist != null && wrist.HasGrabPenalty)
                 wristPenalty = true;
 
-            if (IsGrappled || Stats == null || Stats.IsDead)
-                return;
-
             HaulHandoff = false;
+            HaulHandoffSource = false;
 
             // 前の壁押さえつけから戻っている途中なら、ここでレーンへ戻しきる。
             if (!IsWallPin && _wallExitRemaining > 0f)
@@ -76,6 +79,7 @@ namespace Ryona.Game
                       $"limit={limit} arm={armInjury:F0} captor={(captor != null ? captor.name : "none")}");
 
             Started?.Invoke(kind);
+            return true;
         }
 
     }

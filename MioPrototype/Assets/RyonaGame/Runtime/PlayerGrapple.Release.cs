@@ -36,6 +36,7 @@ namespace Ryona.Game
                 ReleasedAt = Time.time;
 
             HaulHandoff = false;
+            HaulHandoffSource = false;
             FrontEscapeEffort = 0f;
             _frontEffortHold = 0f;
             _grabContactRemaining = 0f;

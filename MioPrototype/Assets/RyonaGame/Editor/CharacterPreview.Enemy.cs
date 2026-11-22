@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Ryona.Game;
 using UniVRM10;
 using UnityEditor;
@@ -16,6 +16,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Enemy Strip")]
         public static void CaptureEnemyStrip()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             SetupLights();
 
@@ -110,6 +114,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Enemy Wrist")]
         public static void CaptureEnemyWrist()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             SetupLights();
 
@@ -185,6 +193,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Hand Roll")]
         public static void CaptureHandRollGrid()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -269,6 +281,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Finger Test")]
         public static void CaptureFingerTest()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -357,6 +373,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Motion Strip")]
         public static void CaptureMotionStrip()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -456,6 +476,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Left Fist Compare")]
         public static void CaptureLeftFistCompare()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -545,6 +569,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Left Finger Axis Sweep")]
         public static void CaptureLeftFingerAxisSweep()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {

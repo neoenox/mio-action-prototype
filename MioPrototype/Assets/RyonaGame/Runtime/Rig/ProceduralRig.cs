@@ -98,7 +98,8 @@ namespace Ryona.Game
             LToe = Bone(HumanBodyBones.LeftToes, "J_Bip_L_ToeBase");
             RToe = Bone(HumanBodyBones.RightToes, "J_Bip_R_ToeBase");
 
-            Ready = Hips != null && LUpperLeg != null && LFoot != null;
+            Ready = Hips != null && LUpperLeg != null && LLowerLeg != null && LFoot != null
+                    && RUpperLeg != null && RLowerLeg != null && RFoot != null;
 
             if (!Ready)
             {
@@ -722,6 +723,9 @@ namespace Ryona.Game
 
         void CaptureFingers()
         {
+            if (_animator == null || !_animator.isHuman)
+                return;
+
             _fingerRest.Clear();
             _fingerAxis.Clear();
             _fingerAdductAxis.Clear();

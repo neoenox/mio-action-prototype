@@ -312,54 +312,62 @@ namespace Ryona.Game
         System.Collections.IEnumerator PlaceThenAttack(EnemyBrain enemy, EnemyBrain captor, Vector3 spot,
             Quaternion face, PunchZone zone, float distance, bool openingThrow, bool isFinisher = false)
         {
-            Vector3 from = enemy.transform.position;
-            Quaternion fromRot = enemy.transform.rotation;
-            float seconds = Mathf.Clamp(0.08f + distance * 0.10f, 0.10f, 0.30f);
-            float t = 0f;
-
-            while (t < seconds)
+            try
             {
-                t += Time.deltaTime;
-                if (!CanContinuePlacement(enemy, captor, openingThrow))
-                    yield break;
+                Vector3 from = enemy.transform.position;
+                Quaternion fromRot = enemy.transform.rotation;
+                float seconds = Mathf.Clamp(0.08f + distance * 0.10f, 0.10f, 0.30f);
+                float t = 0f;
 
-                float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / seconds));
-                enemy.transform.position = Vector3.Lerp(from, spot, k);
-                enemy.transform.rotation = Quaternion.Slerp(fromRot, face, k);
-                yield return null;
-            }
+                while (t < seconds)
+                {
+                    t += Time.deltaTime;
+                    if (!CanContinuePlacement(enemy, captor, openingThrow))
+                        yield break;
 
-            if (!CanContinuePlacement(enemy, captor, openingThrow))
-                yield break;
-
-            enemy.transform.position = spot;
-            enemy.transform.rotation = face;
-
-            // 位置に着いても、攻撃トークンが埋まっていて発注に失敗することがある。
-            // すぐ諦めると「1 発目が空振り」になるので、少しだけ順番待ちする。
-            float orderUntil = Time.time + 0.5f;
-            bool started = false;
-            while (!started && Time.time < orderUntil)
-            {
-                if (!CanContinuePlacement(enemy, captor, openingThrow))
-                    yield break;
-
-                started = BeginOrderedAttack(enemy, zone, openingThrow, isFinisher);
-                if (!started)
+                    float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / seconds));
+                    enemy.transform.position = Vector3.Lerp(from, spot, k);
+                    enemy.transform.rotation = Quaternion.Slerp(fromRot, face, k);
                     yield return null;
-            }
+                }
 
-            if (started)
-            {
-                // 位置合わせに使った時間をヒット待ちの残りから差し引かない。
-                if (!openingThrow)
-                    _hitTimeout = Mathf.Max(_hitTimeout, isFinisher ? 1.8f : 1.5f);
-                GameLog.Log($"[HeldPunch] placed {enemy.name} dist={distance:F2}m t={seconds:F2}s");
+                if (!CanContinuePlacement(enemy, captor, openingThrow))
+                    yield break;
+
+                enemy.transform.position = spot;
+                enemy.transform.rotation = face;
+
+                // 位置に着いても、攻撃トークンが埋まっていて発注に失敗することがある。
+                // すぐ諦めると「1 発目が空振り」になるので、少しだけ順番待ちする。
+                float orderUntil = Time.time + 0.5f;
+                bool started = false;
+                while (!started && Time.time < orderUntil)
+                {
+                    if (!CanContinuePlacement(enemy, captor, openingThrow))
+                        yield break;
+
+                    started = BeginOrderedAttack(enemy, zone, openingThrow, isFinisher);
+                    if (!started)
+                        yield return null;
+                }
+
+                if (started)
+                {
+                    // 位置合わせに使った時間をヒット待ちの残りから差し引かない。
+                    if (!openingThrow)
+                        _hitTimeout = Mathf.Max(_hitTimeout, isFinisher ? 1.8f : 1.5f);
+                    GameLog.Log($"[HeldPunch] placed {enemy.name} dist={distance:F2}m t={seconds:F2}s");
+                }
+                else
+                {
+                    GameLog.Log($"[HeldPunch] place order failed {enemy.name} phase={enemy.Phase} " +
+                              $"token={enemy.HasAttackToken} dist={distance:F2}m");
+                }
             }
-            else
+            finally
             {
-                GameLog.Log($"[HeldPunch] place order failed {enemy.name} phase={enemy.Phase} " +
-                          $"token={enemy.HasAttackToken} dist={distance:F2}m");
+                // 位置合わせが中断されても、攻撃役を引き渡し固定のままにしない。
+                enemy?.ReleaseHandOffLock();
             }
         }
 

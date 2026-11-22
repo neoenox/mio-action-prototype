@@ -90,6 +90,11 @@ namespace Ryona.Game
             pose.HipsZ = Mathf.Lerp(pose.HipsZ, 0.08f, crouch) - 0.06f * lean;
             pose.TorsoPitch = Mathf.Lerp(pose.TorsoPitch, -68f, crouch) + 22f * lean;
             pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -20f, crouch) + 6f * lean;
+            // 脇の下を抱えたら上体を起こし、頭を後ろへ引く。前かがみのままだと、起こされてくる
+            // 彼女の頭に敵の頭がかぶさった（計測 2026-11-22: 抱え直しの間に頭どうし 0.12m）。
+            float hug = haul.EmbraceWeight;
+            pose.TorsoPitch += 30f * hug;
+            pose.HeadPitch += 12f * hug;
             pose.KneeR = Mathf.Lerp(pose.KneeR, 120f, crouch);
             pose.KneeL = Mathf.Lerp(pose.KneeL, 100f, crouch);
             pose.LegRPitch = Mathf.Lerp(pose.LegRPitch, -60f, crouch);
@@ -111,17 +116,20 @@ namespace Ryona.Game
                     float amp = Mathf.Clamp01(speed / 1.2f);
                     // 一歩で踏み出す幅。速いほど大きく、届く範囲まで
                     float reach = WalkReach(speed);
+                    // 速いときは小走り（接地が短く、両足が浮く瞬間がある）。
+                    float jog = JogAmount(speed);
+                    float duty = WalkDutyFor(speed);
                     // 横歩きは歩幅が短い。前と同じ幅で横へ運ぶと、引き足が軸足を
                     // 追い越して足が交差してしまう。横成分が増えるほど詰める。
                     Vector2 dir = _walkDir;
                     float latness = Mathf.Abs(dir.x);
                     float fwdness = Mathf.Abs(dir.y);
                     float reachEff = Mathf.Lerp(reach, reach * 0.55f, latness);
-                    float cycle = 2f * reachEff / WalkDuty;
-          // 1往復（2歩）で進む距離
+                    // 1往復（2歩）で進む距離
+                    float cycle = 2f * reachEff / duty;
                     float u = cycle > 0.01f ? Mathf.Repeat(_walkDist / cycle, 1f) : 0f;
                     // 止まったときに遊脚が宙に浮いたままにならないよう、着地まで進める
-                    if (speed < 0.15f && cycle > 0.01f && u > WalkDuty)
+                    if (speed < 0.15f && cycle > 0.01f && u > duty)
                     {
                         _walkDist += 0.35f * dt;
                         u = Mathf.Repeat(_walkDist / cycle, 1f);
@@ -130,12 +138,16 @@ namespace Ryona.Game
                     if (cycle > 0.01f)
                         _walkDist = Mathf.Repeat(_walkDist, cycle);
                     WalkPhase = u;
-                    // 腰は軽く落とす。脚を伸ばしきらずに済むので、踏み出しても届く
-                    float hipBase = Height * 0.455f + 0.008f * Mathf.Cos(4f * Mathf.PI * u);
+                    // 腰は軽く落とす。脚を伸ばしきらずに済むので、踏み出しても届く。
+                    // 小走りは歩幅が広いぶん、さらに少し沈めて膝に余裕を持たせる。
+                    // 上下動は 1 歩に 1 回（2 歩で 2 回）。小走りは弾むので大きめ。
+                    float bob = Mathf.Lerp(0.008f, 0.020f, jog);
+                    float hipBase = Height * Mathf.Lerp(0.455f, 0.437f, jog) + bob * Mathf.Cos(4f * Mathf.PI * u);
                     pose.HipsY = hipBase + Height * 0.030f;
                     // 足首の目標。進行方向（横歩きなら横）へ運ぶ
-                    FootPath(u, reachEff, WalkDuty, out float sweepR, out float liftR);
-                    FootPath(Mathf.Repeat(u + 0.5f, 1f), reachEff, WalkDuty, out float sweepL, out float liftL);
+                    float liftHeight = Mathf.Lerp(0.10f, 0.16f, jog);
+                    FootPath(u, reachEff, duty, out float sweepR, out float liftR, liftHeight);
+                    FootPath(Mathf.Repeat(u + 0.5f, 1f), reachEff, duty, out float sweepL, out float liftL, liftHeight);
                     // 体重を軸足へ預ける。これが無いと足だけが横へ滑って「跳び箱」に見える。
                     // 軸足は接地中の側なので、右足が着地する u=0 から 0.30 あたりが右、
                     // 0.80 あたりが左。
@@ -149,14 +161,17 @@ namespace Ryona.Game
                     float s = -Mathf.Cos(2f * Mathf.PI * u);
                     // 横歩きでは前後の腕振りを減らし、代わりに腕を横へ小さく振る。
                     // 前後だけだと、横へ動いているのに「その場足踏み」に見える。
-                    pose.ArmRPitch = -s * 22f * amp * fwdness;
-                    pose.ArmLPitch = s * 22f * amp * fwdness;
+                    // 小走りは腕を大きく、肘を曲げて振る。上体は少し前へ、腰と逆へひねる。
+                    float swing = Mathf.Lerp(22f, 34f, jog);
+                    pose.ArmRPitch = -s * swing * amp * fwdness;
+                    pose.ArmLPitch = s * swing * amp * fwdness;
                     pose.ArmRSpread = -8f - s * 6f * amp * latness;
                     pose.ArmLSpread = 8f - s * 6f * amp * latness;
-                    pose.ElbowR = 24f + Mathf.Abs(s) * 14f * (0.35f + 0.65f * fwdness);
-                    pose.ElbowL = 24f + Mathf.Abs(s) * 14f * (0.35f + 0.65f * fwdness);
+                    float elbowBase = Mathf.Lerp(24f, 62f, jog * fwdness);
+                    pose.ElbowR = elbowBase + Mathf.Abs(s) * 14f * (0.35f + 0.65f * fwdness);
+                    pose.ElbowL = elbowBase + Mathf.Abs(s) * 14f * (0.35f + 0.65f * fwdness);
                     pose.TorsoPitch = 5f * amp * (dir.y >= 0f ? dir.y : dir.y * 0.45f);
-                    pose.TorsoYaw = s * 4f * amp;
+                    pose.TorsoYaw = s * Mathf.Lerp(4f, 7f, jog) * amp;
                     // 止まっているときは腕を下ろしたままにせず、拳（武器）を軽く構える。
                     // 歩いている最中に混ぜると腕振りが消えるので、速度が落ちた分だけ効かせる。
                     float guard = Mathf.Clamp01(1f - amp * 2f);

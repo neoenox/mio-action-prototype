@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Ryona.Game;
 using UniVRM10;
 using UnityEditor;
@@ -17,6 +17,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Hurt Sheet")]
         public static void CaptureHurtSheet()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -37,6 +41,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var rig = vrm.gameObject.AddComponent<ProceduralRig>();
             rig.Capture();
@@ -158,6 +167,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Hurt Tiers")]
         public static void CaptureHurtTiers()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -178,6 +191,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var rig = vrm.gameObject.AddComponent<ProceduralRig>();
             rig.Capture();
@@ -271,6 +289,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Grabbed")]
         public static void CaptureGrabbed()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -291,6 +313,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var rig = vrm.gameObject.AddComponent<ProceduralRig>();
             rig.Capture();
@@ -375,6 +402,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Enemy Attacks")]
         public static void CaptureEnemyAttacks()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             SetupLights();
 
@@ -464,6 +495,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Tag Guard Sweep")]
         public static void CaptureTagGuardSweep()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             SetupLights();
 
@@ -548,6 +583,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Arm Sweep")]
         public static void CaptureArmSweep()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             SetupLights();
 

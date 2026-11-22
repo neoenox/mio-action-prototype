@@ -19,9 +19,9 @@ namespace Ryona.Tests
         public void 掴みとダウン中は付けない()
         {
             var rules = WristLockRules.Default;
-            Assert.IsTrue(rules.CanAttach(10f, 0f, false, false));
-            Assert.IsFalse(rules.CanAttach(10f, 0f, true, false));
-            Assert.IsFalse(rules.CanAttach(10f, 0f, false, true));
+            Assert.IsTrue(rules.CanAttach(10f, -1f, false, false));
+            Assert.IsFalse(rules.CanAttach(10f, -1f, true, false));
+            Assert.IsFalse(rules.CanAttach(10f, -1f, false, true));
         }
 
         [Test]

@@ -22,6 +22,7 @@ namespace Ryona.Game
         float _nextRollAt;
         bool _active;
         bool _roundsRunning;
+        Coroutine _rounds;
         bool _inputUsed;
         float _catchAt;
         int _round;
@@ -284,6 +285,7 @@ namespace Ryona.Game
 
         void StartPinball(EnemyBrain front, EnemyBrain rear)
         {
+            StopRounds();
             _front = front;
             _rear = rear;
             _active = true;
@@ -349,7 +351,7 @@ namespace Ryona.Game
 
             GameLog.Log("[Pinball] opening punch landed");
             _roundsRunning = true;
-            StartCoroutine(RunRounds());
+            _rounds = StartCoroutine(RunRounds());
         }
 
         IEnumerator RunRounds()
@@ -593,12 +595,22 @@ namespace Ryona.Game
             Cancel();
         }
 
+        void StopRounds()
+        {
+            if (_rounds != null)
+            {
+                StopCoroutine(_rounds);
+                _rounds = null;
+            }
+            _roundsRunning = false;
+        }
+
         void Cancel()
         {
             _active = false;
             _sandwichHitter = null;
             InSandwich = false;
-            _roundsRunning = false;
+            StopRounds();
             _finishPending = false;
             _shotsUntil = Time.unscaledTime + 1.5f;
             _stats?.GroundMount?.DelayNextSearch(4f);

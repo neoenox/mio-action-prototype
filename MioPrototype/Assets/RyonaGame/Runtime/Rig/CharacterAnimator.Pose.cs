@@ -63,10 +63,15 @@ namespace Ryona.Game
         /// 今の状態の姿勢を組み立ててリグへ流し込む（毎フレーム）。
         /// 状態ごとの中身は PoseIdle / PoseGuard / … に分けてある。
         /// </summary>
-        public void ApplyPose()
+        public void ApplyPose(float dt = -1f)
         {
+            // LateUpdate はヒットストップ中だけ unscaled に差し替える。ここにはその値を渡す。
+            // 既定値のまま呼ぶ初期化・プレビューでは通常の deltaTime を使う。
+            if (dt < 0f)
+                dt = Time.deltaTime;
             if (Rig == null || !Rig.Ready)
                 return;
+            float blendDt = dt;
 
             Rig.ResetPose();
 
@@ -91,16 +96,8 @@ namespace Ryona.Game
                 pose = PoseFinisherBuckle();
 
             if (_state == State.Grabbed && (Time.time < _haulDazeUntil || (Grapple != null && Grapple.HaulHandoff)))
-
                 ApplyHaulDaze(ref pose);
 
-            
-
-            if (_state == State.Grabbed && (Time.time < _haulDazeUntil || (Grapple != null && Grapple.HaulHandoff)))
-
-                ApplyHaulDaze(ref pose);
-
-            
 
             // 壁から戻るあいだは掴みが解けて Idle などへ移っている。
             // 壁の反りは重みで抜く（PoseGrabbed の中では膝蹴りの前後関係を保つため
@@ -109,7 +106,7 @@ namespace Ryona.Game
                 && Grapple != null)
                 ApplyWallBrace(ref pose, Grapple.WallPinWeight);
 
-            ApplyPoseToRig(pose);
+            ApplyPoseToRig(pose, blendDt);
         }
 
         /// <summary>

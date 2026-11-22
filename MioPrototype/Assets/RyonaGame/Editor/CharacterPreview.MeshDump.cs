@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Ryona.Game;
 using UniVRM10;
 using UnityEditor;
@@ -18,6 +18,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Debug/Surface Map")]
         public static void SurfaceMap()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
                 return;
@@ -27,6 +31,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var body = System.Array.Find(vrm.GetComponentsInChildren<SkinnedMeshRenderer>(), r => r.name == "Body");
             if (body == null)
@@ -46,6 +55,12 @@ namespace Ryona.EditorTools
                 string n = body.sharedMaterials[i].name.ToLowerInvariant();
                 if (n.Contains("skin")) skinSlot = i;
                 if (n.Contains("bottoms")) pantsSlot = i;
+            }
+
+            if (skinSlot < 0 || pantsSlot < 0)
+            {
+                Debug.LogError("[Ryona] skin / bottoms のサブメッシュが見つからない（材質名を確認）");
+                return;
             }
 
             Vector3[][] Tri(int sub)
@@ -132,6 +147,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Debug/Flat Test")]
         public static void FlatTest()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
                 return;
@@ -142,6 +161,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var rig = vrm.gameObject.AddComponent<ProceduralRig>();
             rig.Capture();
@@ -162,6 +186,12 @@ namespace Ryona.EditorTools
                 string n = body.sharedMaterials[i].name.ToLowerInvariant();
                 if (n.Contains("skin")) skinSlot = i;
                 if (n.Contains("bottoms")) pantsSlot = i;
+            }
+
+            if (skinSlot < 0 || pantsSlot < 0)
+            {
+                Debug.LogError("[Ryona] skin / bottoms のサブメッシュが見つからない（材質名を確認）");
+                return;
             }
 
             var bounds = ComputeBounds(vrm.gameObject);
@@ -246,6 +276,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Debug/Raw Render")]
         public static void RawRender()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
                 return;
@@ -256,6 +290,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             // リグもアニメータも付けない
             var bounds = ComputeBounds(vrm.gameObject);
@@ -288,6 +327,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Debug/Bisect Pose")]
         public static void BisectPose()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
                 return;
@@ -298,6 +341,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var camGo = new GameObject("Bisect Camera");
             var cam = camGo.AddComponent<Camera>();
@@ -348,6 +396,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Debug/Cull Test")]
         public static void CullTest()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
                 return;
@@ -358,6 +410,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var rig = vrm.gameObject.AddComponent<ProceduralRig>();
             rig.Capture();
@@ -416,6 +473,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Debug/Pose Diff")]
         public static void PoseDiff()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
                 return;
@@ -425,6 +486,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var animatorComp = vrm.GetComponentInChildren<Animator>();
             if (animatorComp == null || !animatorComp.isHuman)
@@ -477,6 +543,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Debug/Pose Compare")]
         public static void PoseCompare()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
                 return;
@@ -487,6 +557,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             // カメラは「素の状態」のサイズで固定する
             var bounds = ComputeBounds(vrm.gameObject);
@@ -542,6 +617,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Debug/Var Test")]
         public static void VarTest()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
                 return;
@@ -552,6 +631,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var rig = vrm.gameObject.AddComponent<ProceduralRig>();
             rig.Capture();
@@ -596,6 +680,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Debug/Deform Map")]
         public static void DeformMap()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
                 return;
@@ -605,6 +693,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var body = System.Array.Find(vrm.GetComponentsInChildren<SkinnedMeshRenderer>(), r => r.name == "Body");
             if (body == null)
@@ -617,6 +710,12 @@ namespace Ryona.EditorTools
                 string n = body.sharedMaterials[i].name.ToLowerInvariant();
                 if (n.Contains("skin")) skinSlot = i;
                 if (n.Contains("bottoms")) pantsSlot = i;
+            }
+
+            if (skinSlot < 0 || pantsSlot < 0)
+            {
+                Debug.LogError("[Ryona] skin / bottoms のサブメッシュが見つからない（材質名を確認）");
+                return;
             }
 
             // 肌だけ／布だけのレンダラーを作る（同じボーンを共有するので同じ変形になる）
@@ -747,6 +846,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Debug/Raw Forced")]
         public static void RawForced()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
                 return;
@@ -757,6 +860,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var smrs = vrm.GetComponentsInChildren<SkinnedMeshRenderer>();
             foreach (var s in smrs)
@@ -796,6 +904,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Debug/Leg Check")]
         public static void LegCheck()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
                 return;
@@ -805,6 +917,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var rig = vrm.gameObject.AddComponent<ProceduralRig>();
             rig.Capture();
@@ -852,6 +969,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Debug/Weight Check")]
         public static void WeightCheck()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
                 return;
@@ -861,6 +982,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var body = System.Array.Find(vrm.GetComponentsInChildren<SkinnedMeshRenderer>(), r => r.name == "Body");
             if (body == null)
@@ -878,6 +1004,12 @@ namespace Ryona.EditorTools
                 string n = body.sharedMaterials[i].name.ToLowerInvariant();
                 if (n.Contains("skin")) skinSlot = i;
                 if (n.Contains("bottoms")) pantsSlot = i;
+            }
+
+            if (skinSlot < 0 || pantsSlot < 0)
+            {
+                Debug.LogError("[Ryona] skin / bottoms のサブメッシュが見つからない（材質名を確認）");
+                return;
             }
 
             void Dump(string label, int slot)
@@ -930,6 +1062,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Debug/Id Arms")]
         public static void IdArms()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
                 return;
@@ -940,6 +1076,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var bounds = ComputeBounds(vrm.gameObject);
             float h = Mathf.Max(1f, bounds.size.y);

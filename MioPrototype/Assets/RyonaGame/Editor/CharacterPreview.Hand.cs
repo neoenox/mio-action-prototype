@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Ryona.Game;
 using UniVRM10;
 using UnityEditor;
@@ -17,6 +17,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Scan Finger Axis")]
         public static void ScanFingerAxis()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -94,6 +98,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Hand Top View")]
         public static void CaptureHandTopView()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -189,6 +197,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Scan Arm Anomalies")]
         public static void ScanArmAnomalies()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -290,6 +302,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Scan Walk Guard")]
         public static void ScanWalkGuard()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -421,6 +437,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Scan Head Shake")]
         public static void ScanHeadShake()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -512,6 +532,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Scan Arm Yaw")]
         public static void ScanArmYaw()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {

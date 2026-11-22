@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Ryona.Game;
 using UniVRM10;
 using UnityEditor;
@@ -18,6 +18,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Measure Exposure")]
         public static void MeasureExposure()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -219,6 +223,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Down Head")]
         public static void CaptureDownHead()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -323,6 +331,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Down Arms")]
         public static void CaptureDownArms()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -420,6 +432,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Get Up")]
         public static void CaptureGetUp()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -507,6 +523,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Hit Recoil")]
         public static void CaptureHitRecoil()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -593,6 +613,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Measure Down Clearance")]
         public static void MeasureDownClearance()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {

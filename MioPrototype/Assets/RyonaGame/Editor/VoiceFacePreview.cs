@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using Ryona.Game;
 using UniVRM10;
@@ -20,6 +20,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Voice Faces")]
         public static void Capture()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {

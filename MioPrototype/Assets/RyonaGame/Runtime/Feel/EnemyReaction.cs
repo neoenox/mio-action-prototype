@@ -64,14 +64,15 @@ namespace Ryona.Game
             GameLog.Log("[EnemyReaction] Config hot-reloaded");
         }
 
-        void OnEnable()
+        protected override void OnEnable()
         {
             ResolveReferences();
             if (Brain != null)
                 Brain.Hit += OnHit;
+            base.OnEnable();
         }
 
-        void OnDisable()
+        protected override void OnDisable()
         {
             if (Brain != null)
                 Brain.Hit -= OnHit;
@@ -82,6 +83,7 @@ namespace Ryona.Game
 
             // 途中で無効化されても、つぶれたまま・光ったままにしない
             RestoreVisual();
+            base.OnDisable();
         }
 
         void ResolveReferences()

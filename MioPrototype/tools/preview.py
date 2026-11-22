@@ -77,6 +77,9 @@ SCENARIOS = {
     # 羽交い締めからの顔面パン（5連撃→グロッキー→引き起こし→トドメ→仰向けダウン）。
     "face": dict(args=["-grappletest", "-heldpunchface=1"], burst="-heldpunchburst",
                  frames=195, interval=0.05),
+    # 顔パンの締めで殴り飛ばした後のマウント（-nohaul で引き起こしを選ばせない）。
+    "facemount": dict(args=["-grappletest", "-heldpunchface=1", "-nohaul", "-mountlog"],
+                      burst="-heldpunchburst", frames=400, interval=0.05),
     # 腹パン（体）を固定。左右交互のみぞおち打ち込みからトドメ崩れ落ちまでを見る。
     "bellybody": dict(args=["-grappletest", "-heldpunchface=0"], burst="-heldpunchburst",
                       frames=195, interval=0.05),
@@ -91,6 +94,8 @@ SCENARIOS = {
     # 地面マウント（跨ってのパンチ）。マウントのカメラ（GroundMountAttack.FrameMount）を見る。
     "mount": dict(args=["-mountlog"], burst="-mountburst", frames=110, interval=0.05),
     "mountprone": dict(args=["-mountprone", "-mountlog"], burst="-mountburst", frames=110, interval=0.05),
+    # 放置プレイ（入力なし・仕込みなし）。0.5 秒ごとに 2 分撮る。拘束の連鎖と途切れを見る。
+    "idle": dict(args=[], burst="-idleburst", frames=240, interval=0.5),
     # 頭上拘束（両手首を上へ引き上げる）。
     "overhead": dict(args=["-grappletest", "-overheadtest"], burst="-pinburst",
                      frames=120, interval=0.05),

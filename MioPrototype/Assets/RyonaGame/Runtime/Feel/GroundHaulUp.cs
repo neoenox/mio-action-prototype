@@ -32,6 +32,9 @@ namespace Ryona.Game
         /// <summary>彼女の腰の脇へ立つ距離（m）。</summary>
         const float FlankDistance = 0.15f;
 
+        /// <summary>敵が彼女の頭から、体の軸に沿って向こう側へ離れて立つ距離（m）。</summary>
+        const float StandBeyondHead = 0.40f;
+
         /// <summary>引き上げの間に、敵が彼女から下がる距離（m）。腕が張って見える。</summary>
         const float PullBack = 0.0f;
 
@@ -182,6 +185,9 @@ namespace Ryona.Game
         static void Boot()
         {
             Forced = LaunchOptions.Has("-haultest");
+            // 検証用: 引き起こしを選ばせず、必ず寝技（マウント）にする。
+            if (LaunchOptions.Has("-nohaul"))
+                Chance = 0f;
         }
 
         void Awake()
@@ -243,6 +249,8 @@ namespace Ryona.Game
         void BeginStage(Beat stage, float duration)
         {
             Stage = stage;
+            if (stage != Beat.Haul)
+                _headPush = Vector3.zero;
             _elapsed = 0f;
             _duration = duration;
             _fromPosition = Attacker.transform.position;
@@ -298,6 +306,46 @@ namespace Ryona.Game
 
             RequestShot();
             LogFaceVisibility();
+            LogArmClearance();
+        }
+
+        /// <summary>彼女の頭と敵の腕（肩-肘-手首）の最短距離を出す（-haulpenlog。貫通の確認用）。</summary>
+        void LogArmClearance()
+        {
+            if (_figure == null || !LaunchOptions.Has("-haulpenlog"))
+                return;
+            Vector3 head = TargetRig.Head.position;
+            float upper = float.MaxValue, fore = float.MaxValue;
+            // 両腕のうち近い方を測る（抱え直し以降は両腕が彼女の脇の下へ入る）。
+            foreach (bool left in new[] { true, false })
+            {
+                Transform sb = _figure.ShoulderBone(left);
+                Transform eb = _figure.ElbowBone(left);
+                Transform wb = _figure.WristBone(left);
+                if (sb == null || eb == null || wb == null)
+                    continue;
+                upper = Mathf.Min(upper, DistanceToSegment(head, sb.position, eb.position));
+                fore = Mathf.Min(fore, DistanceToSegment(head, eb.position, wb.position));
+            }
+            Transform s = _figure.ShoulderBone(EnemyLeftArm);
+            Transform e = _figure.ElbowBone(EnemyLeftArm);
+            if (s == null || e == null || upper == float.MaxValue)
+                return;
+            float enemyHead = _figure.HeadBone != null ? Vector3.Distance(head, _figure.HeadBone.position) : -1f;
+            float enemyChest = _figure.ChestBone != null ? Vector3.Distance(head, _figure.ChestBone.position) : -1f;
+            GameLog.Log($"[HaulPen] stage={Stage} p={Progress:F2} upper={upper:F2} fore={fore:F2} " +
+                        $"min={Mathf.Min(upper, fore):F2} enemyHead={enemyHead:F2} enemyChest={enemyChest:F2} headY={head.y:F2} " +
+                        $"headLocal={Attacker.transform.InverseTransformPoint(head):F2} " +
+                        $"shLocal={Attacker.transform.InverseTransformPoint(s.position):F2} " +
+                        $"elLocal={Attacker.transform.InverseTransformPoint(e.position):F2} " +
+                        $"embrace={EmbraceWeight:F2} lift={Lift:F2} left={(EnemyLeftArm ? 1 : 0)}");
+        }
+
+        static float DistanceToSegment(Vector3 p, Vector3 a, Vector3 b)
+        {
+            Vector3 ab = b - a;
+            float t = ab.sqrMagnitude > 1e-8f ? Mathf.Clamp01(Vector3.Dot(p - a, ab) / ab.sqrMagnitude) : 0f;
+            return Vector3.Distance(p, a + ab * t);
         }
 
         /// <summary>連打 1 回ぶん。規定回数で振りほどく（テストからも呼ぶ）。</summary>
@@ -314,9 +362,10 @@ namespace Ryona.Game
         /// <summary>彼女の腰の脇、敵の立つ位置（<paramref name="pull"/> だけ離れる）。足元の高さは敵のまま。</summary>
         Vector3 Spot(float pull)
         {
-            // 頭側へ立つ。髪を掴む手が届き、彼女の顔も画に入る。
+            // 頭の向こう側（仰向けなら背後、うつ伏せなら正面）へ立つ。そこから両腕を彼女の脇の下へ
+            // 差し込み、すくい上げる（指定 2026-11-22）。横から手首を引くのではない。
             Vector3 head = TargetRig.Head.position;
-            Vector3 spot = head + _axis * 0.12f + _flank * 0.45f + _flank * pull;
+            Vector3 spot = head + _axis * StandBeyondHead - _axis * pull;
             spot.y = Attacker.transform.position.y;
             return spot;
         }
@@ -333,10 +382,19 @@ namespace Ryona.Game
             _approachTravel = Mathf.Min(_approachTravel + speed * dt, _approachDistance);
             float t = _approachDistance > 0.001f ? _approachTravel / _approachDistance : 1f;
             Vector3 position = Vector3.Lerp(_fromPosition, _approachSpot, t);
-            Vector3 toHer = -_flank;
+            // 歩いている間は進む方向を向き、着く手前（残り 3 割）で彼女の方へ向き直る。
+            // 以前は歩き出しから彼女の方へ向きを寄せていたため、横向きのまま小刻みに
+            // カニ歩きして見えた（放置プレイで「チョコチョコ横を歩く」）。
+            Vector3 travel = _approachSpot - _fromPosition;
+            travel.y = 0f;
+            Quaternion walk = travel.sqrMagnitude > 1e-4f
+                ? Quaternion.LookRotation(travel.normalized, Vector3.up)
+                : _fromRotation;
+            Quaternion faceHer = Quaternion.LookRotation(-_axis, Vector3.up);
+            float turnToWalk = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, 0.2f, t));
+            float turnToHer = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.7f, 1f, t));
             Attacker.transform.SetPositionAndRotation(position,
-                Quaternion.Slerp(_fromRotation, Quaternion.LookRotation(toHer, Vector3.up),
-                    Mathf.SmoothStep(0f, 1f, t)));
+                Quaternion.Slerp(Quaternion.Slerp(_fromRotation, walk, turnToWalk), faceHer, turnToHer));
 
             if (_approachTravel >= _approachDistance)
             {
@@ -367,6 +425,19 @@ namespace Ryona.Game
             }
         }
 
+        /// <summary>
+        /// 仰向けの抱え直しで、敵が彼女の中心から横へずれる量（m）。ずれると片方の肩が彼女の頭に
+        /// 重なり、二の腕が頭を貫通した（計測 2026-11-22: 引き起こし中盤で頭〜上腕 0.03m）。
+        /// 0 にすると頭が両肩の真ん中に収まる。
+        /// </summary>
+        const float SupineHugSide = 0f;
+
+        /// <summary>
+        /// 仰向けの抱え直しで、敵が彼女の腰から後ろへ立つ距離（m）。近いと立ち上がった彼女の頭と
+        /// 敵の頭が重なる（計測 2026-11-22: 進行 0.6〜0.8 で頭どうし 0.14m、#90 の貫通）。
+        /// </summary>
+        const float SupineHugBack = 0.50f;
+
         void TickHaul(float dt)
         {
             // 敵は体を起こしながら後ろへ反り、少し下がる。2段目で抱え直してから無理やり立たせる。
@@ -395,11 +466,25 @@ namespace Ryona.Game
             Vector3 targetSpot = Spot(PullBack * Mathf.Sin(Mathf.PI * Mathf.Clamp01(u * 1.3f)));
             Vector3 herCenter = TargetRig != null ? TargetRig.Hips.position : transform.position;
             Vector3 hugSpot = IsProne
-                ? herCenter + _axis * 0.50f + _flank * 0.18f
-                : herCenter - transform.forward * 0.46f + _flank * 0.12f;
+                ? herCenter + _axis * 0.50f
+                : herCenter - transform.forward * SupineHugBack + _flank * SupineHugSide;
             hugSpot.y = Attacker.transform.position.y;
-            targetSpot = Vector3.Lerp(targetSpot, hugSpot, EmbraceWeight);
+            if (!IsProne && TargetRig != null && TargetRig.Head != null)
+            {
+                // 頭が敵の正中線から横へ外れると、片方の肩と二の腕が頭に重なる（計測: 頭が肩の真横
+                // x=+0.19 で上腕との距離 0.02m）。頭が両肩の間に来るよう、横方向の差を詰める。
+                Vector3 right = Attacker.transform.right;
+                float off = Vector3.Dot(TargetRig.Head.position - Attacker.transform.position, right);
+                hugSpot += right * (off * 0.9f);
+            }
+            targetSpot = Vector3.Lerp(targetSpot, hugSpot, EmbraceWeight) + _headPush;
+            // 抱え直しでは腰ではなく頭の方を向く。腰を向くと、頭が正面から外れて片方の肩に重なる。
+            _followLookHead = IsProne ? 0f : EmbraceWeight;
             Follow(targetSpot, dt, 26f);
+            _followLookHead = 0f;
+            // うつ伏せ（正面から抱える）でも、起こされた彼女の頭が敵の顔・胸に埋まった
+            // （撮影 2026-11-22 haulprone #65/#70）。向きによらず間合いを保つ。
+            KeepHeadsApart(dt);
 
             if (u >= 1f)
                 BeginStage(Beat.Settle, SettleSeconds);
@@ -444,10 +529,73 @@ namespace Ryona.Game
                 Finish();
         }
 
+        /// <summary>敵の頭と彼女の頭がこれより近づかない（頭の半径 ~0.1 ずつ + 髪の余裕）。</summary>
+        const float MinHeadGap = 0.32f;
+
+        /// <summary>敵の胸（胴の中心）と彼女の頭の最小距離（胴の厚み ~0.18 + 頭 ~0.1 + 髪）。</summary>
+        const float MinChestGap = 0.34f;
+
+        /// <summary>
+        /// 間合いのために敵を下げる上限（m）。0.5 まで許すと、うつ伏せで敵が下がりすぎて腕が伸び切り、
+        /// 手が彼女の顔の前に浮いた（撮影 2026-11-22 haulprone #58、腕と頭 0.05m）。
+        /// </summary>
+        const float MaxHeadPush = 0.22f;
+
+        /// <summary>
+        /// 仰向け（背後から抱える）の上限。背後なら下がっても腕は脇の下を通ったまま。
+        /// 0.22 では頭どうしが 0.16m まで寄った（計測 2026-11-22）。
+        /// </summary>
+        const float MaxHeadPushSupine = 0.45f;
+
+        /// <summary>
+        /// 抱え直しの間、敵の頭が彼女の頭に重ならないよう、敵を水平に押し下げる。
+        /// 位置の補間だけでは、彼女が起き上がる弧と敵の前傾が交わる区間で頭どうしが
+        /// 0.13m まで近づいた（計測 2026-11-22）。頭の位置は直前フレームの姿勢で測る。
+        /// </summary>
+        void KeepHeadsApart(float dt)
+        {
+            if (_figure == null || _figure.HeadBone == null || TargetRig == null || TargetRig.Head == null)
+                return;
+            Vector3 herHead = TargetRig.Head.position;
+
+            // 敵の頭と胸のうち、食い込みが深い方から離す。
+            Vector3 away = _figure.HeadBone.position - herHead;
+            float deficit = MinHeadGap - away.magnitude;
+            if (_figure.ChestBone != null)
+            {
+                Vector3 toChest = _figure.ChestBone.position - herHead;
+                float chestDeficit = MinChestGap - toChest.magnitude;
+                if (chestDeficit > deficit)
+                {
+                    deficit = chestDeficit;
+                    away = toChest;
+                }
+            }
+            if (deficit <= 0f)
+            {
+                _headPush *= Mathf.Exp(-1.5f * dt);
+                return;
+            }
+            // 押し下げは敵の真後ろへだけ。食い込んだ向き（斜め）へ押すと横へずれが溜まり、
+            // 彼女の頭が敵の片方の肩に寄って二の腕と 0.06m まで近づいた（計測 2026-11-22）。
+            Vector3 flat = -Attacker.transform.forward;
+            flat.y = 0f;
+            // 位置は毎フレーム Follow が目標へ引き戻すので、押し下げ量は目標側に足し込んで持ち越す。
+            _headPush += flat.normalized * (deficit * 0.6f);
+            _headPush = Vector3.ClampMagnitude(_headPush, IsProne ? MaxHeadPush : MaxHeadPushSupine);
+        }
+
+        Vector3 _headPush;
+
+        float _followLookHead;
+
         void Follow(Vector3 spot, float dt, float sharpness = 12f)
         {
             Attacker.transform.position = Vector3.Lerp(Attacker.transform.position, spot, 1f - Mathf.Exp(-sharpness * dt));
-            Vector3 toHer = TargetRig.Hips.position - Attacker.transform.position;
+            Vector3 aim = _followLookHead > 0f && TargetRig.Head != null
+                ? Vector3.Lerp(TargetRig.Hips.position, TargetRig.Head.position, _followLookHead)
+                : TargetRig.Hips.position;
+            Vector3 toHer = aim - Attacker.transform.position;
             toHer.y = 0f;
             if (toHer.sqrMagnitude > 0.001f)
                 Attacker.transform.rotation = Quaternion.Slerp(Attacker.transform.rotation,
@@ -458,6 +606,18 @@ namespace Ryona.Game
         void Finish()
         {
             var enemy = Attacker;
+            if (enemy != null && TargetRig != null)
+            {
+                Vector3 root = transform.position;
+                Vector3 hips = TargetRig.Hips.position;
+                Vector3 off = hips - root;
+                off.y = 0f;
+                Vector3 toCaptor = enemy.transform.position - root;
+                toCaptor.y = 0f;
+                GameLog.Log($"[HaulFinish] hipsOff={off.magnitude:F2} captorDist={toCaptor.magnitude:F2} " +
+                            $"behindDot={Vector3.Dot(toCaptor.normalized, -transform.forward):F2} " +
+                            $"hipsToCaptor={Vector3.Distance(new Vector3(hips.x, 0f, hips.z), new Vector3(enemy.transform.position.x, 0f, enemy.transform.position.z)):F2}");
+            }
             bool prone = _player.DownIsForward;
             ResetState();
             _player.EndDownByHaul();
@@ -468,9 +628,17 @@ namespace Ryona.Game
                 // 受け直す」姿勢を挟むと、髪から離した手がもう一度頭へ行くように見える。
                 GrappleKind kind = prone ? GrappleKind.Pin : GrappleKind.Back;
                 _grapple.Begin(enemy, kind);
+                _grapple.HaulHandoffSource = true;
                 enemy.TakeOverHold(float.PositiveInfinity);
                 GameLog.Log($"[Haul] hand off to {kind} {enemy.name}");
             }
+        }
+
+        void OnDisable()
+        {
+            // 無効化やシーン切替で途中の引き起こしが残ると、彼女が起き上がれず固まる。
+            if (Attacker != null)
+                End(false);
         }
 
         /// <summary>途中で終える。<paramref name="escaped"/> は彼女が連打で振りほどいたとき。</summary>
@@ -493,7 +661,7 @@ namespace Ryona.Game
                 enemy.HoldFire(0.8f);
 
             // 途中まで持ち上がっていたら、そこから立ち上がりへ（床へ戻してから起きると二度手間に見える）。
-            if (_player.IsDown && !_player.IsDead && _animator != null && (escaped || lifted))
+            if (_player != null && _player.IsDown && !_player.IsDead && _animator != null && (escaped || lifted))
             {
                 _animator.BeginQuickGetUp(escaped ? 0.50f : 0.70f);
                 if (escaped)
@@ -554,8 +722,10 @@ namespace Ryona.Game
             Vector3 offset;
             if (prone)
             {
-                target = Vector3.Lerp(face, enemyChest, 0.4f);
-                offset = -_flank * 2.15f + front * 0.65f + Vector3.up * (1.05f + 0.12f * Lift);
+                // 顔を画面中央に置き、敵の肩越しにならないよう反対の脇へ少し離す。
+                // （うつ伏せは敵が頭上に来るため、敵寄りの注視点だと可視率が 0.72 まで落ちた）
+                target = Vector3.Lerp(face, enemyChest, 0.15f);
+                offset = -_flank * 2.60f + front * 0.65f + Vector3.up * (0.85f + 0.12f * Lift);
             }
             else
             {

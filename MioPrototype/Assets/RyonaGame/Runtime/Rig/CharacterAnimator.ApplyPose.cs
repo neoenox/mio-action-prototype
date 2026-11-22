@@ -5,7 +5,7 @@ namespace Ryona.Game
     public sealed partial class CharacterAnimator
     {
         /// <summary>組み立てた姿勢をリグへ流し込む（IK・倒れ・指・かかと）。</summary>
-        void ApplyPoseToRig(PoseValues pose)
+        void ApplyPoseToRig(PoseValues pose, float blendDt)
         {
             Vector3 pole = transform.position + transform.forward * 2f + Vector3.up * 0.55f;
 
@@ -207,7 +207,8 @@ namespace Ryona.Game
                         upperR = (fwd * 0.52f - left * 0.62f - up * 0.20f).normalized;
                         foreR = (fwd * 0.58f + left * 0.52f - up * 0.26f).normalized;
                         float reach = Mathf.SmoothStep(0f, 1f,
-                            Mathf.InverseLerp(0.22f, 0.86f, _stateTime / _downFallSeconds));
+                            Mathf.InverseLerp(0.22f, 0.86f,
+                                _stateTime / Mathf.Max(0.05f, _downFallSeconds)));
                         upperL = Vector3.Slerp((Rig.LLowerArm.position - Rig.LUpperArm.position).normalized, upperL, reach);
                         foreL = Vector3.Slerp((Rig.LHand.position - Rig.LLowerArm.position).normalized, foreL, reach);
                         upperR = Vector3.Slerp((Rig.RLowerArm.position - Rig.RUpperArm.position).normalized, upperR, reach);
@@ -266,13 +267,14 @@ namespace Ryona.Game
                     facing * Rig.Hips.rotation);
             }
 
-            if (_state == State.Down && Stats != null && Stats.GroundMount.MountBlocksGetUp)
+            if (_state == State.Down && Stats != null && Stats.GroundMount != null &&
+                Stats.GroundMount.MountBlocksGetUp)
                 ApplyGroundMountReaction(Stats.GroundMount);
 
             // 状態が切り替わった直後は、切り替え前の姿勢から寄せる（カクつき防止）
             if (_blend < 1f)
             {
-                _blend = Mathf.Min(1f, _blend + Time.deltaTime / Mathf.Max(0.01f, _blendSeconds));
+                _blend = Mathf.Min(1f, _blend + blendDt / Mathf.Max(0.01f, _blendSeconds));
                 Rig.BlendFromSnapshot(Mathf.SmoothStep(0f, 1f, _blend));
             }
 

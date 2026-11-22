@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Ryona.Game;
 using UniVRM10;
 using UnityEditor;
@@ -17,6 +17,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Down Sheet")]
         public static void CaptureDownSheet()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -117,7 +121,12 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Stance Arm Sweep")]
         public static void CaptureStanceArmSweep()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
+                using var stanceGuard = new StanceOverrideGuard();
             if (!File.Exists(vrmPath))
             {
                 Debug.LogError($"[Ryona] VRM not found: {vrmPath}");
@@ -226,7 +235,12 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Guard Roll Body")]
         public static void CaptureGuardRollBody()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
+                using var stanceGuard = new StanceOverrideGuard();
             if (!File.Exists(vrmPath))
             {
                 Debug.LogError($"[Ryona] VRM not found: {vrmPath}");
@@ -305,6 +319,11 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Hand Roll Sweep")]
         public static void CaptureHandRollSweep()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
+            using var stanceGuard = new StanceOverrideGuard();
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -393,6 +412,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Hand Grid")]
         public static void CaptureHandGrid()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -492,6 +515,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Contact Sheet")]
         public static void CaptureContactSheet()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -610,6 +637,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Probe Attack")]
         public static void ProbeAttack()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -622,6 +653,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: false)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var rig = vrm.gameObject.AddComponent<ProceduralRig>();
             rig.Capture();
@@ -656,6 +692,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Heel Sheet")]
         public static void CaptureHeelSheet()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -676,6 +716,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var rig = vrm.gameObject.AddComponent<ProceduralRig>();
             rig.Capture();
@@ -757,6 +802,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Attack Sheet")]
         public static void CaptureAttackSheet()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -886,6 +935,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Showcase")]
         public static void CaptureShowcase()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {

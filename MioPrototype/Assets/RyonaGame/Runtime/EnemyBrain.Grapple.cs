@@ -272,6 +272,12 @@ namespace Ryona.Game
                 _wallReturnX = transform.position.x;
                 _wallReturnZ = transform.position.z;
             }
+            // 回避中に拘束が始まっても、位置固定と IsEvading が残らないようにする。
+            _evadeActive = false;
+            _evadeTargetOffset = 0f;
+            _evadeTargetLateral = 0f;
+            _evadeOffset = 0f;
+            _evadeLateral = 0f;
 
             IsPinning = false;
             IsBearHugging = false;
@@ -532,10 +538,14 @@ namespace Ryona.Game
             Vector3 to = Player.transform.position - transform.position;
             to.y = 0f;
             distance = to.magnitude;
-            if (pull)
-                grapple.BeginPull(this, kind);
-            else
-                grapple.BeginContact(this, kind);
+            bool started = pull
+                ? grapple.BeginPull(this, kind)
+                : grapple.BeginContact(this, kind);
+            if (!started)
+            {
+                distance = 0f;
+                return false;
+            }
             _lastPinAt = Time.time;
             _pinOrder = false;
             _bearHugOrder = false;

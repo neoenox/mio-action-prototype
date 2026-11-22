@@ -119,21 +119,23 @@ namespace Ryona.Game
             Subscribe();
         }
 
-        void OnEnable()
+        protected override void OnEnable()
         {
             // 2 回目以降の有効化（タイトルから戻ったときなど）はここで購読し直す。
             // 初回は Start より先に呼ばれるので、_started で弾く。
             if (_started)
                 Subscribe();
+            base.OnEnable();
         }
 
-        void OnDisable()
+        protected override void OnDisable()
         {
             Unsubscribe();
 
             // 無効化中は死亡演出の監視も止める（再有効化で最初からやり直す）
             _dead = false;
             _deathElapsed = 0f;
+            base.OnDisable();
         }
 
         void OnDestroy()
@@ -150,6 +152,8 @@ namespace Ryona.Game
             {
                 _dead = false;
                 _deathElapsed = 0f;
+                if (Rig != null)
+                    Rig.DeathFramingActive = false;
                 return;
             }
 
@@ -240,6 +244,7 @@ namespace Ryona.Game
         {
             if (Rig == null)
                 return;
+            Rig.DeathFramingActive = true;
 
             float k = DeathPivotSeconds > 0f
                 ? Mathf.Clamp01(_deathElapsed / DeathPivotSeconds)

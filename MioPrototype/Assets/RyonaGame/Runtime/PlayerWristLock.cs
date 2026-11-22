@@ -86,13 +86,13 @@ namespace Ryona.Game
         {
             if (_locked || _stats == null || _stats.IsDead || _stats.IsDown)
                 return false;
-            if (!string.IsNullOrEmpty(_burstPrefix))
-                StartCoroutine(BurstShots());
             bool grappled = _grapple != null && _grapple.IsGrappled;
             if (!_rules.CanAttach(Time.time, _endedAt, grappled, _stats.IsDown))
                 return false;
 
             _locked = true;
+            if (!string.IsNullOrEmpty(_burstPrefix))
+                StartCoroutine(BurstShots());
             _elapsed = 0f;
             _inputs = 0;
             _attacher = attacker;

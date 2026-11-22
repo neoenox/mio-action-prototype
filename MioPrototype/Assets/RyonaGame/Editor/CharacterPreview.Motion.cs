@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Ryona.Game;
 using UniVRM10;
 using UnityEditor;
@@ -17,6 +17,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Heavy Swing")]
         public static void CaptureHeavySwing()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             SetupLights();
 
@@ -144,6 +148,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Scan Attack Tell")]
         public static void ScanAttackTell()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
             var go = new GameObject("TellTest");
@@ -230,6 +238,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Walk Cycle")]
         public static void CaptureWalkCycle()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             SetupLights();
 
@@ -314,6 +326,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Enemy GetUp")]
         public static void CaptureEnemyGetUp()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             SetupLights();
 
@@ -384,6 +400,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Enemy Fall")]
         public static void CaptureEnemyFall()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             SetupLights();
 
@@ -455,6 +475,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Player Walk Cycle")]
         public static void CapturePlayerWalkCycle()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {

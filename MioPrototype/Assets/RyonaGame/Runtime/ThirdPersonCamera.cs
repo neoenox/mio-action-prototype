@@ -183,6 +183,8 @@ namespace Ryona.Game
         bool _holdingFocusThisFrame;
         bool _holdingFocusBelt;
 
+        /// <summary>死亡カメラが引きを押し直している間は true。拘束側の寄りがこれを消さないようにする。</summary>
+        internal bool DeathFramingActive { get; set; }
         protected override void Awake()
         {
             // 調整値は設定アセットから写す。シーンに保存された値は読まない
@@ -617,6 +619,9 @@ namespace Ryona.Game
             if (scale <= 0f)
                 return;   // 0 以下はカメラが体に入ってしまうので無視する
 
+            if (DeathFramingActive && scale < 1f)
+                return;   // 死亡の引きを拘束の寄りで上書きしない。
+
             if (scale < 1f)
             {
                 // 減衰済みの見た目と比べる。古い強い寄りが急に戻って跳ねるのを防ぐ。
@@ -709,6 +714,9 @@ namespace Ryona.Game
                 return;
             }
 
+            if (DeathFramingActive)
+                return;   // 死亡カメラが優先。直接代入で引きを消さないようにする。
+
             if (distanceScale > 0f)
             {
                 _pushScale = distanceScale;
@@ -733,7 +741,7 @@ namespace Ryona.Game
             _holdingFocusBelt = true;
         }
 
-        void OnDisable()
+        protected override void OnDisable()
         {
             // タイトルへ戻ったときなどに演出が残らないよう、必ず既定値へ戻す
             ResetDistanceEffect();
@@ -742,9 +750,11 @@ namespace Ryona.Game
             _focusDuration = 0f;
             _holdingFocusThisFrame = false;
             _holdingFocusBelt = false;
+            DeathFramingActive = false;
             _cinematicRequested = _cinematicActive = false;
             _focusPitch = 0f;
             _focusYaw = 0f;
+            base.OnDisable();
         }
 
         /// <summary>演出の残り時間を進め、このフレームで使う倍率・オフセットを決める。</summary>

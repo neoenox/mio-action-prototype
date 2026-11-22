@@ -34,13 +34,24 @@ namespace Ryona.Game
             if (motor != null)
                 motor.SetLaneZOverride(transform.position.z);
 
-            BeginHold(captor, GrappleKind.Pin, blendContact: true);
+            if (!BeginHold(captor, GrappleKind.Pin, blendContact: true))
+            {
+                // 手首ロックの猶予などで掴めていないのに壁だけが残ると、
+                // 自由に動けるのに壁カメラ・姿勢だけが効き続ける。設定を巻き戻す。
+                _wallSite = null;
+                _session.ClearWall();
+                WallPinWeight = 0f;
+                _wallExitRemaining = 0f;
+                Motor()?.ClearLaneZOverride();
+                return;
+            }
             _grabContactRemaining = 0f;
             _wallSite.BeginRise();
             SetWallStage(WallStage.Grab);
 
             // 壁拘束の間、二体目は「退避」ではなく横で待たせる（二人がかりの準備）。
             PickWallAssistCandidate();
+
         }
 
         /// <summary>壁拘束に加わる二体目を、拘束が始まった時点で選ぶ。</summary>
@@ -201,9 +212,11 @@ namespace Ryona.Game
             // 二人がかりの間は拘束時間を延ばす（膝 5 発ぶんの時間を使うため）。
             _session.LimitRemaining = Mathf.Max(_session.LimitRemaining, 4.6f);
             RequiredInputs = CombatConstants.WallSplitEscapeInputs;
+            // WallPause の 10 入力のままにしない。HUD と実効値を一致させる。
+            _resistance = new GrappleResistance(Kind, RequiredInputs);
             if (!best.IsWallAssisting)
                 best.BeginWallAssist(this);
-            StartCoroutine(WallSplitRoutine());
+            _wallSplit = StartCoroutine(WallSplitRoutine());
             GameLog.Log($"[WallSplit] begin captor={captor.name} assist={best.name} " +
                       $"dist={bestDistance:F2} ready={_session.SplitReady} need={RequiredInputs:F0}");
             return true;
@@ -316,6 +329,7 @@ namespace Ryona.Game
 
         bool _wallKneesDone;
         Coroutine _wallSeq;
+        Coroutine _wallSplit;
 
         /// <summary>拘束役の膝蹴りが全部終わった。拘束役の EnemyBrain から呼ばれる。</summary>
         internal void OnWallKneesFinished() => _wallKneesDone = true;
@@ -327,8 +341,15 @@ namespace Ryona.Game
 
         void StartWallSequence()
         {
-            // 前回の進行が残っていれば先に片付ける（フラグが立ったままだと時間切れが止まる）。
-            StopWallSequence();
+            // 前回のコルーチンと進行フラグだけを止める。FinishWallSequence を呼ぶと
+            // 待機中の WallAssistCandidate まで解放され、二人がかりが消えてしまう。
+            if (_wallSeq != null)
+            {
+                StopCoroutine(_wallSeq);
+                _wallSeq = null;
+            }
+            _session.WallSequenceActive = false;
+            _session.WallPauseActive = false;
 
             _wallKneesDone = false;
             _session.WallSequenceActive = true;
@@ -356,9 +377,20 @@ namespace Ryona.Game
         /// </summary>
         void FinishWallSequence()
         {
+            if (_wallSplit != null)
+            {
+                StopCoroutine(_wallSplit);
+                _wallSplit = null;
+            }
+
             _wallSeq = null;
             _session.WallSequenceActive = false;
             _session.WallPauseActive = false;
+
+            // 二人がかりの最中にダウン・死亡・引き渡しで抜けた場合、
+            // EndWallGang だけではアシストが壁アシスト状態で残る。
+            if (WallAssist != null || WallAssistCandidate != null || _session.IsSplitActive)
+                EndWallSplit();
 
             if (_session.GangActive || _session.Third != null)
                 EndWallGang();
@@ -720,6 +752,7 @@ namespace Ryona.Game
         /// <summary>二人がかりを終える。アシストには退避を指示する。</summary>
         void EndWallSplit()
         {
+            _wallSplit = null;
             var assist = WallAssist;
             var candidate = WallAssistCandidate;
             var third = _session.Third;

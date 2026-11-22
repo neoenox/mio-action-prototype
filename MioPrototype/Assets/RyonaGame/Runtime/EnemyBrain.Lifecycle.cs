@@ -178,6 +178,11 @@ namespace Ryona.Game
             HideTelegraph();
             ReleaseWallAssist();
             IsHolding = false;
+            _evadeActive = false;
+            _evadeTargetOffset = 0f;
+            _evadeTargetLateral = 0f;
+            _evadeOffset = 0f;
+            _evadeLateral = 0f;
             ClearGrappleState(clearAttackState: true, resetKneeTimer: true);
             _wallReturn = 0f;
             ReleaseToken();
