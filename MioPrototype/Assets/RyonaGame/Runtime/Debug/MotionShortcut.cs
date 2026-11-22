@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -705,7 +705,7 @@ namespace Ryona.Game
 
         void KeepIdleEnemiesFrozen()
         {
-            foreach (EnemyBrain enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (EnemyBrain enemy in EnemyRegistry.All)
             {
                 if (enemy == null || !enemy.IsAlive)
                     continue;
@@ -766,13 +766,7 @@ namespace Ryona.Game
 
         static List<EnemyBrain> CollectEnemies()
         {
-            EnemyBrain[] found = FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None);
-            var list = new List<EnemyBrain>(found.Length);
-            for (int i = 0; i < found.Length; i++)
-            {
-                if (found[i] != null)
-                    list.Add(found[i]);
-            }
+            var list = new List<EnemyBrain>(EnemyRegistry.All);
             list.Sort((a, b) => string.CompareOrdinal(a.name, b.name));
             return list;
         }

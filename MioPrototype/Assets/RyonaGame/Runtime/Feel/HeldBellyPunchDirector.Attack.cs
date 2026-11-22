@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Ryona.Game
 {
@@ -34,7 +34,7 @@ namespace Ryona.Game
             }
             else
             {
-                foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+                foreach (var enemy in EnemyRegistry.All)
                 {
                     if (!IsPuncherEligible(enemy, captor))
                         continue;

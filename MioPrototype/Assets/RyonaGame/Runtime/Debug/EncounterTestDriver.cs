@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Ryona.Game
 {
@@ -96,7 +96,7 @@ namespace Ryona.Game
 
             _timer = Mathf.Max(0.2f, Interval);
 
-            foreach (var brain in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var brain in EnemyRegistry.All)
             {
                 if (brain == null || !brain.IsAlive)
                     continue;

@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Ryona.Game
 {
@@ -67,7 +67,7 @@ namespace Ryona.Game
                 // 撮影中は AI に殴らせない（当てるのはこのドライバだけ）。
                 // 混ざると「どの一撃で倒れたか」が分からず、狙った絵も撮れない。
                 int away = 0;
-                foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+                foreach (var enemy in EnemyRegistry.All)
                 {
                     if (enemy == null)
                         continue;
@@ -132,7 +132,7 @@ namespace Ryona.Game
             // 一番近い敵に殴らせる（吹き飛ぶ向きが「殴った相手の反対側」になる）
             EnemyBrain from = null;
             float best = float.MaxValue;
-            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var enemy in EnemyRegistry.All)
             {
                 if (enemy == null || !enemy.IsAlive)
                     continue;

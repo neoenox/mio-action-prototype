@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Ryona.Game
 {
@@ -112,7 +112,7 @@ namespace Ryona.Game
 
         EnemyBrain FindTagPuncher()
         {
-            foreach (EnemyBrain brain in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (EnemyBrain brain in EnemyRegistry.All)
             {
                 if (brain != null && brain.IsTagPunch && brain.Zone == PunchZone.Face)
                     return brain;

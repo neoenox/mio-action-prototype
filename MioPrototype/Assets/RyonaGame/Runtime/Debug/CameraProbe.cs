@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Ryona.Game
 {
@@ -88,8 +88,8 @@ namespace Ryona.Game
             // いちばん近い敵。ロックの条件（近い / 画面に映っている）を数字で見るため。
             float enemyD = float.PositiveInfinity;
             float enemyVx = -1f;
-            var brains = FindObjectsByType<EnemyBrain>(FindObjectsInactive.Exclude);
-            for (int i = 0; i < brains.Length; i++)
+            var brains = EnemyRegistry.All;
+            for (int i = 0; i < brains.Count; i++)
             {
                 var b = brains[i];
                 if (b == null || !b.IsAlive)

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using UnityEngine;
 
@@ -59,7 +59,7 @@ namespace Ryona.Game
         {
             WallAssistCandidate = null;
             float bestDistance = 5f;
-            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var enemy in EnemyRegistry.All)
             {
                 if (enemy == null || enemy == Captor || !enemy.isActiveAndEnabled || !enemy.IsAlive ||
                     enemy.IsRising || enemy.IsHolding || enemy.IsPinning || enemy.MoveSpeed <= 0f)
@@ -183,7 +183,7 @@ namespace Ryona.Game
                 ? Vector3.Distance(best.transform.position, transform.position) : 5f;
             if (best == null)
             {
-                foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+                foreach (var enemy in EnemyRegistry.All)
                 {
                     if (enemy == null || enemy == captor || !enemy.isActiveAndEnabled || !enemy.IsAlive ||
                         enemy.IsRising || enemy.IsHolding || enemy.IsHandOffLocked || enemy.IsPinning ||
@@ -472,7 +472,7 @@ namespace Ryona.Game
             EnemyBrain best = null;
             // 画面内の敵なら歩いて来られる距離（歩きで約 4 秒）。
             float bestDistance = 10f;
-            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var enemy in EnemyRegistry.All)
             {
                 if (enemy == null || enemy == Captor || enemy == _session.Assist)
                     continue;
