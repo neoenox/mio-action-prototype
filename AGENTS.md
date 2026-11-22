@@ -103,6 +103,14 @@ python tools/motion_audit.py Verify/preview/<dir> --strip 110 117 -o seq.png
 - 下げてよいのは実測があるときだけ。基準を緩めるのは「直した」ではなく「見逃した」。
 - 測れないもの: 彼女自身の前髪・腕が顔にかかること、HUD の帯が重なること。
 
+## 作業の流れ
+
+1. 変更ごとに新しい worktree を作る。既存の worktree は再利用しない。
+2. worktree 内で変更し、コンパイルと撮影（`preview.py` / `motion_audit.py`）・ログで確認する。ローカルでテストバッチは回さない。
+3. ブランチを push して PR を作り、マージする。必須チェックが既知フレークで落ちている場合は一時的に外し、マージ後に必ず元へ戻す。
+4. `main` を最新化してから **main でプレイヤーをビルドする**（`Ryona.EditorTools.PlayerBuild.BuildWindowsFromCli`）。worktree 内のビルドは検証用で、完了扱いにしない。
+5. 最後に worktree を削除し、一時ブランチも整理する。
+
 ## テスト
 
 - EditMode は `Ryona.Tests`（`Ryona.Core` のみ参照）、PlayMode は `Ryona.PlayTests`（`Ryona.Game` を参照）。
