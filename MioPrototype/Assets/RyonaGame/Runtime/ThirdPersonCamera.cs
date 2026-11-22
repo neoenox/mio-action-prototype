@@ -31,6 +31,11 @@ namespace Ryona.Game
         [System.NonSerialized] public float MaxPitch;
         [System.NonSerialized] public float FollowSharpness;
 
+        [System.NonSerialized] public float BearHugDistanceScale;
+
+        float _bearHugBlend;
+        PlayerGrapple _beltGrapple;
+
         [Tooltip("カメラの当たり判定に使うレイヤー。プロジェクト固有の値なので設定アセットには入れない")]
         public LayerMask CollisionMask = ~0;
 
@@ -230,6 +235,8 @@ namespace Ryona.Game
             MinPitch = s.MinPitch;
             MaxPitch = s.MaxPitch;
             FollowSharpness = s.FollowSharpness;
+
+            BearHugDistanceScale = s.BearHugDistanceScale;
 
             BeltMode = s.BeltMode;
             BeltMinZoomDistance = s.BeltMinZoomDistance;
@@ -484,6 +491,16 @@ namespace Ryona.Game
                 ? Mathf.Max(Distance, _initialDistance * ClosestShotZoom)
                 : Distance;
             float distance = Mathf.Max(BeltCloseUpMinDistance, baseDistance * _distanceScale);
+
+            // ベアハッグは敵が前に張り出して顔を隠す。引いて二人の関係が読める画にする。
+            if (_beltGrapple == null && Target != null)
+                _beltGrapple = Target.GetComponent<PlayerGrapple>();
+            bool bearHug = _beltGrapple != null && _beltGrapple.IsGrappled &&
+                _beltGrapple.Kind == GrappleKind.BearHug;
+            // 掴んだ瞬間に距離が飛ばないよう 0.25 秒で寄せて引く。
+            _bearHugBlend = Mathf.MoveTowards(_bearHugBlend, bearHug ? 1f : 0f,
+                Time.unscaledDeltaTime / 0.25f);
+            distance *= Mathf.Lerp(1f, BearHugDistanceScale, _bearHugBlend);
             float height = BeltPivotHeight + _pivotOffsetY;
 
             // 倒れているあいだは少し引いて、体全体が入るようにする
