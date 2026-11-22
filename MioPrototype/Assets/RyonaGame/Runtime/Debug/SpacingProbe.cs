@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Ryona.Game
 {
@@ -29,12 +29,12 @@ namespace Ryona.Game
 
             _timer = 1f;
 
-            var brains = FindObjectsByType<EnemyBrain>(FindObjectsInactive.Exclude);
-            if (brains.Length == 0)
+            var brains = EnemyRegistry.All;
+            if (brains.Count == 0)
                 return;
 
             Transform player = null;
-            for (int i = 0; i < brains.Length; i++)
+            for (int i = 0; i < brains.Count; i++)
             {
                 if (brains[i].Target != null)
                 {
@@ -46,7 +46,7 @@ namespace Ryona.Game
             float minPlayer = float.PositiveInfinity;
             if (player != null)
             {
-                for (int i = 0; i < brains.Length; i++)
+                for (int i = 0; i < brains.Count; i++)
                 {
                     if (brains[i].Phase == EnemyPhase.Dead)
                         continue;
@@ -58,12 +58,12 @@ namespace Ryona.Game
             }
 
             float minPair = float.PositiveInfinity;
-            for (int i = 0; i < brains.Length; i++)
+            for (int i = 0; i < brains.Count; i++)
             {
                 if (brains[i].Phase == EnemyPhase.Dead)
                     continue;
 
-                for (int j = i + 1; j < brains.Length; j++)
+                for (int j = i + 1; j < brains.Count; j++)
                 {
                     if (brains[j].Phase == EnemyPhase.Dead)
                         continue;
@@ -79,7 +79,7 @@ namespace Ryona.Game
             // 膠着の切り分け用: 敵ごとの状態。距離・トークン・クールダウン・向き。
             if (player != null)
             {
-                for (int i = 0; i < brains.Length; i++)
+                for (int i = 0; i < brains.Count; i++)
                 {
                     var b = brains[i];
                     if (b.Phase == EnemyPhase.Dead)

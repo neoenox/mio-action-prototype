@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
 namespace Ryona.Game
@@ -177,7 +177,7 @@ namespace Ryona.Game
                 return;
 
             // 敵がいないシーン（検証用）では何もしない
-            if (FindFirstObjectByType<EnemyBrain>() == null)
+            if (EnemyRegistry.First == null)
                 return;
 
             var go = new GameObject("Encounter Director");
@@ -196,7 +196,7 @@ namespace Ryona.Game
 
             _collectRetry = 1f;
 
-            foreach (var brain in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var brain in EnemyRegistry.All)
             {
                 if (brain == null)
                     continue;

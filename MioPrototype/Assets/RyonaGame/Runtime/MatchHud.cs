@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 
 namespace Ryona.Game
@@ -128,7 +128,7 @@ namespace Ryona.Game
 
             EnemyBrain best = null;
             float bestDistance = float.MaxValue;
-            foreach (var e in Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var e in EnemyRegistry.All)
             {
                 if (e == null || e.State == null || !e.IsAlive)
                     continue;

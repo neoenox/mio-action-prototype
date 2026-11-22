@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Ryona.Game
 {
@@ -116,7 +116,7 @@ namespace Ryona.Game
             // 一番近い敵を彼女の正面 1.0m へ立たせて、押さえつけを指示する。
             EnemyBrain best = null;
             float bestDistance = float.MaxValue;
-            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var enemy in EnemyRegistry.All)
             {
                 if (enemy == null || !enemy.IsAlive || enemy.IsRising)
                     continue;

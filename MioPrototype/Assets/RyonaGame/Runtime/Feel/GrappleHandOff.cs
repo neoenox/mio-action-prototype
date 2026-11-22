@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Ryona.Game
 {
@@ -112,7 +112,7 @@ namespace Ryona.Game
 
         bool HasReceiverCandidate(PlayerGrapple hold, EnemyBrain exclude)
         {
-            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var enemy in EnemyRegistry.All)
             {
                 if (enemy == null || !enemy.isActiveAndEnabled || enemy == hold.Captor ||
                     enemy == exclude || !enemy.IsAlive || enemy.IsRising || enemy.IsHolding)
@@ -193,7 +193,7 @@ namespace Ryona.Game
             EnemyBrain best = null;
             float bestDistance = Range;
 
-            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var enemy in EnemyRegistry.All)
             {
                 if (enemy == null || enemy == hold.Captor || !enemy.IsAlive || enemy.IsRising)
                     continue;

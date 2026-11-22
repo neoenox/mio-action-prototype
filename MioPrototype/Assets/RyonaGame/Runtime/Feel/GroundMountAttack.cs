@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
 namespace Ryona.Game
@@ -310,7 +310,7 @@ namespace Ryona.Game
         void FindAttacker()
         {
             float best = 3f * 3f;
-            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var enemy in EnemyRegistry.All)
             {
                 if (enemy.Player != _player || !enemy.CanMountDownedPlayer || enemy.MoveSpeed <= 0f ||
                     !enemy.TryGetComponent(out EnemyFigure figure))

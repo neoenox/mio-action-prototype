@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using Ryona;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -223,7 +223,7 @@ namespace Ryona.Game
             front = null;
             rear = null;
             var list = new System.Collections.Generic.List<EnemyBrain>();
-            foreach (var e in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var e in EnemyRegistry.All)
             {
                 if (e != null && e.isActiveAndEnabled && e.IsAlive)
                     list.Add(e);
@@ -252,7 +252,7 @@ namespace Ryona.Game
         {
             front = null;
             rear = null;
-            var enemies = FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None);
+            var enemies = EnemyRegistry.All;
             float px = _stats.transform.position.x;
             EnemyBrain bestFront = null, bestRear = null;
             float bestGap = float.MaxValue;
@@ -296,7 +296,7 @@ namespace Ryona.Game
             _grapple.SetPinball(true);
             _grapple.Begin(rear, GrappleKind.Back);
 
-            foreach (var e in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var e in EnemyRegistry.All)
             {
                 if (e != null && e != front && e != rear)
                     e.LockForHandOff(4f);
@@ -412,7 +412,7 @@ namespace Ryona.Game
 
             // 開始時の固定（4 秒）は挟み撃ちの途中で切れ、残りの敵が歩いて来て後ろの敵に
             // めり込んだ（実測 pinball #186〜）。締めまで固定し直す。
-            foreach (var e in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var e in EnemyRegistry.All)
             {
                 if (e != null && e != _front && e != _rear)
                     e.LockForHandOff(SandwichBlows * 1.8f + 3f);

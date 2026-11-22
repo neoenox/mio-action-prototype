@@ -980,6 +980,8 @@ namespace Ryona.Game
 
         void OnEnable()
         {
+
+            EnemyRegistry.Register(this);
             // 無効化 → 有効化では Start が走り直さないので、ここでも登録を試みる。
             // 死亡済みの個体はグループに戻さない。
             if (Phase == EnemyPhase.Dead)
@@ -998,6 +1000,8 @@ namespace Ryona.Game
             StopFlanking();
             ReleaseToken();
             UnregisterGroup();
+
+            EnemyRegistry.Unregister(this);
             HideTelegraph();
         }
 
@@ -1007,6 +1011,8 @@ namespace Ryona.Game
             StopFlanking();
             ReleaseToken();
             UnregisterGroup();
+
+            EnemyRegistry.Unregister(this);
             HideTelegraph();
         }
 
