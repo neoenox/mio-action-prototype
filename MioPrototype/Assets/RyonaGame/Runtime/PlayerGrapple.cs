@@ -112,6 +112,9 @@ namespace Ryona.Game
         /// <summary>二人がかりが始まったか（アシストが持ち場へ向かい始めた）。始まる前のアシストは、カメラの外で待つ。</summary>
         internal bool IsWallSplitStarted => _session.SplitStarted;
 
+        /// <summary>二体目の手が彼女の右前腕へ届く度合い（0..1）。表情と抵抗の強さにも使う。</summary>
+        internal float WallAssistGrip => _wallAssistGrip;
+
         /// <summary>いま殴る側（拘束役かアシスト）。null なら待ち。</summary>
         public EnemyBrain WallSplitPuncher => _session.SplitPuncher;
 
@@ -130,8 +133,6 @@ namespace Ryona.Game
         /// <summary>この人の 1 発が蹴りか（膝入れと同じ枠で動くが、脚をまっすぐ伸ばす）。</summary>
         internal bool WallSplitKickOf(EnemyBrain who) => _session.StrikeOf(who)?.Kick ?? false;
 
-        /// <summary>この人の 1 発が締め（膝入れ・蹴り）か。</summary>
-        internal bool WallSplitKneeStrikeOf(EnemyBrain who) => _session.StrikeOf(who)?.Finisher ?? false;
 
         /// <summary>同時に打っている枠（テスト・診断用）。</summary>
         internal System.Collections.Generic.IReadOnlyList<SplitStrike> WallSplitStrikes => _session.Strikes;
@@ -198,8 +199,6 @@ namespace Ryona.Game
         /// <summary>壁拘束の段階進行が動いているか。HUD 用。</summary>
         internal bool IsWallSequenceActive => _session.WallSequenceActive;
 
-        /// <summary>いまの 1 発が締めの膝入れか（腕のパンチは出さない）。</summary>
-        internal bool WallSplitKneeStrike => _session.SplitFinisher;
 
         /// <summary>
         /// 締めの膝入れの「溜め」（0..1）。<paramref name="who"/> が打つ側のときだけ値を返す。
@@ -335,6 +334,9 @@ namespace Ryona.Game
 
         /// <summary>両手首が壁面へ貼り付くまでの秒数。</summary>
         const float WallAdhereSeconds = 0.40f;
+
+        // 二体目が近づいて腕を掴むまでの見た目（0..1）。登場を「掴み」として読ませる。
+        float _wallAssistGrip;
         float _wallExitRemaining;
         float _wallExitFromZ;
         PlayerMotor _motor;
@@ -695,6 +697,12 @@ namespace Ryona.Game
 
             if (StrugglePulse > 0f)
                 StrugglePulse = Mathf.Max(0f, StrugglePulse - Time.deltaTime * 4f);
+
+
+            // 二人目が腕を掴みに来る瞬間だけ、小さく身をゆらす（連打の加算はしない）。
+            if (_wallAssistGrip > 0.12f && _wallAssistGrip < 0.99f && IsGrappled)
+                StrugglePulse = Mathf.Max(StrugglePulse,
+                    0.30f * (0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 20f)));
 
             // 膝蹴りの見た目は掴まれていなくても抜けきるまで減衰させる（解放された直後に残らない）
             if (_kneeHold > 0f)

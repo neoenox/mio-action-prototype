@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using NUnit.Framework;
 using Ryona.Game;
 using UnityEngine;
@@ -1250,79 +1250,43 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator 二人がかりの締めの膝は腹に届き空き手は腰を掴んで肘が折れすぎない()
+        public IEnumerator 二人がかりの締めも腹パンで拳が腹に届く()
         {
             yield return Load(withAssist: true);
             _captor.QueuePin();
             yield return WaitForGrapple();
 
-            float deadline = Time.realtimeSinceStartup + 14f;
+            float deadline = Time.realtimeSinceStartup + 16f;
             while (!_grapple.IsWallSplitActive && Time.realtimeSinceStartup < deadline)
                 yield return null;
             Assert.IsTrue(_grapple.IsWallSplitActive, "二人がかりが始まらない");
 
-            // 締めの突き上げの瞬間（膝がほぼ最大に上がっている間）だけ測る。
-            float bestKnee = float.MaxValue;
-            float bestHand = float.MaxValue;
-            float minElbow = 180f;
+            float bestFist = float.MaxValue;
             int samples = 0;
-            string kneeLog = string.Empty;
-
-            deadline = Time.realtimeSinceStartup + 9f;
+            int last = CombatConstants.WallSplitPunchCount - 1;
+            float reach = CombatConstants.WallSplitHitWindup(last);
+            deadline = Time.realtimeSinceStartup + 14f;
             while (Time.realtimeSinceStartup < deadline && _grapple.IsWallSplitActive)
             {
                 EnemyBrain puncher = _grapple.WallSplitPuncher;
-                if (puncher != null && _grapple.WallSplitKneeStrike &&
-                    _grapple.WallSplitKneeThrust(puncher) > 0.8f)
+                if (puncher != null && _grapple.WallSplitHits == last &&
+                    _grapple.WallSplitPunchAge >= reach - 0.05f)
                 {
                     var figure = puncher.GetComponent<EnemyFigure>();
                     Vector3 her = _player.transform.position;
                     Vector3 front = Vector3.ProjectOnPlane(_player.transform.forward, Vector3.up).normalized;
                     Vector3 belly = her + Vector3.up * 0.88f + front * 0.12f;
-                    float side = puncher.transform.position.x >= her.x ? 1f : -1f;
-                    Vector3 waist = her + Vector3.up * 0.95f + front * 0.08f + Vector3.right * (side * 0.17f);
-
-                    foreach (bool left in new[] { true, false })
-                    {
-                        Transform knee = figure.KneeBone(left);
-                        if (knee != null)
-                        {
-                            float d = Vector3.Distance(knee.position, belly);
-                            if (d < bestKnee)
-                            {
-                                bestKnee = d;
-                                Vector3 flat = puncher.transform.position - her;
-                                flat.y = 0f;
-                                kneeLog = $"left={left} kneeY={knee.position.y:F2} bellyY={belly.y:F2} " +
-                                          $"standoff={flat.magnitude:F2} rootY={puncher.transform.position.y:F2}";
-                            }
-                        }
-                    }
-
-                    bool freeLeft = _grapple.WallSplitPunchLeft;
-                    Transform shoulder = figure.ShoulderBone(freeLeft);
-                    Transform elbow = figure.ElbowBone(freeLeft);
-                    Transform wrist = figure.WristBone(freeLeft);
-                    if (shoulder != null && elbow != null && wrist != null)
-                    {
-                        bestHand = Mathf.Min(bestHand, Vector3.Distance(wrist.position, waist));
-                        minElbow = Mathf.Min(minElbow,
-                            Vector3.Angle(shoulder.position - elbow.position, wrist.position - elbow.position));
-                    }
-
+                    var fist = figure.WristBone(_grapple.WallSplitPunchLeft);
+                    if (fist != null)
+                        bestFist = Mathf.Min(bestFist, Vector3.Distance(fist.position, belly));
                     samples++;
                 }
-
                 yield return null;
             }
 
-            Debug.Log($"[KneeCheck] samples={samples} knee={bestKnee:F2}m hand={bestHand:F2}m elbow={minElbow:F0}deg {kneeLog}");
-            Assert.Greater(samples, 0, "締めの突き上げを一度も測れていない");
-            // 膝の関節の中心から腹の点までの距離。膝の丸み（約 8cm）があるので、0.15m 以内なら
-            // 膝が腹の表面に当たっている（関節の角度だけで振り上げると 0.25m 前後で腹の横を通る）。
-            Assert.Less(bestKnee, 0.15f, $"締めの膝が腹に届いていない（最接近 {bestKnee:F2}m）");
-            Assert.Less(bestHand, 0.25f, $"空き手が彼女の腰を掴めていない（最接近 {bestHand:F2}m）");
-            Assert.Greater(minElbow, 70f, $"空き手の肘が折れすぎている（最小 {minElbow:F0}°）");
+            Debug.Log($"[SplitPunchCheck] samples={samples} fist={bestFist:F2}m");
+            Assert.Greater(samples, 0, "締めの拳を一度も測れていない");
+            Assert.Less(bestFist, 0.25f, $"締めの拳が腹に届いていない（最接近 {bestFist:F2}m）");
         }
 
         [UnityTest]

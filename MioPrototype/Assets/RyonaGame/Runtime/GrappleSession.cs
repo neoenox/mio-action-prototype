@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
 namespace Ryona.Game
@@ -125,7 +125,8 @@ namespace Ryona.Game
         /// <summary>打つ手が左か（アシスト=右、拘束役=左）。ポーズ側が空き手を選ぶ。0 枠目。</summary>
         public bool SplitPunchLeft { get => _strikes[0].Left; set => _strikes[0].Left = value; }
 
-        /// <summary>いまの 1 発が締め（膝入れ）か。腕のパンチではなく膝で打つ。0 枠目。</summary>
+
+        /// <summary>3 人がかりの脚打ち（膝・蹴り）か。二人がかりの締めは拳なので立てない。</summary>
         public bool SplitFinisher { get => _strikes[0].Finisher; set => _strikes[0].Finisher = value; }
 
         readonly SplitStrike[] _strikes = { new SplitStrike(), new SplitStrike() };
