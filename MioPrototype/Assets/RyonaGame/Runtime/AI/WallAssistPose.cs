@@ -35,7 +35,8 @@ namespace Ryona.Game
                 return;
 
             float split = hold.WallSplitWeight;
-            if (split <= 0.001f)
+            float gripWeight = hold.WallAssistGrip;
+            if (split <= 0.001f && gripWeight <= 0.001f)
                 return;
 
             // 内側の手（彼の左手）で彼女の右前腕を掴む。3 人目は掴まない（腕は力を抜く）。
@@ -47,18 +48,19 @@ namespace Ryona.Game
             if (hold.WallThird != _brain)
             {
                 Vector3 grip = Vector3.Lerp(_targetRig.RHand.position, _targetRig.RLowerArm.position, 0.25f);
-                SolveArm(true, grip + Vector3.up * 0.02f, split * (1f - gang));
+                SolveArm(true, grip + Vector3.up * 0.02f,
+                    Mathf.Max(split, gripWeight * 0.9f) * (1f - gang));
                 if (gang > 0.001f)
                     WallSplitArm.Guard(_figure, true, her, front, side, gang, transform);
             }
             else
-                WallSplitArm.Relax(_figure, true, split, transform);
+                WallSplitArm.Relax(_figure, true, Mathf.Max(split, gripWeight * 0.9f), transform);
 
             // 外側の手（彼の右手）は腹パン。打たない間は脇へ下ろす（上げたままだと不自然）。
             // 同時打ちがあるので、判定は「この人」の枠で行う。
             float punchAge = hold.WallSplitPunchAgeOf(_brain);
             bool facePunch = hold.WallSplitFaceOf(_brain);
-            if (punchAge >= 0f && !hold.WallSplitKneeStrikeOf(_brain))
+            if (punchAge >= 0f)
                 WallSplitArm.Punch(_figure, false, her, front, side,
                     punchAge, hold.WallSplitWindupOf(_brain), split, transform, facePunch,
                     facePunch && _targetRig.Head != null
@@ -67,11 +69,6 @@ namespace Ryona.Game
             else
                 WallSplitArm.Guard(_figure, false, her, front, side, split, transform);
 
-            // 締めの膝入れは、空き手で彼女の腰を掴んで引き寄せる。
-            if (hold.WallSplitKneeStrikeOf(_brain))
-                WallSplitArm.Pull(_figure, false, her, front, side,
-                    split * Mathf.Max(hold.WallSplitKneeWeight(_brain), hold.WallSplitKneeThrust(_brain)),
-                    transform);
         }
 
         void SolveArm(bool left, Vector3 goal, float weight)

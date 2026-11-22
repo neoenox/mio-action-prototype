@@ -83,7 +83,7 @@ namespace Ryona.Game
                 // 同時打ちがあるので、判定は「この人」の枠で行う。
                 float punchAge = hold.WallSplitPunchAgeOf(_brain);
                 bool facePunch = hold.WallSplitFaceOf(_brain);
-                bool punching = punchAge >= 0f && !hold.WallSplitKneeStrikeOf(_brain);
+                bool punching = punchAge >= 0f;
                 if (punching)
                     WallSplitArm.Punch(_figure, true, herPos, herFront, herSide,
                         punchAge, hold.WallSplitWindupOf(_brain), split, transform, facePunch,
@@ -93,11 +93,6 @@ namespace Ryona.Game
                 else
                     WallSplitArm.Guard(_figure, true, herPos, herFront, herSide, split, transform);
 
-                // 締めの膝入れは、空き手で彼女の腰を掴んで引き寄せる。
-                if (hold.WallSplitKneeStrikeOf(_brain))
-                    WallSplitArm.Pull(_figure, true, herPos, herFront, herSide,
-                        split * Mathf.Max(hold.WallSplitKneeWeight(_brain), hold.WallSplitKneeThrust(_brain)),
-                        transform);
 
                 // 3 人がかりでは、手を離した右腕も構える（誰も彼女を持たない）。
                 if (gang > 0.001f)
