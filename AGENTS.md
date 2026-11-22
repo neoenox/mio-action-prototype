@@ -101,8 +101,8 @@ python tools/motion_audit.py Verify/preview/<dir> --strip 110 117 -o seq.png
 - 速回しの例: `python tools/run_tests.py --filter "BearHugTests|OverheadRuntimeTests" --skip-compile`（数十秒）。
 - **テストは CI（GitHub Actions `unity-tests.yml`）が PR で実行する**（2026-11-22 の指定）。開発中・コミット前ともローカルでは回さない。見た目と挙動の確認は撮影（`preview.py`・`motion_audit.py`）とログで行う。
   下の表は CI のバッチ割り当ての目安（`edit` は常に含める）。CI は常に全バッチを回す。ローカルで確認したいときだけ `run_tests.py --only ...` を使う。
-  `PlayerFaceRuntimeTests` は gitignore 済みの音声素材（`Resources/Voice/*.wav`）が必要なため、CI の misc バッチから除外している。
-  CI の Unity ライセンスは `UNITY_LICENSE` secret を使う（未設定だと失敗する）。
+  CI は self-hosted Windows runner（`runs-on: [self-hosted, Windows]`）で `run_tests.py` の全バッチを実行する。ランナーに Unity と Python 3.11 が必要で、実行中は Unity Editor を閉じておく。
+  gitignore 済みの音声素材は workflow の `VOICE_SOURCE` から作業ツリーへコピーする。ランナーを構築したら `UNITY_EXE` と `VOICE_SOURCE` を実パスに合わせる。
 
 | 変更した場所 | 回すバッチ |
 |---|---|

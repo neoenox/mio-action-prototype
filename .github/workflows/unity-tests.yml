@@ -22,65 +22,38 @@ permissions:
 
 concurrency:
   group: unity-tests-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   unity-tests:
-    name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: edit
-            mode: editmode
-            args: ''
-          # 以下のフィルタは tools/run_tests.py の BATCHES と同じ。
-          - name: grapple
-            mode: playmode
-            args: '-testFilter "WallPinRuntime|PinGrapple|HeldBellyPunch|BearHug|OverheadRuntime|AnkleGrab|GrappleSessionTests|PinballRuntimeTests|WristLockRuntimeTests|WristPullRuntimeTests"'
-          - name: motion
-            mode: playmode
-            args: '-testFilter "DownRuntime|HaulUpRuntime|FeelRuntime|HurtPose|JointRomRuntime|BodyOverlapRuntime|FaceVisibilityLensTests"'
-          # PlayerFaceRuntime は gitignore 済みの Resources/Voice/*.wav が必要なため CI では除外。
-          - name: misc
-            mode: playmode
-            args: '-testFilter "EnemyAiRuntime|PlayabilityRegression|TestAudio|UiRuntime|VrmRuntime|HairBodyRuntime|HotReloadTests|EnemyHpRuntimeTests|OcclusionFadeTests|CameraExitBlendTests|ArenaRuntimeTests|EnemyRoleRuntimeTests"'
+    name: Unity tests
+    runs-on: [self-hosted, Windows]
+    env:
+      # ランナーの環境に合わせて 2 つのローカルパスを設定する。
+      UNITY_EXE: 'C:\Users\neoen\Unity\Editor\6000.4.5f1\Editor\Unity.exe'
+      VOICE_SOURCE: 'C:\gemini-desktop\ryona-action\MioPrototype\Assets\RyonaGame\Resources\Voice'
     steps:
       - uses: actions/checkout@v4
 
-      - name: Read Unity version
-        id: unity-version
-        run: |
-          version=$(sed -n 's/^m_EditorVersion: //p' MioPrototype/ProjectSettings/ProjectVersion.txt)
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Check Unity license
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-        run: |
-          if [ -z "$UNITY_LICENSE" ]; then
-            echo "::error::UNITY_LICENSE secret が設定されていません"
-            exit 1
-          fi
-
-      - name: Run ${{ matrix.name }} tests
-        uses: game-ci/unity-test-runner@v4
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+      - uses: actions/setup-python@v5
         with:
-          projectPath: MioPrototype
-          unityVersion: ${{ steps.unity-version.outputs.version }}
-          testMode: ${{ matrix.mode }}
-          customParameters: ${{ matrix.args }}
-          githubToken: ${{ secrets.GITHUB_TOKEN }}
-          artifactsPath: UnityTestResults/${{ matrix.name }}
-          checkName: Unity ${{ matrix.name }}
+          python-version: '3.11'
 
-      - name: Upload results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: unity-test-results-${{ matrix.name }}
-          path: UnityTestResults/${{ matrix.name }}
-          if-no-files-found: warn
+      # 音声素材は gitignore 済み。CI ではローカルの素材を作業ツリーへコピーする。
+      - name: Restore voice assets
+        shell: pwsh
+        run: |
+          $dest = "MioPrototype\Assets\RyonaGame\Resources\Voice"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          if (Test-Path $env:VOICE_SOURCE) {
+            Copy-Item -Path (Join-Path $env:VOICE_SOURCE "*") -Destination $dest -Recurse -Force
+          } else {
+            Write-Host "::warning::音声素材が見つかりません: $env:VOICE_SOURCE"
+          }
+
+      # run_tests.py が全バッチ（コンパイル確認込み）を順に実行する。実行中は Unity Editor を閉じておく。
+      - name: Run Unity tests
+        shell: pwsh
+        run: |
+          cd MioPrototype
+          python tools/run_tests.py --unity $env:UNITY_EXE
