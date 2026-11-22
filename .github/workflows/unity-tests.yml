@@ -27,6 +27,8 @@ concurrency:
 jobs:
   unity-tests:
     name: Unity tests
+    # public repo の fork PR は中身を信用できない。self-hosted で実行しない。
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Windows]
     env:
       # ランナーの環境に合わせて 2 つのローカルパスを設定する。
