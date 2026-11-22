@@ -704,6 +704,9 @@ namespace Ryona.Game
                 dt / (reacting ? 0.04f : 0.12f));
 
             float brow = Mathf.Lerp(65f + 17f * worry + 6f * effort, 34f, brace);
+            // 膝の予備動作では眉をはっきり上げる（フレーム間隔で 74 を割らないように）。
+            if (_grapple.Kind == GrappleKind.Pin && !_grapple.IsWallPin)
+                brow = Mathf.Max(brow, Mathf.Lerp(76f, 92f, worry));
             float angry;
             float sad;
             float mouth;
