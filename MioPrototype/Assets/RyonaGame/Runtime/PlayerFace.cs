@@ -280,6 +280,11 @@ namespace Ryona.Game
         static readonly System.Collections.Generic.Dictionary<AudioClip, VoiceEnvelope> s_envelopes =
             new System.Collections.Generic.Dictionary<AudioClip, VoiceEnvelope>();
 
+        // シーンを読み直すと古い AudioClip がキーに残る。ドメインリロード無効でも
+        // 毎回のシーン読み込みで破棄して、再生中の clip だけ作り直させる。
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        static void ResetVoiceEnvelopes() => s_envelopes.Clear();
+
         static VoiceEnvelope EnvelopeOf(AudioClip clip)
         {
             if (clip == null)

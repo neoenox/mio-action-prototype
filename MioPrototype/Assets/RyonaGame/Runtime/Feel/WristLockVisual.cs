@@ -64,6 +64,12 @@ namespace Ryona.Game
             _bar.localScale = new Vector3(0.02f, delta.magnitude * 0.5f, 0.02f);
         }
 
+        void OnDestroy()
+        {
+            if (_material != null)
+                Destroy(_material);
+        }
+
         void SetVisible(bool visible)
         {
             if (_ringL != null) _ringL.gameObject.SetActive(visible);
