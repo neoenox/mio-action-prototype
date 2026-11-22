@@ -46,6 +46,8 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 PROJECT = Path(__file__).resolve().parent.parent          # MioPrototype/
 REPO = PROJECT.parent
 VERIFY = PROJECT / "Verify"
@@ -163,9 +165,9 @@ def unity_exe(project: Path) -> Path | None:
 
 
 def unity_running() -> bool:
-    out = subprocess.run(["tasklist", "/fi", "imagename eq Unity.exe"],
-                         capture_output=True, text=True).stdout
-    return "Unity.exe" in out
+    """このプロジェクトを開いている Unity があるか（別フォルダの Unity は数えない）。"""
+    import unity_proc
+    return unity_proc.project_open(PROJECT)
 
 
 def newest_source_mtime(project: Path) -> float:

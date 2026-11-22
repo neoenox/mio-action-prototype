@@ -28,6 +28,8 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 PROJECT = Path(__file__).resolve().parent.parent          # MioPrototype/
 LOGS = PROJECT / "Logs"
 
@@ -70,13 +72,9 @@ def unity_exe(project: Path) -> Path | None:
 
 
 def unity_running() -> bool:
-    try:
-        out = subprocess.run(["tasklist", "/fi", "imagename eq Unity.exe"],
-                             capture_output=True, text=True,
-                             encoding="utf-8", errors="replace").stdout
-    except OSError:
-        return False
-    return "Unity.exe" in out
+    """このプロジェクトを開いている Unity があるか（別フォルダの Unity は数えない）。"""
+    import unity_proc
+    return unity_proc.project_open(PROJECT)
 
 
 # ------------------------------------------------------------------ 実行
