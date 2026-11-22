@@ -34,12 +34,9 @@ jobs:
       # ランナーの環境に合わせて 2 つのローカルパスを設定する。
       UNITY_EXE: 'C:\Users\neoen\Unity\Editor\6000.4.5f1\Editor\Unity.exe'
       VOICE_SOURCE: 'C:\gemini-desktop\ryona-action\MioPrototype\Assets\RyonaGame\Resources\Voice'
+      PYTHON_EXE: 'C:\Users\neoen\AppData\Local\Programs\Python\Python312\python.exe'
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
 
       # 音声素材は gitignore 済み。CI ではローカルの素材を作業ツリーへコピーする。
       - name: Restore voice assets
@@ -58,4 +55,4 @@ jobs:
         shell: pwsh
         run: |
           cd MioPrototype
-          python tools/run_tests.py --unity $env:UNITY_EXE
+          & $env:PYTHON_EXE tools/run_tests.py --unity $env:UNITY_EXE
