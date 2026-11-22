@@ -159,6 +159,16 @@ namespace Ryona.Game
             return false;
         }
 
+        /// <summary>
+        /// 演出が順番を決めている一発（挟み撃ちの腹パン・締め）のために、並びや上限を見ずに
+        /// 攻撃トークンを取る。通常の攻撃の抽選からは呼ばないこと。
+        /// </summary>
+        internal void ForceAcquireAttackToken(EnemyBrain brain)
+        {
+            if (brain != null && !_attackers.Contains(brain))
+                _attackers.Add(brain);
+        }
+
         /// <summary>攻撃トークンを返す。持っていなくても安全に呼べる。</summary>
         public void ReleaseAttackToken(EnemyBrain brain)
         {

@@ -7,7 +7,7 @@ namespace Ryona.Game
     /// 地面マウント（<see cref="GroundMountAttack"/>）の姿勢確認用。
     ///
     /// <c>-mountburst=&lt;prefix&gt;</c> で起動すると、2 秒後に最寄りの敵の前で彼女をダウンさせ、
-    /// マウントが始まった瞬間から 0.05 秒ごとに 60 枚（3 秒ぶん）撮る。
+    /// マウントが始まった瞬間から 0.05 秒ごとに 110 枚（5.5 秒ぶん）撮る。
     /// <c>-mountprone</c> を付けると前へ崩れる（うつ伏せ）ダウンで試す。
     /// 撮影後は自動で終了する。
     /// </summary>
@@ -15,7 +15,8 @@ namespace Ryona.Game
     [DefaultExecutionOrder(30000)]
     public sealed class GroundMountTestDriver : MonoBehaviour
     {
-        const int ShotCount = 60;
+        // preview.py の mount / mountprone（110 枚）と揃える。60 枚だとパンチの後半が撮れない。
+        const int ShotCount = 110;
         const float ShotInterval = 0.05f;
 
         PlayerStats _player;
@@ -190,7 +191,7 @@ namespace Ryona.Game
 
             _shots++;
             _nextShotAt += ShotInterval;
-            if (_shots >= (GroundHaulUp.Forced ? 100 : _entry ? 110 : ShotCount))
+            if (_shots >= (GroundHaulUp.Forced ? 100 : ShotCount))
             {
                 _capturing = false;
                 Application.Quit();

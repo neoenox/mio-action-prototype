@@ -328,6 +328,14 @@ namespace Ryona.Game
 
         void OnHitReceived(HitResult result)
         {
+            if (_active && _sandwichHitter != null && result.Damage > 0f &&
+                _stats.LastAttackerBrain == _sandwichHitter)
+            {
+                GameLog.Log($"[Pinball] sandwich blow landed by {_sandwichHitter.name}");
+                _sandwichHitter = null;
+                return;
+            }
+
             if (_active && _finishPending && result.Damage > 0f && _stats.LastAttackerBrain == _front)
             {
                 FinishOnHit();
@@ -356,6 +364,10 @@ namespace Ryona.Game
 
                 if (_rules.IsFinal(_round))
                 {
+                    // 最後の受け止めで踏みとどまれなかったら、吹き飛ばす前に前後から挟んで殴る。
+                    yield return Sandwich();
+                    if (!_active)
+                        yield break;
                     yield return FinishPunch();
                     yield break;
                 }
@@ -369,6 +381,137 @@ namespace Ryona.Game
         }
 
         bool _finishPending;
+
+        /// <summary>挟み撃ちの腹パンで、いま命中を待っている敵（null なら待っていない）。</summary>
+        EnemyBrain _sandwichHitter;
+
+        /// <summary>挟み撃ちの打撃の数。前→後ろ→前→後ろの順に交互に入る。</summary>
+        internal const int SandwichBlows = 4;
+
+        /// <summary>テスト用: 挟み撃ちで命中した打撃の数。</summary>
+        internal int SandwichLanded { get; private set; }
+
+        /// <summary>テスト用: 挟み撃ちの最中か。</summary>
+        internal bool InSandwich { get; private set; }
+
+        /// <summary>
+        /// 挟み撃ちの腹パン（ピンポンの締めの派生）。
+        /// 掴んでいない方の敵が詰めて一発入れ、その敵へ彼女を突き渡す。殴られた勢いで
+        /// 反対側の敵の胸へぶつかり、そこで受け止められて次の一発をもらう。
+        /// 倒れずに「く」の字と反りを繰り返し、最後は前の敵の締めの一発で崩れる。
+        /// この間は踏みとどまりも連打も効かない（逃げ場がない）。
+        /// </summary>
+        IEnumerator Sandwich()
+        {
+            _inputUsed = true;
+            InSandwich = true;
+            SandwichLanded = 0;
+            GameLog.Log("[Pinball] sandwich begin");
+
+            // 開始時の固定（4 秒）は挟み撃ちの途中で切れ、残りの敵が歩いて来て後ろの敵に
+            // めり込んだ（実測 pinball #186〜）。締めまで固定し直す。
+            foreach (var e in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            {
+                if (e != null && e != _front && e != _rear)
+                    e.LockForHandOff(SandwichBlows * 1.8f + 3f);
+            }
+
+            for (int i = 0; i < SandwichBlows && _active; i++)
+            {
+                // 掴んでいない方が殴る。後ろに掴まれていれば前が腹を、前に掴まれていれば後ろが背を打つ。
+                EnemyBrain holder = _grapple.Captor;
+                EnemyBrain hitter = holder == _rear ? _front : _rear;
+                if (hitter == null || !hitter.IsAlive || holder == null)
+                    break;
+
+                // 突き渡しの固定が明けるまで待つ（固定中は構えに入れない）。
+                float lockDeadline = Time.time + 1.5f;
+                while (_active && hitter.IsHandOffLocked && Time.time < lockDeadline)
+                    yield return null;
+                if (!_active)
+                    break;
+
+                yield return StepIn(hitter);
+                if (!_active)
+                    break;
+
+                _sandwichHitter = hitter;
+                bool started = false;
+                float startDeadline = Time.time + 0.6f;
+                while (_active && !(started = TryStartBlow(hitter, 0.8f)) && Time.time < startDeadline)
+                    yield return null;
+                if (!started)
+                {
+                    GameLog.Log($"[Pinball] sandwich: {hitter.name} が構えられない phase={hitter.Phase}");
+                    _sandwichHitter = null;
+                    break;
+                }
+
+                float deadline = Time.time + 1.4f;
+                while (_active && _sandwichHitter != null && Time.time < deadline)
+                    yield return null;
+                if (_sandwichHitter == null)
+                    SandwichLanded++;
+                else
+                    GameLog.Log($"[Pinball] sandwich blow missed by {hitter.name}");
+                _sandwichHitter = null;
+
+                // 折れる（反る）のを見せてから、殴った側へ突き渡す。
+                yield return new WaitForSeconds(0.30f);
+                if (!_active)
+                    break;
+                if (i < SandwichBlows - 1)
+                {
+                    _grapple.HandOff(hitter, hitter == _front ? GrappleKind.Pin : GrappleKind.Back, shove: true);
+                    yield return new WaitForSeconds(0.75f);
+                }
+            }
+
+            // 締めは前の敵が打つので、後ろに掴まれた形へ戻しておく。
+            if (_active && _grapple.Captor != _rear && _rear != null && _rear.IsAlive)
+            {
+                _grapple.HandOff(_rear, GrappleKind.Back, shove: true);
+                yield return new WaitForSeconds(0.9f);
+            }
+
+            InSandwich = false;
+            GameLog.Log($"[Pinball] sandwich end landed={SandwichLanded}/{SandwichBlows}");
+        }
+
+        /// <summary>
+        /// 挟み撃ちの一発（と締め）を構えさせる。攻撃権は並びや上限を見ずに取らせる
+        /// （通常の抽選に任せると、3 発目と締めが「構えられない」で抜けた。実測 landed=2/4）。
+        /// </summary>
+        bool TryStartBlow(EnemyBrain hitter, float windupScale) =>
+            hitter.TryStartPinballPunch(windupScale, scripted: true);
+
+        /// <summary>打てる距離（OpeningStandOff）まで短く詰めて、彼女を向く。瞬間移動にしない。</summary>
+        IEnumerator StepIn(EnemyBrain who)
+        {
+            Vector3 her = _stats.transform.position;
+            float side = Mathf.Sign(who.transform.position.x - her.x);
+            if (Mathf.Abs(side) < 0.5f)
+                side = who == _front ? 1f : -1f;
+            Vector3 from = who.transform.position;
+            Vector3 to = new Vector3(her.x + OpeningStandOff * side, from.y, her.z);
+            Quaternion fromRot = who.transform.rotation;
+            Quaternion face = Quaternion.LookRotation(new Vector3(-side, 0f, 0f), Vector3.up);
+            who.CancelBystanderWindup(0f);
+            const float stepSeconds = 0.25f;
+            for (float t = 0f; t < stepSeconds; t += Time.deltaTime)
+            {
+                if (!_active)
+                    yield break;
+                // 位置と向きを同じ s で補間する。毎フレームの現在値を起点にすると
+                // 向きが指数的にしか追従せず、詰め終わっても彼女を向いていない。
+                float s = Mathf.SmoothStep(0f, 1f, t / stepSeconds);
+                who.transform.SetPositionAndRotation(
+                    Vector3.Lerp(from, to, s),
+                    Quaternion.Slerp(fromRot, face, s));
+                yield return null;
+            }
+            who.transform.SetPositionAndRotation(to, face);
+        }
         float _shotsUntil;
         float _holdFrameUntil;
 
@@ -387,33 +530,12 @@ namespace Ryona.Game
                 yield break;
             }
 
-            // 打てる距離（OpeningStandOff）まで短く詰める。瞬間移動にしない。
-            Vector3 her = _stats.transform.position;
-            float side = Mathf.Sign(_front.transform.position.x - her.x);
-            if (Mathf.Abs(side) < 0.5f)
-                side = 1f;
-            Vector3 from = _front.transform.position;
-            Vector3 to = new Vector3(her.x + OpeningStandOff * side, from.y, her.z);
-            Quaternion fromRot = _front.transform.rotation;
-            Quaternion face = Quaternion.LookRotation(new Vector3(-side, 0f, 0f), Vector3.up);
-            _front.CancelBystanderWindup(0f);
-            const float stepSeconds = 0.25f;
-            for (float t = 0f; t < stepSeconds; t += Time.deltaTime)
-            {
-                if (!_active)
-                    yield break;
-                // 位置と向きを同じ s で補間する。毎フレームの現在値を起点にすると
-                // 向きが指数的にしか追従せず、詰め終わっても彼女を向いていない。
-                float s = Mathf.SmoothStep(0f, 1f, t / stepSeconds);
-                _front.transform.SetPositionAndRotation(
-                    Vector3.Lerp(from, to, s),
-                    Quaternion.Slerp(fromRot, face, s));
-                yield return null;
-            }
-            _front.transform.SetPositionAndRotation(to, face);
+            yield return StepIn(_front);
+            if (!_active)
+                yield break;
 
             _finishPending = true;
-            if (!_front.TryStartPinballPunch(1.25f))
+            if (!TryStartBlow(_front, 1.25f))
             {
                 FinishFallback();
                 yield break;
@@ -474,6 +596,8 @@ namespace Ryona.Game
         void Cancel()
         {
             _active = false;
+            _sandwichHitter = null;
+            InSandwich = false;
             _roundsRunning = false;
             _finishPending = false;
             _shotsUntil = Time.unscaledTime + 1.5f;
@@ -495,8 +619,10 @@ namespace Ryona.Game
         {
             int index = 0;
             float next = Time.unscaledTime;
+            // 枚数は preview.py が -pinballburstframes で渡す（挟み撃ちの分だけ長くなった）。
+            int frames = LaunchOptions.TryInt("-pinballburstframes", out int n) && n > 0 ? n : 120;
             // 終わった後も 1.5 秒撮る（締めで倒れるところまで見る）。
-            while (index < 120 && (_active || Time.unscaledTime < _shotsUntil))
+            while (index < frames && (_active || Time.unscaledTime < _shotsUntil))
             {
                 while (Time.unscaledTime < next)
                     yield return null;

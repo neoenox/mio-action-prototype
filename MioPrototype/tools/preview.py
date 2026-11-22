@@ -53,7 +53,13 @@ SCENARIOS = {
                       frames=140, interval=0.05),
     # 挟み撃ちの突き飛ばし（ピンポン）。前後の2体で往復→腹パンでダウン。
     "pinball": dict(args=["-pinballtest"], burst="-pinballburst",
-                    frames=180, interval=0.05),
+                    frames=320, interval=0.05),
+    # 手首ロック連動の引き寄せ膝（輪 → 正面の敵が引き込む → 正面拘束の膝蹴り）。
+    "wristpull": dict(args=["-wristlocktest", "-wristpulltest"], burst="-wristlockburst",
+                      frames=220, interval=0.05),
+    # 同じく、引き寄せの瞬間に頭突きで押し返す（-wristpullcounter で自動入力）。
+    "wristpullcounter": dict(args=["-wristlocktest", "-wristpulltest", "-wristpullcounter"],
+                             burst="-wristlockburst", frames=100, interval=0.05),
     # 壁押さえつけ（壁へ押し出す版）。膝〜二人がかり〜3 人がかりまで含む。
     "wallpin": dict(args=["-grappletest", "-wallpintest"], burst="-pinburst",
                     frames=200, interval=0.05),
@@ -83,8 +89,8 @@ SCENARIOS = {
     "haulprone": dict(args=["-haultest", "-mountprone"], burst="-mountburst",
                       frames=100, interval=0.05),
     # 地面マウント（跨ってのパンチ）。マウントのカメラ（GroundMountAttack.FrameMount）を見る。
-    "mount": dict(args=[], burst="-mountburst", frames=110, interval=0.05),
-    "mountprone": dict(args=["-mountprone"], burst="-mountburst", frames=110, interval=0.05),
+    "mount": dict(args=["-mountlog"], burst="-mountburst", frames=110, interval=0.05),
+    "mountprone": dict(args=["-mountprone", "-mountlog"], burst="-mountburst", frames=110, interval=0.05),
     # 頭上拘束（両手首を上へ引き上げる）。
     "overhead": dict(args=["-grappletest", "-overheadtest"], burst="-pinburst",
                      frames=120, interval=0.05),

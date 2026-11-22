@@ -149,7 +149,9 @@ namespace Ryona.Game
         {
             int index = 0;
             float next = Time.unscaledTime;
-            while (index < 120)
+            // 枚数は preview.py が -wristlockburstframes で渡す（引き寄せ〜膝まで撮るには 120 では足りない）。
+            int frames = LaunchOptions.TryInt("-wristlockburstframes", out int n) && n > 0 ? n : 120;
+            while (index < frames)
             {
                 while (Time.unscaledTime < next)
                     yield return null;

@@ -657,6 +657,10 @@ namespace Ryona.Tests
             float minUpDot = 1f;
             float minDistance = float.MaxValue, maxDistance = 0f, maxElevation = 0f;
             int smallFaceFrames = 0;
+            // 後頭部の画は Visible が満点でも表情が読めない（テストプレイ 2026-11-21 mount #14〜55）。
+            // 退避先が後頭部を選んでいた。直した後の実測は readable 18/19（preview mount, 2026-11-21）。
+            // パンチの反動で頭が逸れる瞬間は読めないので、下限は 0.6 に置く。
+            int readableFrames = 0;
             int sideSwitches = 0, lastSide = 0;
             float sideStart = Time.realtimeSinceStartup;
             deadline = Time.realtimeSinceStartup + 2f;
@@ -665,7 +669,10 @@ namespace Ryona.Tests
                    Time.realtimeSinceStartup < deadline)
             {
                 yield return null;
-                sum += FaceVisibility.Measure(Camera.main, _anim.Rig.Head, figures).Visible;
+                var face = FaceVisibility.Measure(Camera.main, _anim.Rig.Head, figures);
+                sum += face.Visible;
+                if (face.Readable)
+                    readableFrames++;
                 float lens = FaceVisibility.LensClearance(Camera.main.transform.position, figures);
                 badLensStreak = lens < 0.5f ? badLensStreak + 1 : 0;
                 worstLensStreak = Mathf.Max(worstLensStreak, badLensStreak);
@@ -688,7 +695,7 @@ namespace Ryona.Tests
             }
 
             float avg = frames > 0 ? sum / frames : 0f;
-            Debug.Log($"[MountFaceVisible] frames={frames} avgVisible={avg:F2} " +
+            Debug.Log($"[MountFaceVisible] frames={frames} avgVisible={avg:F2} readable={readableFrames}/{frames} " +
                       $"dist={minDistance:F2}..{maxDistance:F2} elev<={maxElevation:F0} smallFace={smallFaceFrames}");
             // 寄りすぎ（敵の体が画面を覆う）と引きすぎ（上空からの豆粒）の両方を止める。
             Assert.GreaterOrEqual(minDistance, 1.2f, $"カメラが近すぎる ({minDistance:F2}m)");
@@ -702,6 +709,9 @@ namespace Ryona.Tests
             // 全場面共通の下限 0.75。横スクロールのカメラでは FacingAngle が 90° 台で常態なので
             // Readable ではなく Visible（画面内かつ非遮蔽）を見る。
             Assert.GreaterOrEqual(avg, 0.75f, $"マウント中に顔が隠れすぎている (avg={avg:F2})");
+            // Visible は後頭部でも満点になるので、顔の向き（Readable）も見る。
+            Assert.GreaterOrEqual(readableFrames, frames * 0.6f,
+                $"マウント中に表情が読めないコマが多い (readable={readableFrames}/{frames})");
             Assert.Less(worstLensStreak, 3, $"レンズ前に敵が長く留まる ({worstLensStreak} コマ)");
             Assert.Greater(minUpDot, 0.3f, $"カメラが逆さまになる (up·up={minUpDot:F2})");
             float seconds = Mathf.Max(0.1f, Time.realtimeSinceStartup - sideStart);

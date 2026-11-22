@@ -64,7 +64,8 @@ namespace Ryona.Game
             if (Player != null && !Player.IsDead && _run.Data != null)
             {
                 float strikeRange = IsPreparingHeldThrow ? HeldThrowReach + HeldThrowContactTolerance
-                    : _run.Id == AttackId.Grab ? GrabContactRange : _run.Range + S.StrikeTolerance;
+                    : _run.Id == AttackId.Grab ? (_wristPullPending ? WristPullReach : GrabContactRange)
+                    : _run.Range + S.StrikeTolerance;
                 if (distance <= strikeRange)
                 {
                     if (IsPreparingHeldThrow)
@@ -123,6 +124,7 @@ namespace Ryona.Game
             _heldThrowCaptor = null;
             _pinPending = false;
             _bearHugPending = false;
+            _wristPullPending = false;
             if (!grabbed)
                 ClearGrappleState();
 
@@ -185,6 +187,11 @@ namespace Ryona.Game
 
         void StepIntoGrab(float previous, float progress)
         {
+            // 手首の輪の引き寄せは踏み込まない。その場で輪を掴み、彼女の方を手前へ引き込む
+            // （踏み込むと引き寄せる距離が通常の掴みと変わらなくなった。実測 1.90m → 1.38m）。
+            if (_wristPullPending)
+                return;
+
             float before = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.45f, 1f, previous));
             float after = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.45f, 1f, progress));
             if (after <= before)

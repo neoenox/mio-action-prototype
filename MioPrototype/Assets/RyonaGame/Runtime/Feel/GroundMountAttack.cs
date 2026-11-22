@@ -48,7 +48,7 @@ namespace Ryona.Game
         /// 画を選ぶときの下限（m）。下限ちょうどの画を選ぶと、殴る動きで敵が寄った瞬間に割る
         /// （実測 0.47〜0.72m を行き来し、5 コマ割った）。余裕を取って選ぶ。
         /// </summary>
-        const float MountSelectLens = 0.65f;
+        const float MountSelectLens = 0.75f;
 
         /// <summary>顔が画面の高さに占める割合の下限。これより小さいと表情が読めない。</summary>
         internal const float MountMinFaceSize = 0.04f;
@@ -65,6 +65,7 @@ namespace Ryona.Game
         float _nextMountSearch;
         float _mountLockUntil;
         float _mountLens = float.MaxValue;
+        bool _mountFallback;
         internal float MountLensClearance => _mountLens;
         internal float MountFaceSize { get; private set; }
 
@@ -578,14 +579,34 @@ namespace Ryona.Game
                 _shotOffset = _mountWanted;
             else
             {
-                // 角度で回す（直線補間だと、反対側へ移るときに頭の真上を通る）。
                 float t = 1f - Mathf.Exp(-3f * Time.unscaledDeltaTime);
-                Vector3 dir = Vector3.Slerp(_shotOffset.normalized, _mountWanted.normalized, t);
-                float length = Mathf.Lerp(_shotOffset.magnitude, _mountWanted.magnitude, t);
-                _shotOffset = dir * length;
+                _shotOffset = BlendShotOffset(_shotOffset, _mountWanted, t);
             }
 
             ReportMountShot(head, target, flank, firstFrame);
+        }
+
+        /// <summary>
+        /// 画の移り変わり。水平の向きは鉛直軸まわりに回し、高さと水平距離は線形に補間する。
+        /// 直線補間だと反対側へ移るときに頭の真上を通り、3 次元の Slerp では大円が真上を通る
+        /// （左右対称の 2 画の間で見下ろしが 45° → 50° 超になり、跨った敵の背中へレンズが寄って
+        /// 下限 0.5m を割った。DownRuntimeTests 実測、単体で 10 回中 2 回）。
+        /// この補間なら途中の高さは両端の間に収まる。
+        /// </summary>
+        internal static Vector3 BlendShotOffset(Vector3 from, Vector3 to, float t)
+        {
+            Vector3 fromFlat = new Vector3(from.x, 0f, from.z);
+            Vector3 toFlat = new Vector3(to.x, 0f, to.z);
+            float fromLength = fromFlat.magnitude;
+            float toLength = toFlat.magnitude;
+            float length = Mathf.Lerp(fromLength, toLength, t);
+            float height = Mathf.Lerp(from.y, to.y, t);
+            if (fromLength < 1e-4f || toLength < 1e-4f)
+                return Vector3.Lerp(from, to, t);
+
+            float angle = Vector3.SignedAngle(fromFlat, toFlat, Vector3.up);
+            Vector3 dir = Quaternion.AngleAxis(angle * t, Vector3.up) * (fromFlat / fromLength);
+            return dir * length + Vector3.up * height;
         }
 
         /// <summary>候補を全部測って、切り替えるべきなら <see cref="_mountWanted"/> を更新する。</summary>
@@ -594,7 +615,7 @@ namespace Ryona.Game
         {
             float bestScore = float.MinValue;
             Vector3 best = Vector3.zero;
-            float fallbackVisible = float.MinValue;
+            float fallbackRank = float.MinValue;
             Vector3 fallback = flank * FaceDistances[0] + Vector3.up * FaceHeights[0];
             for (int side = 0; side < 2; side++)
             {
@@ -614,19 +635,25 @@ namespace Ryona.Game
 
                             Vector3 candidate = horizontal * FaceDistances[d] + Vector3.up * FaceHeights[h];
                             float score = ScoreMountShot(head, target, candidate, hasCurrent ? _mountWanted : candidate,
-                                out float visible);
+                                out FaceVisibility.Result reading, out float lens);
                             if (score > bestScore)
                             {
                                 bestScore = score;
                                 best = candidate;
                             }
 
-                            // 退避先: 遠くへ逃げず、顔が一番見える候補。同点なら近い方。
-                            if (visible > fallbackVisible ||
-                                (Mathf.Approximately(visible, fallbackVisible) &&
+                            // 退避先: 遠くへ逃げず、顔が読める候補。同点なら近い方。
+                            // レンズ下限（敵の関節球が画面を覆う距離）を割らない候補を先に選び、
+                            // 同じ読みやすさならレンズに余裕がある方を選ぶ。読める候補は Visible が
+                            // ほぼ満点で並ぶので、「同点なら近い方」に任せると敵に一番近い画を選び、
+                            // 殴る動きで下限を割り続けた（DownRuntimeTests 実測 18 コマ）。
+                            float rank = (lens >= MountMinLens ? 100f : 0f) + FallbackRank(reading) * 10f
+                                         + Mathf.Min(lens, 1.5f);
+                            if (rank > fallbackRank ||
+                                (Mathf.Approximately(rank, fallbackRank) &&
                                  candidate.sqrMagnitude < fallback.sqrMagnitude))
                             {
-                                fallbackVisible = visible;
+                                fallbackRank = rank;
                                 fallback = candidate;
                             }
                         }
@@ -636,6 +663,7 @@ namespace Ryona.Game
 
             bool anyValid = bestScore > float.MinValue / 2f;
             Vector3 chosen = anyValid ? best : fallback;
+            _mountFallback = !anyValid;
 
             // ヒステリシス: いまの画より明らかに良いときだけ、固定時間が明けてから切り替える。
             // いまの画が使えなくなった（レンズ前に敵が入った等）ときは待たない。
@@ -651,14 +679,15 @@ namespace Ryona.Game
         /// <summary>画を要求し、その画の測定値を残す（テストと -mountlog が読む）。</summary>
         void ReportMountShot(Transform head, Vector3 target, Vector3 flank, bool cut)
         {
-            _camera.RequestCinematicShot(target + _shotOffset, target, cut: cut);
+            Vector3 offset = BackOffFromLens(target, _shotOffset);
+            _camera.RequestCinematicShot(target + offset, target, cut: cut);
 
             // 採用した画の測定値（テストと -mountlog が読む）。要求した画で測る（実カメラは
             // ApplyCinematicShot が同じフレームの後で置くので、ここで Camera.main を測ると 1 フレーム古い）。
-            var shot = ProbeFace(head, _faceFigures, target, _shotOffset);
+            var shot = ProbeFace(head, _faceFigures, target, offset);
             MountFaceVisible = shot.Visible;
             MountFaceSize = FaceVisibility.ScreenFaceSize(FaceProbe(), head);
-            _mountLens = FaceVisibility.LensClearance(target + _shotOffset, _faceFigures);
+            _mountLens = FaceVisibility.LensClearance(target + offset, _faceFigures);
 
             if (LaunchOptions.Has("-mountlog") && Time.unscaledTime >= _nextMountFaceLog)
             {
@@ -668,22 +697,93 @@ namespace Ryona.Game
                 float side = Mathf.Sign(Vector3.Dot(_shotOffset, flank));
                 GameLog.Log($"[MountFace] visible={shot.Visible:F2} readable={(shot.Readable ? 1 : 0)} facing={shot.FacingAngle:F0} " +
                             $"size={MountFaceSize * 100f:F1}% lens={_mountLens:F2} dist={flat.magnitude:F2} " +
-                            $"elev={elevation:F0} side={side:F0} blocker={shot.Blocker ?? "none"}");
+                            $"elev={elevation:F0} side={side:F0} fallback={(_mountFallback ? 1 : 0)} stage={Stage} " +
+                            $"blocker={shot.Blocker ?? "none"}");
             }
         }
 
+        /// <summary>
+        /// 要求する画のレンズ前に敵の体が入ったら、カメラを少しずらす（毎フレーム）。
+        /// 画の選び直しは <see cref="MountSearchInterval"/> おきで、パンチの振りかぶり
+        /// （腕がレンズ側へ上がる）に追いつかない。選んだ時点で 0.65m あった余裕が、振りかぶりの
+        /// 3 フレームで 0.41m まで詰まり、下限 0.5m を割った（DownRuntimeTests 実測、単体で 5 回中 2 回）。
+        /// 後ろへ引くだけだと、遠めの画（2.9m）は距離の上限（3.0m）ですぐ詰まって 0.1m しか引けなかった。
+        /// 後ろ・左右へ最大 0.35m ずらし、余裕が最も大きい位置を使う。
+        /// </summary>
+        Vector3 BackOffFromLens(Vector3 target, Vector3 offset)
+        {
+            const float margin = 0.06f;
+            const float maxShift = 0.35f;
+            const float maxLength = 3.0f;
+            float length = offset.magnitude;
+            if (length < 0.01f || _faceFigures == null)
+                return offset;
+            float best = FaceVisibility.LensClearance(target + offset, _faceFigures);
+            if (best >= MountMinLens + margin)
+                return offset;
+
+            Vector3 back = offset / length;
+            Vector3 side = Vector3.Cross(Vector3.up, back);
+            side = side.sqrMagnitude > 1e-4f ? side.normalized : Vector3.right;
+            // 上へはずらさない。見下ろしが深くなり、頭から測った角度がテストの上限（60°）に届いた。
+            Vector3[] dirs =
+            {
+                back, side, -side, (back + side).normalized, (back - side).normalized
+            };
+
+            Vector3 chosen = offset;
+            for (float shift = 0.05f; shift <= maxShift + 1e-4f; shift += 0.05f)
+            {
+                for (int i = 0; i < dirs.Length; i++)
+                {
+                    Vector3 candidate = offset + dirs[i] * shift;
+                    if (candidate.magnitude > maxLength)
+                        continue;
+                    // 地面へ潜らせない。
+                    if (candidate.y < 0.3f)
+                        continue;
+                    float lens = FaceVisibility.LensClearance(target + candidate, _faceFigures);
+                    if (lens > best)
+                    {
+                        best = lens;
+                        chosen = candidate;
+                    }
+                }
+                // 小さくずらして足りたら、それ以上は動かさない（画の揺れを最小にする）。
+                if (best >= MountMinLens + margin)
+                    break;
+            }
+            return chosen;
+        }
+
         float ScoreMountShot(Transform head, Vector3 target, Vector3 candidate, Vector3 current)
-            => ScoreMountShot(head, target, candidate, current, out _);
+            => ScoreMountShot(head, target, candidate, current, out _, out _);
+
+        /// <summary>
+        /// 使える画が無いときの退避先の順位（大きいほど良い）。
+        /// 以前は Visible だけで選んでいたため、敵が覆いかぶさって全候補が落ちると
+        /// 「遮るものの無い後頭部」（Visible 満点・表情は読めない）が選ばれていた
+        /// （テストプレイ 2026-11-21 mount #14〜55: 頭頂の髪しか映らない）。
+        /// 顔の向きを先に見て、次に可視率を見る。
+        /// </summary>
+        internal static float FallbackRank(FaceVisibility.Result reading)
+        {
+            if (reading.Readable)
+                return 2f + reading.Visible;
+            if (reading.FacingAngle <= FaceVisibility.FacingLimit)
+                return 1f + reading.Visible;
+            // 顔がこちらを向いていない画は、向きが近いほど良い（0〜1 の範囲に収める）。
+            return 1f - Mathf.Clamp01(reading.FacingAngle / 180f);
+        }
 
         /// <summary>
         /// マウントの画の得点。使えない画（レンズ前に敵・顔が小さすぎる）は <see cref="float.MinValue"/>。
         /// </summary>
-        float ScoreMountShot(Transform head, Vector3 target, Vector3 candidate, Vector3 current, out float visible)
+        float ScoreMountShot(Transform head, Vector3 target, Vector3 candidate, Vector3 current,
+            out FaceVisibility.Result reading, out float lens)
         {
-            visible = 0f;
-            float lens = FaceVisibility.LensClearance(target + candidate, _faceFigures);
-            var reading = ProbeFace(head, _faceFigures, target, candidate);
-            visible = reading.Visible;
+            lens = FaceVisibility.LensClearance(target + candidate, _faceFigures);
+            reading = ProbeFace(head, _faceFigures, target, candidate);
             if (lens < MountSelectLens)
                 return float.MinValue;
 

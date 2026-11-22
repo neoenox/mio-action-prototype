@@ -527,10 +527,22 @@ namespace Ryona.Game
         internal float RecoveryDistance { get; private set; }
         internal const float ShoveLandingFraction = 0.8f;
         const float GrabContactSeconds = 0.18f;
+
+        /// <summary>
+        /// 手首の輪を掴んで引き寄せる時間（秒）。通常の掴み（0.18 秒・数十 cm）と違い
+        /// 1m 前後を運ぶので、短いと瞬間移動に見える。
+        /// </summary>
+        internal const float WristPullSeconds = 0.42f;
+
         float _grabContactRemaining;
+        float _grabContactTotal = GrabContactSeconds;
         Vector3 _grabContactFrom;
         Quaternion _grabContactRotation;
-        internal float GrabContactWeight => Mathf.SmoothStep(0f, 1f, _grabContactRemaining / GrabContactSeconds);
+        internal float GrabContactWeight => Mathf.SmoothStep(0f, 1f,
+            _grabContactRemaining / Mathf.Max(0.01f, _grabContactTotal));
+
+        /// <summary>いま手首の輪を掴まれて引き寄せられている最中か（見た目と演出用）。</summary>
+        internal bool IsBeingPulled => _grabContactRemaining > 0f && _grabContactTotal > GrabContactSeconds;
         EnemyBrain _shoveSender;
 
         /// <summary>突き飛ばしの見た目を立てる。</summary>
@@ -753,6 +765,10 @@ namespace Ryona.Game
 
         internal void BeginContact(EnemyBrain captor, GrappleKind kind) =>
             BeginHold(captor, kind, blendContact: true);
+
+        /// <summary>手首の輪を掴まれ、離れた位置から相手の前へ引き寄せられる。</summary>
+        internal void BeginPull(EnemyBrain captor, GrappleKind kind) =>
+            BeginHold(captor, kind, blendContact: true, contactSeconds: WristPullSeconds);
 
     }
 }
