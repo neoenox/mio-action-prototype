@@ -6,7 +6,7 @@ namespace Ryona.Game
 {
     public sealed partial class PlayerGrapple : MonoBehaviour
     {
-        void BeginHold(EnemyBrain captor, GrappleKind kind, bool blendContact)
+        void BeginHold(EnemyBrain captor, GrappleKind kind, bool blendContact, float contactSeconds = GrabContactSeconds)
         {
             var wrist = GetComponent<PlayerWristLock>();
             if (wrist != null && !wrist.IsLocked && wrist.InGrace)
@@ -32,7 +32,8 @@ namespace Ryona.Game
             {
                 _grabContactFrom = transform.position;
                 _grabContactRotation = transform.rotation;
-                _grabContactRemaining = GrabContactSeconds;
+                _grabContactTotal = contactSeconds;
+                _grabContactRemaining = contactSeconds;
             }
             else
                 SnapToCaptor(captor, kind);

@@ -35,7 +35,7 @@ namespace Ryona.Tests
         }
 
         [UnityTest]
-        public IEnumerator 三往復のあと腹でうつ伏せにダウンする()
+        public IEnumerator 三往復と挟み撃ちのあと腹でうつ伏せにダウンする()
         {
             yield return Setup();
             _director.ForceStart();
@@ -43,9 +43,16 @@ namespace Ryona.Tests
 
             var figures = Object.FindObjectsByType<EnemyFigure>(FindObjectsSortMode.None);
             int faceFrames = 0, faceGood = 0;
-            float deadline = Time.realtimeSinceStartup + 12f;
+            bool sawSandwich = false, downInSandwich = false;
+            // 挟み撃ち（4 発）の分だけ長い。撮影では開始から倒れるまで約 14 秒。
+            float deadline = Time.realtimeSinceStartup + 22f;
             while (!_stats.IsDown && Time.realtimeSinceStartup < deadline)
             {
+                if (_director.InSandwich)
+                {
+                    sawSandwich = true;
+                    downInSandwich |= _stats.IsDown;
+                }
                 if (_anim == null || _anim.Rig == null)
                     _anim = Object.FindFirstObjectByType<CharacterAnimator>();
                 if (_anim == null || _anim.Rig == null)
@@ -60,6 +67,11 @@ namespace Ryona.Tests
                 yield return null;
             }
             Assert.IsTrue(_stats.IsDown, "最後の腹パンでダウンしない");
+            Assert.IsTrue(sawSandwich, "締めの前に挟み撃ちに入らない");
+            Assert.IsFalse(downInSandwich, "挟み撃ちの途中で倒れた（倒れずに折れ続ける演出）");
+            // 4 発とも実際に当たる。以前は攻撃権が取れず 3 発目と締めが抜けた（実測 landed=2/4）。
+            Assert.AreEqual(PinballDirector.SandwichBlows, _director.SandwichLanded,
+                "挟み撃ちの一発が当たっていない");
             Assert.IsTrue(_stats.DownIsForward, "ピンポンの締めはうつ伏せ");
             Assert.IsFalse(_director.IsActive, "演出が終わっていない");
             if (faceFrames > 5)

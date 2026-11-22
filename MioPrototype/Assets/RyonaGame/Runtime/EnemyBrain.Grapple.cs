@@ -40,13 +40,17 @@ namespace Ryona.Game
         /// <summary>
         /// ピンポンの起点。拘束を前提とせず、胸を突くタッグ技の風を開始する。
         /// </summary>
-        public bool TryStartPinballPunch(float windupScale = 1f)
+        public bool TryStartPinballPunch(float windupScale = 1f, bool scripted = false)
         {
             if (!isActiveAndEnabled || Phase == EnemyPhase.Dead || Phase == EnemyPhase.Windup ||
                 Phase == EnemyPhase.Attack || Phase == EnemyPhase.Stagger || IsRising ||
                 Player == null || Player.IsDead)
                 return false;
-            if (Group != null && !Group.TryAcquireAttackToken(this))
+            // 挟み撃ち・締めは演出が順番を決めている。並び（手前の仲間に塞がれる）や上限で
+            // 抜けると一発が出ずに終わる（実測: 3 発目と締めが毎回「構えられない」）。
+            if (scripted && Group != null)
+                Group.ForceAcquireAttackToken(this);
+            else if (Group != null && !Group.TryAcquireAttackToken(this))
                 return false;
 
             BeginAttackWindup(AttackId.Jab, fromThrow: false, PunchZone.Body);
@@ -298,6 +302,57 @@ namespace Ryona.Game
             _punchPoseHoldTotal = 0f;
             _pinPending = false;
             _bearHugPending = false;
+            _wristPullPending = false;
+        }
+
+        /// <summary>
+        /// 手首ロック中の彼女を、正面から手首の輪を掴んで引き寄せる（<see cref="WristPullDirector"/> が呼ぶ）。
+        /// 掴めたら通常の正面拘束（猶予のあと膝蹴り 5 発）へそのまま入る。
+        /// 道具役は輪を付ける側なので使わない。
+        /// </summary>
+        internal bool TryStartWristPull(float windupSeconds)
+        {
+            if (!isActiveAndEnabled || Role == EnemyRole.Tools || Player == null || Player.IsDead || Player.IsDown)
+                return false;
+            if (Phase == EnemyPhase.Dead || Phase == EnemyPhase.Windup || Phase == EnemyPhase.Attack ||
+                Phase == EnemyPhase.Stagger || IsRising || IsHolding || IsHandOffLocked)
+                return false;
+
+            var grapple = Hold;
+            if (grapple == null || grapple.IsGrappled || grapple.IsHandingOff)
+                return false;
+            if (IsBehindPlayer())
+                return false;
+
+            Vector3 to = Player.transform.position - transform.position;
+            to.y = 0f;
+            float distance = to.magnitude;
+            if (distance < CombatConstants.PinMinDistance || distance > WristPullReach)
+                return false;
+
+            if (Group != null && !Group.TryAcquireAttackToken(this))
+                return false;
+
+            // 予備動作中は旋回を固定するので、構える前に彼女へ向き直る。
+            transform.rotation = Quaternion.LookRotation(to.normalized, Vector3.up);
+            BeginWindup(AttackId.Grab);
+            // 構えの長さが輪を割る猶予になる（WristPullDirector.PullWindupSeconds）。
+            _run.Windup = Mathf.Max(0.1f, windupSeconds);
+            _timer = _run.Windup;
+            _pinPending = true;
+            _bearHugPending = false;
+            _wristPullPending = true;
+            GameLog.Log($"[WristPull] windup {name} dist={distance:F2} strikeIn={_timer:F2}");
+            return true;
+        }
+
+        /// <summary>引き寄せの予備動作を、頭突きで押し返されて潰される。</summary>
+        internal void CounterWristPull(float staggerSeconds)
+        {
+            if (!_wristPullPending)
+                return;
+            GameLog.Log($"[WristPull] countered {name}");
+            ForceStagger(staggerSeconds);
         }
 
         internal void CancelBystanderWindup(float holdSeconds)
@@ -463,7 +518,7 @@ namespace Ryona.Game
         /// 正面の掴み（Pin / BearHug）を開始する共通部分。
         /// 抽選（CanStartPin / CanStartBearHug）と同じ向き・間合いで判定する。
         /// </summary>
-        bool TryBeginFrontGrapple(GrappleKind kind, out float distance)
+        bool TryBeginFrontGrapple(GrappleKind kind, out float distance, bool pull = false)
         {
             distance = 0f;
 
@@ -477,7 +532,10 @@ namespace Ryona.Game
             Vector3 to = Player.transform.position - transform.position;
             to.y = 0f;
             distance = to.magnitude;
-            grapple.BeginContact(this, kind);
+            if (pull)
+                grapple.BeginPull(this, kind);
+            else
+                grapple.BeginContact(this, kind);
             _lastPinAt = Time.time;
             _pinOrder = false;
             _bearHugOrder = false;
@@ -491,13 +549,14 @@ namespace Ryona.Game
         {
             // 壁の近くで正面から掴めたときは、レーンから壁へ押し出す（壁押さえつけ）。
             // <c>-nowallpin</c> は検証用: 壁を無視して、レーンの正面拘束（その場での膝蹴り）を出す。
-            WallPinSite site = Player != null && !LaunchOptions.Has("-nowallpin")
+            // 手首の輪を掴んで引き寄せたときは、その場（レーン）で膝へ移る。壁へは押し出さない。
+            WallPinSite site = Player != null && !_wristPullPending && !LaunchOptions.Has("-nowallpin")
                 ? WallPinSites.Find(Player.transform.position)
                 : null;
             if (site != null)
                 return TryWallPin(site);
 
-            if (!TryBeginFrontGrapple(GrappleKind.Pin, out float distance))
+            if (!TryBeginFrontGrapple(GrappleKind.Pin, out float distance, pull: _wristPullPending))
                 return false;
 
             ClearGrappleState();

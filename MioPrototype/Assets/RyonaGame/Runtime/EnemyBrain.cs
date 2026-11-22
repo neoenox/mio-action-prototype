@@ -522,6 +522,23 @@ namespace Ryona.Game
         /// <summary>この一振りがベアハッグか。</summary>
         bool _bearHugPending;
 
+        /// <summary>
+        /// この一振りが「手首ロック中の引き寄せ」か。通常の押さえつけより遠く（<see cref="WristPullReach"/>）
+        /// から手首の輪を掴み、手前へ引き込んでから正面拘束（膝蹴り）に入る。
+        /// </summary>
+        bool _wristPullPending;
+
+        /// <summary>引き寄せの届く距離（m）。通常の押さえつけ（0.80〜1.30m）より遠くから掴む。</summary>
+        internal const float WristPullReach = 2.30f;
+
+        /// <summary>引き寄せが掴む瞬間までの残り秒。引き寄せの予備動作中でなければ NaN。</summary>
+        internal float WristPullSecondsToStrike =>
+            Phase == EnemyPhase.Windup && _wristPullPending ? Mathf.Max(0f, _timer) : float.NaN;
+
+        /// <summary>引き寄せの予備動作中か（テストと演出用）。</summary>
+        internal bool IsPreparingWristPull => _wristPullPending &&
+            (Phase == EnemyPhase.Windup || Phase == EnemyPhase.Attack);
+
         /// <summary>いまベアハッグで締め付けているか。見た目と締め付けに使う。</summary>
         public bool IsBearHugging { get; private set; }
 
