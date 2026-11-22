@@ -1,0 +1,58 @@
+name: Unity tests
+
+on:
+  pull_request:
+    paths:
+      - 'MioPrototype/Assets/**'
+      - 'MioPrototype/ProjectSettings/**'
+      - 'MioPrototype/Packages/**'
+      - 'MioPrototype/tools/**'
+      - '.github/workflows/unity-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'MioPrototype/Assets/**'
+      - 'MioPrototype/ProjectSettings/**'
+      - 'MioPrototype/Packages/**'
+      - 'MioPrototype/tools/**'
+      - '.github/workflows/unity-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unity-tests-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  unity-tests:
+    name: Unity tests
+    # public repo の fork PR は中身を信用できない。self-hosted で実行しない。
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Windows]
+    env:
+      # ランナーの環境に合わせて 2 つのローカルパスを設定する。
+      UNITY_EXE: 'C:\Users\neoen\Unity\Editor\6000.4.5f1\Editor\Unity.exe'
+      VOICE_SOURCE: 'C:\gemini-desktop\ryona-action\MioPrototype\Assets\RyonaGame\Resources\Voice'
+      PYTHON_EXE: 'C:\Users\neoen\AppData\Local\Programs\Python\Python312\python.exe'
+    steps:
+      - uses: actions/checkout@v4
+
+      # 音声素材は gitignore 済み。CI ではローカルの素材を作業ツリーへコピーする。
+      - name: Restore voice assets
+        shell: pwsh
+        run: |
+          $dest = "MioPrototype\Assets\RyonaGame\Resources\Voice"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          if (Test-Path $env:VOICE_SOURCE) {
+            Copy-Item -Path (Join-Path $env:VOICE_SOURCE "*") -Destination $dest -Recurse -Force
+          } else {
+            Write-Host "::warning::音声素材が見つかりません: $env:VOICE_SOURCE"
+          }
+
+      # run_tests.py が全バッチ（コンパイル確認込み）を順に実行する。実行中は Unity Editor を閉じておく。
+      - name: Run Unity tests
+        shell: pwsh
+        run: |
+          cd MioPrototype
+          & $env:PYTHON_EXE tools/run_tests.py --unity $env:UNITY_EXE
