@@ -37,6 +37,9 @@ namespace Ryona.Game
             [Header("Framing")]
             public Vector3 PivotOffset = new Vector3(0f, 1.45f, 0f);
             public float Distance = 5.2f;
+
+            [Tooltip("ベアハッグ中は密着した敵が前に出るので、通常より引いて二人を描く")]
+            public float BearHugDistanceScale = 1.32f;
             public float MinDistance = 1.2f;
             public float MaxDistance = 6f;
             public float MouseSensitivity = 2.2f;

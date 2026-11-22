@@ -33,8 +33,8 @@ namespace Ryona.Game
 
         EnemyFigure[] _faceFigures;
         // マウントのカメラ候補。彼女の体の脇を中心に、頭の方向へ ±30° まで振る。
-        // 最遠の 2.6m を外して寄せた（2026-11-20）。レンズ前の余裕は 0.5m 下限で守る。
-        static readonly float[] FaceDistances = { 1.4f, 1.7f, 2.0f, 2.3f };
+        // 2.6m → 2.3m → 1.95m と段階的に寄せた（2026-11-20/23）。レンズ前の余裕は下限で守る。
+        static readonly float[] FaceDistances = { 1.35f, 1.55f, 1.75f, 1.95f };
         static readonly float[] FaceHeights = { 0.9f, 1.2f, 1.5f };
         static readonly float[] FaceYaws = { -30f, -15f, 0f, 15f, 30f };
 
@@ -45,10 +45,10 @@ namespace Ryona.Game
         internal const float MountMinLens = 0.5f;
 
         /// <summary>
-        /// 画を選ぶときの下限（m）。下限ちょうどの画を選ぶと、殴る動きで敵が寄った瞬間に割る
-        /// （実測 0.47〜0.72m を行き来し、5 コマ割った）。余裕を取って選ぶ。
+        /// 画を選ぶときのレンズ下限（m）。ハード下限 0.5m に 0.12m の余裕を残す。
+        /// 0.75m だと 1.95m の画しか使えず「遠すぎる」ので下げた（確認 2026-11-23）。
         /// </summary>
-        const float MountSelectLens = 0.75f;
+        const float MountSelectLens = 0.62f;
 
         /// <summary>顔が画面の高さに占める割合の下限。これより小さいと表情が読めない。</summary>
         internal const float MountMinFaceSize = 0.04f;
@@ -937,6 +937,11 @@ namespace Ryona.Game
 
             // 顔が大きいほど少しだけ得（最大 +0.2）。遠い画が同点で勝たないようにする。
             score += Mathf.Min(size, 0.10f) * 2f;
+
+            float far = FaceDistances[FaceDistances.Length - 1];
+            float near = FaceDistances[0];
+            float horizontal = Mathf.Sqrt(candidate.x * candidate.x + candidate.z * candidate.z);
+            score -= 0.35f * Mathf.InverseLerp(near, far, horizontal);
 
             // 反対側へ回る画は、明らかに良いときだけにする（側が毎フレーム入れ替わると画が揺れる）。
             Vector3 a = new Vector3(candidate.x, 0f, candidate.z);

@@ -15,6 +15,7 @@ MonoBehaviour:
   Camera:
     PivotOffset: {x: 0, y: 1.45, z: 0}
     Distance: 5.2
+    BearHugDistanceScale: 1.32
     MinDistance: 1.2
     MaxDistance: 6
     MouseSensitivity: 2.2
