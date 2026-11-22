@@ -1,0 +1,86 @@
+name: Unity tests
+
+on:
+  pull_request:
+    paths:
+      - 'MioPrototype/Assets/**'
+      - 'MioPrototype/ProjectSettings/**'
+      - 'MioPrototype/Packages/**'
+      - 'MioPrototype/tools/**'
+      - '.github/workflows/unity-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'MioPrototype/Assets/**'
+      - 'MioPrototype/ProjectSettings/**'
+      - 'MioPrototype/Packages/**'
+      - 'MioPrototype/tools/**'
+      - '.github/workflows/unity-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unity-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unity-tests:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: edit
+            mode: editmode
+            args: ''
+          # 以下のフィルタは tools/run_tests.py の BATCHES と同じ。
+          - name: grapple
+            mode: playmode
+            args: '-testFilter "WallPinRuntime|PinGrapple|HeldBellyPunch|BearHug|OverheadRuntime|AnkleGrab|GrappleSessionTests|PinballRuntimeTests|WristLockRuntimeTests|WristPullRuntimeTests"'
+          - name: motion
+            mode: playmode
+            args: '-testFilter "DownRuntime|HaulUpRuntime|FeelRuntime|HurtPose|JointRomRuntime|BodyOverlapRuntime|FaceVisibilityLensTests"'
+          # PlayerFaceRuntime は gitignore 済みの Resources/Voice/*.wav が必要なため CI では除外。
+          - name: misc
+            mode: playmode
+            args: '-testFilter "EnemyAiRuntime|PlayabilityRegression|TestAudio|UiRuntime|VrmRuntime|HairBodyRuntime|HotReloadTests|EnemyHpRuntimeTests|OcclusionFadeTests|CameraExitBlendTests|ArenaRuntimeTests|EnemyRoleRuntimeTests"'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read Unity version
+        id: unity-version
+        run: |
+          version=$(sed -n 's/^m_EditorVersion: //p' MioPrototype/ProjectSettings/ProjectVersion.txt)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check Unity license
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          if [ -z "$UNITY_LICENSE" ]; then
+            echo "::error::UNITY_LICENSE secret が設定されていません"
+            exit 1
+          fi
+
+      - name: Run ${{ matrix.name }} tests
+        uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        with:
+          projectPath: MioPrototype
+          unityVersion: ${{ steps.unity-version.outputs.version }}
+          testMode: ${{ matrix.mode }}
+          customParameters: ${{ matrix.args }}
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          artifactsPath: UnityTestResults/${{ matrix.name }}
+          checkName: Unity ${{ matrix.name }}
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unity-test-results-${{ matrix.name }}
+          path: UnityTestResults/${{ matrix.name }}
+          if-no-files-found: warn

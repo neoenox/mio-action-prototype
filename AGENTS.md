@@ -99,8 +99,10 @@ python tools/motion_audit.py Verify/preview/<dir> --strip 110 117 -o seq.png
 - EditMode は `Ryona.Tests`（`Ryona.Core` のみ参照）、PlayMode は `Ryona.PlayTests`（`Ryona.Game` を参照）。
 - まとめて回すときは `MioPrototype/tools/run_tests.py`（コンパイル確認込み）。
 - 速回しの例: `python tools/run_tests.py --filter "BearHugTests|OverheadRuntimeTests" --skip-compile`（数十秒）。
-- **テストはコミットの直前にだけ回す**（2026-11-20 の指定）。開発中は回さず、見た目と挙動の確認は撮影（`preview.py`・`motion_audit.py`）とログで行う。
-  コミット前は下の表の影響バッチを回す（`edit` は常に含める）。
+- **テストは CI（GitHub Actions `unity-tests.yml`）が PR で実行する**（2026-11-22 の指定）。開発中・コミット前ともローカルでは回さない。見た目と挙動の確認は撮影（`preview.py`・`motion_audit.py`）とログで行う。
+  下の表は CI のバッチ割り当ての目安（`edit` は常に含める）。CI は常に全バッチを回す。ローカルで確認したいときだけ `run_tests.py --only ...` を使う。
+  `PlayerFaceRuntimeTests` は gitignore 済みの音声素材（`Resources/Voice/*.wav`）が必要なため、CI の misc バッチから除外している。
+  CI の Unity ライセンスは `UNITY_LICENSE` secret を使う（未設定だと失敗する）。
 
 | 変更した場所 | 回すバッチ |
 |---|---|
@@ -109,10 +111,10 @@ python tools/motion_audit.py Verify/preview/<dir> --strip 110 117 -o seq.png
 | `CharacterAnimator*` / `Rig/**` / `AI/**`（姿勢・関節） | `motion` ＋ `grapple` |
 | `Config/**` / `OcclusionFade` / `ThirdPersonCamera` / `PlayerStats` | `misc` |
 
-- 複数領域に触れたら和集合。3バッチ以上にまたがる変更をコミットする前は全バッチを回す。
+- 複数領域に触れたら和集合。CI は全バッチを回すので、下表は影響範囲の目安として読む。
 - 全バッチで落ちたテストが再実行で通っても即「フレーク」と決めず、`--filter` で同一テストを3回連続回す。3回とも通れば既知フレークとしてここに1行追加し、1回でも落ちれば実バグとして原因を直す。
 - 既知フレーク（2026-11-21）: `VrmRuntimeTests.Vrmが読み込まれリグが組み上がる` が全バッチで1回だけ「肘が下りていない」で失敗。`--filter VrmRuntimeTests` で3回連続パス（各2/2）を確認済み。
 - 既知フレーク（2026-11-21）: `WallPinRuntimeTests.壁拘束の各段階で彼女の顔が画面に映っている`（3 人がかり 74% vs 下限 75%）と `PlayerFaceRuntimeTests` の口形 3 件が全バッチで各 1 回失敗。`--filter` で 3 回連続パス（1/1×3、10/10×3）を確認済み。
-- 全緑の記録は `MioPrototype/Verify/test-baseline.txt`（日付・HEAD・各バッチ結果）に1行追記する。
+- CI が全緑なら、記録を `MioPrototype/Verify/test-baseline.txt`（日付・HEAD・各バッチ結果）に1行追記する。
 - 既存テストには**設計意図が書かれている**ことがある（例：顔パンの首振りは 40° 以上必要）。
   値を変えて落ちたときは、まずテストの意図を読む。
