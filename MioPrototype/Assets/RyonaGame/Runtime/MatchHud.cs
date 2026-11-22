@@ -55,6 +55,15 @@ namespace Ryona.Game
         bool _built;
         bool _grappleSubscribed;
 
+
+        // 同じ値のときは文字列を作り直さない（毎フレームの補間割り当てを避ける）
+        int _wristKey = -1;
+        int _encounterKey = -1;
+        int _downKey = -1;
+        int _bellyKey = -1;
+
+        int _bannerKey = -1;
+
         void OnDestroy()
         {
             if (_grapple != null && _grappleSubscribed)
@@ -87,14 +96,14 @@ namespace Ryona.Game
             if (Enemy != null && Enemy.State != null)
             {
                 SetFill(_enemyHpFill, Enemy.State.Hp / Enemy.State.MaxHp);
-                _enemyText.text = Enemy.Phase == EnemyPhase.Windup ? "▲ 来るぞ" : "敵";
+                SetText(_enemyText, Enemy.Phase == EnemyPhase.Windup ? "▲ 来るぞ" : "敵");
                 _enemyText.color = Enemy.Phase == EnemyPhase.Windup
                     ? new Color(1f, 0.55f, 0.35f, 0.95f)
                     : TextColor;
             }
             if (Player.IsDead)
             {
-                _statusText.text = "倒れた ─ R で復帰";
+                SetText(_statusText, "倒れた ─ R で復帰");
                 _statusText.color = new Color(1f, 0.45f, 0.45f, 0.95f);
 
                 if (InputReader.RestartPressed())
@@ -102,17 +111,17 @@ namespace Ryona.Game
             }
             else if (Player.GodMode)
             {
-                _statusText.text = "GOD MODE ─ 体力自動回復";
+                SetText(_statusText, "GOD MODE ─ 体力自動回復");
                 _statusText.color = new Color(1f, 0.92f, 0.55f, 0.98f);
             }
             else if (Player.IsStunned)
             {
-                _statusText.text = "怯み中";
+                SetText(_statusText, "怯み中");
                 _statusText.color = new Color(1f, 0.85f, 0.45f, 0.95f);
             }
             else
             {
-                _statusText.text = string.Empty;
+                SetText(_statusText, string.Empty);
             }
 
             UpdateEncounter();
@@ -198,12 +207,12 @@ namespace Ryona.Game
 
             if (mounted)
             {
-                _grappleText.text = hauled ? "引きずり起こされる ─ 連打で振りほどく" : mount.Stage switch
+                SetText(_grappleText, hauled ? "引きずり起こされる ─ 連打で振りほどく" : mount.Stage switch
                 {
                     GroundMountAttack.Beat.Roll => "仰向けに返される",
                     GroundMountAttack.Beat.Dismount => "押さえ込みが解ける",
                     _ => "マウント ─ 連打で脱出"
-                };
+                });
                 _grappleText.color = new Color(1f, 0.62f, 0.48f, 0.98f);
                 _grappleFill.fillAmount = hauled ? mount.Haul.EscapeProgress : mount.EscapeProgress;
                 _grappleFill.color = new Color(0.95f, 0.45f, 0.35f, 0.95f);
@@ -213,9 +222,9 @@ namespace Ryona.Game
             if (!grappled)
             {
                 // 時間切れで解放された直後
-                _grappleText.text = _releasedKind == GrappleKind.AnkleGrab
+                SetText(_grappleText, _releasedKind == GrappleKind.AnkleGrab
                     ? "足を取られて転んだ"
-                    : "押さえつけから解放された";
+                    : "押さえつけから解放された");
                 _grappleText.color = new Color(0.72f, 1f, 0.70f, 0.98f);
                 _grappleFill.fillAmount = 0f;
                 _grappleFill.color = new Color(0.95f, 0.45f, 0.35f, 0.95f);
@@ -224,7 +233,7 @@ namespace Ryona.Game
 
             if (_grapple.IsHandingOff)
             {
-                _grappleText.text = "受け渡し中";
+                SetText(_grappleText, "受け渡し中");
                 _grappleText.color = TextColor;
                 _grappleFill.fillAmount = 0f;
                 return;
@@ -339,8 +348,7 @@ namespace Ryona.Game
             string escapeHint = _grapple.IsStruggleSuppressed
                 ? "連打は一時停止中"
                 : "J / K / L を連打して脱出";
-            _grappleText.text =
-                $"拘束中{where}　{tail}\n{escapeHint}　{_grapple.InputCount}/{need}";
+            SetText(_grappleText, $"拘束中{where}　{tail}\n{escapeHint}　{_grapple.InputCount}/{need}");
 
             _grappleText.color = danger
                 ? new Color(1f, 0.40f, 0.32f, 0.98f)
@@ -404,7 +412,13 @@ namespace Ryona.Game
             _wristText.gameObject.SetActive(locked);
             if (!locked)
                 return;
-            _wristText.text = $"手首ロック — J/K/L で割る {_wrist.Inputs}/{_wrist.InputsToBreak}　{_wrist.Remaining:F1}s";
+            int key = ((_wrist.Inputs * 397) ^ (_wrist.InputsToBreak * 397)) * 397 ^
+                Mathf.RoundToInt(_wrist.Remaining * 10f);
+            if (key != _wristKey)
+            {
+                _wristKey = key;
+                SetText(_wristText, $"手首ロック — J/K/L で割る {_wrist.Inputs}/{_wrist.InputsToBreak}　{_wrist.Remaining:F1}s");
+            }
         }
 
 
@@ -418,42 +432,58 @@ namespace Ryona.Game
 
             if (_encounter == null)
             {
-                _encounterText.text = string.Empty;
+                SetText(_encounterText, string.Empty);
                 return;
             }
 
-            if (_encounter.Cleared)
-            {
-                _encounterText.text = _encounter.ArenaMovingNext
-                    ? "右へ進め → 次のエリア"
-                    : $"次の一団まで {_encounter.NextWaveRemaining:F1}s";
-                _encounterText.color = new Color(1f, 0.85f, 0.45f, 0.95f);
-            }
-            else
-            {
-                _encounterText.text = $"撃破 {_encounter.Kills}　残り {_encounter.Alive}";
-                _encounterText.color = TextColor;
-            }
-
-            // ステージ終了（決められた数の一団を片付けた）
-            if (_bannerRoot != null)
-            {
-                bool done = _encounter.StageCleared;
-
-                if (_bannerRoot.gameObject.activeSelf != done)
-                    _bannerRoot.gameObject.SetActive(done);
-
-                if (done && _bannerText != null)
+                int key;
+                if (_encounter.Cleared)
                 {
-                    _bannerText.text =
-                        "STAGE CLEAR\n" +
-                        $"<size=26>タイム {Clock(_encounter.ClearTimeSeconds)}　" +
-                        $"ベスト {Clock(_encounter.BestClearSeconds)}</size>";
-                    _bannerText.color = new Color(1f, 0.92f, 0.60f, 1f);
-                    _encounterText.text = $"撃破 {_encounter.Kills}　全 {_encounter.Wave} 波";
-                    _encounterText.color = new Color(1f, 0.92f, 0.60f, 0.95f);
+                    key = _encounter.ArenaMovingNext ? 1 : 2 + Mathf.RoundToInt(_encounter.NextWaveRemaining * 10f);
+                    if (key != _encounterKey)
+                    {
+                        _encounterKey = key;
+                        SetText(_encounterText, _encounter.ArenaMovingNext
+                            ? "右へ進め → 次のエリア"
+                            : $"次の一団まで {_encounter.NextWaveRemaining:F1}s");
+                    }
+                    _encounterText.color = new Color(1f, 0.85f, 0.45f, 0.95f);
                 }
-            }
+                else
+                {
+                    key = 1000 + _encounter.Kills * 100 + _encounter.Alive;
+                    if (key != _encounterKey)
+                    {
+                        _encounterKey = key;
+                        SetText(_encounterText, $"撃破 {_encounter.Kills}　残り {_encounter.Alive}");
+                    }
+                    _encounterText.color = TextColor;
+                }
+
+                // ステージ終了（決められた数の一団を片付けた）
+                if (_bannerRoot != null)
+                {
+                    bool done = _encounter.StageCleared;
+
+                    if (_bannerRoot.gameObject.activeSelf != done)
+                        _bannerRoot.gameObject.SetActive(done);
+
+                    if (done && _bannerText != null)
+                    {
+                        int bannerKey = 100000 + _encounter.Kills * 10000 + _encounter.Wave * 100
+                            + Mathf.RoundToInt(_encounter.ClearTimeSeconds * 10f);
+                        if (bannerKey != _bannerKey)
+                        {
+                            _bannerKey = bannerKey;
+                            SetText(_bannerText, "STAGE CLEAR\n" +
+                                $"<size=26>タイム {Clock(_encounter.ClearTimeSeconds)}　" +
+                                $"ベスト {Clock(_encounter.BestClearSeconds)}</size>");
+                            SetText(_encounterText, $"撃破 {_encounter.Kills}　全 {_encounter.Wave} 波");
+                        }
+                        _bannerText.color = new Color(1f, 0.92f, 0.60f, 1f);
+                        _encounterText.color = new Color(1f, 0.92f, 0.60f, 0.95f);
+                    }
+                }
         }
 
         /// <summary>秒を 0:00.0 の形にする（クリアタイム表示用）。</summary>
@@ -472,20 +502,42 @@ namespace Ryona.Game
             SetFill(_bellyFill, Player.HeldBellyDamage / CombatConstants.MaxHeldBellyDamage);
 
             float downLeft = Mathf.Max(0f, CombatConstants.MaxFlinch - state.Flinch);
-            _downHitsText.text = Player.IsDown ? "ダウン中"
-                : downLeft <= 0f ? "上限到達"
-                : $"弱あと{Mathf.CeilToInt(downLeft / LightFlinch)}発 / 強あと{Mathf.CeilToInt(downLeft / HeavyFlinch)}発";
+            int lightHits = Mathf.CeilToInt(downLeft / LightFlinch);
+            int heavyHits = Mathf.CeilToInt(downLeft / HeavyFlinch);
+            int downKey = (Player.IsDown ? 10000 : 0) + (downLeft <= 0f ? 1000 : lightHits * 100 + heavyHits);
+            if (downKey != _downKey)
+            {
+                _downKey = downKey;
+                SetText(_downHitsText, Player.IsDown ? "ダウン中"
+                    : downLeft <= 0f ? "上限到達"
+                    : $"弱あと{lightHits}発 / 強あと{heavyHits}発");
+            }
 
             float bellyLeft = Mathf.Max(0f, CombatConstants.MaxHeldBellyDamage - Player.HeldBellyDamage);
-            _bellyHitsText.text = Player.HasHeldBellyDown ? "上限到達"
-                : $"腹パンあと{Mathf.CeilToInt(bellyLeft / CombatConstants.HeldBellyPunchDamage)}発 / " +
-                  $"膝あと{Mathf.CeilToInt(bellyLeft / CombatConstants.HeldKneeBellyDamage)}発";
+            int punchHits = Mathf.CeilToInt(bellyLeft / CombatConstants.HeldBellyPunchDamage);
+            int kneeHits = Mathf.CeilToInt(bellyLeft / CombatConstants.HeldKneeBellyDamage);
+            int bellyKey = (Player.HasHeldBellyDown ? 10000 : 0) + punchHits * 100 + kneeHits;
+            if (bellyKey != _bellyKey)
+            {
+                _bellyKey = bellyKey;
+                SetText(_bellyHitsText, Player.HasHeldBellyDown ? "上限到達"
+                    : $"腹パンあと{punchHits}発 / " +
+                      $"膝あと{kneeHits}発");
+            }
         }
 
         static void SetFill(Image image, float normalized)
         {
             if (image != null)
                 image.fillAmount = Mathf.Clamp01(normalized);
+        }
+
+
+        /// <summary>同じ文字列を再代入しない（Text の再レイアウトと GC を減らす）。</summary>
+        static void SetText(Text label, string value)
+        {
+            if (label != null && label.text != value)
+                label.text = value;
         }
 
         void Build()
@@ -587,7 +639,7 @@ namespace Ryona.Game
             _lockText.raycastTarget = false;
             _lockText.horizontalOverflow = HorizontalWrapMode.Overflow;
             _lockText.verticalOverflow = VerticalWrapMode.Overflow;
-            _lockText.text = "敵を全員倒すと進める ▶";
+            SetText(_lockText, "敵を全員倒すと進める ▶");
             lockRect.gameObject.SetActive(false);
 
             // 自キャラのブロック（左下）
@@ -671,7 +723,7 @@ namespace Ryona.Game
             label.fontSize = size;
             label.alignment = TextAnchor.UpperRight;
             label.color = TextColor;
-            label.text = text;
+            SetText(label, text);
             label.raycastTarget = false;
             return label;
         }
@@ -686,7 +738,7 @@ namespace Ryona.Game
             label.fontSize = size;
             label.alignment = anchor;
             label.color = TextColor;
-            label.text = text;
+            SetText(label, text);
             label.raycastTarget = false;
             label.horizontalOverflow = HorizontalWrapMode.Overflow;
             label.verticalOverflow = VerticalWrapMode.Overflow;
