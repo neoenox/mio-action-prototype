@@ -83,8 +83,8 @@ SCENARIOS = {
     "haulprone": dict(args=["-haultest", "-mountprone"], burst="-mountburst",
                       frames=100, interval=0.05),
     # 地面マウント（跨ってのパンチ）。マウントのカメラ（GroundMountAttack.FrameMount）を見る。
-    "mount": dict(args=[], burst="-mountburst", frames=110, interval=0.05),
-    "mountprone": dict(args=["-mountprone"], burst="-mountburst", frames=110, interval=0.05),
+    "mount": dict(args=["-mountlog"], burst="-mountburst", frames=110, interval=0.05),
+    "mountprone": dict(args=["-mountprone", "-mountlog"], burst="-mountburst", frames=110, interval=0.05),
     # 頭上拘束（両手首を上へ引き上げる）。
     "overhead": dict(args=["-grappletest", "-overheadtest"], burst="-pinburst",
                      frames=120, interval=0.05),
