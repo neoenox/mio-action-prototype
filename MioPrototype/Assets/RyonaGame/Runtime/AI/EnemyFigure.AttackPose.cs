@@ -140,7 +140,8 @@ namespace Ryona.Game
         /// 歩行中の足先の位置（腰の関節から見た前後と上下）。
         /// 接地中は「体が進んだ分だけ後ろへ下がる」ので、地面の上では止まって見える。
         /// </summary>
-        static void FootPath(float u, float reach, float duty, out float sweep, out float lift)
+        static void FootPath(float u, float reach, float duty, out float sweep, out float lift,
+            float liftHeight = 0.10f)
         {
             const float ground = 0.008f;   // 接地中の足首の高さ
             if (u < duty)
@@ -154,7 +155,8 @@ namespace Ryona.Game
                 // 遊脚。弧を描いて前へ戻る
                 float a = (u - duty) / (1f - duty);
                 sweep = Mathf.Lerp(-reach, reach, Mathf.SmoothStep(0f, 1f, a));
-                lift = ground + Mathf.Sin(Mathf.PI * a) * 0.10f;
+                // 蹴り出した直後に高く上がり、着地へは低く伸ばしていく（頂点を前半へ寄せる）。
+                lift = ground + Mathf.Sin(Mathf.PI * Mathf.Pow(a, 0.8f)) * liftHeight;
             }
         }
         // --- 組み立て --------------------------------------------------

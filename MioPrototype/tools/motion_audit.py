@@ -68,7 +68,8 @@ def report(d: Path, top: int, threshold: float | None) -> float:
     return ratio
 
 
-def audit_sheet(path: Path, rows: int, cols: int, top: int) -> float:
+def audit_sheet(path: Path, rows: int, cols: int, top: int,
+                threshold: float | None = None) -> float:
     """Editor の合成シート（1 枚に複数コマ）を、行ごとのコマ間差分で監査する。
 
     合成シートは「サンプリングした時刻を並べたもの」なので、隣り合うコマの差が
@@ -96,16 +97,26 @@ def audit_sheet(path: Path, rows: int, cols: int, top: int) -> float:
         if not diffs:
             continue
         avg = sum(diffs) / len(diffs)
-        print(f"  {r + 1} 行目（視点の違い）: 平均差 {avg:.2f}  " +
-              " ".join(f"{d:.1f}" for d in diffs))
+        ratio = max(diffs) / avg if avg > 0 else 0.0
+        worst_ratio = max(worst_ratio, ratio)
+        mark = f"  最大 {ratio:.1f}倍" if ratio > 1.5 else ""
+        if threshold is not None and ratio >= threshold:
+            mark += "  <- 要確認"
+        print(f"  {r + 1} 行目（視点の違い）: 平均差 {avg:.2f} " +
+              " ".join(f"{d:.1f}" for d in diffs) + mark)
 
     if rows > 1:
         for c in range(cols):
             diffs = [ImageStat.Stat(ImageChops.difference(grid[r][c], grid[r + 1][c])).mean[0]
                      for r in range(rows - 1)]
             avg = sum(diffs) / len(diffs)
-            print(f"  {c + 1} 列目（時間の変化）: 平均差 {avg:.2f}  " +
-                  " ".join(f"{d:.1f}" for d in diffs))
+            ratio = max(diffs) / avg if avg > 0 else 0.0
+            worst_ratio = max(worst_ratio, ratio)
+            mark = f"  最大 {ratio:.1f}倍" if ratio > 1.5 else ""
+            if threshold is not None and ratio >= threshold:
+                mark += "  <- 要確認"
+            print(f"  {c + 1} 列目（時間の変化）: 平均差 {avg:.2f} " +
+                  " ".join(f"{d:.1f}" for d in diffs) + mark)
             for r, dv in enumerate(diffs):
                 if avg > 0.5 and dv < avg * 0.25:
                     print(f"    ほぼ同じ: {r + 1}行目→{r + 2}行目（差 {dv:.2f} / 平均 {avg:.2f}）")
@@ -200,8 +211,8 @@ def main() -> int:
         return compare(Path(args.compare[0]), Path(args.compare[1]))
 
     if args.sheet:
-        audit_sheet(Path(args.sheet), args.rows, args.cols, args.top)
-        return 0
+        ratio = audit_sheet(Path(args.sheet), args.rows, args.cols, args.top, args.threshold)
+        return 1 if args.threshold is not None and ratio >= args.threshold else 0
 
     if not args.dirs:
         parser.print_help()

@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Ryona.Game;
 using UniVRM10;
 using UnityEditor;
@@ -17,6 +17,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Scan Face Blends")]
         public static void ScanFaceBlends()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -77,6 +81,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Scan Face Render")]
         public static void ScanFaceRender()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             SetupLights();
@@ -171,6 +179,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Face Sheet")]
         public static void CaptureFaceSheet()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -285,6 +297,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Pain Faces")]
         public static void CapturePainFaces()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -410,6 +426,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Guard Strip")]
         public static void CaptureGuardStrip()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -517,6 +537,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Stance Sheet")]
         public static void CaptureStanceSheet()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -629,6 +653,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Torso Pitch")]
         public static void CaptureTorsoPitch()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             SetupLights();
 
@@ -702,6 +730,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Stagger")]
         public static void CaptureStagger()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             SetupLights();
 

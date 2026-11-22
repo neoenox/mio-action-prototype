@@ -51,6 +51,14 @@ REPO = PROJECT.parent
 VERIFY = PROJECT / "Verify"
 BASE_WORKTREE = REPO / ".claude" / "worktrees" / "verify-baseline"
 
+
+
+def numbered_frames(directory: Path, prefix: str = "*") -> list[Path]:
+    """<prefix>_<数字>.png を番号順に返す（100 枚目以降も拾う）。"""
+    regex = re.compile(r"^.+_(\d+)\.png$" if prefix == "*"
+                       else rf"^{re.escape(prefix)}_(\d+)\.png$")
+    files = [p for p in directory.glob(f"{prefix}_*.png") if regex.match(p.name)]
+    return sorted(files, key=lambda p: int(regex.match(p.name).group(1)))
 # 共通の起動引数。解像度を固定して、前後で画の大きさが変わらないようにする。
 COMMON = [
     "-screen-width", "960", "-screen-height", "540", "-screen-fullscreen", "0",
@@ -204,6 +212,13 @@ def prepare_baseline(ref: str) -> tuple[Path, str]:
     if not sha:
         sys.exit(f"{ref} が解決できない。")
 
+    # 前回の実行が途中で失敗してワークツリーだけ残ると checkout が失敗する。
+    # .git（ワークツリーのポインタ）が無い場合は作り直す。
+    if BASE_WORKTREE.exists() and not (BASE_WORKTREE / ".git").exists():
+        print("[baseline] 破損したワークツリーを再作成する")
+        git("worktree", "prune", check=False)
+        shutil.rmtree(BASE_WORKTREE, ignore_errors=True)
+
     project = BASE_WORKTREE / "MioPrototype"
     if not BASE_WORKTREE.exists():
         print(f"[baseline] ワークツリーを作る: {BASE_WORKTREE}")
@@ -257,7 +272,7 @@ def run_scenario(name: str, outdir: Path, exe: Path) -> list[Path]:
             proc.kill()
             proc.wait()
 
-    frames = sorted(outdir.glob(f"{name}_[0-9][0-9].png"))
+    frames = numbered_frames(outdir, name)
     print(f"[run] {name}: {len(frames)} 枚 / {time.time() - started:.0f} 秒")
     return frames
 
@@ -520,11 +535,11 @@ def do_compare(a: str, b: str, count: int, tile: int) -> None:
     outdir = VERIFY / f"compare_{a}_vs_{b}"
     outdir.mkdir(parents=True, exist_ok=True)
 
-    shared = sorted({p.name.rsplit("_", 1)[0] for p in (VERIFY / a).glob("*_[0-9][0-9].png")}
-                    & {p.name.rsplit("_", 1)[0] for p in (VERIFY / b).glob("*_[0-9][0-9].png")})
+    shared = sorted({p.name.rsplit("_", 1)[0] for p in numbered_frames(VERIFY / a)}
+                    & {p.name.rsplit("_", 1)[0] for p in numbered_frames(VERIFY / b)})
     for name in shared:
-        af = sorted((VERIFY / a).glob(f"{name}_[0-9][0-9].png"))
-        bf = sorted((VERIFY / b).glob(f"{name}_[0-9][0-9].png"))
+        af = numbered_frames(VERIFY / a, name)
+        bf = numbered_frames(VERIFY / b, name)
         make_compare(af, bf, a, b, outdir / f"{name}.png", count, tile)
         print(f"[compare] {name}: {outdir / (name + '.png')}")
     if not shared:

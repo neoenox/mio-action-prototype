@@ -75,7 +75,6 @@ def clip(files: list[Path], label: str, start: int, end: int, step: int = 2):
 
 
 def build_reel(belly: Path | None, pin: Path | None, hair: Path | None, out: Path) -> Path | None:
-    from PIL import Image
 
     sections: list[tuple[object, int]] = []
     if belly is not None:

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using Ryona.Game;
@@ -176,6 +176,11 @@ namespace Ryona.EditorTools
             {
                 vrm = Vrm10.LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: false)
                     .GetAwaiter().GetResult();
+                    if (vrm == null)
+                    {
+                        Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                        return;
+                    }
             }
             catch (Exception e)
             {

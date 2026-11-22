@@ -34,9 +34,12 @@ namespace Ryona.Game
             if (enabled && State != null)
             {
                 bool wasDead = IsDead;
-                State.EnsureHpAtLeast(1f);
+                // RestoreAll が Revived を発火できるよう、HP を戻す前に呼ぶ。
+                // RestoreAll 側で MaxHp まで回復するので EnsureHpAtLeast は不要。
                 if (wasDead)
                     RestoreAll();
+                else
+                    State.EnsureHpAtLeast(1f);
             }
 
             GameLog.Log($"[God] {(enabled ? "ON（体力自動回復）" : "OFF")}");

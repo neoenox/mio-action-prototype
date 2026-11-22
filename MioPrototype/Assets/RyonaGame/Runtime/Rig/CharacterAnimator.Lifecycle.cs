@@ -161,7 +161,7 @@ namespace Ryona.Game
 
             if (CurrentHitZone == PunchZone.Face && _hurtSide != 2)
             {
-                _faceFlickAt = Time.time;
+                _faceFlickAt = Time.unscaledTime;
                 _faceFlickLogged = false;
             }
 

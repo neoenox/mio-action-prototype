@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Ryona.Game;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -46,29 +46,39 @@ namespace Ryona.EditorTools
             const int height = 720;
 
             var rt = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
-            cam.targetTexture = rt;
-            cam.Render();
-
-            RenderTexture.active = rt;
             var tex = new Texture2D(width, height, TextureFormat.RGB24, false);
-            tex.ReadPixels(new Rect(0, 0, width, height), 0, 0);
-            tex.Apply();
-            RenderTexture.active = null;
-            cam.targetTexture = null;
+            RenderTexture previousActive = RenderTexture.active;
+            RenderTexture previousTarget = cam.targetTexture;
+            try
+            {
+                cam.targetTexture = rt;
+                cam.Render();
+                RenderTexture.active = rt;
+                tex.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+                tex.Apply();
 
-            string root = Directory.GetParent(Application.dataPath).FullName;
-            string outPath = Path.Combine(root, "preview.png");
-            File.WriteAllBytes(outPath, tex.EncodeToPNG());
-
-            Object.DestroyImmediate(tex);
-            rt.Release();
-
-            Debug.Log($"[Ryona] Preview written: {outPath}");
+                string root = Directory.GetParent(Application.dataPath).FullName;
+                string outPath = Path.Combine(root, "preview.png");
+                File.WriteAllBytes(outPath, tex.EncodeToPNG());
+                Debug.Log($"[Ryona] Preview written: {outPath}");
+            }
+            finally
+            {
+                RenderTexture.active = previousActive;
+                cam.targetTexture = previousTarget;
+                rt.Release();
+                Object.DestroyImmediate(rt);
+                Object.DestroyImmediate(tex);
+            }
         }
 
         /// <summary>Unity -batchmode -executeMethod Ryona.EditorTools.PrototypeSceneBuilder.Build</summary>
         public static void Build()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
             var standard = Shader.Find("Standard");

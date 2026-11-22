@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Ryona.Game;
 using UniVRM10;
 using UnityEditor;
@@ -44,6 +44,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Check Enemy VRM")]
         public static void Check()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string path = Resolve();
             if (path == null)
             {
@@ -82,6 +86,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(path, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             foreach (var smr in vrm.GetComponentsInChildren<SkinnedMeshRenderer>())
                 smr.forceMatrixRecalculationPerRender = true;

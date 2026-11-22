@@ -46,7 +46,8 @@ namespace Ryona
                 return true;
 
             InputCount++;
-            Progress = InputCount / _requiredInputs;
+            // 脱出判定と同じ切り上げ回数を分母にする（99.9% で逃げられない表示を防ぐ）。
+            Progress = InputCount / (float)System.Math.Ceiling(_requiredInputs);
             if (Progress > 1f)
                 Progress = 1f;
 

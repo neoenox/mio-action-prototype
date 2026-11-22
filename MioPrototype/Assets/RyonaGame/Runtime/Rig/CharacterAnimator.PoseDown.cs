@@ -127,7 +127,7 @@ namespace Ryona.Game
             // 倒れる速さは状態の長さに依存させない（ダウン 2.0s / 気絶 1.2s / 死亡 ∞ の
             // どれでも同じ 0.95 秒で倒れきる）。以前は状態の長さで正規化していたため、
             // 死亡だけが 0.1 秒で瞬間的に倒れ、気絶は 1.2 秒かけてゆっくり倒れる逆転があった。
-            float rise = Mathf.Clamp01(_stateTime / _downFallSeconds);
+            float rise = Mathf.Clamp01(_stateTime / Mathf.Max(0.05f, _downFallSeconds));
 
             // 崩れ落ちる: 最初に腰を落とし、そこから背中側へ倒れる
             float settle = 1f - Mathf.Pow(1f - Mathf.Clamp01(rise), 2.2f);

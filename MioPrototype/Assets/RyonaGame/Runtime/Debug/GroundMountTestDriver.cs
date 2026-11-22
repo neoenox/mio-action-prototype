@@ -191,7 +191,11 @@ namespace Ryona.Game
 
             _shots++;
             _nextShotAt += ShotInterval;
-            if (_shots >= (GroundHaulUp.Forced ? 100 : ShotCount))
+            // 枚数は preview.py が -mountburstframes で渡す（引き起こしの後の羽交い締めまで撮るため）。
+            int limit = LaunchOptions.TryInt("-mountburstframes", out int frames) && frames > 0
+                ? frames
+                : GroundHaulUp.Forced ? 100 : ShotCount;
+            if (_shots >= limit)
             {
                 _capturing = false;
                 Application.Quit();

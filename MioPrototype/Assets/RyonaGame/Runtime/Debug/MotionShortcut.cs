@@ -340,6 +340,9 @@ namespace Ryona.Game
 
         void ExecuteResetOrToggleAi()
         {
+            // ショートカットは god mode を立てるので、リセットで必ず戻す（立てっぱなし防止）。
+            _player.SetGodMode(false);
+
             bool busy = (_grapple != null && _grapple.IsGrappled)
                 || _player.IsDown
                 || (_combat != null && _combat.IsAttacking)

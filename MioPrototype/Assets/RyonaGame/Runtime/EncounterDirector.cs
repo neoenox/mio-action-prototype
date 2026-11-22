@@ -106,6 +106,8 @@ namespace Ryona.Game
             ArenaPitch = s.ArenaPitch;
             WavesPerArena = s.WavesPerArena;
             ArenaCount = s.ArenaCount;
+            // 波数はアリーナ数 × 各アリーナの波数に必ず追従させる（固定 10 の取り残しを防ぐ）。
+            MaxWaves = ArenaCount * WavesPerArena;
             EntryOffset = s.EntryOffset;
             WaveGap = s.WaveGap;
             MinSpawnGap = s.MinSpawnGap;

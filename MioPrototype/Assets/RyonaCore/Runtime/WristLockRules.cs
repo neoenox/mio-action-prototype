@@ -25,9 +25,10 @@ namespace Ryona
 
         public bool IsBroken(int inputs) => inputs >= InputsToBreak;
         public bool IsExpired(float elapsed) => elapsed >= DurationSeconds;
-        public bool IsInGrace(float now, float endedAt) => endedAt > 0f && now - endedAt < GraceSeconds;
+        // -1 は「まだ一度も解除していない」のセンチネル。0 は時刻として有効なので使わない。
+        public bool IsInGrace(float now, float endedAt) => endedAt >= 0f && now - endedAt < GraceSeconds;
         public bool CanAttach(float now, float endedAt, bool grappled, bool down)
-            => !grappled && !down && !IsInGrace(now, endedAt) && (endedAt <= 0f || now - endedAt >= CooldownSeconds);
+            => !grappled && !down && !IsInGrace(now, endedAt) && (endedAt < 0f || now - endedAt >= CooldownSeconds);
         public float ScaledEscapeNeed(float need) => need * EscapeNeedScale;
     }
 }

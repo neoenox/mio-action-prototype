@@ -1,6 +1,15 @@
 # AGENTS.md
 
 このリポジトリで作業する人（と AI）が前提にする、演出と検証の方針。
+
+## 作業フロー（worktree 必須・2026-11-22 の指定）
+
+- **作業を開始するときは必ず worktree を作る**。メインの作業ディレクトリ（リポジトリルート）で直接変更しない。
+  - 例: `git worktree add ../ryona-action-<作業名> -b <作業ブランチ> origin/main` のち `cd ../ryona-action-<作業名>`。
+- 作業完了時は、影響バッチのテストと必要な撮影を行い、コミットしてから `gh pr create` で PR を作る。
+- PR 作成後、worktree がクリーン（`git status --porcelain` が空）なことを確認してから `git worktree remove <worktree のパス>` で安全に削除する。未コミット変更がある場合は削除しない。ブランチは PR が残るので消さない。
+- 元のディレクトリへ戻り、`gh pr merge <番号>` でマージしたあと `git switch main && git pull --ff-only` で最新化する（マージ前に最新化してもよいが、マージ後にも必ずPullする）。
+
 ## 応答言語
 
 - AI は常に日本語で応答する（2026-11-19 の指定）。
@@ -115,6 +124,7 @@ python tools/motion_audit.py Verify/preview/<dir> --strip 110 117 -o seq.png
 - 全バッチで落ちたテストが再実行で通っても即「フレーク」と決めず、`--filter` で同一テストを3回連続回す。3回とも通れば既知フレークとしてここに1行追加し、1回でも落ちれば実バグとして原因を直す。
 - 既知フレーク（2026-11-21）: `VrmRuntimeTests.Vrmが読み込まれリグが組み上がる` が全バッチで1回だけ「肘が下りていない」で失敗。`--filter VrmRuntimeTests` で3回連続パス（各2/2）を確認済み。
 - 既知フレーク（2026-11-21）: `WallPinRuntimeTests.壁拘束の各段階で彼女の顔が画面に映っている`（3 人がかり 74% vs 下限 75%）と `PlayerFaceRuntimeTests` の口形 3 件が全バッチで各 1 回失敗。`--filter` で 3 回連続パス（1/1×3、10/10×3）を確認済み。
+- 既知フレーク（2026-11-22）: `DownRuntimeTests.ダウンは後ろへ放物線で飛ぶ` が全バッチで1回だけ「浮いていない（y=0.02）」で失敗。`--filter DownRuntimeTests.ダウンは後ろへ放物線で飛ぶ` で3回連続パス（1/1×3）を確認済み。
 - CI が全緑なら、記録を `MioPrototype/Verify/test-baseline.txt`（日付・HEAD・各バッチ結果）に1行追記する。
 - 既存テストには**設計意図が書かれている**ことがある（例：顔パンの首振りは 40° 以上必要）。
   値を変えて落ちたときは、まずテストの意図を読む。

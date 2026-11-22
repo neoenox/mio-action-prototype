@@ -43,11 +43,14 @@ namespace Ryona
             int authored = -1;
             for (int i = 0; i < candidates.Count; i++)
             {
-                if (candidates[i].AuthoredGrappler)
-                {
+                if (!candidates[i].AuthoredGrappler)
+                    continue;
+                // 複数いる場合は身長→名前で決め、列挙順に依存させない。
+                if (authored < 0 ||
+                    candidates[i].Height > candidates[authored].Height + HeightEpsilon ||
+                    (Math.Abs(candidates[i].Height - candidates[authored].Height) <= HeightEpsilon &&
+                     string.CompareOrdinal(candidates[i].Name, candidates[authored].Name) < 0))
                     authored = i;
-                    break;
-                }
             }
             if (authored >= 0)
                 return index == authored ? EnemyRole.Grappler : EnemyRole.Striker;

@@ -42,7 +42,8 @@ namespace Ryona.Game
         /// </summary>
         void ApplyFaceFlick(ref float pitch, ref float yaw, ref float roll)
         {
-            float t = Time.time - _faceFlickAt;
+            // ヒットストップ中も首は弾ける（timeScale に止められない）。
+            float t = Time.unscaledTime - _faceFlickAt;
             if (t < 0f || t > 0.95f)
                 return;
 

@@ -618,6 +618,10 @@ namespace Ryona.Game
             _handOffLockUntil = Time.time + length;
             _attackReadyAt = Time.time + length + 0.2f;
         }
+
+        /// <summary>引き渡しの段取りが途中で切れたときに固定だけを解く（攻撃状態は触らない）。</summary>
+        internal void ReleaseHandOffLock() => _handOffLockUntil = 0f;
+
         /// <summary>
         /// トドメを打つ直前に奥行き（z+）へ退く。腕を離して硬直させ、
         /// 終わったら本来の「彼女の z に合わせる」へ戻す。
@@ -652,6 +656,10 @@ namespace Ryona.Game
             _evadeReturnPos = (Player != null ? Player.transform.position : _evadeReturnPos) + away;
             _evadeTargetOffset = 0f;
             _evadeTargetLateral = 0f;
+            // 目標だけでなく現在値も戻す。戻り切ったあとの LateUpdate の判定は
+            // _evadeActive だけに任せ、IsEvading が永久に true にならないようにする。
+            _evadeOffset = 0f;
+            _evadeLateral = 0f;
         }
 
 

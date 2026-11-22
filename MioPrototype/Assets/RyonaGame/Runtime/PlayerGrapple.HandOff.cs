@@ -73,6 +73,23 @@ namespace Ryona.Game
 
         System.Collections.IEnumerator ReceiveFromPin(EnemyBrain sender, EnemyBrain receiver)
         {
+            try
+            {
+                yield return ReceiveFromPinCore(sender, receiver);
+            }
+            finally
+            {
+                if (_pinReceiver == receiver)
+                {
+                    // 待機中に拘束が解けたら、受け手の固定を残さない。
+                    receiver.ReleaseHandOffLock();
+                    ClearPinHandOff();
+                }
+            }
+        }
+
+        System.Collections.IEnumerator ReceiveFromPinCore(EnemyBrain sender, EnemyBrain receiver)
+        {
             // 受け手が後ろから腕を取るまで、正面の押さえつけともがき入力を維持する。
             float elapsed = 0f;
             float grip = 0f;
@@ -148,7 +165,32 @@ namespace Ryona.Game
         /// 掴み位置まで一続きに移動する。突き飛ばしの距離と掴み位置を別々に扱うと、
         /// 行き過ぎた後に戻る動きが「ワープ」に見えるので、最初から終点へ運ぶ。
         /// </summary>
+        bool _shoveCompleted;
+
         System.Collections.IEnumerator Shove(EnemyBrain next, GrappleKind kind)
+        {
+            _shoveCompleted = false;
+            try
+            {
+                yield return ShoveCore(next, kind);
+            }
+            finally
+            {
+                if (!_shoveCompleted)
+                {
+                    // 突き渡しが途中で切れても、両者の固定と押し出し状態を戻す。
+                    _shoveSender?.ReleaseHandOffLock();
+                    next.ReleaseHandOffLock();
+                    if (IsHandingOff)
+                    {
+                        EndShove();
+                        IsHandingOff = false;
+                    }
+                }
+            }
+        }
+
+        System.Collections.IEnumerator ShoveCore(EnemyBrain next, GrappleKind kind)
         {
             Vector3 fromPos = transform.position;
             Vector3 toPos = GrabSpot(next, kind);
@@ -257,6 +299,7 @@ namespace Ryona.Game
             _session.HeldSeconds = 0f;
             next.TakeOverHold(_session.PinballActive ? 0.65f : CombatConstants.GrappleLimitSeconds + 4f);
             IsHandingOff = false;
+            _shoveCompleted = true;
             Started?.Invoke(kind);
         }
 

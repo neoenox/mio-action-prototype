@@ -8,6 +8,9 @@ namespace Ryona.Game
     {
         internal void ApplyGroundMount(GroundMountAttack mount)
         {
+            if (mount == null)
+                return;
+
             var stage = mount.Stage;
             if (stage == GroundMountAttack.Beat.Approach || _hips == null)
                 return;
@@ -53,6 +56,9 @@ namespace Ryona.Game
             SetWeaponVisible(false);
 
             var rig = mount.TargetRig;
+            if (rig == null || !rig.Ready)
+                return;
+
             Vector3 side = transform.right * punchSide;
             Vector3 entry = rig.Hips.position + Vector3.up * 0.20f;
             Vector3 raised = MountRaisedFist(left, side);

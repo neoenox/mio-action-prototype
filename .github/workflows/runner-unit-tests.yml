@@ -3,18 +3,12 @@ name: Unity runner unit tests
 on:
   pull_request:
     paths:
-      - 'MioPrototype/tools/preview.py'
-      - 'MioPrototype/tools/test_preview_build.py'
-      - 'MioPrototype/tools/run_tests.py'
-      - 'MioPrototype/tools/test_run_tests.py'
+      - 'MioPrototype/tools/**'
       - '.github/workflows/runner-unit-tests.yml'
   push:
     branches: ['**']
     paths:
-      - 'MioPrototype/tools/preview.py'
-      - 'MioPrototype/tools/test_preview_build.py'
-      - 'MioPrototype/tools/run_tests.py'
-      - 'MioPrototype/tools/test_run_tests.py'
+      - 'MioPrototype/tools/**'
       - '.github/workflows/runner-unit-tests.yml'
 
 permissions:
@@ -31,5 +25,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Lint tools
+        run: |
+          python -m pip install --quiet ruff==0.15.9 pillow
+          python -m ruff check MioPrototype/tools
       - name: Test tool exit handling without launching Unity
         run: python -m unittest discover -s MioPrototype/tools -p 'test_*.py' -v

@@ -190,10 +190,11 @@ namespace Ryona.Game
             _attackers.Clear();
         }
 
-        void OnDisable()
+        protected override void OnDisable()
         {
             // 無効化中にトークンを持ち越すと、再有効化後に誰も殴れなくなる
             _attackers.Clear();
+            base.OnDisable();
         }
 
         /// <summary>破棄された敵をリストから落とす。</summary>

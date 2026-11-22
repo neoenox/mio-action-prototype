@@ -275,8 +275,11 @@ namespace Ryona
     /// </summary>
     public sealed class BodyOverlapTally
     {
-        readonly Dictionary<string, BodyOverlapReading> _worst = new Dictionary<string, BodyOverlapReading>();
-        readonly Dictionary<string, int> _counts = new Dictionary<string, int>();
+        // 毎フレームのキー生成で文字列を確保しない（A/B の入れ替えも区別する）。
+        readonly Dictionary<(string, int, string, int), BodyOverlapReading> _worst =
+            new Dictionary<(string, int, string, int), BodyOverlapReading>();
+        readonly Dictionary<(string, int, string, int), int> _counts =
+            new Dictionary<(string, int, string, int), int>();
 
         public int TrackedPairs => _worst.Count;
         public int ViolationSamples { get; private set; }
@@ -289,7 +292,7 @@ namespace Ryona
                 return;
 
             ViolationSamples++;
-            string key = KeyOf(reading);
+            var key = CountKey(reading);
 
             if (_counts.TryGetValue(key, out int count))
                 _counts[key] = count + 1;
@@ -304,7 +307,7 @@ namespace Ryona
         }
 
         public int CountOf(BodyOverlapReading reading)
-            => _counts.TryGetValue(KeyOf(reading), out int count) ? count : 0;
+            => _counts.TryGetValue(CountKey(reading), out int count) ? count : 0;
 
         public void Clear()
         {
@@ -313,6 +316,9 @@ namespace Ryona
             ViolationSamples = 0;
             WorstOverall = null;
         }
+
+        static (string, int, string, int) CountKey(BodyOverlapReading reading)
+            => (reading.SubjectA, (int)reading.PartA, reading.SubjectB, (int)reading.PartB);
 
         public static string KeyOf(BodyOverlapReading reading)
             => $"{reading.SubjectA}:{(int)reading.PartA}|{reading.SubjectB}:{(int)reading.PartB}";

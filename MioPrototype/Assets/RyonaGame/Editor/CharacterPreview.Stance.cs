@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Ryona.Game;
 using UniVRM10;
 using UnityEditor;
@@ -22,6 +22,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Capture Pose Sheet")]
         public static void CapturePoseSheet()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -107,6 +111,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Combat Strip")]
         public static void CaptureCombatStrip()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -242,6 +250,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Fist Closeup")]
         public static void CaptureFistCloseup()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -330,7 +342,12 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Stance Hands")]
         public static void CaptureStanceHands()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
+                using var stanceGuard = new StanceOverrideGuard();
             if (!File.Exists(vrmPath))
             {
                 Debug.LogError($"[Ryona] VRM not found: {vrmPath}");
@@ -466,6 +483,11 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Stance Roll Options")]
         public static void CaptureStanceRollOptions()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
+            using var stanceGuard = new StanceOverrideGuard();
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -566,6 +588,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Game View")]
         public static void CaptureGameView()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -656,6 +682,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Capture Fix Showcase")]
         public static void CaptureFixShowcase()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -779,6 +809,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Diagnostics/Scan Enemy Walk")]
         public static void ScanEnemyWalk()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
             float[] speeds = { 0.8f, 1.2f, 1.8f, 2.4f };

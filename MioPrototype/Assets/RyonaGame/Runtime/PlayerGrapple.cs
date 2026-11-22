@@ -357,6 +357,9 @@ namespace Ryona.Game
         /// <summary>引き起こしから直接入った拘束か。入った直後は腕を下ろしたままにする。</summary>
         internal bool HaulHandoff { get; set; }
 
+        /// <summary>検証用: この羽交い締めが引き起こしから渡されたものか（-grablog の比較用）。</summary>
+        internal bool HaulHandoffSource { get; set; }
+
         /// <summary>突き飛ばしから受け止めまで。新しい拘束はまだ始まっていない。</summary>
         public bool IsHandingOff { get; private set; }
 
@@ -579,8 +582,75 @@ namespace Ryona.Game
                 stats.gameObject.AddComponent<PlayerGrapple>();
         }
 
+        float _grabLogAt;
+
+        /// <summary>
+        /// 検証用（<c>-grablog</c>）: 羽交い締め中、彼女の胸と掴んでいる敵の距離を 0.25 秒ごとに出す。
+        /// 引き起こし経由の羽交い締めがズレて見える件の比較用。
+        /// </summary>
+        void LogBackHoldGap()
+        {
+            if (!IsGrappled || Kind != GrappleKind.Back || Captor == null || Time.unscaledTime < _grabLogAt ||
+                !LaunchOptions.Has("-grablog"))
+                return;
+            _grabLogAt = Time.unscaledTime + 0.25f;
+            var rig = GetComponentInChildren<ProceduralRig>();
+            if (rig == null || !rig.Ready)
+                return;
+            Vector3 chest = rig.Chest.position;
+            Vector3 c = Captor.transform.position;
+            float gap = new Vector2(chest.x - c.x, chest.z - c.z).magnitude;
+            Vector3 lean = rig.Chest.position - rig.Hips.position;
+            float leanFwd = Vector3.Dot(new Vector3(lean.x, 0f, lean.z), transform.forward);
+            var fig = Captor.GetComponent<EnemyFigure>();
+            float chestGap = -1f, wristL = -1f, wristR = -1f;
+            if (fig != null && fig.ChestBone != null)
+            {
+                Vector3 cc = fig.ChestBone.position;
+                chestGap = new Vector2(chest.x - cc.x, chest.z - cc.z).magnitude;
+                wristL = Vector3.Distance(fig.WristBone(true).position, rig.LUpperArm.position);
+                wristR = Vector3.Distance(fig.WristBone(false).position, rig.RUpperArm.position);
+            }
+            GameLog.Log($"[BackGap] held={_session.HeldSeconds:F2} chestToChest={chestGap:F2} " +
+                        $"wristToArm={wristL:F2}/{wristR:F2} haul={(HaulHandoffSource ? 1 : 0)} chestToCaptor={gap:F2} " +
+                        $"root={new Vector2(transform.position.x - c.x, transform.position.z - c.z).magnitude:F2} " +
+                        $"leanFwd={leanFwd:F2} captor={Captor.name} phase={Captor.Phase}");
+        }
+
+        /// <summary>検証用（<c>-haulpenlog</c>）: 羽交い締め中の彼女の頭と、敵の頭・両腕の最短距離。</summary>
+        void LogHoldHeadClearance()
+        {
+            if (!IsGrappled || Kind != GrappleKind.Back || Captor == null || !LaunchOptions.Has("-haulpenlog"))
+                return;
+            var rig = GetComponentInChildren<ProceduralRig>();
+            var fig = Captor.GetComponent<EnemyFigure>();
+            if (rig == null || !rig.Ready || rig.Head == null || fig == null || fig.HeadBone == null)
+                return;
+            Vector3 head = rig.Head.position;
+            float arm = float.MaxValue;
+            foreach (bool left in new[] { true, false })
+            {
+                Transform s = fig.ShoulderBone(left), e = fig.ElbowBone(left), w = fig.WristBone(left);
+                if (s == null || e == null || w == null)
+                    continue;
+                arm = Mathf.Min(arm, SegmentDistance(head, s.position, e.position),
+                    SegmentDistance(head, e.position, w.position));
+            }
+            GameLog.Log($"[HoldPen] held={_session.HeldSeconds:F2} arm={arm:F2} " +
+                        $"enemyHead={Vector3.Distance(head, fig.HeadBone.position):F2} haul={(HaulHandoffSource ? 1 : 0)}");
+        }
+
+        static float SegmentDistance(Vector3 p, Vector3 a, Vector3 b)
+        {
+            Vector3 ab = b - a;
+            float t = ab.sqrMagnitude > 1e-8f ? Mathf.Clamp01(Vector3.Dot(p - a, ab) / ab.sqrMagnitude) : 0f;
+            return Vector3.Distance(p, a + ab * t);
+        }
+
         void Update()
         {
+            LogBackHoldGap();
+            LogHoldHeadClearance();
             // 壁押さえつけの見た目は、掴まれていなくても抜けきるまで減衰させる。
             // 減衰は戻り（WallExitSeconds）と同じ速さにする。姿勢だけ先に抜けると、
             // 位置が壁際に残っているのに立ち姿で横滑りして見える（実測）。
@@ -760,14 +830,14 @@ namespace Ryona.Game
         }
 
         /// <summary>掴まれる。外部（敵の掴み攻撃）から呼ぶ。掴みは背後からだけ。</summary>
-        public void Begin(EnemyBrain captor, GrappleKind kind = GrappleKind.Back) =>
+        public bool Begin(EnemyBrain captor, GrappleKind kind = GrappleKind.Back) =>
             BeginHold(captor, kind, blendContact: false);
 
-        internal void BeginContact(EnemyBrain captor, GrappleKind kind) =>
+        internal bool BeginContact(EnemyBrain captor, GrappleKind kind) =>
             BeginHold(captor, kind, blendContact: true);
 
         /// <summary>手首の輪を掴まれ、離れた位置から相手の前へ引き寄せられる。</summary>
-        internal void BeginPull(EnemyBrain captor, GrappleKind kind) =>
+        internal bool BeginPull(EnemyBrain captor, GrappleKind kind) =>
             BeginHold(captor, kind, blendContact: true, contactSeconds: WristPullSeconds);
 
     }

@@ -81,6 +81,8 @@ namespace Ryona.Game
             SetFill(_hpFill, state.Hp / state.MaxHp);
 
             UpdateDownGauges(state);
+            // シーンに保存された先頭の敵が倒れていても、生存している敵を指すようにする。
+            ResolveEnemy();
 
             if (Enemy != null && Enemy.State != null)
             {
@@ -90,7 +92,6 @@ namespace Ryona.Game
                     ? new Color(1f, 0.55f, 0.35f, 0.95f)
                     : TextColor;
             }
-
             if (Player.IsDead)
             {
                 _statusText.text = "倒れた ─ R で復帰";
@@ -118,6 +119,29 @@ namespace Ryona.Game
             UpdateLockHint();
             UpdateGrapple();
             UpdateWristLock();
+        }
+
+        void ResolveEnemy()
+        {
+            if (Enemy != null && Enemy.State != null && Enemy.IsAlive)
+                return;
+
+            EnemyBrain best = null;
+            float bestDistance = float.MaxValue;
+            foreach (var e in Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            {
+                if (e == null || e.State == null || !e.IsAlive)
+                    continue;
+                float d = Player != null
+                    ? Vector3.Distance(e.transform.position, Player.transform.position)
+                    : 0f;
+                if (d < bestDistance)
+                {
+                    bestDistance = d;
+                    best = e;
+                }
+            }
+            Enemy = best;
         }
 
         /// <summary>

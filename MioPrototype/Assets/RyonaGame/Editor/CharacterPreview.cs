@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Ryona.Game;
 using UniVRM10;
 using UnityEditor;
@@ -19,6 +19,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Capture Character Preview")]
         public static void Capture()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
 
             if (!File.Exists(vrmPath))
@@ -37,6 +41,11 @@ namespace Ryona.EditorTools
                 // 編集モードでは ImmediateCaller が使われるので同期的に完了する
                 vrm = Vrm10.LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                     .GetAwaiter().GetResult();
+                    if (vrm == null)
+                    {
+                        Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                        return;
+                    }
             }
             catch (System.Exception e)
             {
@@ -101,6 +110,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Debug/Clip Test")]
         public static void ClipTest()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -114,6 +127,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var rig = vrm.gameObject.AddComponent<ProceduralRig>();
             rig.Capture();
@@ -193,6 +211,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Debug/Material Id Test")]
         public static void MaterialIdTest()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
             {
@@ -206,6 +228,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var rig = vrm.gameObject.AddComponent<ProceduralRig>();
             rig.Capture();
@@ -276,6 +303,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Debug/Crotch Check")]
         public static void CrotchCheck()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
                 return;
@@ -285,6 +316,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var body = System.Array.Find(vrm.GetComponentsInChildren<SkinnedMeshRenderer>(), r => r.name == "Body");
             if (body == null)
@@ -367,6 +403,10 @@ namespace Ryona.EditorTools
         [MenuItem("Ryona/Debug/Pants Only")]
         public static void PantsOnly()
         {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
             string vrmPath = Path.Combine(Application.dataPath, "StreamingAssets", VrmName);
             if (!File.Exists(vrmPath))
                 return;
@@ -377,6 +417,11 @@ namespace Ryona.EditorTools
             Vrm10Instance vrm = Vrm10
                 .LoadPathAsync(vrmPath, canLoadVrm0X: true, showMeshes: true)
                 .GetAwaiter().GetResult();
+                if (vrm == null)
+                {
+                    Debug.LogError("[Ryona] VRM の読み込みに失敗したため中止します");
+                    return;
+                }
 
             var rig = vrm.gameObject.AddComponent<ProceduralRig>();
             rig.Capture();
