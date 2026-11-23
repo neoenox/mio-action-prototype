@@ -27,6 +27,57 @@ namespace Ryona.Game
         Vector3 _splitCaptorAnchor;
         Vector3 _splitAssistAnchor;
         float _nextSplitLog;
+        Transform _herHead;
+        Vector3 _headFrameShift;
+
+        /// <summary>頭をここより画面の内側に収める（画面の中心からの比率。1 = 画面の端）。</summary>
+        const float HeadSafeFrame = 0.70f;
+
+        /// <summary>
+        /// 二人・3 人がかりの固定の構図で、彼女の頭が画面の端へ寄ったら、注視点を頭の方へずらして
+        /// 枠内へ戻す。構図は入った瞬間の位置関係で決めるので、締めの打撃で首が大きく振れると
+        /// 顔が枠の外へ出た（テスト実測: 3 人がかりの最後に 0.2 秒以上、画面内 1.00→0.20）。
+        /// 頭が枠内にある間は何もしない（ずらし量は緩く 0 へ戻す）。
+        /// </summary>
+        void KeepHeadInFrame(Transform pinned, Vector3 shot, ref Vector3 target)
+        {
+            if (_herHead == null)
+            {
+                var anim = pinned.GetComponentInChildren<CharacterAnimator>();
+                if (anim != null && anim.Rig != null && anim.Rig.Ready)
+                    _herHead = anim.Rig.Head;
+            }
+            var cam = Camera.main;
+            if (_herHead == null || cam == null)
+                return;
+
+            Vector3 wanted = Vector3.zero;
+            Vector3 head = _herHead.position + Vector3.up * 0.06f;
+            float tanV = Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
+            float tanH = tanV * cam.aspect;
+            // 今のずらし量を含めた構図で、頭が安全な枠に入るまで注視点を頭へ寄せる。
+            for (float t = 0f; t <= 0.81f; t += 0.1f)
+            {
+                Vector3 aim = target + (head - target) * t;
+                Vector3 forward = aim - shot;
+                if (forward.sqrMagnitude < 1e-6f)
+                    break;
+                Quaternion look = Quaternion.LookRotation(forward.normalized, Vector3.up);
+                Vector3 local = Quaternion.Inverse(look) * (head - shot);
+                if (local.z <= 0.05f)
+                    break;
+                float x = local.x / (local.z * tanH);
+                float y = local.y / (local.z * tanV);
+                wanted = (head - target) * t;
+                if (Mathf.Abs(x) <= HeadSafeFrame && Mathf.Abs(y) <= HeadSafeFrame)
+                    break;
+            }
+            // 打撃ごとに画が跳ねないよう緩く追う（寄せるのは速く、戻すのはゆっくり）。
+            // 締めで崩れ落ちる頭は速いので、寄せは 12/s（6/s では画面の下端 -0.94 まで遅れた）。
+            float rate = wanted.sqrMagnitude > _headFrameShift.sqrMagnitude ? 12f : 1.5f;
+            _headFrameShift = Vector3.Lerp(_headFrameShift, wanted, 1f - Mathf.Exp(-rate * Time.unscaledDeltaTime));
+            target += _headFrameShift;
+        }
 
         /// <summary>
         /// 壁押さえつけ（膝・猶予）のカメラ位置（彼女と拘束役の間の注視点からのずれ、m）。
@@ -55,6 +106,7 @@ namespace Ryona.Game
             {
                 _rearFraming = 0f;
                 _splitFramed = false;
+                _headFrameShift = Vector3.zero;
                 return;
             }
 
@@ -63,6 +115,7 @@ namespace Ryona.Game
             {
                 // 拘束が途中で解けたら、次の Y 字は基準を取り直してから始める。
                 _splitFramed = false;
+                _headFrameShift = Vector3.zero;
                 return;
             }
 
@@ -231,6 +284,7 @@ namespace Ryona.Game
                         splitTarget.y += 0.03f * lowering;
                         splitShot.y += 0.06f * lowering;
                         splitShot = splitTarget + (splitShot - splitTarget) * (1f - 0.40f * _splitPush);
+                        KeepHeadInFrame(pinned, splitShot, ref splitTarget);
 
                         // Y 字に入る瞬間は、押さえつけの画から 1 回だけ意図的にカットする。
                         // 角度で補間すると拘束役の背中の後ろを通り、顔が隠れる（実測 wallpin #193〜#197）。
@@ -250,6 +304,7 @@ namespace Ryona.Game
                     }
 
                     _splitFramed = false;
+                    _headFrameShift = Vector3.zero;
                     _splitAssistRef = null;
                     _splitPush = 0f;
                     _camera.RequestCinematicShot(heldShot, heldTarget);

@@ -293,8 +293,12 @@ namespace Ryona
         /// <summary>3 人がかりの間、カメラを引く量（m）。3 人が画面に収まるように。</summary>
         public const float WallGangCameraBack = 0.55f;
 
-        /// <summary>3 人がかりの間、カメラの狙いを 3 人目の側（画面右）へ寄せる量（m）。</summary>
-        public const float WallGangCameraShift = 0.30f;
+        /// <summary>
+        /// 3 人がかりの間、カメラの狙いを 3 人目の側（画面右）へ寄せる量（m）。
+        /// 0.30 では拘束役の体で彼女の顔が隠れるコマが増え、顔が読めるコマが 70〜76%（下限 75%）だった。
+        /// 0.45 で 68%、0.15 で 79〜80%（WallPinRuntimeTests 実測 2026-11-23）。
+        /// </summary>
+        public const float WallGangCameraShift = 0.15f;
 
         /// <summary>3 人目の蹴りの威力の倍率。</summary>
         public const float WallGangKickScale = 0.9f;
