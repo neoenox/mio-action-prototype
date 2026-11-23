@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using UnityEngine;
 
@@ -59,7 +59,7 @@ namespace Ryona.Game
         {
             WallAssistCandidate = null;
             float bestDistance = 5f;
-            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var enemy in EnemyRegistry.All)
             {
                 if (enemy == null || enemy == Captor || !enemy.isActiveAndEnabled || !enemy.IsAlive ||
                     enemy.IsRising || enemy.IsHolding || enemy.IsPinning || enemy.MoveSpeed <= 0f)
@@ -183,7 +183,7 @@ namespace Ryona.Game
                 ? Vector3.Distance(best.transform.position, transform.position) : 5f;
             if (best == null)
             {
-                foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+                foreach (var enemy in EnemyRegistry.All)
                 {
                     if (enemy == null || enemy == captor || !enemy.isActiveAndEnabled || !enemy.IsAlive ||
                         enemy.IsRising || enemy.IsHolding || enemy.IsHandOffLocked || enemy.IsPinning ||
@@ -262,14 +262,15 @@ namespace Ryona.Game
                     yield break;
                 }
 
-                // アシストから始めて交互に打つ。6 発目（締めの膝入れ）は拘束役。
-                // カメラは既定でアシスト側にあるので、アシストが膝を入れると、手前の体が
-                // 彼女の腹を隠す。カメラから遠い側の拘束役が入れれば、腹へ入る膝が見える。
+                // アシストから始めて交互に打つ。6 発目（締め）も膝ではなく腹パン。
+                // カメラは既定でアシスト側にあるので、カメラから遠い拘束役が締めを打つと腹が見える。
                 EnemyBrain puncher = i % 2 == 0 ? WallAssist : Captor;
                 _session.SplitPuncher = puncher;
                 // 拘束役は右で彼女の左腕を持つので空き手は左。アシストは左で右腕を持つので空き手は右。
                 _session.SplitPunchLeft = puncher == Captor;
-                _session.SplitFinisher = CombatConstants.IsWallSplitFinisher(i);
+
+                // 二人がかりは全発が拳。前の段階の脚打ちフラグが残らないように落とす。
+                _session.SplitFinisher = false;
                 _session.SplitPunchAge = 0f;
 
                 // 段階（序盤→中盤→締め）ごとに振りかぶり・間隔・重さが変わる。
@@ -319,7 +320,6 @@ namespace Ryona.Game
             // 解くのは 3 人がかりが終わったあと（WallSequenceRoutine）。
             _session.SplitPuncher = null;
             _session.SplitPunchAge = -1f;
-            _session.SplitFinisher = false;
             _session.SplitPunchesDone = true;
         }
 
@@ -472,7 +472,7 @@ namespace Ryona.Game
             EnemyBrain best = null;
             // 画面内の敵なら歩いて来られる距離（歩きで約 4 秒）。
             float bestDistance = 10f;
-            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var enemy in EnemyRegistry.All)
             {
                 if (enemy == null || enemy == Captor || enemy == _session.Assist)
                     continue;
@@ -772,6 +772,16 @@ namespace Ryona.Game
 
         void TickWallSplitWeight(float dt)
         {
+            // 二体目が近づく段階で腕へ手を伸ばし、到着で握る。これがないと
+            // 二体目が横に立った瞬間から既に掴んでいるように見える（実測）。
+            float gripTarget = 0f;
+            if (IsWallSplitStarted && WallAssist != null && IsWallPin)
+            {
+                float distance = Vector3.Distance(WallAssist.transform.position, transform.position);
+                gripTarget = _session.SplitReady ? 1f : Mathf.Clamp01(1f - distance / 2.5f) * 0.6f;
+            }
+            _wallAssistGrip = Mathf.MoveTowards(_wallAssistGrip, gripTarget, dt / 0.35f);
+
             _session.TickSplitWeight(dt);
             _session.TickGangWeight(dt);
         }

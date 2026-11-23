@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using System.Collections.Generic;
 using AttackId = Ryona.Game.EnemyBrain.AttackId;
 
@@ -67,38 +67,6 @@ namespace Ryona.Game
             EnemyFigure.SettleElbowHinge(upper, elbow, wrist);
             Quaternion aimedElbow = elbow.rotation;
             upper.rotation = Quaternion.Slerp(previousUpper, upper.rotation, weight);
-            elbow.rotation = Quaternion.Slerp(previousElbow, aimedElbow, weight);
-        }
-
-        /// <summary>
-        /// 締めの膝入れの空き手。彼女の腰（自分側）を掴んで膝へ引き寄せる。
-        /// 構え（<see cref="Guard"/>）のままだと、沈んだ体へ向けて肘を大きく折ることになり、
-        /// 前腕が自分の腹の前へ曲がる（実測）。<paramref name="weight"/> は Guard の上に重ねる割合。
-        /// </summary>
-        public static void Pull(EnemyFigure figure, bool left, Vector3 her, Vector3 front,
-            float side, float weight, Transform body)
-        {
-            if (weight <= 0.001f)
-                return;
-
-            var upper = figure.ShoulderBone(left);
-            var elbow = figure.ElbowBone(left);
-            var wrist = figure.WristBone(left);
-            if (upper == null || elbow == null || wrist == null)
-                return;
-
-            Vector3 goal = her + Vector3.up * 0.95f + front * 0.08f + Vector3.right * (side * 0.17f);
-            // 肘は体の外側・下へ。内側（自分の腹の方）へ折らない。
-            Vector3 outward = body.right * (left ? -1f : 1f);
-            Vector3 pole = upper.position + outward * 0.30f - Vector3.up * 0.30f;
-
-            Quaternion previousUpper = upper.rotation;
-            Quaternion previousElbow = elbow.rotation;
-            ProceduralRig.SolveTwoBone(upper, elbow, wrist, goal, pole, body.right);
-            EnemyFigure.SettleElbowHinge(upper, elbow, wrist);
-            Quaternion aimedUpper = upper.rotation;
-            Quaternion aimedElbow = elbow.rotation;
-            upper.rotation = Quaternion.Slerp(previousUpper, aimedUpper, weight);
             elbow.rotation = Quaternion.Slerp(previousElbow, aimedElbow, weight);
         }
 

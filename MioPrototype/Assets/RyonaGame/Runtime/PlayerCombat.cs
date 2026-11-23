@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 
 namespace Ryona.Game
@@ -387,7 +387,7 @@ namespace Ryona.Game
             EnemyBrain best = null;
             float bestDist = AutoAimRange;
 
-            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var enemy in EnemyRegistry.All)
             {
                 if (enemy == null || !enemy.IsAlive)
                     continue;
@@ -489,7 +489,7 @@ namespace Ryona.Game
             EnemyBrain hitEnemy = null;
             float nearestGap = float.PositiveInfinity;
 
-            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var enemy in EnemyRegistry.All)
             {
                 if (enemy == null || !enemy.IsAlive)
                     continue;
@@ -663,7 +663,7 @@ namespace Ryona.Game
             float bestDist = float.MaxValue;
             center = Vector3.zero;
 
-            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var enemy in EnemyRegistry.All)
             {
                 if (enemy == null || !enemy.IsAlive)
                     continue;

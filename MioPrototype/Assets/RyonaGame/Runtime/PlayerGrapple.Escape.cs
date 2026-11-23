@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using UnityEngine;
 
@@ -68,7 +68,7 @@ namespace Ryona.Game
                 Stats.ResolveHeldBellyDown();
 
             // 拘束を解いた直後に、別の敵から即座に追撃されないようにする。
-            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var enemy in EnemyRegistry.All)
             {
                 if (enemy == null || enemy == captor || !enemy.IsAlive)
                     continue;

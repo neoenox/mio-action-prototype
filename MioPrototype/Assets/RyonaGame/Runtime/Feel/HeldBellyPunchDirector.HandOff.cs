@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Ryona.Game
 {
@@ -71,7 +71,7 @@ namespace Ryona.Game
         /// <summary>コンボ中、カメラを斜め前の構図に保つ。ヒットごとに押し直す。</summary>
         void HoldOthers(float seconds)
         {
-            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var enemy in EnemyRegistry.All)
             {
                 if (enemy == null || !enemy.IsAlive)
                     continue;
@@ -87,7 +87,7 @@ namespace Ryona.Game
         void SuppressBystanders(float seconds)
         {
             var captor = _grapple != null ? _grapple.Captor : null;
-            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var enemy in EnemyRegistry.All)
             {
                 if (enemy == null || !enemy.IsAlive || enemy == captor ||
                     enemy == _comboPuncher || enemy == _thrower ||

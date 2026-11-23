@@ -1,4 +1,4 @@
-using Ryona;
+﻿using Ryona;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -174,7 +174,7 @@ namespace Ryona.Game
             EnemyBrain best = null;
             float bestDistance = float.MaxValue;
             Vector3 her = _stats.transform.position;
-            foreach (var e in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var e in EnemyRegistry.All)
             {
                 if (e == null || !e.isActiveAndEnabled || !e.IsAlive || e.Role == EnemyRole.Tools)
                     continue;
@@ -220,7 +220,7 @@ namespace Ryona.Game
             forward = forward.sqrMagnitude > 1e-4f ? forward.normalized : Vector3.right;
 
             EnemyBrain chosen = null;
-            foreach (var e in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var e in EnemyRegistry.All)
             {
                 if (e == null || !e.isActiveAndEnabled || !e.IsAlive)
                     continue;

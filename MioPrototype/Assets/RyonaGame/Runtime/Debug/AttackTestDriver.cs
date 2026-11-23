@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Ryona.Game
 {
@@ -68,7 +68,7 @@ namespace Ryona.Game
             // 他の敵は遠ざける。近くにいるとオートエイムがそちらへ向き、
             // 固定した殴られ役ではなく別の敵を殴ってしまう。
             int far = 0;
-            foreach (var brain in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var brain in EnemyRegistry.All)
             {
                 if (brain == null || brain == _target || !brain.IsAlive)
                     continue;
@@ -112,7 +112,7 @@ namespace Ryona.Game
             EnemyBrain best = null;
             float bestDist = float.MaxValue;
 
-            foreach (var brain in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var brain in EnemyRegistry.All)
             {
                 if (brain == null || !brain.IsAlive)
                     continue;

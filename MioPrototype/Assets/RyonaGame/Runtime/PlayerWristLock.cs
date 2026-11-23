@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Ryona;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -66,7 +66,7 @@ namespace Ryona.Game
             {
                 if (_forceTest && Time.time > 2f && _stats != null)
                 {
-                    foreach (var e in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+                    foreach (var e in EnemyRegistry.All)
                     {
                         if (e != null && e.Role == EnemyRole.Tools && TryAttach(e))
                         {

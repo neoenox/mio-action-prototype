@@ -4,11 +4,13 @@
 
 ## 作業フロー（worktree 必須・2026-11-22 の指定）
 
-- **作業を開始するときは必ず worktree を作る**。メインの作業ディレクトリ（リポジトリルート）で直接変更しない。
+- **作業を開始するときは必ず worktree を作る**。メインの作業ディレクトリ（リポジトリルート）で直接変更しない。既存の worktree は再利用しない。
   - 例: `git worktree add ../ryona-action-<作業名> -b <作業ブランチ> origin/main` のち `cd ../ryona-action-<作業名>`。
-- 作業完了時は、影響バッチのテストと必要な撮影を行い、コミットしてから `gh pr create` で PR を作る。
-- PR 作成後、worktree がクリーン（`git status --porcelain` が空）なことを確認してから `git worktree remove <worktree のパス>` で安全に削除する。未コミット変更がある場合は削除しない。ブランチは PR が残るので消さない。
-- 元のディレクトリへ戻り、`gh pr merge <番号>` でマージしたあと `git switch main && git pull --ff-only` で最新化する（マージ前に最新化してもよいが、マージ後にも必ずPullする）。
+- worktree 内で変更し、コンパイル・撮影（`preview.py` / `motion_audit.py`）・ログで確認する。ローカルでテストバッチは回さない（CI が PR で全バッチを回す）。
+- コミットして push し、`gh pr create` で PR を作る。必須チェックが既知フレークで落ちている場合は一時的に外し、マージ後に必ず元へ戻す。
+- 元のディレクトリへ戻り、`gh pr merge <番号>` でマージしたあと `git switch main && git pull --ff-only` で最新化する（マージ後にも必ず Pull する）。
+- **main を最新化したら main でプレイヤーをビルドする**（`Ryona.EditorTools.PlayerBuild.BuildWindowsFromCli`）。worktree 内のビルドは検証用で、完了扱いにしない。
+- 最後に worktree がクリーン（`git status --porcelain` が空）であることを確認して `git worktree remove <worktree のパス>` で削除し、一時ブランチも整理する。未コミット変更がある場合は削除しない。
 
 ## 応答言語
 

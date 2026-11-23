@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 
 namespace Ryona.Game
@@ -154,7 +154,7 @@ namespace Ryona.Game
         {
             // VRM の読み込みを待つ前に敵を止める。
             // 待っている間に殴られると、倒れた姿勢や怯みのまま撮れてしまう。
-            foreach (var brain in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var brain in EnemyRegistry.All)
                 brain.enabled = false;
 
             if (!ShowEnemy)
@@ -178,7 +178,7 @@ namespace Ryona.Game
                 stats.RestoreAll();
 
             // 体も消す。倒れた子の目の前に立っていて、カメラを塞ぐため
-            foreach (var brain in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var brain in EnemyRegistry.All)
                 brain.enabled = false;
 
             foreach (var figure in FindObjectsByType<EnemyFigure>(FindObjectsSortMode.None))
@@ -389,7 +389,7 @@ namespace Ryona.Game
                     GameLog.Log($"[Ai] hp={stats.State.Hp:F1} " +
                               $"down={stats.State.IsDown} dead={stats.IsDead} t={Time.time:F1}");
 
-                foreach (var brain in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+                foreach (var brain in EnemyRegistry.All)
                 {
                     float dist = Vector3.Distance(brain.transform.position, anims[0].transform.position);
                     GameLog.Log($"[Ai] {brain.name} phase={brain.Phase} dist={dist:F2} " +

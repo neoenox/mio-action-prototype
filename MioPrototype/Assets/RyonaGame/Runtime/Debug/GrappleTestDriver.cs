@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using UniVRM10;
 using UnityEngine;
 
@@ -266,7 +266,7 @@ namespace Ryona.Game
             EnemyBrain target = null;
             float best = float.MaxValue;
 
-            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var enemy in EnemyRegistry.All)
             {
                 if (enemy == null || !enemy.IsAlive || enemy.IsRising)
                     continue;
@@ -327,7 +327,7 @@ namespace Ryona.Game
             {
                 // 押さえつけの確認中は、他の敵が背後から掴んで邪魔しないようにする。
                 // （背後拘束は時間切れが無いので、一度掴まれると押さえつけの機会が無くなる）
-                foreach (var other in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+                foreach (var other in EnemyRegistry.All)
                 {
                     if (other != null && other != target && other.IsAlive)
                         other.HoldFire(30f);
@@ -353,7 +353,7 @@ namespace Ryona.Game
                 ++_pinChainKnees != CombatConstants.PinKneeCount)
                 return;
 
-            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var enemy in EnemyRegistry.All)
             {
                 if (enemy == sender || !enemy.IsAlive || !enemy.isActiveAndEnabled ||
                     enemy.IsHolding || enemy.Phase == EnemyPhase.Windup || enemy.Phase == EnemyPhase.Attack ||
@@ -639,7 +639,7 @@ namespace Ryona.Game
                 return;
 
             EnemyBrain puncher = null;
-            foreach (var enemy in FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None))
+            foreach (var enemy in EnemyRegistry.All)
             {
                 if (enemy != null && enemy.IsTagPunch)
                 {

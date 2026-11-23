@@ -445,7 +445,14 @@ namespace Ryona.Tests
             var player = Object.FindFirstObjectByType<PlayerStats>();
             var combat = player.GetComponent<PlayerCombat>();
             var enemies = Object.FindObjectsByType<EnemyBrain>(FindObjectsSortMode.None);
-            foreach (var e in enemies) e.enabled = false;
+            // AI だけ止めて位置を固定する。EnemyBrain を無効にすると敵の一覧（EnemyRegistry）からも
+            // 外れて自動エイムの対象にならないので、攻撃の対象としては一覧に戻しておく
+            // （一覧の置き換え後、狙いが 0 になって落ちていた）。
+            foreach (var e in enemies)
+            {
+                e.enabled = false;
+                EnemyRegistry.Register(e);
+            }
             enemies[0].transform.position = player.transform.position + Vector3.left * 0.8f;
             enemies[1].transform.position = player.transform.position + Vector3.right * 1.5f;
             for (int i = 2; i < enemies.Length; i++)

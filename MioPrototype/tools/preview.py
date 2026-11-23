@@ -66,6 +66,10 @@ SCENARIOS = {
     # レーンの正面拘束（-nowallpin で壁版を避ける）。膝蹴りが入る。
     "frontpin": dict(args=["-grappletest", "-pintest", "-nowallpin"], burst="-pinburst",
                      frames=140, interval=0.05),
+    # ベアハッグ（正面抱え締め）。カメラの寄りを確認する。
+    "bearhug": dict(args=["-motionseq=5"], burst="-motionseqburst",
+                     frames=140, interval=0.05),
+
     # 壁 2 人がかり（Y 字）の腹パンを最後まで撮る。
     "wallsplit": dict(args=["-grappletest", "-wallpintest", "-splitcamlog"], burst="-pinburst",
                       frames=360, interval=0.05),

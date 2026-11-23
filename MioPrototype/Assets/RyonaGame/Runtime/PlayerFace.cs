@@ -754,6 +754,21 @@ namespace Ryona.Game
                 blink = 1f;
                 squeeze = 0.92f;
             }
+            // 二人目が腕を掴みに来る瞬間: 目を見開いて怯え、口を薄く開ける。
+            // 拳が入りだすと WallSplitWeight が上がってこの表情は消え、苦悶へ戻る。
+            else if (_grapple.IsWallPin && _grapple.WallAssistGrip > 0.05f && _heldImpact <= 0.05f)
+            {
+                float fear = Mathf.Clamp01(_grapple.WallAssistGrip * (1f - _grapple.WallSplitWeight));
+                brow = Mathf.Max(brow, Mathf.Lerp(86f, 98f, fear));
+                angry = 0.14f * (1f - fear);
+                sad = _worriedBrow != null ? 0f : Mathf.Lerp(0.55f, 0.92f, fear);
+                mouth = Mathf.Lerp(0.20f, 0.46f, fear);
+                grit = 0.08f;
+                blink = 0f;
+                squeeze = 0f;
+                surprised = 0.55f * fear;
+            }
+
             else if (dangle >= 0.2f)
             {
                 // フィニッシュ前のグロッキー／引き起こし晒し: 半目で意識朦朧、引き起こし時は無防備に薄く目と口が開く。
