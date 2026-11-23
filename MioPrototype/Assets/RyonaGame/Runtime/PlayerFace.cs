@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 using UniVRM10;
 
@@ -167,6 +167,24 @@ namespace Ryona.Game
         [Header("倒れている間の目")]
         [Tooltip("ダウン中は目を閉じる。倒れて気を失っているように見せる。")]
         public bool CloseEyesWhenDown = true;
+
+        /// <summary>
+        /// ダメージを受けたあとの表情（被弾の瞬間・連打の合間・グロッキー・失神）は目を閉じるのを標準にする（ユーザー指定 2026-11-23）。
+        /// 殴られる前の怯え・予見・驚きは、ダメージの表情ではないので目を開けたまま。
+        /// 場面ごとに目を開けたいときは、その分岐で個別に指定する。
+        /// </summary>
+        public bool CloseEyesWhenHurt = true;
+
+        /// <summary>
+        /// 最後にダメージを受けてから、この秒数は目を閉じたままにする（連打の合間に目が開かない）。
+        /// 拘束中とマウント中の表情に効く。自由に動いている間の被弾は、痛みの濃さで閉じる従来どおり。
+        /// </summary>
+        public float HurtEyesClosedSeconds = 1.2f;
+
+        float _lastHurtAt = -10f;
+
+        /// <summary>ダメージの直後で、目を閉じておく間か。</summary>
+        bool RecentlyHurt => CloseEyesWhenHurt && Time.unscaledTime - _lastHurtAt < HurtEyesClosedSeconds;
 
         [Tooltip("ダウンの何割まで進んだら目を閉じるか（0=倒れ始め、1=倒れ終わり）。")]
         public float EyeCloseAtDown = 0.38f;
@@ -521,6 +539,9 @@ namespace Ryona.Game
 
         void OnHitReceived(HitResult result)
         {
+            if (result.Damage > 0f)
+                _lastHurtAt = Time.unscaledTime;
+
             bool heldFace = UsesHeldFace;
             // 締め付けは密着のタイミングで表情を作る。
             if (heldFace && _grapple.IsBearHugContact &&
@@ -754,19 +775,21 @@ namespace Ryona.Game
                 blink = 1f;
                 squeeze = 0.92f;
             }
-            // 二人目が腕を掴みに来る瞬間: 目を見開いて怯え、口を薄く開ける。
-            // 拳が入りだすと WallSplitWeight が上がってこの表情は消え、苦悶へ戻る。
-            else if (_grapple.IsWallPin && _grapple.WallAssistGrip > 0.05f && _heldImpact <= 0.05f)
+            // 二人目に手首を掴まれた瞬間の「えっ？（なにするの？）」。最初の拳が入るまで続く。
+            // 近づいて来る間は気付かない（掴まれて初めて驚く。最初から驚いていると違和感が強い。ユーザー指定）。
+            else if (_grapple.IsWallPin && _heldImpact <= 0.05f && _grapple.WallEntranceSurprise > 0.05f)
             {
-                float fear = Mathf.Clamp01(_grapple.WallAssistGrip * (1f - _grapple.WallSplitWeight));
-                brow = Mathf.Max(brow, Mathf.Lerp(86f, 98f, fear));
-                angry = 0.14f * (1f - fear);
-                sad = _worriedBrow != null ? 0f : Mathf.Lerp(0.55f, 0.92f, fear);
-                mouth = Mathf.Lerp(0.20f, 0.46f, fear);
-                grit = 0.08f;
+                // 「えっ？（なにするの？）」: 眉を上げ、目を丸くして、口が小さく「え」の形に開く。
+                // 怖がる前の戸惑いなので、眉は寄せず（Sad 弱め）、歯は食いしばらない。
+                float shock = Mathf.Clamp01(_grapple.WallEntranceSurprise);
+                brow = Mathf.Max(brow, Mathf.Lerp(80f, 100f, shock));
+                angry = 0f;
+                sad = _worriedBrow != null ? 0f : 0.30f * shock;
+                mouth = Mathf.Lerp(0.10f, 0.26f, shock);
+                grit = 0f;
                 blink = 0f;
                 squeeze = 0f;
-                surprised = 0.55f * fear;
+                surprised = 0.85f * shock;
             }
 
             else if (dangle >= 0.2f)
@@ -778,7 +801,7 @@ namespace Ryona.Game
                 sad = _worriedBrow != null ? 0f : Mathf.Lerp(0.55f, 0.72f, hoist);
                 mouth = Mathf.Lerp(Mathf.Lerp(0.42f, 0.26f, dangle), 0.36f, hoist);
                 grit = 0.10f;
-                blink = Mathf.Lerp(0.78f * dangle, 0.58f, hoist);
+                blink = CloseEyesWhenHurt ? 1f : Mathf.Lerp(0.78f * dangle, 0.58f, hoist);
                 squeeze = 0f;
             }
             else if (heldFacePunch && brace > 0.02f)
@@ -789,8 +812,11 @@ namespace Ryona.Game
                 sad = _worriedBrow != null ? 0f : Mathf.Lerp(0.85f, 0.70f, faceFatigue);
                 mouth = Mathf.Lerp(0.32f, 0.44f, faceFatigue);
                 grit = Mathf.Lerp(0.60f, 0.25f, faceFatigue);
-                blink = Mathf.Lerp(_heldImpact, 0.42f * faceFatigue, brace);
-                squeeze = _heldImpact;
+                blink = CloseEyesWhenHurt ? 1f : Mathf.Lerp(_heldImpact, 0.42f * faceFatigue, brace);
+                // 目を閉じたまま、序盤は痛みで力が入り、打数とともに抜けていく。
+                squeeze = CloseEyesWhenHurt
+                    ? Mathf.Max(_heldImpact, 0.35f * (1f - faceFatigue))
+                    : _heldImpact;
                 surprised = 0.22f * (1f - faceFatigue) * (1f - blink);
             }
             else if (heldBelly || dread > 0.1f)
@@ -802,8 +828,10 @@ namespace Ryona.Game
                 sad = _worriedBrow != null ? 0f : Mathf.Lerp(0.65f, 0.90f, dreadOrLift);
                 mouth = Mathf.Lerp(0.18f, 0.38f + 0.10f * bellyFatigue, dreadOrLift);
                 grit = Mathf.Max(0.70f * brace, heldBelly ? 0.55f : 0.25f * dread);
-                blink = _heldImpact;
-                squeeze = _heldImpact;
+                // 腹パンの合間（ダメージの後）は目を閉じたまま耐える。予見（殴られる前）は目を開けて相手を見る。
+                bool hurtClosed = CloseEyesWhenHurt && heldBelly;
+                blink = hurtClosed ? 1f : _heldImpact;
+                squeeze = hurtClosed ? Mathf.Max(_heldImpact, 0.40f * (1f - 0.5f * bellyFatigue)) : _heldImpact;
                 surprised = 0.26f * dreadOrLift * (1f - blink);
             }
             else if (_grapple.Kind == GrappleKind.AnkleGrab)
@@ -829,6 +857,13 @@ namespace Ryona.Game
                 squeeze = agony;
                 if (_grapple.Kind == GrappleKind.Pin && !_grapple.IsWallPin)
                     surprised = 0.22f * _grapple.KneeResetLift * (1f - blink);
+            }
+
+            // ダメージの直後は、どの表情でも目を閉じたまま（連打の合間に目が開かない）。
+            if (RecentlyHurt)
+            {
+                blink = 1f;
+                surprised = 0f;
             }
 
             WriteShape(new PainShape(angry, sad, mouth, grit, Mathf.Max(blink, squeeze)), 1f, blink,
@@ -866,7 +901,7 @@ namespace Ryona.Game
                 sad = _worriedBrow != null ? 0f : 0.55f * fear;
                 mouth = 0.28f * fear;
                 grit = 0.08f * fear;
-                blink = Mathf.Lerp(_eyeClose, 0.78f, fear);
+                blink = Mathf.Lerp(_eyeClose, CloseEyesWhenHurt ? 1f : 0.78f, fear);
                 squeeze = 0f;
             }
             else if (hit >= 0.08f)
@@ -892,6 +927,13 @@ namespace Ryona.Game
                 blink = Mathf.Lerp(_eyeClose, 0.35f * fatigue, fear);
                 squeeze = 0f;
                 surprised = 0.30f * (1f - 0.7f * fatigue) * fear * (1f - blink);
+            }
+
+            // ダメージの直後は目を閉じたまま（振りかぶりを見上げるのは、間が空いてから）。
+            if (RecentlyHurt)
+            {
+                blink = Mathf.Max(blink, Mathf.Lerp(_eyeClose, 1f, fear));
+                surprised = 0f;
             }
 
             WriteShape(new PainShape(angry, sad, mouth, grit, Mathf.Max(blink, squeeze)),

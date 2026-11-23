@@ -226,7 +226,8 @@ namespace Ryona.Game
         {
             // アシストが横へ着くまで待つ（来なければ通常の膝蹴りへ戻す）。
             // 二人は彼女の正面側まで回り込むので、横に並ぶより距離がある（実測 1.7〜2.2m）。
-            while (_session.SplitAssistAge < 2.4f && !_session.SplitReady &&
+            // 二体目はおもむろに歩いて来るので、待ちは長めに取る（呼んでから約 3 秒で着く）。
+            while (_session.SplitAssistAge < 3.6f && !_session.SplitReady &&
                    WallAssist != null && WallAssist.IsAlive && WallAssist.isActiveAndEnabled)
             {
                 _session.SplitAssistAge += Time.deltaTime;
@@ -352,6 +353,7 @@ namespace Ryona.Game
             _session.WallPauseActive = false;
 
             _wallKneesDone = false;
+            ClearWallEntrance();
             _session.WallSequenceActive = true;
             _session.WallPauseActive = false;
             _wallSeq = StartCoroutine(WallSequenceRoutine());
@@ -386,6 +388,7 @@ namespace Ryona.Game
             _wallSeq = null;
             _session.WallSequenceActive = false;
             _session.WallPauseActive = false;
+            ClearWallEntrance();
 
             // 二人がかりの最中にダウン・死亡・引き渡しで抜けた場合、
             // EndWallGang だけではアシストが壁アシスト状態で残る。
@@ -424,7 +427,10 @@ namespace Ryona.Game
             if (!WallSequenceAlive)
                 yield break;
 
-            // 3. 拘束が続く。
+            // 膝が終わったら、待たせていた二体目を呼ぶ。一拍おいて画面外から歩いて来る。
+            CallWallEntrance();
+
+            // 3. 拘束が続く（二体目が歩いて来る間）。
             yield return WallPause(CombatConstants.WallPauseInputsAfterKnees);
             if (!WallSequenceAlive)
                 yield break;
@@ -753,6 +759,7 @@ namespace Ryona.Game
         void EndWallSplit()
         {
             _wallSplit = null;
+            ClearWallEntrance();
             var assist = WallAssist;
             var candidate = WallAssistCandidate;
             var third = _session.Third;
@@ -774,10 +781,28 @@ namespace Ryona.Game
         {
             // 二体目が近づく段階で腕へ手を伸ばし、到着で握る。これがないと
             // 二体目が横に立った瞬間から既に掴んでいるように見える（実測）。
-            float gripTarget = 0f;
-            if (IsWallSplitStarted && WallAssist != null && IsWallPin)
+            if (_wallEntranceCalled)
+                _wallEntranceAge += dt;
+
+            // 二体目が右手首を掴んだ瞬間から数える（「えっ？」の起点）。
+            if (IsWallPin && _session.SplitWeightR > 0.001f)
             {
-                float distance = Vector3.Distance(WallAssist.transform.position, transform.position);
+                if (_wallGrabAge < 0f)
+                {
+                    _wallGrabAge = 0f;
+                    GameLog.Log("[WallEntrance] grabbed right wrist");
+                }
+                else
+                    _wallGrabAge += dt;
+            }
+            else
+                _wallGrabAge = -1f;
+
+            float gripTarget = 0f;
+            EnemyBrain entrant = WallEntrant;
+            if ((IsWallSplitStarted || IsWallEntranceWalking) && entrant != null && IsWallPin)
+            {
+                float distance = Vector3.Distance(entrant.transform.position, transform.position);
                 gripTarget = _session.SplitReady ? 1f : Mathf.Clamp01(1f - distance / 2.5f) * 0.6f;
             }
             _wallAssistGrip = Mathf.MoveTowards(_wallAssistGrip, gripTarget, dt / 0.35f);

@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Ryona.Game
 {
@@ -23,11 +23,15 @@ namespace Ryona.Game
             Vector3 head = Rig.Head.position + transform.forward * 0.09f;
             Vector3 right = transform.right;
             // 壁の二人がかり（Y 字）では、手首を左右へ広げて二人が片腕ずつ掴める形にする。
-            float half = Mathf.Lerp(0.08f, CombatConstants.WallSplitHandHalf, Grapple.WallSplitWeight);
+            // 腕は片方ずつ取られる: 右腕（二人目）が先、左腕（拘束役）があと。
+            float splitL = Grapple.WallSplitWeight;
+            float splitR = Mathf.Max(splitL, Grapple.WallSplitWeightR);
+            float halfL = Mathf.Lerp(0.08f, CombatConstants.WallSplitHandHalf, splitL);
+            float halfR = Mathf.Lerp(0.08f, CombatConstants.WallSplitHandHalf, splitR);
 
             // 引き上げ中は頭の上。貼り付くと同時に、腕を上へ伸ばした位置へ移る。
-            Vector3 goalL = head + Vector3.up * 0.24f - right * half;
-            Vector3 goalR = head + Vector3.up * 0.24f + right * half;
+            Vector3 goalL = head + Vector3.up * 0.24f - right * halfL;
+            Vector3 goalR = head + Vector3.up * 0.24f + right * halfR;
 
             Vector3 normal = Vector3.back;
             bool hasWall = Grapple.HasWallFace;
@@ -42,8 +46,8 @@ namespace Ryona.Game
                 // 体が揺れても手首は壁に残し、腕だけが伸び縮みする。
                 Vector3 root = transform.position;
                 Vector3 stuckBase = root + Vector3.up * WallStickHeight;
-                Vector3 stuckL = WallSurfacePoint(stuckBase - right * half, normal, WallHandGap);
-                Vector3 stuckR = WallSurfacePoint(stuckBase + right * half, normal, WallHandGap);
+                Vector3 stuckL = WallSurfacePoint(stuckBase - right * halfL, normal, WallHandGap);
+                Vector3 stuckR = WallSurfacePoint(stuckBase + right * halfR, normal, WallHandGap);
                 goalL = Vector3.Lerp(goalL, stuckL, adhere);
                 goalR = Vector3.Lerp(goalR, stuckR, adhere);
             }
@@ -59,14 +63,14 @@ namespace Ryona.Game
             // 二人がかり（Y 字）では手首を壁から離し、正面に立つ二人へ差し出す。
             // 壁へ貼り付けたままだと二人は彼女の真横に並ぶしかなく、腹パンが横から
             // 棒で叩く形になる（実測）。手首を正面へ出すと二人が前に立てる。
-            float split = Grapple.WallSplitWeight;
+            float split = splitL;
             Vector3 splitBase = transform.position + Vector3.up * 1.40f + transform.forward * 0.34f;
-            if (split > 0.001f)
+            if (splitR > 0.001f)
             {
-                Vector3 splitL = splitBase - right * CombatConstants.WallSplitHandHalf;
-                Vector3 splitR = splitBase + right * CombatConstants.WallSplitHandHalf;
-                goalL = Vector3.Lerp(goalL, splitL, split);
-                goalR = Vector3.Lerp(goalR, splitR, split);
+                Vector3 splitGoalL = splitBase - right * CombatConstants.WallSplitHandHalf;
+                Vector3 splitGoalR = splitBase + right * CombatConstants.WallSplitHandHalf;
+                goalL = Vector3.Lerp(goalL, splitGoalL, splitL);
+                goalR = Vector3.Lerp(goalR, splitGoalR, splitR);
             }
 
             // 3 人がかり: 誰も彼女の手首を持たない。壁に寄りかかってグロッキーになり、両腕がだらんと下がる。
@@ -86,15 +90,13 @@ namespace Ryona.Game
             // 肘は外へ開き、**少し後ろ**へ。前へ出すと腕が顔の前に来て表情が隠れる
             // （実測: 正面寄りのカメラで腕が顔を覆った）。後ろへ逃がすと腕が頭の枠になる。
             Vector3 poleBase = head + Vector3.up * 0.02f - transform.forward * 0.10f;
-            if (split > 0.001f)
-            {
-                // 手首が正面にあるので、肘は後ろではなく外へ開く。
-                Vector3 splitPole = head + Vector3.up * 0.02f + transform.forward * 0.02f;
-                poleBase = Vector3.Lerp(poleBase, splitPole, split);
-            }
+            // 手首が正面にあるので、肘は後ろではなく外へ開く。
+            Vector3 splitPole = head + Vector3.up * 0.02f + transform.forward * 0.02f;
+            Vector3 poleBaseL = Vector3.Lerp(poleBase, splitPole, splitL);
+            Vector3 poleBaseR = Vector3.Lerp(poleBase, splitPole, splitR);
             float poleSpread = Mathf.Lerp(0.50f, 0.62f, adhere);
-            Vector3 poleL = poleBase - right * poleSpread;
-            Vector3 poleR = poleBase + right * poleSpread;
+            Vector3 poleL = poleBaseL - right * poleSpread;
+            Vector3 poleR = poleBaseR + right * poleSpread;
             if (gang > 0.001f)
             {
                 // 下がった腕の肘は、体の外側・少し後ろへ。
@@ -112,7 +114,8 @@ namespace Ryona.Game
             // 「壁へ手を突っ張っている」に見えない（実測）。二人がかりでは手首が正面へ出るので
             // 壁の掌は抜く（二人が手首を掴んでいる）。
             float wallPalm = hasWall ? adhere * (1f - split) : 0f;
-            if (wallPalm > 0.01f)
+            float wallPalmR = hasWall ? adhere * (1f - splitR) : 0f;
+            if (wallPalm > 0.01f || wallPalmR > 0.01f)
             {
                 Vector3 intoWall = -normal;
                 Quaternion leftPose = Rig.LHand.rotation;
@@ -120,20 +123,19 @@ namespace Ryona.Game
                 Rig.AlignPalm(true, intoWall, Vector3.up);
                 Rig.AlignPalm(false, intoWall, Vector3.up);
                 Rig.LHand.rotation = Quaternion.Slerp(leftPose, Rig.LHand.rotation, wallPalm);
-                Rig.RHand.rotation = Quaternion.Slerp(rightPose, Rig.RHand.rotation, wallPalm);
+                Rig.RHand.rotation = Quaternion.Slerp(rightPose, Rig.RHand.rotation, wallPalmR);
 
                 // 手首は壁から離したので、そのままだと掌が浮いて見える。手首を軸に指先だけを
                 // 壁へ寄せる（掌は壁に平行から少し傾くが、指先が触れて「押し当てている」形になる）。
-                float tilt = WallHandTilt * wallPalm * (1f - Grapple.WallTossLower);
-                if (tilt > 0.01f)
+                float tiltL = WallHandTilt * wallPalm * (1f - Grapple.WallTossLower);
+                float tiltR = WallHandTilt * wallPalmR * (1f - Grapple.WallTossLower);
+                Vector3 tiltAxis = Vector3.Cross(Vector3.up, intoWall);
+                if (tiltAxis.sqrMagnitude > 1e-4f)
                 {
-                    Vector3 tiltAxis = Vector3.Cross(Vector3.up, intoWall);
-                    if (tiltAxis.sqrMagnitude > 1e-4f)
-                    {
-                        Quaternion tiltRotation = Quaternion.AngleAxis(tilt, tiltAxis.normalized);
-                        Rig.LHand.rotation = tiltRotation * Rig.LHand.rotation;
-                        Rig.RHand.rotation = tiltRotation * Rig.RHand.rotation;
-                    }
+                    if (tiltL > 0.01f)
+                        Rig.LHand.rotation = Quaternion.AngleAxis(tiltL, tiltAxis.normalized) * Rig.LHand.rotation;
+                    if (tiltR > 0.01f)
+                        Rig.RHand.rotation = Quaternion.AngleAxis(tiltR, tiltAxis.normalized) * Rig.RHand.rotation;
                 }
             }
 

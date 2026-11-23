@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using System.Collections.Generic;
 using AttackId = Ryona.Game.EnemyBrain.AttackId;
 
@@ -68,7 +68,8 @@ namespace Ryona.Game
 
             // 二体がかり（Y 字）: 拘束役は右手で彼女の左腕だけを持ち、
             // 左手を空けて腹パンへ回す。もう片腕はアシストが持つ。
-            float split = hold.WallSplitWeight;
+            // 彼女の右腕は二人目が先に取るので、彼の左手はその分だけ先に離れる（空き手になる）。
+            float split = Mathf.Max(hold.WallSplitWeight, hold.WallSplitWeightR);
             // 3 人がかりでは、拘束役が彼女の左手首（右手で持っている）を離す。
             float gang = hold.WallGangWeight;
             Solve(true, gripR, weight * (1f - split), lift, adhere);

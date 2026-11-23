@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Ryona.Game
 {
@@ -171,6 +171,10 @@ namespace Ryona.Game
             // （消すと 3 人目が画面に出ず、2 人でやっているように見える。実測）。
             bool splitShot = hold != null && hold.IsWallSplitActive &&
                 (hold.Captor == _brain || hold.WallAssist == _brain || hold.WallThird == _brain);
+            // 二人目（すぐそばで待ち、膝蹴りのあと詰めて来る）も消さない。
+            // 待っている間に消して、動き出した瞬間に現れると、画面の中で湧いたように見える。
+            if (hold != null && hold.WallEntrant == _brain && hold.WallThird != _brain)
+                splitShot = true;
             bool inFrontOfWallShot = wallShot && hold.Captor != _brain && !splitShot &&
                 InFrontOfWallShot(hold);
             // 拘束役と殴打役は消すと腹パン／顔パンの演出が成立しないので、近接フェードから守る。

@@ -277,22 +277,58 @@ namespace Ryona.Game
         }
 
         // --- 二体がかりの見た目 -------------------------------------
-        /// <summary>Y 字拘束の見た目 0..1（手首の開き・二人の腕の持ち方に使う）。</summary>
+        /// <summary>
+        /// Y 字拘束の見た目 0..1。拘束役の側（彼女の左腕）。拘束役が横へ回り込み、左腕を Y 字へ引き出す。
+        /// 二体目が右腕を取ってから一拍おいて上がる（<see cref="SplitWeightR"/> が先）。
+        /// </summary>
         public float SplitWeight { get; private set; }
         float _splitWeightPhase;
 
-        /// <summary>二体目が横に着いて、二人で押さえ始めているか。</summary>
+        /// <summary>
+        /// 二体目の側（彼女の右腕）0..1。着いた二体目が壁の右手首を掴み、横へ引き出す。
+        /// 拘束役はこの腕を手放す（左手が空く）。
+        /// </summary>
+        public float SplitWeightR { get; private set; }
+        float _splitWeightPhaseR;
+        float _splitCaptorBeat;
+        float _splitClearAge;
+
+        /// <summary>
+        /// 二体目が着いてから、右手首を取りにかかるまでの間（秒）。この間に拘束役が正面から横へ退く
+        /// （正面に残ったまま正面の画へ切り替えると、彼の背中で顔が隠れる。実測 wallsplit #194）。
+        /// </summary>
+        public const float SplitClearSeconds = 0.30f;
+
+        /// <summary>二体目が右腕を引き出し終えてから、拘束役が左腕を取りにいくまでの間（秒）。</summary>
+        public const float SplitCaptorBeatSeconds = 0.35f;
+
+        /// <summary>二体目が着いて、二人で押さえ始めているか。</summary>
         public bool IsSplitActive => IsWall && Stage == WallStage.Held &&
             Assist != null && SplitReady && Assist.IsAlive && Assist.isActiveAndEnabled;
+
+        /// <summary>拘束役が左腕を取りに横へ回り込む段階に入ったか（二体目が右腕を取ったあと）。</summary>
+        public bool IsSplitCaptorShifting => IsSplitActive && _splitCaptorBeat >= SplitCaptorBeatSeconds;
 
         /// <summary>
         /// Y 字の見た目を目標へ寄せる。線形 0.22 秒だと立位から膝崩れが一瞬で落ち、
         /// 首が振れて前髪が顔を覆った（実測 wallsplit #270〜#275）。
         /// 位相を 0.6 秒かけて SmoothStep に通し、入りと抜きの両方を滑らかにする。
+        /// 腕は片方ずつ取る: 二体目が右腕（0.55 秒）→ 一拍 → 拘束役が左腕（0.6 秒）。
         /// </summary>
         public void TickSplitWeight(float dt)
         {
-            float target = IsSplitActive ? 1f : 0f;
+            bool active = IsSplitActive;
+            _splitClearAge = active ? _splitClearAge + dt : 0f;
+            bool reach = active && _splitClearAge >= SplitClearSeconds;
+            _splitWeightPhaseR = Mathf.MoveTowards(_splitWeightPhaseR, reach ? 1f : 0f, dt / 0.55f);
+            SplitWeightR = Mathf.SmoothStep(0f, 1f, _splitWeightPhaseR);
+
+            if (!active)
+                _splitCaptorBeat = 0f;
+            else if (_splitWeightPhaseR >= 1f)
+                _splitCaptorBeat += dt;
+
+            float target = IsSplitCaptorShifting ? 1f : 0f;
             _splitWeightPhase = Mathf.MoveTowards(_splitWeightPhase, target, dt / 0.60f);
             SplitWeight = Mathf.SmoothStep(0f, 1f, _splitWeightPhase);
         }
@@ -302,6 +338,10 @@ namespace Ryona.Game
         {
             SplitWeight = 0f;
             _splitWeightPhase = 0f;
+            SplitWeightR = 0f;
+            _splitWeightPhaseR = 0f;
+            _splitCaptorBeat = 0f;
+            _splitClearAge = 0f;
         }
 
 

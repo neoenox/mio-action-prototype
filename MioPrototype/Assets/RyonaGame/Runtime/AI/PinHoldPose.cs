@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using System.Collections.Generic;
 using AttackId = Ryona.Game.EnemyBrain.AttackId;
 
@@ -88,6 +88,7 @@ namespace Ryona.Game
         /// 再調査（2026-11-15）: y=0.15 だと見上げすぎで顔が隠れる。y=-0.10 に下げると 86% 達成。
         /// </summary>
         static readonly Vector3 WallHeldShot = new Vector3(-2.25f, -0.10f, -1.75f);
+
 
         /// <summary>膝が入る瞬間に寄るカメラ位置。高さは WallHeldShot と同じだけ下げる。</summary>
         static readonly Vector3 WallKneeShot = new Vector3(-1.35f, -0.10f, -1.65f);
@@ -253,9 +254,27 @@ namespace Ryona.Game
                         ? Mathf.InverseLerp(1.79f, 1.72f, _figure.Height)
                         : 0f;
                     heldOffset += new Vector3(0.65f, -0.15f, 0.55f) * shortT;
+                    float entrance = hold.WallEntranceLook;
                     Vector3 heldShot = heldTarget + heldOffset;
 
-                    if (hold.WallSplitWeight > 0.01f)
+                    if (LaunchOptions.Has("-splitcamlog") && hold.IsWallEntranceCalled &&
+                        Time.unscaledTime >= _nextSplitLog)
+                    {
+                        _nextSplitLog = Time.unscaledTime + 0.1f;
+                        var entrant = hold.WallEntrant;
+                        var cam = Camera.main;
+                        Vector3 vp = entrant != null && cam != null
+                            ? cam.WorldToViewportPoint(entrant.transform.position + Vector3.up * 1.0f)
+                            : Vector3.zero;
+                        GameLog.Log($"[EntranceCam] look={entrance:F2} her={pinned.position} " +
+                                    $"entrant={(entrant != null ? entrant.transform.position.ToString() : "-")} " +
+                                    $"vp=({vp.x:F2},{vp.y:F2},{vp.z:F1}) cam={(cam != null ? cam.transform.position.ToString() : "-")}");
+                    }
+
+                    // 二人目が右手首を取った時点で正面の画へ切り替える（拘束役が横へ回り込み始める）。
+                    // 二人目が右手首を掴んだ瞬間に正面へ切り替える（「えっ？」を正面から見せる）。
+                    // 拘束役はその前に横へ退いている（GrappleSession.SplitClearSeconds）。
+                    if (Mathf.Max(hold.WallSplitWeight, hold.WallSplitWeightR) > 0.01f)
                     {
                         // 構図の基準を取るのは、Y 字に入った瞬間と、アシストが入れ替わった／3 人目が加わったときだけ。
                         bool gang = hold.WallGangWeight > 0.5f;

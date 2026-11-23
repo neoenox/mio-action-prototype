@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Ryona.Game
 {
@@ -654,6 +654,25 @@ namespace Ryona.Game
                 pose.FootR += new Vector3(0f, 0.085f, -0.075f) * knee;
                 // 胸にも前傾が配られるので、その分も首で打ち消して顔を前に残す。
                 pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -67f, fold);
+            }
+
+            // 二人目に右手首を掴まれて「えっ？（なにするの？）」と、掴んだ相手へ振り向く。
+            float entranceLook = Grapple != null ? Grapple.WallEntranceLook : 0f;
+            if (entranceLook > 0.001f && Grapple.WallEntrant != null)
+            {
+                Vector3 to = Grapple.WallEntrant.transform.position - transform.position;
+                to.y = 0f;
+                if (to.sqrMagnitude > 1e-4f)
+                {
+                    Vector3 local = transform.InverseTransformDirection(to.normalized);
+                    float yaw = Mathf.Clamp(Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg, -42f, 42f);
+                    pose.HeadYaw = Mathf.Lerp(pose.HeadYaw, yaw, entranceLook);
+                    // 顔を上げて相手を見る（膝のあとの前かがみから首だけ起こす）。
+                    pose.HeadPitch = Mathf.Lerp(pose.HeadPitch, -6f, entranceLook);
+                    pose.TorsoYaw = Mathf.Lerp(pose.TorsoYaw, yaw * 0.18f, entranceLook);
+                    // 「なにするの？」の戸惑いで、首を少しかしげる。
+                    pose.HeadRoll += 7f * Grapple.WallEntranceSurprise * Mathf.Sign(yaw) * entranceLook;
+                }
             }
 
             if (Grapple != null && !Grapple.IsWallPin)
