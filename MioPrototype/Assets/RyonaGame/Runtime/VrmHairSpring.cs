@@ -25,11 +25,11 @@ namespace Ryona.Game
 
         [Range(0.1f, 1f)]
         [Tooltip("スプリングの剛性の倍率。小さいほど重力で垂れる（1 が VRM 元設定）")]
-        public float StiffnessScale = 0.60f;
+        public float StiffnessScale = 0.30f;
 
         [Range(0.1f, 1f)]
         [Tooltip("空気抵抗の倍率。小さいほど揺れが残る（1 が VRM 元設定）")]
-        public float DragScale = 0.75f;
+        public float DragScale = 0.45f;
 
         Vrm10Instance _vrm;
         CharacterAnimator _anim;
