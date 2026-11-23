@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 
 namespace Ryona.Game
@@ -805,6 +805,24 @@ namespace Ryona.Game
                 : transform.rotation;
         }
 
+        /// <summary>
+        /// 二人目が呼ばれるまで待つ位置: 彼女の右側（アシスト側）の壁際を横に何 m。
+        /// 最初からすぐそばにいて、呼ばれると数歩で詰める（遠くからトコトコ歩いて来ると間延びする。ユーザー指定）。
+        /// </summary>
+        const float WallEntranceWaitLateral = 1.75f;
+
+        /// <summary>待つ位置の、彼女の正面方向への距離（m）。壁際に寄せる。</summary>
+        const float WallEntranceWaitFront = 0.15f;
+
+        /// <summary>歩いて来た二人目が止まる、彼女の真横の位置（横 m）。ここから壁の右手首を取る。</summary>
+        const float WallEntranceGrabLateral = 0.85f;
+
+        /// <summary>止まる位置の、彼女の正面方向への距離（m）。壁際に寄せて、カメラと顔の間に入らない。</summary>
+        const float WallEntranceGrabFront = 0.05f;
+
+        /// <summary>呼ばれて詰める速さ（m/秒）。小走りではなく、おもむろに数歩。</summary>
+        const float WallEntranceWalkSpeed = 1.0f;
+
         /// <summary>横の持ち場へ寄り、彼女の方を向く。着いたら ready を立てる。</summary>
         void UpdateWallAssist(float dt)
         {
@@ -819,11 +837,71 @@ namespace Ryona.Game
 
             // 持ち場へは小走りで寄る（通常の移動速度だと間に合わない）。
             float speed = Mathf.Max(2.4f, MoveSpeed * State.MoveSpeedMultiplier);
+            float turnRate = 10f;
+
+            // 二人目（3 人目ではない）は、膝蹴りが終わって呼ばれるまで壁拘束のカメラの後ろ側で待つ。
+            // 最初から横に立っていると、二人目が「来た」ことが画にならない。
+            bool entrant = hold.WallThird != this;
+            bool waiting = entrant && !hold.IsWallSplitStarted && !hold.IsWallEntranceWalking;
+            Vector3 herFront = Vector3.ProjectOnPlane(hold.transform.forward, Vector3.up).normalized;
+            if (waiting)
+            {
+                spot = hold.transform.position
+                    + Vector3.right * (_wallAssistSide * WallEntranceWaitLateral)
+                    + herFront * WallEntranceWaitFront;
+                spot.y = transform.position.y;
+                Vector3 look = hold.transform.position - spot;
+                look.y = 0f;
+                if (look.sqrMagnitude > 0.0004f)
+                    facing = Quaternion.LookRotation(look.normalized, Vector3.up);
+            }
+            else if (entrant && hold.IsWallEntranceCalled && _wallAssistReady && hold.WallSplitWeightR <= 0.001f)
+            {
+                // 着いたら、拘束役が横へ退くまで真横で待つ（持ち場へ回ると壁拘束の画で彼女の前を横切る。実測 #192〜#196）。
+                spot = hold.transform.position
+                    + Vector3.right * (_wallAssistSide * WallEntranceGrabLateral)
+                    + herFront * WallEntranceGrabFront;
+                spot.y = transform.position.y;
+                Vector3 toHer = hold.transform.position - spot;
+                toHer.y = 0f;
+                if (toHer.sqrMagnitude > 0.0004f)
+                    facing = Quaternion.LookRotation(toHer.normalized, Vector3.up);
+                speed = WallEntranceWalkSpeed;
+            }
+            else if (entrant && hold.IsWallEntranceCalled && !_wallAssistReady)
+            {
+                // 呼ばれたら、おもむろに歩いて来る（小走りにしない）。歩く向きを向き、着く手前で彼女へ向き直る。
+                // 行き先は持ち場ではなく、壁際の彼女の真横（カメラから見て彼女の脇）。
+                // 持ち場（彼女の正面寄り）へ直行すると、壁拘束のカメラと顔の間に立って顔を丸ごと隠す（実測 #220〜#238）。
+                // 真横で止まって壁の右手首を取り、引き出しながら持ち場へ回る（そこで正面の画へ切り替わる）。
+                spot = hold.transform.position
+                    + Vector3.right * (_wallAssistSide * WallEntranceGrabLateral)
+                    + herFront * WallEntranceGrabFront;
+                spot.y = transform.position.y;
+                Vector3 toHer = hold.transform.position - spot;
+                toHer.y = 0f;
+                if (toHer.sqrMagnitude > 0.0004f)
+                    facing = Quaternion.LookRotation(toHer.normalized, Vector3.up);
+
+                speed = WallEntranceWalkSpeed;
+                turnRate = 6f;
+                Vector3 travel = spot - transform.position;
+                travel.y = 0f;
+                if (travel.magnitude > 0.55f)
+                    facing = Quaternion.LookRotation(travel.normalized, Vector3.up);
+            }
+
+            else if (entrant && _wallAssistReady && hold.WallSplitWeightR < 0.99f)
+            {
+                // 右手首を取って引き出しながら、持ち場へ回り込む（腕の動きと同じ速さで）。
+                speed = 1.2f;
+            }
+
             transform.position = Vector3.MoveTowards(transform.position, spot, speed * dt);
             transform.rotation = Quaternion.Slerp(transform.rotation, facing,
-                1f - Mathf.Exp(-10f * dt));
+                1f - Mathf.Exp(-turnRate * dt));
 
-            if (!_wallAssistReady && (transform.position - spot).sqrMagnitude < 0.02f)
+            if (!waiting && !_wallAssistReady && (transform.position - spot).sqrMagnitude < 0.02f)
             {
                 _wallAssistReady = true;
                 GameLog.Log($"[WallSplit] assist {name} ready");
@@ -839,7 +917,10 @@ namespace Ryona.Game
             ResolveWallPunchSlot(hold, 1f, out Vector3 spot, out Quaternion facing);
 
             // 押さえつけ中は移動速度倍率が 0 のことがあるので、位置合わせは定速で行う。
-            float speed = Mathf.Max(hold.IsWallGangActive ? 2.4f : 1.2f, MoveSpeed);
+            // 二人目が右腕を取った直後は速めに横へ退く。正面に残ると、正面へ切り替えたカメラが彼の背中になる（実測 #194）。
+            float speed = Mathf.Max(hold.IsWallGangActive || hold.WallSplitWeight < 0.99f ? 2.0f : 1.2f, MoveSpeed);
+            if (hold.IsWallGangActive)
+                speed = Mathf.Max(speed, 2.4f);
             transform.position = Vector3.MoveTowards(transform.position, spot, speed * dt);
             transform.rotation = Quaternion.Slerp(transform.rotation, facing,
                 1f - Mathf.Exp(-10f * dt));

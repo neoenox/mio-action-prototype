@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using System.Collections.Generic;
 using AttackId = Ryona.Game.EnemyBrain.AttackId;
 
@@ -34,7 +34,8 @@ namespace Ryona.Game
                 _targetRig.RLowerArm == null || _targetRig.Spine == null || _targetRig.Chest == null)
                 return;
 
-            float split = hold.WallSplitWeight;
+            // 二人目は彼女の右腕を拘束役より先に取る（拘束役の左腕はあと）。
+            float split = Mathf.Max(hold.WallSplitWeight, hold.WallSplitWeightR);
             float gripWeight = hold.WallAssistGrip;
             if (split <= 0.001f && gripWeight <= 0.001f)
                 return;

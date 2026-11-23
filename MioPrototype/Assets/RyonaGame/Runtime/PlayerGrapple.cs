@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using UnityEngine;
 
@@ -95,8 +95,77 @@ namespace Ryona.Game
         /// <summary>Y 字拘束の見た目 0..1（手首の開き・二人の腕の持ち方に使う）。</summary>
         internal float WallSplitWeight => _session.SplitWeight;
 
+        /// <summary>二体目の側（彼女の右腕）の Y 字 0..1。二体目が先に右腕を取り、拘束役は手放す。</summary>
+        internal float WallSplitWeightR => _session.SplitWeightR;
+
         /// <summary>二体目が横に着いて、二人で押さえ始めたか。</summary>
         public bool IsWallSplitActive => _session.IsSplitActive;
+
+        /// <summary>拘束役が左腕を取りに横へ回り込む段階か（二体目が右腕を取ったあと）。</summary>
+        internal bool IsWallSplitCaptorShifting => _session.IsSplitCaptorShifting;
+
+        // --- 二体目の登場（膝蹴りのあと、おもむろに歩いて来る） -------------------
+        /// <summary>二体目を呼んだか。呼ぶまでは画面外の待ち場所に立たせる。</summary>
+        internal bool IsWallEntranceCalled => _wallEntranceCalled;
+
+        /// <summary>二体目が歩き出したか（呼んでから一拍おいて歩き出す）。</summary>
+        internal bool IsWallEntranceWalking => _wallEntranceCalled && _wallEntranceAge >= 0f;
+
+        /// <summary>登場してくる二体目（呼ぶ前は待機中の候補）。</summary>
+        internal EnemyBrain WallEntrant => _session.Assist != null ? _session.Assist : WallAssistCandidate;
+
+        /// <summary>
+        /// 二体目に右手首を掴まれて「えっ？（なにするの？）」と、掴んだ相手へ顔を向ける重み 0..1。
+        /// 近づいて来る間は気付かない（膝蹴りのあとでぼんやりしている）。掴まれた瞬間に初めて振り向く。
+        /// 拘束役が左腕を取りに回ると、正面へ戻す。
+        /// </summary>
+        internal float WallEntranceLook
+        {
+            get
+            {
+                if (_wallGrabAge < 0f || !IsWallPin)
+                    return 0f;
+                float turn = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.04f, 0.26f, _wallGrabAge));
+                return turn * (1f - _session.SplitWeight);
+            }
+        }
+
+        /// <summary>
+        /// 手首を掴まれた「えっ？（なにするの？）」の戸惑い 0..1。掴まれた瞬間に跳ね上がり、最初の拳が入るまで残る
+        /// （拳が入ると被弾の表情が上書きする）。
+        /// </summary>
+        internal float WallEntranceSurprise
+        {
+            get
+            {
+                if (_wallGrabAge < 0f || !IsWallPin || _session.SplitHits > 0)
+                    return 0f;
+                return Mathf.SmoothStep(0f, 1f, _wallGrabAge / 0.12f) * (1f - 0.35f * _session.SplitWeight);
+            }
+        }
+
+        /// <summary>二体目が右手首を掴んでからの秒数。掴まれていなければ -1。</summary>
+        float _wallGrabAge = -1f;
+
+        /// <summary>膝蹴りが終わってから二体目が動き出すまでの間（秒）。「おもむろに」の溜め。</summary>
+        const float WallEntranceBeatSeconds = 0.40f;
+
+        bool _wallEntranceCalled;
+        float _wallEntranceAge;
+
+        /// <summary>膝蹴りが終わったので二体目を呼ぶ。一拍おいてから歩き出す。</summary>
+        void CallWallEntrance()
+        {
+            _wallEntranceCalled = true;
+            _wallEntranceAge = -WallEntranceBeatSeconds;
+            GameLog.Log($"[WallEntrance] call {(WallEntrant != null ? WallEntrant.name : "none")}");
+        }
+
+        void ClearWallEntrance()
+        {
+            _wallEntranceCalled = false;
+            _wallEntranceAge = 0f;
+        }
 
         /// <summary>ピンポン中か。連打ではなく踏みとどまり入力だけを受ける。</summary>
         public bool IsPinballActive => _session.PinballActive;
