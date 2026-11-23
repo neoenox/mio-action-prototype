@@ -1,7 +1,18 @@
 name: Unity tests
 
+# 既定は軽いテストだけ（コンパイル確認 + EditMode）。数分で終わる。
+# 重い PlayMode（grapple / motion / misc、合計 1 時間以上）は必要なときだけ回す:
+#   - PR に `full-tests` ラベルを付ける（全バッチ）
+#   - Actions 画面の「Run workflow」でバッチを選ぶ
 on:
+  workflow_dispatch:
+    inputs:
+      batches:
+        description: '回すバッチ（カンマ区切り: edit,grapple,motion,misc）'
+        required: true
+        default: 'edit,grapple,motion,misc'
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - 'MioPrototype/Assets/**'
       - 'MioPrototype/ProjectSettings/**'
@@ -31,6 +42,11 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Windows]
     env:
+      # 既定は edit だけ。手動起動の入力か `full-tests` ラベルがあれば、重いバッチも回す。
+      TEST_BATCHES: >-
+        ${{ github.event_name == 'workflow_dispatch' && inputs.batches
+            || contains(github.event.pull_request.labels.*.name, 'full-tests') && 'edit,grapple,motion,misc'
+            || 'edit' }}
       # ランナーの環境に合わせて 2 つのローカルパスを設定する。
       UNITY_EXE: 'C:\Users\neoen\Unity\Editor\6000.4.5f1\Editor\Unity.exe'
       VOICE_SOURCE: 'C:\gemini-desktop\ryona-action\MioPrototype\Assets\RyonaGame\Resources\Voice'
@@ -50,9 +66,10 @@ jobs:
             Write-Host "::warning::音声素材が見つかりません: $env:VOICE_SOURCE"
           }
 
-      # run_tests.py が全バッチ（コンパイル確認込み）を順に実行する。実行中は Unity Editor を閉じておく。
+      # run_tests.py がコンパイル確認のあと、選んだバッチを順に実行する。実行中は Unity Editor を閉じておく。
       - name: Run Unity tests
         shell: pwsh
         run: |
           cd MioPrototype
-          & $env:PYTHON_EXE tools/run_tests.py --unity $env:UNITY_EXE
+          Write-Host "batches: $env:TEST_BATCHES"
+          & $env:PYTHON_EXE tools/run_tests.py --unity $env:UNITY_EXE --only $env:TEST_BATCHES
