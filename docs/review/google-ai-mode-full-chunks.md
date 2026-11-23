@@ -1,4 +1,7 @@
-# Google AI モード チャンク別レビュー（全 25 チャンク）
+﻿# Google AI モード チャンク別レビュー（全 25 チャンク）
+
+> アーカイブ: チャンク別の生回答。統合版は `google-ai-mode-source-review.md`。現行ルールは AGENTS.md。
+
 
 生データ: `MioPrototype/Verify/source-review/answers/`
 

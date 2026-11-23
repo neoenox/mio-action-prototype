@@ -1,4 +1,7 @@
-# Google AI モードによる全ソースレビュー（2026-11-22）
+﻿# Google AI モードによる全ソースレビュー（2026-11-22）
+
+> ステータス: 履歴。現行ルールは AGENTS.md、修正済み／未対応の判別は REVIEW.md。文書一覧は docs/README.md。
+
 
 - サービス: Google AI モード（https://www.google.com/ai → `search?udm=50`）
 - 対象: 作業ツリーの全ソース（C# 200 ファイル / 2,746,253 bytes、Python ツール、Unity 設定、ドキュメント）
