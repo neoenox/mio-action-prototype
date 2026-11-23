@@ -1001,12 +1001,7 @@ namespace Ryona.Game
             ReleaseToken();
             UnregisterGroup();
 
-            // 敵の一覧から外すのは、オブジェクトごと無効になったときだけ。置き換え前の
-            // FindObjectsByType<EnemyBrain>() は、コンポーネントが無効でもオブジェクトが有効なら
-            // 数えていた。AI だけ止めた敵（テストで敵を固定するとき等）が一覧から消えると、
-            // 自動エイムや壁拘束・マウントの処理がその敵を見なくなった（CI: PlayerAttackTargets… が狙い 0）。
-            if (!gameObject.activeInHierarchy)
-                EnemyRegistry.Unregister(this);
+            EnemyRegistry.Unregister(this);
             HideTelegraph();
         }
 

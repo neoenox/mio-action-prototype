@@ -399,16 +399,24 @@ namespace Ryona.Game
         /// 縦の画角（度）。0 以下なら通常の画角のまま。位置を寄せられない画（手前に敵がいる等）で、
         /// 位置はそのままにズームして顔を大きく映すのに使う。演出が終わると通常の画角へ戻る。
         /// </param>
-        internal void RequestCinematicShot(Vector3 position, Vector3 target, bool cut = false, float fov = 0f)
+        /// <param name="sharpness">
+        /// 目標へ寄せる速さ（1 秒あたり）。0 以下なら既定（13）。固定の画で、迫ってくる敵の体から
+        /// レンズを逃がすときなど、遅れると困る小さな動きに速い値を使う。
+        /// </param>
+        internal void RequestCinematicShot(Vector3 position, Vector3 target, bool cut = false, float fov = 0f,
+            float sharpness = 0f)
         {
             _cinematicRequested = true;
             _cinematicCut = cut;
             _cinematicPosition = position;
             _cinematicTarget = target;
             _cinematicFov = fov;
+            _cinematicSharpness = sharpness > 0f ? sharpness : DefaultCinematicSharpness;
             _exitRemaining = 0f;
         }
 
+        const float DefaultCinematicSharpness = 13f;
+        float _cinematicSharpness = DefaultCinematicSharpness;
         float _cinematicFov;
         float _baseFov = -1f;
 
@@ -473,7 +481,7 @@ namespace Ryona.Game
             // cut が指定されたときだけ即座に切り替える。それ以外は前の画から補間して入る。
             float follow = _cinematicCut
                 ? 1f
-                : 1f - Mathf.Exp(-13f * Time.unscaledDeltaTime);
+                : 1f - Mathf.Exp(-_cinematicSharpness * Time.unscaledDeltaTime);
             _shotPosition = Vector3.Lerp(_shotPosition, _cinematicPosition, follow);
             _shotTarget = Vector3.Lerp(_shotTarget, _cinematicTarget, follow);
             // 固定ショットも、狙いと角度を保ったままホイールで距離を変える。

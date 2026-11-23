@@ -602,8 +602,12 @@ namespace Ryona.Game
             {
                 // 普段は止めたまま。パンチの腕などがレンズの前に来たときだけ、少しずらして避ける
                 // （固定のままだとレンズ前に敵が留まり続けた。CI: レンズ前 303 コマ）。
-                Vector3 heldOffset = BackOffFromLens(_holdTarget, _holdPos - _holdTarget);
-                _camera.RequestCinematicShot(_holdTarget + heldOffset, _holdTarget, fov: _holdFov);
+                // カメラは目標へ滑らかに追従するので、腕が来てから避け始めると間に合わない
+                // （テスト実測: 余裕 0.06m ではレンズ前に 0.17 秒留まった）。早めに避け始める。
+                // 追従も速くする（既定の 13/s では目標から最大 0.26m 遅れ、レンズ前に 3〜9 コマ留まった）。
+                Vector3 heldOffset = BackOffFromLens(_holdTarget, _holdPos - _holdTarget, HoldLensMargin);
+                _camera.RequestCinematicShot(_holdTarget + heldOffset, _holdTarget, fov: _holdFov,
+                    sharpness: HoldDodgeSharpness);
                 var held = ProbeFace(head, _faceFigures, _holdTarget, heldOffset);
                 MountFaceVisible = held.Visible;
                 MountFaceSize = FaceVisibility.ScreenFaceSize(FaceProbe(), head);
@@ -624,8 +628,13 @@ namespace Ryona.Game
                 bool turned = !held.Readable;
                 _holdBlocked = hidden ? _holdBlocked + Time.unscaledDeltaTime : 0f;
                 _holdTurned = turned ? _holdTurned + Time.unscaledDeltaTime : 0f;
-                if ((_holdBlocked >= HoldBlockedSeconds || _holdTurned >= HoldTurnedSeconds) &&
-                    Time.unscaledTime >= _nextHoldRepick)
+                // 敵が覆いかぶさって固定の位置そのものに迫り、ずらしても下限を割るときは待たずに選び直す
+                // （テスト実測: 固定位置と敵 0.40→0.26m、最大 0.35m ずらしても足りずレンズ前 34 コマ）。
+                // 実際のカメラは目標から少し遅れて追うので、下限の少し手前で切り替える。
+                bool lensLost = _mountLens < MountMinLens + 0.06f;
+                if (lensLost ||
+                    ((_holdBlocked >= HoldBlockedSeconds || _holdTurned >= HoldTurnedSeconds) &&
+                     Time.unscaledTime >= _nextHoldRepick))
                 {
                     _nextHoldRepick = Time.unscaledTime + 2.0f;
                     _holdTurned = 0f;
@@ -634,7 +643,7 @@ namespace Ryona.Game
                     _shotOffset = Vector3.zero;
                     _mountWanted = Vector3.zero;
                     if (LaunchOptions.Has("-mountlog"))
-                        GameLog.Log($"[MountHold] repick ({(hidden ? "face blocked" : "face turned away")})");
+                        GameLog.Log($"[MountHold] repick ({(lensLost ? "lens blocked" : hidden ? "face blocked" : "face turned away")})");
                 }
                 return;
             }
@@ -774,6 +783,12 @@ namespace Ryona.Game
         }
 
         float _holdFov;
+
+        /// <summary>固定中にレンズ前の敵を避け始める余裕（ハード下限 0.5m に足す）。</summary>
+        const float HoldLensMargin = 0.25f;
+
+        /// <summary>固定中にレンズを逃がす動きの追従の速さ（1 秒あたり、既定は 13）。</summary>
+        const float HoldDodgeSharpness = 40f;
         float _holdBlocked;
         float _holdTurned;
         float _nextHoldRepick;
@@ -942,9 +957,8 @@ namespace Ryona.Game
         /// 後ろへ引くだけだと、遠めの画（2.9m）は距離の上限（3.0m）ですぐ詰まって 0.1m しか引けなかった。
         /// 後ろ・左右へ最大 0.35m ずらし、余裕が最も大きい位置を使う。
         /// </summary>
-        Vector3 BackOffFromLens(Vector3 target, Vector3 offset)
+        Vector3 BackOffFromLens(Vector3 target, Vector3 offset, float margin = 0.06f)
         {
-            const float margin = 0.06f;
             const float maxShift = 0.35f;
             const float maxLength = 3.0f;
             float length = offset.magnitude;
