@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using Ryona.Game;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -130,9 +130,16 @@ namespace Ryona.EditorTools
 
             // --- 奥の街並み -------------------------------------------
             // 上半分が空（スカイボックス）だとベルトに見えないので、奥を建物で埋める。
-            var backMat = MakeMaterial(standard, new Color(0.26f, 0.27f, 0.32f));
-            var buildingMat = MakeMaterial(standard, new Color(0.19f, 0.20f, 0.24f));
-            BuildBackdrop(backMat, buildingMat);
+            // 夜の路地：空は暗い青紫、建物は少し明るいコンクリ色。
+            var backMat = MakeMaterial(standard, new Color(0.10f, 0.11f, 0.18f));
+            var buildingMat = MakeMaterial(standard, new Color(0.22f, 0.23f, 0.28f));
+            var windowMats = new[]
+            {
+                MakeUnlit(standard, new Color(1.00f, 0.78f, 0.42f)), // 暖色
+                MakeUnlit(standard, new Color(0.48f, 0.76f, 1.00f)), // 寒色
+                MakeUnlit(standard, new Color(1.00f, 0.55f, 0.62f)), // 桃色
+            };
+            BuildBackdrop(backMat, buildingMat, windowMats);
 
             // --- 光源 -------------------------------------------------
             var lightGo = new GameObject("Key Light");
@@ -325,8 +332,8 @@ namespace Ryona.EditorTools
             Debug.Log($"[Ryona] Prototype scene built: {ScenePath}");
         }
 
-        /// <summary>奥の壁と建物。画面の上半分を埋める。</summary>
-        static void BuildBackdrop(Material wallMat, Material buildingMat)
+        /// <summary>奥の壁と建物。画面の上半分を埋める。窓の灯りで夜の路地にする。</summary>
+        static void BuildBackdrop(Material wallMat, Material buildingMat, Material[] windowMats)
         {
             BuildBox("Backdrop Wall", wallMat,
                 new Vector3(StageCenterX, 7f, 8.5f), new Vector3(90f, 14f, 0.4f));
@@ -337,9 +344,37 @@ namespace Ryona.EditorTools
             float[] ws = { 6.0f, 5.0f, 4.0f, 7.0f, 5.0f, 6.0f, 5.0f };
 
             for (int i = 0; i < xs.Length; i++)
+            {
+                float x = xs[i], h = hs[i], w = ws[i];
                 BuildBox("Building", buildingMat,
-                    new Vector3(xs[i], hs[i] * 0.5f, 6.6f),
-                    new Vector3(ws[i], hs[i], 1.4f));
+                    new Vector3(x, h * 0.5f, 6.6f),
+                    new Vector3(w, h, 1.4f));
+
+                // 建物の前面（カメラ側）に窓を並べる。全部灯るより、ところどころ暗い方が街っぽい。
+                const float windowW = 0.62f;
+                const float windowH = 0.80f;
+                int cols = Mathf.Max(1, Mathf.FloorToInt(w / 1.25f));
+                int rows = Mathf.Max(1, Mathf.FloorToInt((h - 0.8f) / 1.35f));
+                float stepX = w / (cols + 1f);
+                float stepY = (h - 0.8f) / (rows + 1f);
+
+                for (int r = 0; r < rows; r++)
+                {
+                    for (int c = 0; c < cols; c++)
+                    {
+                        // 決まった規則で灯りを消す（毎回同じ並び・ビルドしても変わらない）
+                        if ((i * 7 + r * 3 + c * 5) % 4 == 0)
+                            continue;
+
+                        var mat = windowMats[(i + r + c) % windowMats.Length];
+                        float wx = x - w * 0.5f + stepX * (c + 1f);
+                        float wy = 0.55f + stepY * (r + 1f);
+                        BuildBox("Window", mat,
+                            new Vector3(wx, wy, 5.83f),
+                            new Vector3(windowW, windowH, 0.06f));
+                    }
+                }
+            }
         }
 
         /// <summary>見える箱（縁石・目盛り）。当たり判定は残さない。</summary>
@@ -377,6 +412,16 @@ namespace Ryona.EditorTools
         {
             var mat = new Material(shader) { name = "Runtime_" + color.ToString("F2") };
             mat.color = color;
+            return mat;
+        }
+
+        /// <summary>窓の灯り用。色そのものを光らせ、影の影響を受けないようにする。</summary>
+        static Material MakeUnlit(Shader shader, Color color)
+        {
+            var mat = MakeMaterial(shader, color * 0.25f);
+            mat.name = "Runtime_Window_" + color.ToString("F2");
+            mat.EnableKeyword("_EMISSION");
+            mat.SetColor("_EmissionColor", color * 0.9f);
             return mat;
         }
 
