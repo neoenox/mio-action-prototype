@@ -1,10 +1,12 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UniVRM10;
 
 namespace Ryona.Game
 {
     /// <summary>
-    /// 倒れている間だけ髪の重力を弱める。
+    /// 髪を重力で垂れやすくする。VRM のスプリング設定が硬すぎて板のように見えるため、
+    /// 通常時は剛性と空気抵抗を緩めて重力に従わせる。倒れている間・顔面パン中だけ
+    /// 前髪が顔を覆わないよう重力を弱める（従来どおり）。
     ///
     /// 横向きに倒すと、重力で前髪が顔の上に垂れてきて顔が隠れる。
     /// 重力を弱めて初期姿勢に戻すと、立ち姿勢と同じ髪の形のまま残るので顔が見える。
@@ -21,11 +23,21 @@ namespace Ryona.Game
         [Tooltip("顔面パンのコンボ中の重力の割合。前髪が落ちて顔を覆うのを防ぐ")]
         public float FaceComboGravity = 0.35f;
 
+        [Range(0.1f, 1f)]
+        [Tooltip("スプリングの剛性の倍率。小さいほど重力で垂れる（1 が VRM 元設定）")]
+        public float StiffnessScale = 0.60f;
+
+        [Range(0.1f, 1f)]
+        [Tooltip("空気抵抗の倍率。小さいほど揺れが残る（1 が VRM 元設定）")]
+        public float DragScale = 0.75f;
+
         Vrm10Instance _vrm;
         CharacterAnimator _anim;
         HeldBellyPunchDirector _punch;
         VRM10SpringBoneJoint[] _joints;
-        float[] _original;
+        float[] _originalGravity;
+        float[] _originalStiffness;
+        float[] _originalDrag;
 
         float _applied = -1f;
 
@@ -66,9 +78,18 @@ namespace Ryona.Game
         void Cache()
         {
             _joints = GetComponentsInChildren<VRM10SpringBoneJoint>(true);
-            _original = new float[_joints.Length];
+            _originalGravity = new float[_joints.Length];
+            _originalStiffness = new float[_joints.Length];
+            _originalDrag = new float[_joints.Length];
             for (int i = 0; i < _joints.Length; i++)
-                _original[i] = _joints[i] != null ? _joints[i].m_gravityPower : 0f;
+            {
+                var joint = _joints[i];
+                if (joint == null)
+                    continue;
+                _originalGravity[i] = joint.m_gravityPower;
+                _originalStiffness[i] = joint.m_stiffnessForce;
+                _originalDrag[i] = joint.m_dragForce;
+            }
         }
 
         void Apply(float scale, bool snap)
@@ -80,7 +101,9 @@ namespace Ryona.Game
             for (int i = 0; i < _joints.Length; i++)
             {
                 if (_joints[i] != null)
-                    _joints[i].m_gravityPower = _original[i] * scale;
+                    _joints[i].m_gravityPower = _originalGravity[i] * scale;
+                    _joints[i].m_stiffnessForce = _originalStiffness[i] * StiffnessScale;
+                    _joints[i].m_dragForce = _originalDrag[i] * DragScale;
             }
 
             // バッファは作り直さないと値が反映されない
@@ -90,7 +113,8 @@ namespace Ryona.Game
             if (snap)
                 runtime.RestoreInitialTransform();
 
-            GameLog.Log($"[Hair] gravity x{scale:F2} joints={_joints.Length} snap={snap}");
+            GameLog.Log($"[Hair] gravity x{scale:F2} stiffness x{StiffnessScale:F2} " +
+                        $"drag x{DragScale:F2} joints={_joints.Length} snap={snap}");
         }
     }
 }
