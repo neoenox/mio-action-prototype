@@ -129,12 +129,9 @@ def unity_exe() -> Path | None:
 
 
 def unity_running() -> bool:
-    try:
-        out = subprocess.run(["tasklist", "/fi", "imagename eq Unity.exe"],
-                             capture_output=True, text=True, errors="replace")
-        return "Unity.exe" in out.stdout
-    except OSError:
-        return False
+    """このプロジェクトを開いている Unity があるか（別フォルダの Unity は数えない）。"""
+    import unity_proc
+    return unity_proc.project_open(PROJECT)
 
 
 # ビルド成否の判定結果。終了コードを第一の根拠にし、ログは裏取りと詳細表示に使う。
