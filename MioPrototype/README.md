@@ -18,17 +18,18 @@ PlayMode のテストを実行できます。
 
 ### テスト
 
-Unity Test Runner を 1 回で回すと 30〜60 分かかるため、クラス分割で
-一括実行するスクリプトを用意しています（Python 3 / Unity を閉じてから実行）。
+テストは GitHub Actions の `Unity tests`（self-hosted Windows runner）が **PR ごとに全バッチ**実行する。
+開発中・コミット前はローカルで回さず、撮影（`preview.py` / `motion_audit.py`）とログで確認する（AGENTS.md 参照）。
+
+ローカルで再現したいときだけ、Unity Editor を閉じてから次を使う。
 
 ```
-python tools/run_tests.py              # コンパイル確認 + 全バッチ（10〜15分）
-python tools/run_tests.py --only edit  # EditMode だけ
-python tools/run_tests.py --only grapple,motion   # 一部だけ
-python tools/run_tests.py --list       # バッチ一覧
+python tools/run_tests.py --filter <テスト名> --skip-compile  # 個別再現
+python tools/run_tests.py --only edit                         # コンパイル確認 + EditMode だけ
+python tools/run_tests.py --list                              # バッチ一覧
 ```
 
-結果は `Logs/tests-<batch>-<日時>.xml` に残り、失敗時はテスト名とメッセージを表示します。
+結果は `Logs/tests-<batch>-<日時>.xml` に残る。全緑の記録は `Verify/test-baseline.txt`。
 
 ### 大きなファイルの分割（partial）
 
