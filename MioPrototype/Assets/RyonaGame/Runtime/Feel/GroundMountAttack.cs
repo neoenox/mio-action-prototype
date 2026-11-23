@@ -35,11 +35,16 @@ namespace Ryona.Game
         // マウントのカメラ候補。彼女の体の脇を中心に、頭の方向へ ±30° まで振る。
         // 2.6m → 2.3m → 1.95m と段階的に寄せた（2026-11-20/23）。レンズ前の余裕は下限で守る。
         static readonly float[] FaceDistances = { 1.35f, 1.55f, 1.75f, 1.95f };
-        static readonly float[] FaceHeights = { 0.9f, 1.2f, 1.5f };
+        // 仰向けの顔は空を向いているので、低い角度だけだと殴られて首が振れるたびに顔を背けた画になる
+        // （計測 2026-11-23: 固定中の 5〜8 割が「見えているが背けている」）。見下ろしの深い高さも候補に入れる。
+        static readonly float[] FaceHeights = { 0.9f, 1.2f, 1.5f, 1.8f, 2.1f };
         static readonly float[] FaceYaws = { -30f, -15f, 0f, 15f, 30f };
 
-        /// <summary>見下ろしの上限（度）。真上近くから見ると注視が真下になり、画が反転する。</summary>
-        internal const float MountMaxElevation = 45f;
+        /// <summary>
+        /// 見下ろしの上限（度）。真上近くから見ると注視が真下になり、画が反転する。
+        /// 45° では仰向けの顔を斜めからしか撮れず、表情が読めるコマが 3〜5 割に落ちた（2026-11-23）。
+        /// </summary>
+        internal const float MountMaxElevation = 60f;
 
         /// <summary>レンズと敵の体の最短距離の下限（m）。これより近いと関節球が画面を覆う。</summary>
         internal const float MountMinLens = 0.5f;
@@ -595,12 +600,40 @@ namespace Ryona.Game
             // 以降はその位置・注視点で止める（指定 2026-11-22）。
             if (!firstFrame && _holdValid)
             {
-                _camera.RequestCinematicShot(_holdPos, _holdTarget);
+                _camera.RequestCinematicShot(_holdPos, _holdTarget, fov: _holdFov);
                 Vector3 heldOffset = _holdPos - _holdTarget;
                 var held = ProbeFace(head, _faceFigures, _holdTarget, heldOffset);
                 MountFaceVisible = held.Visible;
                 MountFaceSize = FaceVisibility.ScreenFaceSize(FaceProbe(), head);
                 _mountLens = FaceVisibility.LensClearance(_holdPos, _faceFigures);
+                if (LaunchOptions.Has("-mountlog") && Time.unscaledTime >= _nextMountFaceLog)
+                {
+                    _nextMountFaceLog = Time.unscaledTime + 0.1f;
+                    GameLog.Log($"[MountHold] visible={held.Visible:F2} readable={(held.Readable ? 1 : 0)} facing={held.FacingAngle:F0} " +
+                                $"size={MountFaceSize * 100f:F1}% stage={Stage} blocker={held.Blocker ?? "none"}");
+                }
+
+                // 固定の画は跨った瞬間の姿勢で選ぶので、敵が構え直すと体で顔が隠れたままになることがある
+                // （計測 2026-11-23: 固定中ずっと visible=0, blocker=Enemy）。隠れた状態が続いたら、
+                // その時点の姿勢で選び直して切り替える。殴られた瞬間の一時的な遮りでは切り替えない。
+                // 顔を背けたまま（Readable でない）も、長く続けば同じく選び直す（殴られて首が振れる
+                // 一瞬は待つ）。計測: 固定中の 6 割が「見えているが背けている」画があった。
+                bool hidden = held.Visible < 0.5f;
+                bool turned = !held.Readable;
+                _holdBlocked = hidden ? _holdBlocked + Time.unscaledDeltaTime : 0f;
+                _holdTurned = turned ? _holdTurned + Time.unscaledDeltaTime : 0f;
+                if ((_holdBlocked >= HoldBlockedSeconds || _holdTurned >= HoldTurnedSeconds) &&
+                    Time.unscaledTime >= _nextHoldRepick)
+                {
+                    _nextHoldRepick = Time.unscaledTime + 2.0f;
+                    _holdTurned = 0f;
+                    _holdBlocked = 0f;
+                    _holdValid = false;
+                    _shotOffset = Vector3.zero;
+                    _mountWanted = Vector3.zero;
+                    if (LaunchOptions.Has("-mountlog"))
+                        GameLog.Log($"[MountHold] repick ({(hidden ? "face blocked" : "face turned away")})");
+                }
                 return;
             }
 
@@ -674,9 +707,80 @@ namespace Ryona.Game
             {
                 _holdTarget = target;
                 _holdPos = target + BackOffFromLens(target, _shotOffset);
+                ZoomOnFace(head);
                 _holdValid = true;
+                // 跨った瞬間のカットは寄せた画へ直接切る（遠い画から寄っていく動きは出さない）。
+                _camera.RequestCinematicShot(_holdPos, _holdTarget, cut: true, fov: _holdFov);
             }
         }
+
+        /// <summary>寄せたときに顔が占める、画面の高さに対する割合の目標。</summary>
+        const float MountFaceTarget = 0.16f;
+
+        /// <summary>寄せるときの画角の下限（度）。これより絞ると打撃の揺れで顔が枠から外れる。</summary>
+        const float MountMinFov = 20f;
+
+        /// <summary>
+        /// 固定の画で顔を大きく映す。位置は選んだ画のまま、注視点を顔へ寄せて画角を絞る（ズーム）。
+        /// 候補は水平 1.35m 以上の距離からしか選ばず、顔が画面の高さの 8% 前後にしかならなかった
+        /// （指定 2026-11-22「顔がちゃんと見えるくらいまで寄って」）。
+        /// 位置を顔へ寄せる方法は、跨った敵の脇越しに撮る画なので、少し寄るだけでレンズが敵の体に
+        /// ぶつかった（実測: 0.85m でレンズと敵 0.15m）。ズームなら遮蔽の条件は変わらない。
+        /// </summary>
+        void ZoomOnFace(Transform head)
+        {
+            _holdFov = 0f;
+            Vector3 face = head.position;
+            Vector3 aim = Vector3.Lerp(face, TargetRig.Hips.position, 0.12f) + Vector3.up * 0.03f;
+            var reading = ProbeFace(head, _faceFigures, aim, _holdPos - aim);
+            if (!reading.Readable || reading.InFrame < 0.99f)
+            {
+                if (LaunchOptions.Has("-mountlog"))
+                    GameLog.Log($"[MountZoom] keep (aim face unreadable v={reading.Visible:F2} f={reading.InFrame:F2})");
+                return;
+            }
+            _holdTarget = aim;
+
+            // 基準はカメラの通常の画角。選び直しのときは既に絞った画角になっているので、
+            // 今の画角で測ると「もう十分大きい」と判定してズームを外してしまった。
+            Camera probe = FaceProbe();
+            float baseFov = _camera.BaseFov();
+            probe.fieldOfView = baseFov;
+            float size = FaceVisibility.ScreenFaceSize(probe, head);
+            if (size <= 1e-4f || size >= MountFaceTarget)
+                return;
+
+            float tan = Mathf.Tan(baseFov * 0.5f * Mathf.Deg2Rad) * size / MountFaceTarget;
+            float fov = Mathf.Max(MountMinFov, 2f * Mathf.Atan(tan) * Mathf.Rad2Deg);
+            // 絞った画で顔が枠から外れるなら、収まるまで広げる。
+            for (; fov < baseFov; fov += 3f)
+            {
+                probe.fieldOfView = fov;
+                var zoomed = FaceVisibility.Measure(probe, head, _faceFigures);
+                if (zoomed.InFrame >= 0.99f && zoomed.Readable)
+                    break;
+            }
+            if (fov >= baseFov - 0.5f)
+                return;
+            _holdFov = fov;
+            if (LaunchOptions.Has("-mountlog"))
+            {
+                probe.fieldOfView = fov;
+                GameLog.Log($"[MountZoom] fov {baseFov:F0}->{fov:F0} face {size * 100f:F1}%->" +
+                            $"{FaceVisibility.ScreenFaceSize(probe, head) * 100f:F1}%");
+            }
+        }
+
+        float _holdFov;
+        float _holdBlocked;
+        float _holdTurned;
+        float _nextHoldRepick;
+
+        /// <summary>固定の画で顔が隠れ続けたら選び直すまでの秒数。</summary>
+        const float HoldBlockedSeconds = 0.4f;
+
+        /// <summary>固定の画で顔を背け続けたら選び直すまでの秒数。</summary>
+        const float HoldTurnedSeconds = 0.6f;
 
         bool _holdValid;
         Vector3 _holdPos;
@@ -938,6 +1042,10 @@ namespace Ryona.Game
             // 顔が大きいほど少しだけ得（最大 +0.2）。遠い画が同点で勝たないようにする。
             score += Mathf.Min(size, 0.10f) * 2f;
 
+            // 顔の正面に近い画ほど得（最大 +0.4）。読める上限（60°）ぎりぎりの画は、殴られて
+            // 首が振れるとすぐ読めなくなる。
+            score += 0.4f * Mathf.Clamp01(1f - reading.FacingAngle / FaceVisibility.FacingLimit);
+
             float far = FaceDistances[FaceDistances.Length - 1];
             float near = FaceDistances[0];
             float horizontal = Mathf.Sqrt(candidate.x * candidate.x + candidate.z * candidate.z);
@@ -1030,6 +1138,9 @@ namespace Ryona.Game
             ImpactWasLeftPunch = false;
             _shotOffset = Vector3.zero;
             _holdValid = false;
+            _holdFov = 0f;
+            _holdBlocked = 0f;
+            _holdTurned = 0f;
             _mountWanted = Vector3.zero;
             _searchCursor = -1;
             _driftLogged = false;

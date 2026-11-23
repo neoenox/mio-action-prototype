@@ -395,19 +395,51 @@ namespace Ryona.Game
                         $"a={r.FacingAngle:F0} b={r.Blocker ?? "-"} down={(down ? 1 : 0)}");
         }
 
-        internal void RequestCinematicShot(Vector3 position, Vector3 target, bool cut = false)
+        /// <param name="fov">
+        /// 縦の画角（度）。0 以下なら通常の画角のまま。位置を寄せられない画（手前に敵がいる等）で、
+        /// 位置はそのままにズームして顔を大きく映すのに使う。演出が終わると通常の画角へ戻る。
+        /// </param>
+        internal void RequestCinematicShot(Vector3 position, Vector3 target, bool cut = false, float fov = 0f)
         {
             _cinematicRequested = true;
             _cinematicCut = cut;
             _cinematicPosition = position;
             _cinematicTarget = target;
+            _cinematicFov = fov;
             _exitRemaining = 0f;
+        }
+
+        float _cinematicFov;
+        float _baseFov = -1f;
+
+        /// <summary>通常の画角（最初に見た値）。演出の画角はここから寄せて、ここへ戻す。</summary>
+        internal float BaseFov()
+        {
+            if (_cam == null)
+                _cam = GetComponent<Camera>();
+            if (_baseFov <= 0f && _cam != null)
+                _baseFov = _cam.fieldOfView;
+            return _baseFov;
+        }
+
+        /// <summary>画角を <paramref name="wanted"/> へ寄せる。<paramref name="instant"/> なら即座に。</summary>
+        void BlendFov(float wanted, bool instant)
+        {
+            if (_cam == null || wanted <= 0f || Mathf.Approximately(_cam.fieldOfView, wanted))
+                return;
+            float t = instant ? 1f : 1f - Mathf.Exp(-8f * Time.unscaledDeltaTime);
+            _cam.fieldOfView = Mathf.Lerp(_cam.fieldOfView, wanted, t);
+            if (Mathf.Abs(_cam.fieldOfView - wanted) < 0.05f)
+                _cam.fieldOfView = wanted;
         }
 
         void ApplyCinematicShot()
         {
+            float baseFov = BaseFov();
             if (!_cinematicRequested)
             {
+                // 演出が終わったら通常の画角へ戻す（切って終わった画は即座に）。
+                BlendFov(baseFov, _lastCinematicCut);
                 if (_cinematicActive && !_lastCinematicCut)
                 {
                     _exitFromPosition = _lastCinematicPosition;
@@ -461,6 +493,7 @@ namespace Ryona.Game
                 shotUp = Vector3.Cross(right.normalized, look).normalized;
             }
             transform.SetPositionAndRotation(_shotTarget + zoomedOffset, Quaternion.LookRotation(look, shotUp));
+            BlendFov(_cinematicFov > 0f ? _cinematicFov : baseFov, _cinematicCut);
             _lastCinematicPosition = transform.position;
             _lastCinematicRotation = transform.rotation;
             _lastCinematicCut = _cinematicCut;
