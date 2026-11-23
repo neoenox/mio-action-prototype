@@ -6,7 +6,7 @@
 
 - **作業を開始するときは必ず worktree を作る**。メインの作業ディレクトリ（リポジトリルート）で直接変更しない。既存の worktree は再利用しない。
   - 例: `git worktree add ../ryona-action-<作業名> -b <作業ブランチ> origin/main` のち `cd ../ryona-action-<作業名>`。
-- worktree 内で変更し、コンパイル・撮影（`preview.py` / `motion_audit.py`）・ログで確認する。ローカルでテストバッチは回さない（CI が PR で全バッチを回す）。
+- worktree 内で変更し、コンパイル・撮影（`preview.py` / `motion_audit.py`）・ログで確認する。ローカルでテストバッチは回さない（CI が PR で軽いテストを回す）。
 - コミットして push し、`gh pr create` で PR を作る。必須チェックが既知フレークで落ちている場合は一時的に外し、マージ後に必ず元へ戻す。
 - 元のディレクトリへ戻り、`gh pr merge <番号>` でマージしたあと `git switch main && git pull --ff-only` で最新化する（マージ後にも必ず Pull する）。
 - **main を最新化したら main でプレイヤーをビルドする**（`Ryona.EditorTools.PlayerBuild.BuildWindowsFromCli`）。worktree 内のビルドは検証用で、完了扱いにしない。
@@ -110,9 +110,14 @@ python tools/motion_audit.py Verify/preview/<dir> --strip 110 117 -o seq.png
 - EditMode は `Ryona.Tests`（`Ryona.Core` のみ参照）、PlayMode は `Ryona.PlayTests`（`Ryona.Game` を参照）。
 - まとめて回すときは `MioPrototype/tools/run_tests.py`（コンパイル確認込み）。
 - 速回しの例: `python tools/run_tests.py --filter "BearHugTests|OverheadRuntimeTests" --skip-compile`（数十秒）。
-- **テストは CI（GitHub Actions `unity-tests.yml`）が PR で実行する**（2026-11-22 の指定）。開発中・コミット前ともローカルでは回さない。見た目と挙動の確認は撮影（`preview.py`・`motion_audit.py`）とログで行う。
-  下の表は CI のバッチ割り当ての目安（`edit` は常に含める）。CI は常に全バッチを回す。ローカルで確認したいときだけ `run_tests.py --only ...` を使う。
-  CI は self-hosted Windows runner（`runs-on: [self-hosted, Windows]`）で `run_tests.py` の全バッチを実行する。ランナーに Unity と Python 3.11 が必要で、実行中は Unity Editor を閉じておく。
+- **テストは軽いものだけを既定にし、重いものは必要なときだけ回す**（2026-11-23 の指定。全バッチは 1 時間以上かかり、作業が止まる）。
+  - CI（GitHub Actions `unity-tests.yml`）は PR と `main` への push で、**コンパイル確認 + `edit`（EditMode）だけ**を回す。数分で終わる。
+  - 重い PlayMode（`grapple` / `motion` / `misc`）は必要なときだけ: PR に **`full-tests` ラベル**を付ける（全バッチ）か、Actions の「Run workflow」でバッチを選ぶ。
+    ロジックの前提（段階の進行・タイミング・判定）を変えたときに使う。見た目だけの変更では回さない。
+  - 特定のテストだけ確かめたいときは、ローカルで `run_tests.py --filter "<クラス名>" --skip-compile`（数十秒）。
+  - 開発中の確認は撮影（`preview.py`・`motion_audit.py`）とログで行う。
+  CI は self-hosted Windows runner（`runs-on: [self-hosted, Windows]`、`C:ctions-runner`）で実行する。ランナーに Unity と Python 3.11 が必要で、実行中は Unity Editor を閉じておく。
+  ランナーが止まっているとジョブが「Waiting for a runner」のまま進まない（`C:ctions-runnerun.cmd` で起動する）。
   gitignore 済みの音声素材は workflow の `VOICE_SOURCE` から作業ツリーへコピーする。ランナーを構築したら `UNITY_EXE` と `VOICE_SOURCE` を実パスに合わせる。
 
 | 変更した場所 | 回すバッチ |
@@ -122,11 +127,11 @@ python tools/motion_audit.py Verify/preview/<dir> --strip 110 117 -o seq.png
 | `CharacterAnimator*` / `Rig/**` / `AI/**`（姿勢・関節） | `motion` ＋ `grapple` |
 | `Config/**` / `OcclusionFade` / `ThirdPersonCamera` / `PlayerStats` | `misc` |
 
-- 複数領域に触れたら和集合。CI は全バッチを回すので、下表は影響範囲の目安として読む。
+- 複数領域に触れたら和集合。重いバッチを回すときに、どれを選ぶかの目安として読む。
 - 全バッチで落ちたテストが再実行で通っても即「フレーク」と決めず、`--filter` で同一テストを3回連続回す。3回とも通れば既知フレークとしてここに1行追加し、1回でも落ちれば実バグとして原因を直す。
 - 既知フレーク（2026-11-21）: `VrmRuntimeTests.Vrmが読み込まれリグが組み上がる` が全バッチで1回だけ「肘が下りていない」で失敗。`--filter VrmRuntimeTests` で3回連続パス（各2/2）を確認済み。
 - 既知フレーク（2026-11-21）: `WallPinRuntimeTests.壁拘束の各段階で彼女の顔が画面に映っている`（3 人がかり 74% vs 下限 75%）と `PlayerFaceRuntimeTests` の口形 3 件が全バッチで各 1 回失敗。`--filter` で 3 回連続パス（1/1×3、10/10×3）を確認済み。
 - 既知フレーク（2026-11-22）: `DownRuntimeTests.ダウンは後ろへ放物線で飛ぶ` が全バッチで1回だけ「浮いていない（y=0.02）」で失敗。`--filter DownRuntimeTests.ダウンは後ろへ放物線で飛ぶ` で3回連続パス（1/1×3）を確認済み。
-- CI が全緑なら、記録を `MioPrototype/Verify/test-baseline.txt`（日付・HEAD・各バッチ結果）に1行追記する。
+- 全バッチを回して全緑なら、記録を `MioPrototype/Verify/test-baseline.txt`（日付・HEAD・各バッチ結果）に1行追記する。
 - 既存テストには**設計意図が書かれている**ことがある（例：顔パンの首振りは 40° 以上必要）。
   値を変えて落ちたときは、まずテストの意図を読む。
