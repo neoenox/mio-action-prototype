@@ -600,16 +600,18 @@ namespace Ryona.Game
             // 以降はその位置・注視点で止める（指定 2026-11-22）。
             if (!firstFrame && _holdValid)
             {
-                _camera.RequestCinematicShot(_holdPos, _holdTarget, fov: _holdFov);
-                Vector3 heldOffset = _holdPos - _holdTarget;
+                // 普段は止めたまま。パンチの腕などがレンズの前に来たときだけ、少しずらして避ける
+                // （固定のままだとレンズ前に敵が留まり続けた。CI: レンズ前 303 コマ）。
+                Vector3 heldOffset = BackOffFromLens(_holdTarget, _holdPos - _holdTarget);
+                _camera.RequestCinematicShot(_holdTarget + heldOffset, _holdTarget, fov: _holdFov);
                 var held = ProbeFace(head, _faceFigures, _holdTarget, heldOffset);
                 MountFaceVisible = held.Visible;
                 MountFaceSize = FaceVisibility.ScreenFaceSize(FaceProbe(), head);
-                _mountLens = FaceVisibility.LensClearance(_holdPos, _faceFigures);
+                _mountLens = FaceVisibility.LensClearance(_holdTarget + heldOffset, _faceFigures);
                 if (LaunchOptions.Has("-mountlog") && Time.unscaledTime >= _nextMountFaceLog)
                 {
                     _nextMountFaceLog = Time.unscaledTime + 0.1f;
-                    GameLog.Log($"[MountHold] visible={held.Visible:F2} readable={(held.Readable ? 1 : 0)} facing={held.FacingAngle:F0} " +
+                    GameLog.Log($"[MountHold] visible={held.Visible:F2} readable={(held.Readable ? 1 : 0)} facing={held.FacingAngle:F0} lens={_mountLens:F2} " +
                                 $"size={MountFaceSize * 100f:F1}% stage={Stage} blocker={held.Blocker ?? "none"}");
                 }
 
