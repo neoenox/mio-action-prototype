@@ -1,6 +1,7 @@
-import { Matrix4, PerspectiveCamera, Quaternion, Vector3 } from 'three';
+import { Matrix4, Object3D, PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import {
+  FACE_FORWARD_LOCAL,
   FaceRadius,
   FacingLimit,
   FrameMargin,
@@ -9,6 +10,7 @@ import {
   OpaqueAlpha,
   RequiredRatio,
   faceCenter,
+  headBoneFromObject,
   isInFrame,
   lensClearance,
   measure,
@@ -46,6 +48,66 @@ function proxyAt(position: Vector3, shape: FaceProxy['shape'], scale = new Vecto
   );
   return { matrixWorld: matrix, shape, active: true };
 }
+
+describe('headBoneFromObject の前方向', () => {
+  it('FACE_FORWARD_LOCAL は rig/bones.ts と同じローカル -Z', () => {
+    expect(FACE_FORWARD_LOCAL.toArray()).toEqual([0, 0, -1]);
+  });
+
+  it('head のローカル -Z が forward として使われ、+Z（後頭部）ではない', () => {
+    const head = new Object3D();
+    head.position.set(1, 2, 3);
+    head.updateMatrixWorld(true);
+
+    const bone = headBoneFromObject(head);
+    // 回転なしならローカル -Z はそのままワールド -Z
+    expect(bone.forward.x).toBeCloseTo(0, 6);
+    expect(bone.forward.y).toBeCloseTo(0, 6);
+    expect(bone.forward.z).toBeCloseTo(-1, 6);
+    expect(bone.up.y).toBeCloseTo(1, 6);
+  });
+
+  it('root を反転しても forward は head のワールド行列に追従する', () => {
+    const root = new Object3D();
+    root.rotation.y = Math.PI;
+    const head = new Object3D();
+    head.position.set(0, 1.5, 0);
+    root.add(head);
+    root.updateMatrixWorld(true);
+
+    const bone = headBoneFromObject(head);
+    // ローカル -Z はワールド +Z（カメラ側）を向く
+    expect(bone.forward.z).toBeCloseTo(1, 6);
+    expect(bone.forward.x).toBeCloseTo(0, 6);
+  });
+
+  it('faceCenter は head.position から forward 側（ローカル -Z）へ 0.05m 置かれる', () => {
+    const head = new Object3D();
+    head.position.set(0, 1.5, 2);
+    head.updateMatrixWorld(true);
+
+    const bone = headBoneFromObject(head);
+    const center = faceCenter(bone);
+    expect(center.y).toBeCloseTo(1.56, 6);
+    // 後頭部側 (+Z) ではなく顔側 (-Z) へずれる
+    expect(center.z).toBeCloseTo(1.95, 6);
+    expect(center.z).toBeLessThan(head.position.z);
+  });
+
+  it('顔側を向いた head は measure で Readable になる', () => {
+    const camera = makeCamera(new Vector3(0, 0, 0), new Vector3(0, 0, -2));
+    const head = new Object3D();
+    // カメラ正面 (0,0,-2) に置き、ローカル -Z をカメラ側 (+Z) へ向ける
+    head.position.set(0, 0, -2);
+    head.rotation.y = Math.PI;
+    head.updateMatrixWorld(true);
+
+    const result = measure(camera, headBoneFromObject(head), []);
+    expect(result.facingAngle).toBeLessThan(FacingLimit);
+    expect(result.readable).toBe(true);
+    expect(result.visible).toBe(1);
+  });
+});
 
 describe('FaceVisibility 定数', () => {
   it('RequiredRatio は壁拘束の 4 段階で固定されている', () => {

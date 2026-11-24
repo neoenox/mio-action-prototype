@@ -18,6 +18,11 @@
 import * as THREE from 'three';
 import { Clock } from '../core/clock';
 import { Prng } from '../core/prng';
+import { createEnemyRig, createPlayerRig } from '../rig/index.js';
+import { CameraController } from '../feel/camera.js';
+import { HeldBellyPunchCamera, PunchZone } from '../feel/held-belly-punch-camera.js';
+import { createPunchAnchorProvider } from '../logic/hooks.js';
+import { headBoneFromObject, measure, type EnemyFigureView } from '../feel/face-visibility.js';
 
 /** 撮影対象の場面名（tools/scenarios.mjs の19キーと同じ）。 */
 const SCENARIO_NAMES = [
@@ -41,6 +46,12 @@ export interface CaptureState {
   dt: number;
   rig: LogArea;
   feel: LogArea;
+  /** test-player が数値で顔の可視性を判定するための値。 */
+  face: {
+    visible: number; inFrame: number; unblocked: number;
+    blocker: string | null; facingAngle: number; readable: boolean;
+  } | null;
+  debug: { rootRotationY: number };
   query: Record<string, string>;
 }
 
@@ -93,38 +104,35 @@ ground.rotation.x = -Math.PI / 2;
 ground.position.y = -0.02;
 scene.add(ground);
 
-/** 仮のキャラ三相（rig が実装されるまでの撮影用プロキシ）。 */
-function makeFigure(color: number, x: number) {
-  const group = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.22, 0.72, 4, 12),
-    new THREE.MeshStandardMaterial({ color, roughness: 0.7 }),
-  );
-  body.position.y = 0.95;
-  group.add(body);
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.19, 20, 14),
-    new THREE.MeshStandardMaterial({ color: 0xe8c9a8, roughness: 0.8 }),
-  );
-  head.position.y = 1.62;
-  group.add(head);
-  const armL = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.075, 0.48, 4, 8),
-    new THREE.MeshStandardMaterial({ color, roughness: 0.7 }),
-  );
-  armL.position.set(-0.32, 1.05, 0);
-  group.add(armL);
-  const armR = armL.clone();
-  armR.position.x = 0.32;
-  group.add(armR);
-  group.position.x = x;
-  scene.add(group);
-  return { group, body, head, armL, armR };
-}
+/**
+ * 実リグ（rig-port の createPlayerRig / createEnemyRig）をシーンへ接続する。
+ * 以前はプロキシ2体だったが、Wave 1 で実ボーン＋手続きポーズへ差し替えた。
+ */
+const playerRig = createPlayerRig();
+playerRig.attachTo(scene, { x: -0.55, y: 0, z: 0 });
+// rig 側で顔パーツを head ローカル -Z に配置したため、カメラ（+Z 側）へ
+// 顔を向けるには root を π 回す。敵も同様に顔をカメラ側へ向ける。
+// rotation.y に代入すると rig 側の getWorldQuaternion() が呼ばれた瞬間に
+// quaternion(identity) 側が優先されて 0 へ戻る。quaternion を直接設定する。
+playerRig.root.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
 
-const hero = makeFigure(0x6aa9ff, -0.55);
-const enemy = makeFigure(0xd0605a, 0.55);
-enemy.group.rotation.y = Math.PI;
+const enemyRig = createEnemyRig(0xd0605a);
+enemyRig.attachTo(scene, { x: 0.55, y: 0, z: 0 });
+enemyRig.root.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+
+// カメラ押し込み API（Unity ThirdPersonCamera 相当）と腹パン演出の構図。
+// Unity の ThirdPersonCamera 既定距離 5.2m に合わせる。
+// HeldBellyPunchCamera の倍率 (腹 0.27 等) はこの基本距離への乗数なので、
+// ここを 1.55m にすると実距離 0.42m になり頭に貼り付く。
+const cameraRig = new CameraController(camera, { distance: 5.2 });
+cameraRig.setTarget(new THREE.Vector3(0, 1.4, 0));
+cameraRig.setDistance(5.2);
+const heldPunchCamera = new HeldBellyPunchCamera(cameraRig);
+
+// logic の EnemyBrainHooks へ渡す拳アンカー。rig の実ボーン座標を x/y/z 構造体化する。
+const punchAnchor = createPunchAnchorProvider({
+  getPunchAnchor: (zone) => enemyRig.getPunchAnchor(zone),
+});
 
 /** 場面ごとの動きの違い（撮影の差分が出るように決定的に変える）。 */
 function motionFor(name: ScenarioName): { swing: number; approach: number; spin: number } {
@@ -172,19 +180,65 @@ function reset(sname: ScenarioName) {
   seedOffset = [...sname].reduce((a, c) => a + c.charCodeAt(0), 0) / 1000;
 }
 
-function applyPose() {
-  const m = motionFor(scenario);
+/** 場面ごとの animator 入力。差分が出るように決定的に変える。 */
+function animatorInputFor(name: ScenarioName) {
+  const m = motionFor(name);
   const t = clock.time + seedOffset;
   const noise = prng.next() - 0.5;
-  hero.group.position.x = -0.55 + Math.sin(t * 1.7) * 0.08 * m.approach;
-  hero.body.rotation.z = Math.sin(t * 4.4) * 0.16 * m.swing;
-  hero.armL.rotation.x = Math.sin(t * 5.1) * 0.7 * m.swing;
-  hero.armR.rotation.x = -Math.sin(t * 5.1 + 0.6) * 0.7 * m.swing;
-  hero.head.rotation.y = Math.sin(t * 2.3) * 0.35 * m.spin + noise * 0.02;
-  enemy.group.position.x = 0.55 + Math.sin(t * 1.3) * 0.05 * m.approach;
-  enemy.body.rotation.z = -Math.sin(t * 3.7) * 0.12 * m.swing;
-  camera.position.x = Math.sin(t * 0.8) * 0.15 * m.spin;
-  camera.lookAt(0, 1.05, 0);
+  const downScenarios = name === 'haul' || name === 'haulprone' ||
+    name === 'mount' || name === 'mountprone' || name === 'facemount';
+  const punchScenarios = name === 'belly' || name === 'bellybody' ||
+    name === 'face' || name === 'wallsplit' || name === 'wallpin';
+  return {
+    time: t,
+    dt,
+    isMoving: m.approach > 0.6,
+    isAttacking: punchScenarios && Math.sin(t * 5.0) > 0.2,
+    isGrappled: punchScenarios,
+    isDown: downScenarios && t > 1.0,
+    downOnBack: name !== 'haulprone' && name !== 'mountprone',
+    downRollSide: name === 'mount' ? 1 : 0,
+    mountInverted: name === 'mount' || name === 'mountprone' || name === 'facemount',
+    staggerTier: name === 'bearhug' ? 2 : 1,
+    staggerZone: name === 'face' || name === 'facemount' ? 'head' as const : 'body' as const,
+    planarSpeed: m.approach,
+    swing: m.swing,
+    spin: m.spin + noise * 0.02,
+    approach: m.approach,
+  };
+}
+
+function applyPose() {
+  const input = animatorInputFor(scenario);
+  playerRig.animator.tick(input);
+  enemyRig.animator.tick({ ...input, isGrappled: false, isAttacking: !input.isAttacking });
+
+  // 実リグの位置を場面に応じて動かす（正規化した座標系）。
+  const t = clock.time + seedOffset;
+  playerRig.root.position.x = -0.55 + Math.sin(t * 1.7) * 0.08 * input.approach;
+  enemyRig.root.position.x = 0.55 + Math.sin(t * 1.3) * 0.05 * input.approach;
+
+  // 腹/顔パンシナリオでは HeldBellyPunchCamera の構図を毎フレーム保持する。
+  const punching = scenario === 'belly' || scenario === 'bellybody' ||
+    scenario === 'face' || scenario === 'wallsplit' || scenario === 'wallpin';
+  if (punching) {
+    const zone = scenario === 'face' || scenario === 'facemount'
+      ? PunchZone.Face : PunchZone.Body;
+    heldPunchCamera.setInput({
+      phase: scenario === 'wallpin' ? 2 : 2, // Combo
+      zone,
+      playerX: playerRig.root.position.x,
+      facingSign: 1,
+      fatigue: Math.min(1, clock.time * 0.05),
+      impactPulse: Math.max(0, 1 - (clock.time % 0.6) * 2),
+    });
+    heldPunchCamera.holdFraming();
+  } else {
+    heldPunchCamera.clearFocus();
+  }
+
+  cameraRig.setTarget(new THREE.Vector3(playerRig.root.position.x, 0, 0));
+  cameraRig.update(dt, clock.scaledDelta(dt));
 }
 
 // 撮影中は HUD のフレーム番号が画像差分に乗らないよう非表示にする。
@@ -193,6 +247,13 @@ if (params.get('capture') === '1' && hud) hud.style.display = 'none';
 function currentState(): CaptureState {
   const query: Record<string, string> = {};
   params.forEach((value, key) => { query[key] = value; });
+  // test-player が画像だけでなく数値で顔の可視性を判定できるようにする。
+  // 敵プロキシは未接続なので遮蔽なしとして測り、facing/inFrame を優先して見る。
+  const enemies: EnemyFigureView[] = [];
+  const headObject = playerRig.bones.head;
+  const fv = headObject
+    ? measure(camera, headBoneFromObject(headObject), enemies)
+    : null;
   return {
     clock: {
       time: clock.time,
@@ -204,6 +265,15 @@ function currentState(): CaptureState {
     dt,
     rig: rigLog,
     feel: feelLog,
+    face: fv ? {
+      visible: fv.visible,
+      inFrame: fv.inFrame,
+      unblocked: fv.unblocked,
+      blocker: fv.blocker,
+      facingAngle: fv.facingAngle,
+      readable: fv.readable,
+    } : null,
+    debug: { rootRotationY: playerRig.root.rotation.y },
     query,
   };
 }

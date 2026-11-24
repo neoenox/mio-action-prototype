@@ -130,6 +130,9 @@ export class ProceduralRig {
     this.restRelativeToRoot.clear();
     for (const bone of Object.values(this.bones)) {
       if (!bone) continue;
+      // root はシーン配置用の Group。初期姿勢として控えると、app が設定した
+      // 体の向きを resetPose() が毎フレーム上書きしてしまう。
+      if (bone === this.root) continue;
       this.rest.set(bone, { position: bone.position.clone(), quaternion: bone.quaternion.clone() });
       this.restRelativeToRoot.set(bone, relativeRotationToRoot(this.root, bone));
     }
@@ -148,6 +151,9 @@ export class ProceduralRig {
 
   resetPose(): void {
     for (const [bone, rest] of this.rest) {
+      // root はボーンではなくシーンの配置用 Group。ここで戻すと app が設定した
+      // 向き（顔をカメラへ向ける π など）が毎フレーム消える。
+      if (bone === this.root) continue;
       bone.position.copy(rest.position);
       bone.quaternion.copy(rest.quaternion);
     }
@@ -157,7 +163,7 @@ export class ProceduralRig {
   snapshotPose(): void {
     this.snapshotRotations.clear();
     for (const bone of Object.values(this.bones)) {
-      if (bone) this.snapshotRotations.set(bone, bone.quaternion.clone());
+      if (bone && bone !== this.root) this.snapshotRotations.set(bone, bone.quaternion.clone());
     }
     const hips = this.bones.hips;
     if (hips) this.snapshotHips.copy(hips.position);
@@ -409,6 +415,16 @@ export interface AnimatorInput {
   readonly planarSpeed?: number;
   /** 体から見た進行方向 (x=横, y=前)。 */
   readonly walkDir?: Vector2;
+  /** Down: 着地後に仰向けへ反転する（マウント反転）。既定 false = うつ伏せ。 */
+  readonly downOnBack?: boolean;
+  /** Down: 着地後の地面ロール方向。-1=左、+1=右、0=ロールなし。 */
+  readonly downRollSide?: number;
+  /** Down: マウント中に頭を下へ反転させる。 */
+  readonly mountInverted?: boolean;
+  /** Stagger の段（1=Small, 2=Medium, 3=Large, 4=GuardBreak）。既定 2。 */
+  readonly staggerTier?: number;
+  /** Stagger の被打部位。既定 'body'。 */
+  readonly staggerZone?: 'head' | 'body';
   readonly time: number;
   readonly dt: number;
 }
@@ -426,6 +442,16 @@ export class CharacterAnimator {
   state = AnimatorState.Idle;
   stateTime = 0;
   stateDuration = 0;
+
+  /**
+   * ポーズの派生形。tick(input) から毎フレーム更新されるが、
+   * applyPose() を直接呼ぶ撮影ドライバからも書き込めるよう public にしている。
+   */
+  downOnBack = false;
+  downRollSide = 0;
+  mountInverted = false;
+  staggerTier = 2;
+  staggerZone: 'head' | 'body' = 'body';
 
   /** Diagnostic: 直近の ApplyPose で渡した腕・体幹の向き。 */
   readonly debug = {
@@ -466,13 +492,20 @@ export class CharacterAnimator {
       this.downForward = false;
       this.downLaunched = false;
       this.downFallSeconds = STANCE.DownFallSeconds;
-      this.downEndLay = -92;
+      // うつ伏せ / 仰向けで倒れる向きを反転（マウント反転は仰向け側）。
+      this.downEndLay = this.downOnBack || this.mountInverted ? 92 : -92;
     }
   }
 
   /** 迁移動 detección + 姿勢適用（Unity `LateUpdate` 相当）。 */
   tick(input: AnimatorInput): void {
     if (!this.rig.ready) return;
+    this.downOnBack = input.downOnBack === true || input.mountInverted === true;
+    this.downRollSide = Math.max(-1, Math.min(1, input.downRollSide ?? 0));
+    this.mountInverted = input.mountInverted === true;
+    if (input.staggerTier !== undefined) this.staggerTier = Math.round(input.staggerTier);
+    if (input.staggerZone !== undefined) this.staggerZone = input.staggerZone;
+
     const dt = Math.max(0, input.dt);
     this.stateTime += dt;
     this.guardRecoil = Math.max(0, this.guardRecoil - dt);
@@ -527,7 +560,14 @@ export class CharacterAnimator {
   }
 
   private updateState(input: AnimatorInput): void {
-    const held = input.isGrappled === true && input.isDead !== true;
+    // 死亡・ダウンは最優先。以前は Down 状態の「抜ける側」にだけ isDown を見ていたため、
+    // Idle/Walk/Grabbed から isDown=true を渡しても Down へ入らなかった（haul の直立背面の原因）。
+    if (input.isDead === true || (input.isDown === true && input.getUpRequested !== true)) {
+      if (this.state !== AnimatorState.Down) this.setState(AnimatorState.Down, 999);
+      return;
+    }
+
+    const held = input.isGrappled === true;
     if (held) {
       if (this.state !== AnimatorState.Grabbed) this.setState(AnimatorState.Grabbed, 0);
       return;
@@ -541,12 +581,12 @@ export class CharacterAnimator {
       case AnimatorState.Stagger:
         if (this.stateTime >= this.stateDuration) this.state = AnimatorState.Idle;
         break;
-      case AnimatorState.Down:
-        if (input.isDead !== true && (input.isDown !== true || input.getUpRequested === true)) {
-          const up = Math.max(0.2, this.settings.getUpSeconds);
-          this.setState(AnimatorState.GetUp, up);
-        }
+      case AnimatorState.Down: {
+        // ここに来た時点で isDown は false か getUpRequested が true。
+        const up = Math.max(0.2, this.settings.getUpSeconds);
+        this.setState(AnimatorState.GetUp, up);
         break;
+      }
       case AnimatorState.GetUp:
         if (this.stateTime >= this.stateDuration) this.state = AnimatorState.Idle;
         break;
@@ -554,9 +594,8 @@ export class CharacterAnimator {
         if (input.isAttacking !== true) this.state = AnimatorState.Idle;
         break;
       default:
-        if (input.isDead === true) {
-          this.setState(AnimatorState.Down, 999);
-        } else if (input.isAttacking === true) {
+        // isDead / isDown は冒頭で処理済み。
+        if (input.isAttacking === true) {
           this.setState(AnimatorState.Attack, 0);
         } else if (input.isStunned === true) {
           this.setState(AnimatorState.Stagger, Math.max(0.1, input.stunRemaining ?? 0.1));
@@ -717,36 +756,72 @@ export class CharacterAnimator {
     return pose;
   }
 
-  /** 怯み（簡易版）。Unity の 4 段・顔/腹・方向別は残課題。 */
+  /**
+   * 怯み 4 段（rig-port 投票の第 2 優先）。
+   * tier 1=Small / 2=Medium / 3=Large / 4=GuardBreak（core の StaggerTier と同じ番号）。
+   * 顔は首の振りを強く、胴は体幹の折れと腰の沈みを強くする。
+   */
   poseStagger(): PoseValues {
     const pose = this.poseDefaults();
     const t = clamp01(this.stateTime / Math.max(0.01, this.stateDuration));
-    const bend = 42 * Math.sin(Math.PI * t);
-    pose.hipsOffset.y = STANCE.HipsY - 0.075 * (bend / 60);
-    pose.hipsOffset.z = STANCE.HipsZ - 0.09 * (bend / 60);
-    pose.torsoPitch = STANCE.TorsoPitch + bend;
-    pose.headPitch = -bend * 0.35;
-    pose.armLUpper.copy(STANCE.ArmLUpper).lerp(new Vector3(0.10, -0.45, 0.85), bend / 60);
-    pose.armRUpper.copy(STANCE.ArmRUpper).lerp(new Vector3(-0.10, -0.45, 0.85), bend / 60);
+    const tier = Math.max(1, Math.min(4, this.staggerTier));
+    const peak = [0, 24, 42, 60, 80][tier]!;
+    const bend = peak * Math.sin(Math.PI * t);
+    const headHit = this.staggerZone === 'head';
+    const amp = bend / 60;
+
+    pose.hipsOffset.y = STANCE.HipsY - 0.075 * amp * (headHit ? 0.5 : 1);
+    pose.hipsOffset.z = STANCE.HipsZ - 0.09 * amp * (headHit ? 0.4 : 1);
+    pose.torsoPitch = STANCE.TorsoPitch + bend * (headHit ? 0.62 : 1);
+    pose.torsoYaw = STANCE.TorsoYaw + (headHit ? bend * 0.28 : -bend * 0.12);
+    pose.headPitch = -bend * (headHit ? 0.85 : 0.35);
+    pose.headYaw = headHit ? bend * 0.34 : 0;
+    pose.headRoll = headHit ? -bend * 0.18 : 0;
+
+    const brace = Math.min(1, amp);
+    pose.armLUpper.copy(STANCE.ArmLUpper).lerp(new Vector3(0.10, -0.45, 0.85), brace);
+    pose.armRUpper.copy(STANCE.ArmRUpper).lerp(new Vector3(-0.10, -0.45, 0.85), brace);
+    // GuardBreak は腕がほどける（ガードが崩れる）を表現する。
+    if (tier === 4) {
+      pose.armLUpper.lerp(new Vector3(0.55, -0.20, 0.80), brace * 0.6);
+      pose.armRUpper.lerp(new Vector3(-0.55, -0.20, 0.80), brace * 0.6);
+    }
     pose.footL.add(STANCE.FootL);
     pose.footR.add(STANCE.FootR);
-    pose.grip = 0.6;
+    pose.grip = tier >= 4 ? 0.25 : 0.6;
     return pose;
   }
 
-  /** ダウン（簡易版）。Unity の地面ロール・うつ伏せ・引きずり等は残課題。 */
+  /**
+   * ダウン（rig-port 投票の第 1 優先）。
+   * 着地までは後ろへ倒れ、着地後に地面ロール（laySide）で横へ回る。
+   * mountInverted / downOnBack のときは仰向けへ反転し、腰を前へ出して
+   * マウントされた側の姿勢を作る。
+   */
   poseDown(): PoseValues {
     const pose = this.poseDefaults();
     const fallT = clamp01(this.stateTime / Math.max(0.05, this.downFallSeconds));
-    const lay = smoothstep(fallT) * this.downEndLay;
-    pose.layAngle = lay;
-    pose.hipsOffset.y = STANCE.HipsY + lerp(0, -0.84, fallT);
-    pose.hipsOffset.z = STANCE.HipsZ + lerp(0, -0.87, fallT);
-    pose.torsoPitch = STANCE.TorsoPitch + 10 * fallT;
+    const land = smoothstep(fallT);
+    // 地面についてから残り 45% で横へ転がる（落下中に回らない）。
+    const rollT = smoothstep(clamp01((fallT - 0.55) / 0.45));
+    const onBack = this.downOnBack || this.mountInverted;
+
+    pose.layAngle = land * (onBack ? 92 : -92);
+    pose.laySide = rollT * this.downRollSide * 38;
+    pose.hipsOffset.y = STANCE.HipsY + lerp(0, onBack ? -0.80 : -0.84, fallT);
+    pose.hipsOffset.z = STANCE.HipsZ + lerp(0, this.mountInverted ? 0.72 : -0.87, fallT);
+    pose.torsoPitch = STANCE.TorsoPitch + 10 * fallT + (this.mountInverted ? 22 * rollT : 0);
+    pose.headPitch = onBack ? -8 * rollT : 8 * rollT;
+    pose.headRoll = rollT * this.downRollSide * 16;
     pose.armLUpper.copy(STANCE.ArmLUpper).lerp(this.settings.downArmLUpper, fallT);
     pose.armLFore.copy(STANCE.ArmLFore).lerp(this.settings.downArmLFore, fallT);
     pose.armRUpper.copy(STANCE.ArmRUpper).lerp(this.settings.downArmRUpper, fallT);
     pose.armRFore.copy(STANCE.ArmRFore).lerp(this.settings.downArmRFore, fallT);
+    if (this.mountInverted) {
+      // 反転時は腕を頭側へ回す（マウントで捕まったときの配置）。
+      pose.armLUpper.lerp(new Vector3(0.16, 0.55, 0.72), rollT);
+      pose.armRUpper.lerp(new Vector3(-0.16, 0.55, 0.72), rollT);
+    }
     pose.legTuck = 1 - fallT;
     pose.grip = 0.4;
     return pose;

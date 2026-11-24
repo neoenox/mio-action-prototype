@@ -39,7 +39,32 @@ export enum EnemyPhase {
 }
 
 /**
+ * punch anchor の構造体。THREE.Vector3 でも自前の {x,y,z} でも受け取れるよう、
+ * logic 側は x/y/z だけを要求する（three 非依存を保つ）。
+ */
+export interface PunchAnchor {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+}
+
+/** 構造体だけを要求する点で THREE.Vector3 もそのまま渡せる。 */
+export type Vector3Like = PunchAnchor;
+
+/**
+ * rig 側が実装する getPunchAnchor の zone 名。
+ * logic の PunchZone（Face/Body）と 'head'/'body' を createHooksFromRig で変換する。
+ */
+export type RigPunchZone = 'head' | 'body';
+
+/** PunchZone → rig 側 zone 名。rig へ渡すときだけ使う。 */
+export function toRigPunchZone(zone: PunchZone): RigPunchZone {
+  return zone === PunchZone.Face ? 'head' : 'body';
+}
+
+/**
  * 敵Brain がダメージ解決・当たり判定のために外へ要求する最小の口。
  * EnemyBrain は rig を直接持たず、この関数だけを注入される（getPunchAnchor(zone)）。
+ * 戻り値は構造体のみ。THREE.Vector3 をそのまま返す rig もそのまま繋がる。
  */
-export type PunchAnchorProvider = (zone: PunchZone) => { x: number; y: number; z: number } | null;
+export type PunchAnchorProvider = (zone: PunchZone) => PunchAnchor | null;

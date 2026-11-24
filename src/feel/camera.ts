@@ -75,6 +75,8 @@ export class CameraController {
   private beltX = 0;
   private beltLead = 0;
   private framed = false;
+  /** 最初の update では追従を即座に完了させ、#1→#2 の飛びを防ぐ。 */
+  private firstUpdate = true;
 
   // 演出状態（ThirdPersonCamera と同じ意味）
   private pushScale = 1;
@@ -141,7 +143,10 @@ export class CameraController {
     this.target = target?.clone() ?? null;
     if (target && first) {
       this.beltX = target.x;
-      this.smoothPivot.set(target.x, this.smoothPivot.y, this.smoothPivot.z);
+      const pivot = target.clone().add(this.settings.pivotOffset);
+      this.smoothPivot.copy(pivot);
+      this.desiredDistance = this.distance;
+      this.firstUpdate = true;
     }
   }
 
@@ -303,7 +308,10 @@ export class CameraController {
 
     const pivot = this.target.clone().add(this.settings.pivotOffset);
     pivot.y += this.pivotOffsetY;
-    this.smoothPivot.lerp(pivot, 1 - Math.exp(-this.settings.followSharpness * scaledDelta));
+    const followT = this.firstUpdate
+      ? 1
+      : 1 - Math.exp(-this.settings.followSharpness * scaledDelta);
+    this.smoothPivot.lerp(pivot, followT);
 
     // Unity の Euler(pitch, yaw, 0) 相当を YXZ 順で組み、backward 方向を取る。
     const rotation = new Quaternion().setFromEuler(
@@ -318,8 +326,9 @@ export class CameraController {
     this.desiredDistance = MathUtils.lerp(
       this.desiredDistance,
       scaledDistance,
-      1 - Math.exp(-22 * scaledDelta),
+      this.firstUpdate ? 1 : 1 - Math.exp(-22 * scaledDelta),
     );
+    this.firstUpdate = false;
 
     this.camera.position.copy(this.smoothPivot).addScaledVector(direction, this.desiredDistance);
     this.camera.up.copy(UP);
@@ -397,7 +406,8 @@ export class CameraController {
     const pivot = new Vector3(this.beltX, height, 0);
     const follow = focusing ? 26 : (s.beltFollowSharpness ?? 5);
     const followDt = focusing ? unscaledDelta : scaledDelta;
-    this.smoothPivot.lerp(pivot, 1 - Math.exp(-follow * followDt));
+    this.smoothPivot.lerp(pivot, this.firstUpdate ? 1 : 1 - Math.exp(-follow * followDt));
+    this.firstUpdate = false;
 
     const rotation = new Quaternion().setFromAxisAngle(UP, ((s.beltYaw ?? 0) + (focusing ? this.focusYaw * focusWeight : 0)) * DEG);
     const tilt = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), pitch * DEG);
