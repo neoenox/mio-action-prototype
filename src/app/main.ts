@@ -22,6 +22,8 @@ import { createEnemyRig, createPlayerRig } from '../rig/index.js';
 import { CameraController } from '../feel/camera.js';
 import { HeldBellyPunchCamera, PunchZone } from '../feel/held-belly-punch-camera.js';
 import { createPunchAnchorProvider } from '../logic/hooks.js';
+import { GameWorld, type WorldSnapshot } from '../logic/world.js';
+import { emptyIntent, type InputIntent } from '../input/intent.js';
 import { headBoneFromObject, measure, type EnemyFigureView } from '../feel/face-visibility.js';
 import { UnityFov, scenarioCameraProfile } from '../feel/scenario-camera.js';
 
@@ -53,6 +55,8 @@ export interface CaptureState {
     blocker: string | null; facingAngle: number; readable: boolean;
   } | null;
   debug: { rootRotationY: number };
+  /** logic の実際の状態（撮影と QA の突き合わせ用）。 */
+  world: WorldSnapshot | null;
   query: Record<string, string>;
 }
 
@@ -118,9 +122,14 @@ playerRig.attachTo(scene, { x: -0.55, y: 0, z: 0 });
 // quaternion(identity) 側が優先されて 0 へ戻る。quaternion を直接設定する。
 playerRig.root.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
 
-const enemyRig = createEnemyRig(0xd0605a);
-enemyRig.attachTo(scene, { x: 0.55, y: 0, z: 0 });
-enemyRig.root.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+const ENEMY_COLORS = [0xd0605a, 0xc87850] as const;
+const enemyRigs = ENEMY_COLORS.map((color) => {
+  const rig = createEnemyRig(color);
+  rig.attachTo(scene, { x: 2.4, y: 0, z: 0 });
+  rig.root.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+  return rig;
+});
+const enemyRig = enemyRigs[0]!;
 
 // カメラ押し込み API（Unity ThirdPersonCamera 相当）と腹パン演出の構図。
 // このゲームはレーン固定なので Unity の BeltScreenLock と同じ belt モードを既定にする。
@@ -152,6 +161,31 @@ function applyScenarioCamera(name: string) {
 const punchAnchor = createPunchAnchorProvider({
   getPunchAnchor: (zone) => enemyRig.getPunchAnchor(zone),
 });
+
+/**
+ * ゲーム世界。敵 AI・拘束・壁シーケンス・移動をここで回す。
+ * 以前はシナリオ名からポーズを決め打ちしていただけで、因果が動いていなかった。
+ */
+const world = new GameWorld({
+  enemyCount: enemyRigs.length,
+  rigs: enemyRigs.map((rig) => ({ getPunchAnchor: (zone) => rig.getPunchAnchor(zone) })),
+  seed: 0x2f6e2b1,
+});
+
+/** 場面ごとの入力。撮影の再現性のため時計とシナリオから決定的に作る。 */
+function buildIntent(): InputIntent {
+  const t = clock.time + seedOffset;
+  const m = motionFor(scenario);
+  // 敵は x=2.4 付近に湧く。最初に寄って接触し、そのあとは小さく揺れる。
+  const engage = t < 1.6 ? 1 : Math.sin(t * 1.4) * 0.35 * m.approach;
+  return {
+    ...emptyIntent(),
+    moveX: engage,
+    // 0.22 秒ごとに立ち上がるので、もがきは「押した瞬間」として数えられる。
+    struggle: m.approach > 0.4 && Math.floor(t / 0.22) % 2 === 0,
+    light: m.approach > 0.8 && Math.floor(t / 0.5) % 2 === 0,
+  };
+}
 
 /** 場面ごとの動きの違い（撮影の差分が出るように決定的に変える）。 */
 function motionFor(name: ScenarioName): { swing: number; approach: number; spin: number } {
@@ -200,28 +234,23 @@ function reset(sname: ScenarioName) {
   applyScenarioCamera(sname);
 }
 
-/** 場面ごとの animator 入力。差分が出るように決定的に変える。 */
-function animatorInputFor(name: ScenarioName) {
-  const m = motionFor(name);
-  const t = clock.time + seedOffset;
+/** animator の入力は world の snapshot から作る（決め打ちをやめた）。 */
+function animatorInputFromSnapshot(snap: WorldSnapshot, elapsed: number) {
+  const m = motionFor(scenario);
   const noise = prng.next() - 0.5;
-  const downScenarios = name === 'haul' || name === 'haulprone' ||
-    name === 'mount' || name === 'mountprone' || name === 'facemount';
-  const punchScenarios = name === 'belly' || name === 'bellybody' ||
-    name === 'face' || name === 'wallsplit' || name === 'wallpin';
   return {
-    time: t,
+    time: elapsed,
     dt,
-    isMoving: m.approach > 0.6,
-    isAttacking: punchScenarios && Math.sin(t * 5.0) > 0.2,
-    isGrappled: punchScenarios,
-    isDown: downScenarios && t > 1.0,
-    downOnBack: name !== 'haulprone' && name !== 'mountprone',
-    downRollSide: name === 'mount' ? 1 : 0,
-    mountInverted: name === 'mount' || name === 'mountprone' || name === 'facemount',
-    staggerTier: name === 'bearhug' ? 2 : 1,
-    staggerZone: name === 'face' || name === 'facemount' ? 'head' as const : 'body' as const,
-    planarSpeed: m.approach,
+    isMoving: snap.player.isMoving,
+    isAttacking: snap.enemies.some((e) => e.isAttacking),
+    isGrappled: snap.player.isGrappled,
+    isDown: snap.player.isDown,
+    downOnBack: scenario !== 'haulprone' && scenario !== 'mountprone',
+    downRollSide: scenario === 'mount' ? 1 : 0,
+    mountInverted: scenario === 'mount' || scenario === 'mountprone' || scenario === 'facemount',
+    staggerTier: 2,
+    staggerZone: 'body' as const,
+    planarSpeed: Math.abs(m.approach),
     swing: m.swing,
     spin: m.spin + noise * 0.02,
     approach: m.approach,
@@ -229,36 +258,62 @@ function animatorInputFor(name: ScenarioName) {
 }
 
 function applyPose() {
-  const input = animatorInputFor(scenario);
-  playerRig.animator.tick(input);
-  enemyRig.animator.tick({ ...input, isGrappled: false, isAttacking: !input.isAttacking });
+  const scaled = clock.scaledDelta(dt);
+  world.tick(scaled, buildIntent());
+  const snap = world.snapshot();
+  const elapsed = clock.time + seedOffset;
 
-  // 実リグの位置を場面に応じて動かす（正規化した座標系）。
-  const t = clock.time + seedOffset;
-  playerRig.root.position.x = -0.55 + Math.sin(t * 1.7) * 0.08 * input.approach;
-  enemyRig.root.position.x = 0.55 + Math.sin(t * 1.3) * 0.05 * input.approach;
+  // 位置は logic が持つ。rig はそれを読むだけ。
+  playerRig.root.position.x = snap.player.x;
+  playerRig.root.position.z = snap.player.z;
+  for (let i = 0; i < enemyRigs.length; i++) {
+    const rig = enemyRigs[i]!;
+    const enemy = snap.enemies[i];
+    rig.root.position.x = enemy ? enemy.x : 4 + i;
+    rig.root.position.z = enemy ? enemy.z : 0;
+  }
 
-  // 腹/顔パンシナリオでは HeldBellyPunchCamera の構図を毎フレーム保持する。
-  const punching = scenario === 'belly' || scenario === 'bellybody' ||
-    scenario === 'face' || scenario === 'wallsplit' || scenario === 'wallpin';
-  if (punching) {
-    const zone = scenario === 'face' || scenario === 'facemount'
-      ? PunchZone.Face : PunchZone.Body;
+  const playerInput = animatorInputFromSnapshot(snap, elapsed);
+  playerRig.animator.tick(playerInput);
+
+  for (let i = 0; i < enemyRigs.length; i++) {
+    const enemy = snap.enemies[i];
+    if (!enemy) continue;
+    enemyRigs[i]!.animator.tick({
+      ...playerInput,
+      isGrappled: false,
+      isDown: enemy.isDead,
+      isAttacking: enemy.isAttacking,
+      isMoving: !enemy.isAttacking && !enemy.isDead,
+    });
+  }
+
+  // 拘束中の腹/顔パンだけは Unity と同じ寄りの構図にする。
+  const punchZone = snap.events.find((e) => e.type === 'hit');
+  if (snap.player.isGrappled && punchZone) {
     heldPunchCamera.setInput({
-      phase: scenario === 'wallpin' ? 2 : 2, // Combo
-      zone,
-      playerX: playerRig.root.position.x,
-      facingSign: 1,
-      fatigue: Math.min(1, clock.time * 0.05),
-      impactPulse: Math.max(0, 1 - (clock.time % 0.6) * 2),
+      phase: 2, // Combo
+      zone: PunchZone.Body,
+      playerX: snap.player.x,
+      facingSign: snap.player.facing,
+      fatigue: Math.min(1, snap.grapple.heldSeconds * 0.2),
+      impactPulse: 1,
+    });
+    heldPunchCamera.holdFraming();
+  } else if (snap.player.isGrappled) {
+    heldPunchCamera.setInput({
+      phase: 2,
+      zone: PunchZone.Body,
+      playerX: snap.player.x,
+      facingSign: snap.player.facing,
     });
     heldPunchCamera.holdFraming();
   } else {
     heldPunchCamera.clearFocus();
   }
 
-  cameraRig.setTarget(new THREE.Vector3(playerRig.root.position.x, 0, 0));
-  cameraRig.update(dt, clock.scaledDelta(dt));
+  cameraRig.setTarget(new THREE.Vector3(snap.player.x, 0, snap.player.z));
+  cameraRig.update(dt, scaled);
 }
 
 // 撮影中は HUD のフレーム番号が画像差分に乗らないよう非表示にする。
@@ -294,6 +349,7 @@ function currentState(): CaptureState {
       readable: fv.readable,
     } : null,
     debug: { rootRotationY: playerRig.root.rotation.y },
+    world: world.snapshot(),
     query,
   };
 }

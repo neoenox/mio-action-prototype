@@ -162,3 +162,29 @@ PR #88 マージ後、全員の投票で **(D) 実リグ/カメラへの差し�
 5. 最後に (E) 19 場面すべてを撮影
 
 作業用 worktree: `C:\gemini-desktop\ryona-action-wave1`（ブランチ `port/threejs-wave1`）。
+
+## Wave 2: 構図・スケール合わせ（2026-11-25 完了）
+
+投票: (A) 5票（rig / visual / verifier / test-player / core）、(B) 実ゲーム配線 1票（game）。
+
+Unity の実値: `Prototype.unity` の FOV 40、`RyonaConfig.Camera` の
+Distance 5.2 / BeltPitch 14 / BeltPivotHeight 0.86 / BeltMinZoomDistance 3.8。
+シナリオごとに別カメラ（三人称 / BeltScreenLock / PinHoldPose / WallSplitCamera /
+HeldBellyPunch / 地面カメラ）を使うため、単一の既定値では合わなかった。
+
+`src/feel/scenario-camera.ts` にシナリオ別プロファイルを追加し belt モードで切り替える。
+frontpin の占有率は 20% → 75%、haul は 60%。punch 系のプロファイルは 5.2m にしないと、
+`HeldBellyPunchCamera` の倍率（Unity の基本距離 5.2m 前提）で実距離が詰まり頭だけになる。
+
+## Wave 3: 実ゲーム配線（2026-11-25 完了）
+
+投票: (B) 4票（game / verifier / test-player / core）、(C) 19場面比較 2票（rig / visual）。
+
+`src/logic/world.ts` の `GameWorld` が 入力 → 移動 → AI → 拘束/壁 → ヒット解決 の順で回し、
+`snapshot()` で rig に渡す。app はシナリオ名からの決め打ちポーズをやめ、
+`world.tick(dt, intent)` と `snapshot()` だけで動く。`state().world` に snapshot を出す。
+
+verifier が Unity の 19 場面すべての基準画像を撮って `Verify/baseline/manifest.json` に保全した。
+
+残課題: プレイヤーの攻撃（light/heavy/break）が未配線、膝 5 発が logic に無い、
+壁の 1 発のダメージが仮値、`DamageResolver` を経由していない。
