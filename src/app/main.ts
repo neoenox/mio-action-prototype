@@ -23,6 +23,7 @@ import { CameraController } from '../feel/camera.js';
 import { HeldBellyPunchCamera, PunchZone } from '../feel/held-belly-punch-camera.js';
 import { createPunchAnchorProvider } from '../logic/hooks.js';
 import { headBoneFromObject, measure, type EnemyFigureView } from '../feel/face-visibility.js';
+import { UnityFov, scenarioCameraProfile } from '../feel/scenario-camera.js';
 
 /** 撮影対象の場面名（tools/scenarios.mjs の19キーと同じ）。 */
 const SCENARIO_NAMES = [
@@ -87,7 +88,8 @@ renderer.setClearColor(0x0a0a0e, 1);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0a0e);
-const camera = new THREE.PerspectiveCamera(50, 16 / 9, 0.1, 100);
+// Unity の Prototype.unity は FOV 40。50 のままだと被写体が Unity より小さく写る。
+const camera = new THREE.PerspectiveCamera(UnityFov, 16 / 9, 0.1, 100);
 camera.position.set(0, 1.6, 4.2);
 camera.lookAt(0, 1.0, 0);
 
@@ -121,13 +123,30 @@ enemyRig.attachTo(scene, { x: 0.55, y: 0, z: 0 });
 enemyRig.root.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
 
 // カメラ押し込み API（Unity ThirdPersonCamera 相当）と腹パン演出の構図。
-// Unity の ThirdPersonCamera 既定距離 5.2m に合わせる。
-// HeldBellyPunchCamera の倍率 (腹 0.27 等) はこの基本距離への乗数なので、
-// ここを 1.55m にすると実距離 0.42m になり頭に貼り付く。
-const cameraRig = new CameraController(camera, { distance: 5.2 });
-cameraRig.setTarget(new THREE.Vector3(0, 1.4, 0));
-cameraRig.setDistance(5.2);
+// このゲームはレーン固定なので Unity の BeltScreenLock と同じ belt モードを既定にする。
+// 距離・ピッチ・注視点高はシナリオごとに scenarioCameraProfile() で切り替える。
+const cameraRig = new CameraController(camera, {
+  beltMode: true,
+  distance: 3.8,
+  beltPitch: 14,
+  beltPivotHeight: 0.86,
+  minDistance: 0.82,
+  maxDistance: 6,
+});
+cameraRig.setTarget(new THREE.Vector3(0, 0, 0));
+cameraRig.setDistance(3.8);
 const heldPunchCamera = new HeldBellyPunchCamera(cameraRig);
+
+/** scenario の変更時に Unity 相当のカメラへ切り替える。 */
+function applyScenarioCamera(name: string) {
+  const profile = scenarioCameraProfile(name);
+  camera.fov = profile.fov;
+  camera.updateProjectionMatrix();
+  cameraRig.settings.beltPitch = profile.pitch;
+  cameraRig.settings.beltPivotHeight = profile.pivotHeight;
+  cameraRig.settings.distance = profile.distance;
+  cameraRig.setDistance(profile.distance);
+}
 
 // logic の EnemyBrainHooks へ渡す拳アンカー。rig の実ボーン座標を x/y/z 構造体化する。
 const punchAnchor = createPunchAnchorProvider({
@@ -178,6 +197,7 @@ function reset(sname: ScenarioName) {
   rigLog.events.length = 0;
   feelLog.events.length = 0;
   seedOffset = [...sname].reduce((a, c) => a + c.charCodeAt(0), 0) / 1000;
+  applyScenarioCamera(sname);
 }
 
 /** 場面ごとの animator 入力。差分が出るように決定的に変える。 */
