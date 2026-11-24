@@ -18,12 +18,6 @@ on:
       - 'MioPrototype/ProjectSettings/**'
       - 'MioPrototype/Packages/**'
       - 'MioPrototype/tools/**'
-      # Three.js 移植作業中は src/tests/tools の変更でも main の必須チェックを走らせる。
-      # マージ後はこの3行を削除して元の Unity 専用 paths に戻すこと。
-      - 'src/**'
-      - 'tests/**'
-      - 'tools/**'
-      - 'package.json'
       - '.github/workflows/unity-tests.yml'
   push:
     branches: [main]
