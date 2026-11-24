@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ryona Three.js Port — Capture Driver</title>
+    <style>
+      html, body { margin: 0; padding: 0; background: #0a0a0e; overflow: hidden; }
+      #app { display: block; width: 100vw; height: 100vh; }
+      #hud {
+        position: fixed; left: 8px; bottom: 8px; color: #ffe66a;
+        font: 12px/1.4 monospace; background: rgba(0,0,0,.6);
+        padding: 4px 8px; pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="app"></canvas>
+    <div id="hud">capture driver ready</div>
+    <script type="module" src="/src/app/main.ts"></script>
+  </body>
+</html>
