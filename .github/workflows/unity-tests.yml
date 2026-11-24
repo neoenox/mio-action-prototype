@@ -54,33 +54,36 @@ jobs:
         shell: pwsh
         run: |
           $changed = "true"
-          try {
-            if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-              $changed = "true"
-            } elseif ("${{ github.event_name }}" -eq "pull_request") {
-              $base = "${{ github.event.pull_request.base.sha }}"
-              $head = "${{ github.event.pull_request.head.sha }}"
-              git fetch --no-tags --depth=1 origin $base 2>$null | Out-Null
-              $files = @(git diff --name-only $base $head)
-              $pattern = '^(MioPrototype/(Assets|ProjectSettings|Packages|tools)/|\.github/workflows/unity-tests\.yml$)'
-              $unity = @($files | Where-Object { $_ -match $pattern })
-              if ($files.Count -gt 0 -and $unity.Count -eq 0) { $changed = "false" }
-              Write-Host "changed files: $($files.Count) / unity: $($unity.Count)"
-            } else {
-              $before = "${{ github.event.before }}"
-              if ($before -and $before -notmatch '^0+$') {
-                git fetch --no-tags --depth=1 origin $before 2>$null | Out-Null
-                $files = @(git diff --name-only $before HEAD)
-                $pattern = '^(MioPrototype/(Assets|ProjectSettings|Packages|tools)/|\.github/workflows/unity-tests\.yml$)'
-                $unity = @($files | Where-Object { $_ -match $pattern })
-                if ($files.Count -gt 0 -and $unity.Count -eq 0) { $changed = "false" }
-              }
-            }
-          } catch {
-            Write-Host "::warning::変更の検出に失敗したため Unity tests を実行します: $_"
-            $changed = "true"
+          $pattern = '^(MioPrototype/(Assets|ProjectSettings|Packages|tools)/|\.github/workflows/unity-tests\.yml$)'
+          $files = @()
+          $base = ''
+          if ("${{ github.event_name }}" -eq "pull_request") {
+            $base = "${{ github.event.pull_request.base.sha }}"
+          } elseif ("${{ github.event_name }}" -eq "push") {
+            $base = "${{ github.event.before }}"
           }
+          if ($base -and $base -notmatch '^0+$') {
+            git fetch --no-tags --depth=1 origin $base 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+              $files = @(git diff --name-only $base HEAD 2>$null)
+              if ($LASTEXITCODE -ne 0) {
+                Write-Host "::warning::git diff に失敗しました。Unity tests を実行します。"
+                $files = @()
+                $changed = "true"
+                $base = ''
+              }
+            } else {
+              Write-Host "::warning::base commit の取得に失敗しました。Unity tests を実行します。"
+            }
+          }
+          if ($base) {
+            $unity = @($files | Where-Object { $_ -match $pattern })
+            Write-Host "changed files: $($files.Count) / unity: $($unity.Count)"
+            if ($files.Count -gt 0 -and $unity.Count -eq 0) { $changed = "false" }
+          }
+          Write-Host "Unity tests needed: $changed"
           "changed=$changed" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          exit 0
 
       - name: No Unity changes
         if: steps.detect.outputs.changed != 'true'
