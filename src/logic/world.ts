@@ -12,11 +12,17 @@
  * 拳のアンカーは敵ごとの rig から注入する（既存の createHooksFromRig と整合）。
  * rig を渡さなかった敵は `getPunchAnchor` が null になり、`EnemyBrain` の仕様どおり
  * 一度も当たらない（＝当たり判定を rig 側の実ボーンに預ける設計をそのまま保つ）。
+ *
+ * プレイヤーの攻撃（intent.light / heavy / break_）は、立ち上がりエッジで
+ * `AttackLibrary` の攻撃を発生させ、発生フレームの終わりに 1 回だけ命中判定する。
+ * ダメージは必ず `DamageResolver.resolve` を通す（腕の損傷倍率・部位ダメージ・スタンは core が決める）。
+ * 硬直（`AttackData.totalSeconds`）が終わるまで次の攻撃は受け付けない。
  */
 import { CombatState } from '../core/CombatState';
 import { CombatConstants } from '../core/CombatConstants';
 import { GrappleKind, GrappleResistance, ResistanceMath } from '../core/GrappleResistance';
-import { AttackLibrary } from '../core/AttackData';
+import { AttackData, AttackLibrary } from '../core/AttackData';
+import { DamageResolver } from '../core/DamageResolver';
 import { EnemyPhase, PunchZone, type EnemyActor } from './types';
 import {
   AttackId, DEFAULT_ENEMY_SETTINGS, EnemyBrain,
@@ -40,6 +46,17 @@ const SPAWN_GAP = 1.5;
 const TOKEN_HOLD_FIRE_SECONDS = 0.15;
 /** 投げ捨て（TossWindup）を見せてから拘束を解くまでの秒。 */
 const TOSS_SECONDS = 0.7;
+/** ダウン中の敵が起き上がるまで、Stagger を引き直すときの倍率（EnemyBrain.takeHit の tier）。 */
+const ENEMY_DOWN_STAGGER_TIER = 2.2;
+/** 正面判定のしきい値（向きベクトルとの内積）。EnemyBrain.canGrabFacing と同じ値。 */
+const FRONT_DOT = 0.7;
+
+/** CombatState の HP を指定値へ寄せる（heal / ダメージの公開 API だけで行う）。 */
+function setCombatHp(state: CombatState, value: number): void {
+  const delta = value - state.hp;
+  if (delta > 0) state.healHp(delta);
+  else if (delta < 0) state.applyHpDamage(-delta);
+}
 
 /**
  * 攻撃ごとのひるみ量。core の AttackLibrary（SPEC §4.5）を唯一の出所にする。
@@ -85,6 +102,10 @@ export interface PlayerSnapshot {
   isMoving: boolean;
   /** 追加フィールド（HUD 用）。 */
   hp: number;
+  /** 攻撃中か（発生〜硬直終わりまで）。rig はこの間だけ攻撃ポーズを選ぶ。 */
+  isAttacking: boolean;
+  /** 攻撃中の攻撃 ID（'light' | 'heavy' | 'break'）。攻撃していなければ null。 */
+  attackKind: string | null;
 }
 
 /** snapshot().enemies[i] の形。 */
@@ -100,6 +121,8 @@ export interface EnemySnapshot {
   isAttacking: boolean;
   /** 追加フィールド（HUD 用）。 */
   hp: number;
+  /** ダウン中か（HP 0・ダウンゲージ上限・死亡のいずれか）。 */
+  isDown: boolean;
 }
 
 /** snapshot().grapple の形。掴まれていないときは stage=None（kind は最後の値のまま）。 */
@@ -114,8 +137,19 @@ export interface GrappleSnapshot {
 
 /** 直前フレームに起きたこと。app はアニメーションのトリガにだけ使う。 */
 export type WorldEvent =
-  /** 敵の攻撃が当たった（プレイヤー HP 減少）。 */
-  | { type: 'hit'; attackerId: string; zone: PunchZone; damage: number }
+  /**
+   * 打撃が当たった。
+   * `attacker` は「どちら側の攻撃か」（'player' = プレイヤー→敵 / 'enemy' = 敵→プレイヤー）。
+   * `attackerId` はプレイヤーなら 'player'、敵なら敵 ID（壁の段階的な打撃は 'wall'）。
+   */
+  | {
+      type: 'hit';
+      attacker: 'player' | 'enemy';
+      attackerId: string;
+      targetId: string;
+      zone: PunchZone;
+      damage: number;
+    }
   /** 掴まれた。 */
   | { type: 'grabbed'; attackerId: string; kind: GrappleKind }
   /** もがいて脱出した。 */
@@ -137,6 +171,14 @@ export interface WorldSnapshot {
 /** 1 体ぶんの内部状態。 */
 interface EnemySlot {
   readonly brain: EnemyBrain;
+  /**
+   * 敵の戦闘リソース（HP / 部位ダメージ / ひるみゲージ）。
+   * プレイヤー攻撃のダメージは DamageResolver がここへ適用する。
+   * HP の表示上の真実は従来どおり `brain.hp` で、解決のたびに同期する。
+   */
+  readonly combat: CombatState;
+  /** ダウン中に残っている秒（0 なら起きている）。 */
+  downRemaining: number;
   /** 攻撃トークンを持っているか（EnemyGroup の attackers と同期させる）。 */
   holdingToken: boolean;
 }
@@ -181,6 +223,21 @@ export class GameWorld {
   private prevWallPhase = WallSequencePhase.Idle;
   private tossRemaining = 0;
 
+  // --- プレイヤーの攻撃 ---
+  /** 実行中の攻撃（発生〜硬直が終わるまで）。null なら次の入力を待っている。 */
+  private playerAttack: AttackData | null = null;
+  private attackElapsed = 0;
+  /** この攻撃で命中判定を済ませたか（1 回の攻撃につき 1 回だけ判定する）。 */
+  private attackHitDone = false;
+  /** 立ち上がりエッジ検出用の前フレーム入力。 */
+  private prevLight = false;
+  private prevHeavy = false;
+  private prevBreak = false;
+
+  // --- 壁拘束中の膝 5 発（app の onKneesFinished 呼び出しに依存しない） ---
+  private kneeCountValue = 0;
+  private kneeTimer = 0;
+
   constructor(options: GameWorldOptions = {}) {
     this.log = options.log ?? (() => {});
     this.grappleKind = options.grappleKind ?? GrappleKind.Pin;
@@ -207,7 +264,10 @@ export class GameWorld {
         ? createHooksFromRig(rig, otherHooks)
         : { ...otherHooks, getPunchAnchor: () => null };
       const brain = new EnemyBrain(id, actor, hooks, enemySettings, seed + i * 0x9e3779b1);
-      const slot: EnemySlot = { brain, holdingToken: false };
+      // 敵の戦闘リソース。最大 HP は EnemyBrain の初期 HP に合わせる（表示の hp とずれないように）。
+      const combat = new CombatState();
+      combat.setMaxHp(brain.hp);
+      const slot: EnemySlot = { brain, combat, downRemaining: 0, holdingToken: false };
       // Stagger / ダウン時に EnemyBrain.cancelWindup() から呼ばれる（トークンを返す）。
       brain.releaseToken = () => this.releaseToken(slot);
       this.slots.push(slot);
@@ -247,6 +307,10 @@ export class GameWorld {
   get wallPhase(): WallSequencePhase { return this.wallSeq.currentPhase; }
   /** 壁拘束が有効か（段階が None でない）。 */
   get isWallActive(): boolean { return this.session.isWall && this.session.stage !== WallStage.None; }
+  /** プレイヤーが攻撃中か（発生〜硬直終わりまで）。 */
+  get isPlayerAttacking(): boolean { return this.playerAttack !== null; }
+  /** この壁拘束で logic が出した膝の本数（テスト・ログ用。最大 PinKneeCount）。 */
+  get kneeCount(): number { return this.kneeCountValue; }
 
   /**
    * 壁拘束を開始する（Unity 版の PlayerGrapple.Wall の入口）。
@@ -269,6 +333,7 @@ export class GameWorld {
     this.prevWallPhase = WallSequencePhase.Idle;
     this.tossRemaining = 0;
     this.mashCount = 0;
+    this.resetKnees();
 
     this.isGrappled = true;
     this.playerMotor.setGrappled(true);
@@ -279,7 +344,9 @@ export class GameWorld {
 
   /**
    * 膝蹴り 5 発が終わったことを伝える（Unity 版の onKneesFinished 相当）。
-   * 膝の実行そのものはまだ logic に入っていないため、app / テストが明示的に呼ぶ。
+   *
+   * logic は `tickWall` から膝 5 発を自分で出すようになったので、app は呼ばなくてよい。
+   * 後方互換（明示的に早送りしたい場合）のために残している。
    */
   onKneesFinished(): void { this.wallSeq.onKneesFinished(); }
 
@@ -288,9 +355,10 @@ export class GameWorld {
    *
    *   1. 入力の取り込み … intent の「押した瞬間」を数える（もがき・猶予入力）
    *   2. プレイヤーの移動 … PlayerMotor（掴まれ中は動かない）
-   *   3. 敵 AI          … 攻撃トークン仲裁（EnemyGroup）→ EnemyBrain
-   *   4. 拘束・壁        … GrappleResistance / GrappleSession / WallTransition / WallSequence
-   *   5. ヒット解決      … 3 で出た AttackOutcome をここで適用（命中・掴み・ダウン）
+   *   3. プレイヤーの攻撃 … 立ち上がりエッジで発生 → 発生終わりに 1 回だけ命中判定
+   *   4. 敵 AI          … 攻撃トークン仲裁（EnemyGroup）→ EnemyBrain
+   *   5. 拘束・壁        … GrappleResistance / GrappleSession / WallTransition / WallSequence（膝 5 発）
+   *   6. ヒット解決      … 4 で出た AttackOutcome をここで適用（命中・掴み・ダウン）
    */
   tick(dt: number, intent: InputIntent): void {
     // HitStop などで dt=0 のフレームが来ても、前フレームのイベントを再送しない。
@@ -307,13 +375,16 @@ export class GameWorld {
     // --- 2. プレイヤーの移動 -------------------------------------------
     this.tickPlayer(dt, intent);
 
-    // --- 3. 敵 AI（トークン仲裁 → EnemyBrain） -------------------------
+    // --- 3. プレイヤーの攻撃 -------------------------------------------
+    this.tickPlayerAttack(dt, intent);
+
+    // --- 4. 敵 AI（トークン仲裁 → EnemyBrain） -------------------------
     this.tickEnemies(dt);
 
-    // --- 4. 拘束・壁シーケンス -----------------------------------------
+    // --- 5. 拘束・壁シーケンス -----------------------------------------
     this.tickGrapple(dt);
 
-    // --- 5. ヒット解決 -------------------------------------------------
+    // --- 6. ヒット解決 -------------------------------------------------
     this.resolveHits();
   }
 
@@ -331,6 +402,8 @@ export class GameWorld {
         isStruggling: this.isGrappled && this.strugglePressed,
         isMoving: this.playerMotor.isMoving,
         hp: this.playerCombat.hp,
+        isAttacking: this.playerAttack !== null,
+        attackKind: this.playerAttack?.id ?? null,
       },
       enemies: this.slots.map((slot) => {
         const brain = slot.brain;
@@ -347,6 +420,7 @@ export class GameWorld {
           isDead: !brain.isAlive,
           isAttacking,
           hp: brain.hp,
+          isDown: slot.combat.isDown || !brain.isAlive,
         };
       }),
       grapple: {
@@ -390,7 +464,136 @@ export class GameWorld {
   }
 
   // ---------------------------------------------------------------------
-  // 3. 敵 AI と攻撃トークン
+  // 3. プレイヤーの攻撃（intent.light / heavy / break_）
+  // ---------------------------------------------------------------------
+
+  /**
+   * 押した瞬間（立ち上がりエッジ）で攻撃を発生させ、発生が終わったフレームで 1 回だけ当たりを取る。
+   * 硬直（`AttackData.totalSeconds`）が終わるまでは次の入力を捨てる。
+   */
+  private tickPlayerAttack(dt: number, intent: InputIntent): void {
+    const lightPressed = intent.light && !this.prevLight;
+    const heavyPressed = intent.heavy && !this.prevHeavy;
+    const breakPressed = intent.break_ && !this.prevBreak;
+    this.prevLight = intent.light;
+    this.prevHeavy = intent.heavy;
+    this.prevBreak = intent.break_;
+
+    // 実行中の攻撃を進める。
+    const attack = this.playerAttack;
+    if (attack) {
+      // 掴まれた・ダウン・死亡したら振りかけを中断する（硬直ごと消す）。
+      if (this.playerBusy()) {
+        this.endPlayerAttack();
+        return;
+      }
+      this.attackElapsed += dt;
+      if (!this.attackHitDone && this.attackElapsed >= attack.startupSeconds) {
+        this.attackHitDone = true;
+        this.resolvePlayerAttackHit(attack);
+      }
+      if (this.attackElapsed >= attack.totalSeconds) this.endPlayerAttack();
+      return; // 硬直中は新しい攻撃を受け付けない
+    }
+
+    if (!lightPressed && !heavyPressed && !breakPressed) return;
+    if (this.playerBusy()) return;
+
+    // 同時押しは強攻撃を優先する（Break > Heavy > Light）。
+    const next = breakPressed ? AttackLibrary.breakAttack()
+      : heavyPressed ? AttackLibrary.heavy()
+        : AttackLibrary.light();
+    this.startPlayerAttack(next);
+  }
+
+  private playerBusy(): boolean {
+    return this.isDown || this.isGrappled || !this.playerCombat.isAlive;
+  }
+
+  private startPlayerAttack(attack: AttackData): void {
+    this.playerAttack = attack;
+    this.attackElapsed = 0;
+    this.attackHitDone = false;
+    // 踏み込みは PlayerMotor の既存機構へ任せる（発生が終わるまでに lungeDistance ぶん前へ）。
+    this.playerMotor.lunge(attack.lungeDistance, attack.startupSeconds, attack.id);
+    this.log(`[World] player attack ${attack.id}`);
+  }
+
+  private endPlayerAttack(): void {
+    this.playerAttack = null;
+    this.attackElapsed = 0;
+    this.attackHitDone = false;
+  }
+
+  /**
+   * プレイヤー → 敵の命中判定。正面の一番近い 1 体にだけ当たる。
+   * 間合いは `CombatConstants.BodyGap`（体の隙間）に攻撃の踏み込み距離を足した値。
+   */
+  private resolvePlayerAttackHit(attack: AttackData): void {
+    const goal = this.findPlayerAttackTarget(attack);
+    if (!goal) return;
+
+    // 敵の HP は brain 側が真実。解決の前に CombatState を合わせて二重計上を防ぐ。
+    setCombatHp(goal.combat, goal.brain.hp);
+    const hpBefore = goal.combat.hp;
+    // ダメージ・部位ダメージ・スタン段階は core が決める（腕の損傷倍率もここで効く）。
+    const hit = DamageResolver.resolve(this.playerCombat, attack, goal.combat, 1);
+    const dealt = hpBefore - goal.combat.hp;
+    if (dealt <= 0) return;
+
+    // core のスタン段階（秒）を EnemyBrain.takeHit の倍率へ換算する。
+    const stunSeconds = CombatConstants.stunSeconds(hit.stagger);
+    const tier = stunSeconds / Math.max(0.05, goal.brain.settings.staggerSeconds);
+    goal.brain.takeHit(dealt, tier, 'Torso');
+
+    this.events.push({
+      type: 'hit',
+      attacker: 'player',
+      attackerId: 'player',
+      targetId: goal.brain.id,
+      zone: PunchZone.Body,
+      damage: dealt,
+    });
+
+    // ひるみゲージ（core の値）が上限に達したらダウン。HP 0 は死亡＝ダウン。
+    if (goal.brain.isAlive && goal.combat.addFlinch(attack.flinchValue)) this.downEnemy(goal);
+  }
+
+  /** 正面・間合い内で一番近い敵。 */
+  private findPlayerAttackTarget(attack: AttackData): EnemySlot | null {
+    const p = this.playerMotor.position;
+    const facing = this.playerMotor.facingSign;
+    const reach = CombatConstants.BodyGap + attack.lungeDistance;
+    let best: EnemySlot | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (const slot of this.slots) {
+      if (!slot.brain.isAlive) continue;
+      const dx = slot.brain.position.x - p.x;
+      const dz = slot.brain.position.z - p.z;
+      const distance = Math.hypot(dx, dz);
+      if (distance > reach) continue;
+      // 正面にいるか（向きとの内積）。ゼロ距離はその場とみなす。
+      if (distance > 1e-4 && (facing * dx) / distance < FRONT_DOT) continue;
+      if (distance < bestDistance) {
+        best = slot;
+        bestDistance = distance;
+      }
+    }
+    return best;
+  }
+
+  /** 敵をダウンさせる（DownDuration の間は行動できない）。 */
+  private downEnemy(slot: EnemySlot): void {
+    if (!slot.brain.isAlive || slot.combat.isDown) return;
+    slot.combat.isDown = true;
+    slot.combat.resetFlinch();
+    slot.downRemaining = CombatConstants.DownDuration;
+    this.log(`[World] enemy down ${slot.brain.id}`);
+  }
+
+  // ---------------------------------------------------------------------
+  // 4. 敵 AI と攻撃トークン
   // ---------------------------------------------------------------------
 
   private tickEnemies(dt: number): void {
@@ -402,6 +605,17 @@ export class GameWorld {
       if (!brain.isAlive) {
         this.releaseToken(slot);
         continue;
+      }
+
+      // ダウン中は起き上がるまで Stagger を引き直して、攻撃させない。
+      if (slot.downRemaining > 0) {
+        slot.downRemaining -= dt;
+        if (slot.downRemaining <= 0) {
+          slot.downRemaining = 0;
+          slot.combat.isDown = false;
+        } else if (brain.phase !== EnemyPhase.Stagger) {
+          brain.takeHit(0, ENEMY_DOWN_STAGGER_TIER);
+        }
       }
 
       const attacking = brain.phase === EnemyPhase.Windup ||
@@ -479,6 +693,7 @@ export class GameWorld {
       }
     } else if (this.wallSeq.isRunning) {
       // 膝待ち → 猶予 → 二人がかり → 猶予 → 三人がかり → 投げ捨て。
+      this.tickWallKnees(dt);
       this.wallSeq.tick(dt);
       const phase = this.wallSeq.currentPhase;
       if (phase !== this.prevWallPhase) {
@@ -502,6 +717,54 @@ export class GameWorld {
     if (this.session.stage !== prevStage) {
       this.events.push({ type: 'wall-stage', from: prevStage, to: this.session.stage });
     }
+  }
+
+  // --- 膝 5 発（WallSequence.WaitKnees の間、logic が自分で出す） -------------
+
+  /**
+   * 膝蹴り 5 発を自分で発生させる。
+   * Unity 版は `PlayerGrapple` 側のコルーチンが `onKneesFinished` を呼ぶ契約だったが、
+   * app が呼び忘れると壁シーケンスが止まるため、ここで `PinKneeInterval` ごとに出す。
+   */
+  private tickWallKnees(dt: number): void {
+    if (!this.wallSeq.isRunning || this.wallSeq.currentPhase !== WallSequencePhase.WaitKnees) {
+      this.kneeTimer = 0;
+      return;
+    }
+    if (this.kneeCountValue >= CombatConstants.PinKneeCount) {
+      this.wallSeq.onKneesFinished();
+      return;
+    }
+    this.kneeTimer += dt;
+    if (this.kneeTimer < CombatConstants.PinKneeInterval) return;
+    this.kneeTimer -= CombatConstants.PinKneeInterval;
+
+    this.kneeCountValue++;
+    this.applyPinKnee();
+    if (this.kneeCountValue >= CombatConstants.PinKneeCount) this.wallSeq.onKneesFinished();
+  }
+
+  /** 押さえつけの膝 1 発。ダメージは core の PinKneeDamage。 */
+  private applyPinKnee(): void {
+    const captor = this.session.captor;
+    const damage = CombatConstants.PinKneeDamage;
+    this.playerCombat.applyHpDamage(damage);
+    if (this.godMode) this.playerCombat.ensureHpAtLeast(1);
+    this.events.push({
+      type: 'hit',
+      attacker: 'enemy',
+      attackerId: captor?.id ?? 'wall',
+      targetId: 'player',
+      zone: PunchZone.Body,
+      damage,
+    });
+    if (!this.godMode && this.playerCombat.addFlinch(damage)) this.knockDown();
+    this.log(`[World] pin knee ${this.kneeCountValue}/${CombatConstants.PinKneeCount}`);
+  }
+
+  private resetKnees(): void {
+    this.kneeCountValue = 0;
+    this.kneeTimer = 0;
   }
 
   /** 二人目のアシストを入れる（WallSequence.callAssist）。 */
@@ -542,7 +805,9 @@ export class GameWorld {
     if (this.godMode) this.playerCombat.ensureHpAtLeast(1);
     this.events.push({
       type: 'hit',
+      attacker: 'enemy',
       attackerId: puncher?.id ?? 'wall',
+      targetId: 'player',
       zone: kind === WallStrikeKind.Face ? PunchZone.Face : PunchZone.Body,
       damage,
     });
@@ -567,6 +832,7 @@ export class GameWorld {
     this.prevWallPhase = WallSequencePhase.Idle;
     this.isGrappled = false;
     this.playerMotor.setGrappled(false);
+    this.resetKnees();
     this.log('[World] wall grapple finished');
   }
 
@@ -592,7 +858,9 @@ export class GameWorld {
     if (this.godMode) this.playerCombat.ensureHpAtLeast(1);
     this.events.push({
       type: 'hit',
+      attacker: 'enemy',
       attackerId: outcome.attacker.id,
+      targetId: 'player',
       zone: outcome.zone,
       damage,
     });

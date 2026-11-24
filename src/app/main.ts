@@ -172,8 +172,29 @@ const world = new GameWorld({
   seed: 0x2f6e2b1,
 });
 
-/** 場面ごとの入力。撮影の再現性のため時計とシナリオから決定的に作る。 */
+/** 手で遊ぶときのキー入力。撮影（capture）中は使わない。 */
+const held = new Set<string>();
+window.addEventListener('keydown', (event) => { held.add(event.code); });
+window.addEventListener('keyup', (event) => { held.delete(event.code); });
+window.addEventListener('blur', () => { held.clear(); });
+
+/**
+ * 入力。撮影中はシナリオと時計から決定的に作り、手で遊ぶときはキーボードを読む。
+ * J/K/L = 軽/重/崩し、Space = もがき、A/D または ←/→ = 移動。
+ */
 function buildIntent(): InputIntent {
+  if (params.get('capture') !== '1') {
+    const left = held.has('KeyA') || held.has('ArrowLeft');
+    const right = held.has('KeyD') || held.has('ArrowRight');
+    return {
+      ...emptyIntent(),
+      moveX: (right ? 1 : 0) - (left ? 1 : 0),
+      light: held.has('KeyJ'),
+      heavy: held.has('KeyK'),
+      break_: held.has('KeyL'),
+      struggle: held.has('Space'),
+    };
+  }
   const t = clock.time + seedOffset;
   const m = motionFor(scenario);
   // 敵は x=2.4 付近に湧く。最初に寄って接触し、そのあとは小さく揺れる。
@@ -242,7 +263,7 @@ function animatorInputFromSnapshot(snap: WorldSnapshot, elapsed: number) {
     time: elapsed,
     dt,
     isMoving: snap.player.isMoving,
-    isAttacking: snap.enemies.some((e) => e.isAttacking),
+    isAttacking: snap.player.isAttacking,
     isGrappled: snap.player.isGrappled,
     isDown: snap.player.isDown,
     downOnBack: scenario !== 'haulprone' && scenario !== 'mountprone',
@@ -282,7 +303,7 @@ function applyPose() {
     enemyRigs[i]!.animator.tick({
       ...playerInput,
       isGrappled: false,
-      isDown: enemy.isDead,
+      isDown: enemy.isDown,
       isAttacking: enemy.isAttacking,
       isMoving: !enemy.isAttacking && !enemy.isDead,
     });

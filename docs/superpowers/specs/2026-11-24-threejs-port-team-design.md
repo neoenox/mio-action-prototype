@@ -188,3 +188,28 @@ verifier が Unity の 19 場面すべての基準画像を撮って `Verify/bas
 
 残課題: プレイヤーの攻撃（light/heavy/break）が未配線、膝 5 発が logic に無い、
 壁の 1 発のダメージが仮値、`DamageResolver` を経由していない。
+
+## Wave 4: プレイヤーの攻撃と膝（2026-11-25 完了）
+
+投票は 3 対 3 で割れ（(A) game / test-player / core、(B) rig / visual / verifier）、
+lead が (A) を先に確定した。理由は、攻撃が無い状態で比較しても「プレイヤーが殴れない」
+という既知の差が全場面に出るだけで新しい情報が少ないため。(B) は (A) の直後に回した。
+
+- `GameWorld` にプレイヤー攻撃を追加。`intent.light/heavy/break_` の立ち上がりエッジで
+  `AttackLibrary` の攻撃を出し、硬直（軽 0.33s / 重 / 崩し）が終わるまで次を受け付けない。
+- ダメージは必ず `DamageResolver.resolve` を通す。腕の損傷倍率（0.75 倍）・部位ダメージ・
+  ひるみ・スタンが core の値で動く。敵は `CombatState` を持ち HP 0 で死亡。
+- 膝 5 発を logic 側で発生させ、`world.onKneesFinished()` を呼ばなくても壁シーケンスが進む。
+- app に J/K/L（軽/重/崩し）・Space（もがき）・A/D（移動）のキー操作を追加。
+
+実測: 軽攻撃で敵 HP 60 → 52 → 44 → 36 → 28。攻撃中の `isAttacking` / `attackKind` も出る。
+
+### 19 場面の比較（Three.js 40 フレーム vs Unity の基準）
+
+平均差は近い範囲だが、**ピークが低い**（Unity 25〜70 に対し Three.js 9〜27、ratio も
+Unity 2.8〜9.3 に対し 2.0〜3.3）。Unity は `cut: true` のカットやヒットストップで大きく跳ぶ
+場面が多く、こちらの演出の山が足りないことが数値で出た。belly / face は平均も低い
+（4.4〜4.9 対 Unity 10.3〜10.6）ので、腹パン・顔パンの演出そのものが未接続。
+
+次の候補: (E) 拘束演出の残り（腹パン状態機械・壁シーケンス）、(B) compare.png による
+フレーム単位の並置、(D) 見た目（背景・ライティング・敵形状）、(C) 表情・指ボーン。
