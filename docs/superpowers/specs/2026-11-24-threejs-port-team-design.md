@@ -142,3 +142,23 @@ src/
 
 - 2026-11-24: ユーザーが「今後の作業はこのチームで作業割り振って行って」と承認。設計・実装の進行を許可済み。
 - 3 体の調査（core / game / visual）すべて反映済み。
+
+## 次の作業（2026-11-24 チーム議論で決定）
+
+PR #88 マージ後、全員の投票で **(D) 実リグ/カメラへの差し替えと Unity 版とのフレーム単位画像比較** を最優先に決定した（3票: core / rig / verifier。他は (A) 1票、(C) 1票）。
+
+投票の内訳:
+- core-port: (D) — 数値が揃った今、画像比較だけが「Unity と同じ見た目」を検証できる
+- rig-port: (D) — pose/* は差分の出た箇所から手を付ける。手始めは Down の地面ロールとマウント反転
+- verifier: (D) の前半 — プロキシのままでは motion_audit も sheet.png も意味のある比較にならない
+- game-port: (C) — punch anchor の配線（logic → rig）が先
+- visual-port: (A) — HeldBellyPunchDirector.Camera が先
+
+採用した手順:
+1. verifier が Unity 版 `preview.py` で比較基準画像を撮って保全（最低でも reel の3本 bellybody / frontpin / haul）
+2. rig / visual / game が実リグ・カメラ・punch anchor を `src/app/main.ts` に接続する API を用意（(C)(A) は (D) の入力として並行）
+3. Three.js 側で同じシナリオを撮り、`motion_audit --compare` で peak/avg を比較
+4. 差分の大きいフレームを `--strip` で開き、(A)(B)(C) のどこを直すか絞る
+5. 最後に (E) 19 場面すべてを撮影
+
+作業用 worktree: `C:\gemini-desktop\ryona-action-wave1`（ブランチ `port/threejs-wave1`）。

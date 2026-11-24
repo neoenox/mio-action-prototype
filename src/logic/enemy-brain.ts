@@ -3,7 +3,7 @@ import { Prng } from '../core/prng';
 import { CombatConstants } from '../core/CombatConstants';
 import {
   EnemyPhase, PunchZone,
-  type EnemyActor,
+  type EnemyActor, type PunchAnchor,
 } from './types';
 import { EnemyRole } from '../core/EnemyRole';
 import { GrappleKind } from '../core/GrappleResistance';
@@ -99,7 +99,7 @@ export interface AttackOutcome {
 
 export interface EnemyBrainHooks {
   /** 拳のアンカー。rig が実体を持ち、logic はこれを呼ぶだけ（直接 rig を見ない）。 */
-  getPunchAnchor(zone: PunchZone): { x: number; y: number; z: number } | null;
+  getPunchAnchor(zone: PunchZone): PunchAnchor | null;
   /** プレイヤーの懐の座標（アンカー比較用）。 */
   getPlayerPosition(): { x: number; y: number; z: number };
   getPlayerForward(): { x: number; y: number; z: number };

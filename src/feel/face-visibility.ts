@@ -70,6 +70,13 @@ const CENTER_UP = 0.06;
 const CENTER_FORWARD = 0.05;
 const FACE_POINTS = 5;
 
+/**
+ * 実リグ（rig/bones.ts の FACE_FORWARD_LOCAL）と同じ顔の向き。
+ * glTF 規約では head ローカル -Z が顔の前で、+Z は後頭部（髪）側。
+ * feel 層は rig へ依存しないため、ここで同じ値を定義する。
+ */
+export const FACE_FORWARD_LOCAL = new Vector3(0, 0, -1);
+
 /** three の Object3D から HeadBone を作る（rig-port の head をそのまま渡せる）。 */
 export function headBoneFromObject(head: Object3D): HeadBone {
   head.updateWorldMatrix(true, false);
@@ -77,9 +84,8 @@ export function headBoneFromObject(head: Object3D): HeadBone {
   return {
     position: new Vector3().setFromMatrixPosition(m),
     up: new Vector3(0, 1, 0).transformDirection(m),
-    // Unity の Transform.forward は +Z。glTF の前方向が -Z のボーンは
-    // 呼び側で -1 を掛けて渡す（rig 側の変換に任せる）。
-    forward: new Vector3(0, 0, 1).transformDirection(m),
+    // 後頭部（ローカル +Z）ではなく顔側（ローカル -Z）を采样する。
+    forward: FACE_FORWARD_LOCAL.clone().transformDirection(m),
   };
 }
 
