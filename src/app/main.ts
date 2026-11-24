@@ -26,6 +26,12 @@ import { GameWorld, type WorldSnapshot } from '../logic/world.js';
 import { emptyIntent, type InputIntent } from '../input/intent.js';
 import { headBoneFromObject, measure, type EnemyFigureView } from '../feel/face-visibility.js';
 import { UnityFov, scenarioCameraProfile } from '../feel/scenario-camera.js';
+import { HitStop } from '../feel/hit-stop.js';
+import { CameraShake } from '../feel/shake.js';
+import { CameraDirector } from '../feel/camera-director.js';
+import { HitResult } from '../core/HitResult.js';
+import { StaggerTier } from '../core/CombatConstants.js';
+import type { WorldEvent } from '../logic/world.js';
 
 /** 撮影対象の場面名（tools/scenarios.mjs の19キーと同じ）。 */
 const SCENARIO_NAMES = [
@@ -166,11 +172,42 @@ const punchAnchor = createPunchAnchorProvider({
  * ゲーム世界。敵 AI・拘束・壁シーケンス・移動をここで回す。
  * 以前はシナリオ名からポーズを決め打ちしていただけで、因果が動いていなかった。
  */
+const clock = new Clock();
+
 const world = new GameWorld({
   enemyCount: enemyRigs.length,
   rigs: enemyRigs.map((rig) => ({ getPunchAnchor: (zone) => rig.getPunchAnchor(zone) })),
   seed: 0x2f6e2b1,
 });
+
+/**
+ * ヒット演出。Unity 版は当たった瞬間に timeScale を落として揺らし、カメラを押し込む。
+ * これが無いと 19 場面比較でピークだけが低く出る（平均は近いのに 9〜27 対 25〜70）。
+ */
+const hitStop = new HitStop(clock);
+const shake = new CameraShake(camera, clock);
+const cameraDirector = new CameraDirector(
+  cameraRig,
+  () => world.snapshot().player.hp <= 0,
+  () => heldPunchCamera.isCameraActive,
+);
+
+function staggerTierForDamage(damage: number): StaggerTier {
+  if (damage >= 16) return StaggerTier.Large;
+  if (damage >= 10) return StaggerTier.Medium;
+  return StaggerTier.Small;
+}
+
+/** world の hit イベントを Unity 相当の手触りへ変換する。 */
+function applyHitFeel(event: Extract<WorldEvent, { type: 'hit' }>): void {
+  const tier = staggerTierForDamage(event.damage);
+  const result = new HitResult(event.damage, tier);
+  const stop = tier === StaggerTier.Large ? 0.10 : tier === StaggerTier.Medium ? 0.07 : 0.045;
+  hitStop.play(stop);
+  shake.shake(tier === StaggerTier.Large ? 0.055 : 0.032, 0.14);
+  if (event.attacker === 'player') cameraDirector.onHitLanded(result);
+  else cameraDirector.onHitReceived(result);
+}
 
 /** 手で遊ぶときのキー入力。撮影（capture）中は使わない。 */
 const held = new Set<string>();
@@ -233,7 +270,6 @@ function motionFor(name: ScenarioName): { swing: number; approach: number; spin:
   }
 }
 
-const clock = new Clock();
 let scenario: ScenarioName = 'idle';
 let frame = 0;
 let dt = Number(params.get('interval') ?? '0.05') || 0.05;
@@ -279,10 +315,19 @@ function animatorInputFromSnapshot(snap: WorldSnapshot, elapsed: number) {
 }
 
 function applyPose() {
+  // 1. ヒットストップの復帰（unscaled）。ここで scale が戻ってから scaled を測る。
+  hitStop.update(dt);
   const scaled = clock.scaledDelta(dt);
   world.tick(scaled, buildIntent());
   const snap = world.snapshot();
   const elapsed = clock.time + seedOffset;
+
+  // 2. 当たった瞬間の演出（HitStop / 揺れ / カメラの押し込み）。
+  for (const event of snap.events) {
+    if (event.type === 'hit') applyHitFeel(event);
+  }
+  // 3. 死亡演出の監視（unscaled）。
+  cameraDirector.update(dt);
 
   // 位置は logic が持つ。rig はそれを読むだけ。
   playerRig.root.position.x = snap.player.x;
@@ -335,6 +380,8 @@ function applyPose() {
 
   cameraRig.setTarget(new THREE.Vector3(snap.player.x, 0, snap.player.z));
   cameraRig.update(dt, scaled);
+  // 4. 最後に揺れを足す（前フレーム分を戻してから足すので累積しない）。
+  shake.updateLate(dt);
 }
 
 // 撮影中は HUD のフレーム番号が画像差分に乗らないよう非表示にする。
