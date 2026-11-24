@@ -40,8 +40,13 @@ const PIN: ScenarioCameraProfile = { distance: 3.2, pitch: 12, pivotHeight: 1.0,
 /** 壁 2 人がかりの横からの画（WallSplitCamera 相当）。可視高 2.04m（75%）。 */
 const WALL_SPLIT: ScenarioCameraProfile = { distance: 2.8, pitch: 9, pivotHeight: 1.05, fov: UnityFov };
 
-/** 羽交い締めの腹/顔パン。HeldBellyPunchCamera が距離を押し込む前提の基準。 */
-const HELD_PUNCH: ScenarioCameraProfile = { distance: 3.8, pitch: 10, pivotHeight: 1.0, fov: UnityFov };
+/**
+ * 羽交い締めの腹/顔パン。
+ * HeldBellyPunchCamera の倍率（腹 0.27 / 顔 0.22）は Unity の基本距離 5.2m に
+ * 掛ける前提で作られているため、ここも 5.2m にしないと実距離が 1.0m まで詰まり、
+ * 頭だけが画面を埋めて腹と拳が消える。5.2 × 0.269（クランプ下限）= 1.4m で Unity と一致。
+ */
+const HELD_PUNCH: ScenarioCameraProfile = { distance: 5.2, pitch: 10, pivotHeight: 1.0, fov: UnityFov };
 
 /** 地面の相手（引き起こし・マウント）。見下ろしを強め、倒れた体が収まる距離。 */
 const GROUND: ScenarioCameraProfile = { distance: 3.4, pitch: 22, pivotHeight: 0.8, fov: UnityFov };
