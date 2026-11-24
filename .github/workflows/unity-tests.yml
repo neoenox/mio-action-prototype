@@ -4,6 +4,11 @@ name: Unity tests
 # 重い PlayMode（grapple / motion / misc、合計 1 時間以上）は必要なときだけ回す:
 #   - PR に `full-tests` ラベルを付ける（全バッチ）
 #   - Actions 画面の「Run workflow」でバッチを選ぶ
+#
+# このリポジトリは Unity 版（MioPrototype/）と Three.js 移植版（src/ など）が同居する。
+# main の保護では "Unity tests" が必須チェックになっているため、Unity 側を触らない PR でも
+# チェックを「未実行」にせず必ず成功させる必要がある。そこで paths フィルタは使わず、
+# 変更ファイルを見て Unity 側が無いときはテストをスキップする（ジョブ自体は成功で終わる）。
 on:
   workflow_dispatch:
     inputs:
@@ -13,20 +18,8 @@ on:
         default: 'edit,grapple,motion,misc'
   pull_request:
     types: [opened, synchronize, reopened, labeled]
-    paths:
-      - 'MioPrototype/Assets/**'
-      - 'MioPrototype/ProjectSettings/**'
-      - 'MioPrototype/Packages/**'
-      - 'MioPrototype/tools/**'
-      - '.github/workflows/unity-tests.yml'
   push:
     branches: [main]
-    paths:
-      - 'MioPrototype/Assets/**'
-      - 'MioPrototype/ProjectSettings/**'
-      - 'MioPrototype/Packages/**'
-      - 'MioPrototype/tools/**'
-      - '.github/workflows/unity-tests.yml'
 
 permissions:
   contents: read
@@ -54,8 +47,49 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Unity 側（MioPrototype/ とこの workflow）が変わっていなければテストを省く。
+      # 検出に失敗したときと手動起動のときは安全側で実行する。
+      - name: Detect Unity changes
+        id: detect
+        shell: pwsh
+        run: |
+          $changed = "true"
+          try {
+            if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+              $changed = "true"
+            } elseif ("${{ github.event_name }}" -eq "pull_request") {
+              $base = "${{ github.event.pull_request.base.sha }}"
+              $head = "${{ github.event.pull_request.head.sha }}"
+              git fetch --no-tags --depth=1 origin $base 2>$null | Out-Null
+              $files = @(git diff --name-only $base $head)
+              $pattern = '^(MioPrototype/(Assets|ProjectSettings|Packages|tools)/|\.github/workflows/unity-tests\.yml$)'
+              $unity = @($files | Where-Object { $_ -match $pattern })
+              if ($files.Count -gt 0 -and $unity.Count -eq 0) { $changed = "false" }
+              Write-Host "changed files: $($files.Count) / unity: $($unity.Count)"
+            } else {
+              $before = "${{ github.event.before }}"
+              if ($before -and $before -notmatch '^0+$') {
+                git fetch --no-tags --depth=1 origin $before 2>$null | Out-Null
+                $files = @(git diff --name-only $before HEAD)
+                $pattern = '^(MioPrototype/(Assets|ProjectSettings|Packages|tools)/|\.github/workflows/unity-tests\.yml$)'
+                $unity = @($files | Where-Object { $_ -match $pattern })
+                if ($files.Count -gt 0 -and $unity.Count -eq 0) { $changed = "false" }
+              }
+            }
+          } catch {
+            Write-Host "::warning::変更の検出に失敗したため Unity tests を実行します: $_"
+            $changed = "true"
+          }
+          "changed=$changed" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: No Unity changes
+        if: steps.detect.outputs.changed != 'true'
+        shell: pwsh
+        run: Write-Host "Unity 側の変更が無いため Unity tests をスキップしました。"
+
       # 音声素材は gitignore 済み。CI ではローカルの素材を作業ツリーへコピーする。
       - name: Restore voice assets
+        if: steps.detect.outputs.changed == 'true'
         shell: pwsh
         run: |
           $dest = "MioPrototype\Assets\RyonaGame\Resources\Voice"
@@ -68,6 +102,7 @@ jobs:
 
       # run_tests.py がコンパイル確認のあと、選んだバッチを順に実行する。実行中は Unity Editor を閉じておく。
       - name: Run Unity tests
+        if: steps.detect.outputs.changed == 'true'
         shell: pwsh
         run: |
           cd MioPrototype
