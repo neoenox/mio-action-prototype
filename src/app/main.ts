@@ -128,9 +128,15 @@ playerRig.attachTo(scene, { x: -0.55, y: 0, z: 0 });
 // quaternion(identity) 側が優先されて 0 へ戻る。quaternion を直接設定する。
 playerRig.root.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
 
+/**
+ * 敵は背丈に個体差を持たせる（Unity の実測 1.85 / 1.79 / 1.72）。
+ * 全員 1.75 だと EnemyRoleRules が全員 Striker にし、掴み役が居なくなる。
+ */
+const ENEMY_HEIGHTS = [1.85, 1.79, 1.72] as const;
 const ENEMY_COLORS = [0xd0605a, 0xc87850] as const;
-const enemyRigs = ENEMY_COLORS.map((color) => {
-  const rig = createEnemyRig(color);
+const enemyRigs = ENEMY_COLORS.map((color, index) => {
+  // リグは身長 1.8m 基準なので、背丈の比をスケールにする。
+  const rig = createEnemyRig(color, { scale: (ENEMY_HEIGHTS[index] ?? 1.8) / 1.8 });
   rig.attachTo(scene, { x: 2.4, y: 0, z: 0 });
   rig.root.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
   return rig;

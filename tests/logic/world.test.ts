@@ -4,6 +4,7 @@ import { WallStage } from '../../src/logic/grapple-session.js';
 import { WallSequencePhase } from '../../src/logic/wall-sequence.js';
 import { EnemyPhase, PunchZone } from '../../src/logic/types.js';
 import { GrappleKind } from '../../src/core/GrappleResistance.js';
+import { EnemyRole } from '../../src/core/EnemyRole.js';
 import { BodyPart, CombatConstants } from '../../src/core/CombatConstants.js';
 import type { EnemySettings } from '../../src/logic/enemy-brain.js';
 import type { RigLike } from '../../src/logic/hooks.js';
@@ -215,7 +216,7 @@ describe('GameWorld', () => {
     expect(snap.enemies).toHaveLength(2);
     const enemy = snap.enemies[0]!;
     expect(Object.keys(enemy).sort()).toEqual(
-      ['facing', 'hp', 'id', 'isAttacking', 'isDead', 'isDown', 'phase', 'x', 'z'],
+      ['facing', 'height', 'hp', 'id', 'isAttacking', 'isDead', 'isDown', 'phase', 'role', 'x', 'z'],
     );
     expect(enemy.id).toBe('enemy-1');
     expect(enemy.phase).toBe(EnemyPhase.Chase);
@@ -406,3 +407,36 @@ describe('壁拘束の膝 5 発（logic 側で発生）', () => {
     expect(world.wallPhase).toBe(WallSequencePhase.PauseAfterKnees);
   });
 });
+
+describe('敵の背丈と役割', () => {
+  it('背丈で掴み役 / 道具役 / 打撃役が分かれる', () => {
+    const world = new GameWorld({ enemyCount: 3, enemyHeights: [1.85, 1.79, 1.72] });
+    const snap = world.snapshot();
+    expect(snap.enemies.map((e) => e.height)).toEqual([1.85, 1.79, 1.72]);
+    expect(snap.enemies.map((e) => e.role)).toEqual([
+      EnemyRole.Grappler,
+      EnemyRole.Tools,
+      EnemyRole.Striker,
+    ]);
+  });
+
+  it('同じ背丈でも名前順で 1 体が掴み役になる（列挙順に依存しない）', () => {
+    const world = new GameWorld({ enemyCount: 2, enemyHeights: [1.75, 1.75] });
+    const roles = world.snapshot().enemies.map((e) => e.role);
+    expect(roles).toContain(EnemyRole.Grappler);
+    expect(roles.filter((r) => r === EnemyRole.Grappler)).toHaveLength(1);
+  });
+
+  it('明示した掴み役は背丈より優先される', () => {
+    const world = new GameWorld({
+      enemyCount: 2,
+      enemyHeights: [1.85, 1.72],
+      authoredGrapplerIndex: 1,
+    });
+    const snap = world.snapshot();
+    expect(snap.enemies[1]!.role).toBe(EnemyRole.Grappler);
+    expect(snap.enemies[0]!.role).toBe(EnemyRole.Striker);
+  });
+});
+
+

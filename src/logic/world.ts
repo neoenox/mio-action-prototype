@@ -23,6 +23,7 @@ import { CombatConstants } from '../core/CombatConstants';
 import { GrappleKind, GrappleResistance, ResistanceMath } from '../core/GrappleResistance';
 import { AttackData, AttackLibrary } from '../core/AttackData';
 import { DamageResolver } from '../core/DamageResolver';
+import { EnemyRole, EnemyRoleRules, RoleCandidate } from '../core/EnemyRole';
 import { EnemyPhase, PunchZone, type EnemyActor } from './types';
 import {
   AttackId, DEFAULT_ENEMY_SETTINGS, EnemyBrain,
@@ -39,6 +40,9 @@ import type { InputIntent } from '../input/intent';
 
 /** 既定の敵の数（要件どおり 2 体）。 */
 const DEFAULT_ENEMY_COUNT = 2;
+
+/** Unity 版の敵の背丈（実測）。背丈で役割が分かれる。 */
+const DEFAULT_ENEMY_HEIGHTS: readonly number[] = [1.85, 1.79, 1.72];
 /** 敵の初期位置。プレイヤー（x=0）から見て全部右側に置く（Unity 版の右端入場に合わせる）。 */
 const SPAWN_X = 2.4;
 const SPAWN_GAP = 1.5;
@@ -72,6 +76,13 @@ const FLINCH_BY_ATTACK: Record<AttackId, number> = {
 export interface GameWorldOptions {
   /** 敵の数。既定 2。0 にすると敵なし（移動だけの確認用）。 */
   enemyCount?: number;
+  /**
+   * 敵の背丈（m）。個体差があると EnemyRoleRules が掴み役 / 道具役 / 打撃役を分ける。
+   * Unity 版の実測は 1.85 / 1.79 / 1.72。省略時はその既定値。
+   */
+  enemyHeights?: readonly number[];
+  /** シーンで明示した掴み役のインデックス（Unity の AuthoredGrappler 相当）。 */
+  authoredGrapplerIndex?: number;
   /** EnemyBrain の設定（全敵に同じ値を入れる）。 */
   enemySettings?: Partial<EnemySettings>;
   /** 敵ごとの拳アンカーの出所。`rigs[i]` が敵 i の rig（PunchAnchorRig か head/body マップ）。 */
@@ -123,6 +134,10 @@ export interface EnemySnapshot {
   hp: number;
   /** ダウン中か（HP 0・ダウンゲージ上限・死亡のいずれか）。 */
   isDown: boolean;
+  /** 背丈（m）。rig のスケールに使う。 */
+  height: number;
+  /** 背丈から決まる役割（Grappler / Tools / Striker）。 */
+  role: EnemyRole;
 }
 
 /** snapshot().grapple の形。掴まれていないときは stage=None（kind は最後の値のまま）。 */
@@ -171,6 +186,8 @@ export interface WorldSnapshot {
 /** 1 体ぶんの内部状態。 */
 interface EnemySlot {
   readonly brain: EnemyBrain;
+  /** この個体の背丈（m）。役割の決定と rig のスケールに使う。 */
+  readonly height: number;
   /**
    * 敵の戦闘リソース（HP / 部位ダメージ / ひるみゲージ）。
    * プレイヤー攻撃のダメージは DamageResolver がここへ適用する。
@@ -249,6 +266,18 @@ export class GameWorld {
     const seed = options.seed ?? 0x2f6e2b1;
     const count = Math.max(0, Math.floor(options.enemyCount ?? DEFAULT_ENEMY_COUNT));
 
+    // 背丈で役割（掴み役 / 道具役 / 打撃役）を決める。Unity 版は個体ごとに背丈が
+    // 1.85 / 1.79 / 1.72 と違う。全員同じ背丈だと全員 Striker になり、掴み役が居なくなる。
+    const heights = options.enemyHeights ?? DEFAULT_ENEMY_HEIGHTS;
+    const candidates: RoleCandidate[] = [];
+    for (let i = 0; i < count; i++) {
+      candidates.push(new RoleCandidate(
+        `enemy-${i + 1}`,
+        heights[i % heights.length] ?? DEFAULT_ENEMY_HEIGHTS[0]!,
+        options.authoredGrapplerIndex === i,
+      ));
+    }
+
     for (let i = 0; i < count; i++) {
       const id = `enemy-${i + 1}`;
       const actor: EnemyActor = {
@@ -264,10 +293,18 @@ export class GameWorld {
         ? createHooksFromRig(rig, otherHooks)
         : { ...otherHooks, getPunchAnchor: () => null };
       const brain = new EnemyBrain(id, actor, hooks, enemySettings, seed + i * 0x9e3779b1);
+      // 役割は背丈から決める（EnemyRoleRules は列挙順に依存しない）。
+      brain.role = EnemyRoleRules.roleOf(candidates, i);
       // 敵の戦闘リソース。最大 HP は EnemyBrain の初期 HP に合わせる（表示の hp とずれないように）。
       const combat = new CombatState();
       combat.setMaxHp(brain.hp);
-      const slot: EnemySlot = { brain, combat, downRemaining: 0, holdingToken: false };
+      const slot: EnemySlot = {
+        brain,
+        combat,
+        downRemaining: 0,
+        holdingToken: false,
+        height: candidates[i]!.height,
+      };
       // Stagger / ダウン時に EnemyBrain.cancelWindup() から呼ばれる（トークンを返す）。
       brain.releaseToken = () => this.releaseToken(slot);
       this.slots.push(slot);
@@ -421,6 +458,8 @@ export class GameWorld {
           isAttacking,
           hp: brain.hp,
           isDown: slot.combat.isDown || !brain.isAlive,
+          height: slot.height,
+          role: brain.role,
         };
       }),
       grapple: {
